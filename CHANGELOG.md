@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.45.4](https://github.com/nodemailer/wildduck/compare/v1.45.3...v1.45.4) (2025-01-13)
+
+
+### Bug Fixes
+
+* **docs-client-gen:** add more readable operationId and response types, fix deps ZMS-188 ([#759](https://github.com/nodemailer/wildduck/issues/759)) ([978ce06](https://github.com/nodemailer/wildduck/commit/978ce0685f3aa2e10f3c3407bb1b9e732e9cf5f2))
+* **encrypted-mailboxes:** Add functionality of singular encrypted mailboxes ZMS-181 ([#758](https://github.com/nodemailer/wildduck/issues/758)) ([17bca3e](https://github.com/nodemailer/wildduck/commit/17bca3e9ed21942e37765083d0ac8d5e46379131))
+* **imap-indexer:** fix fileContentHash error in imap indexer, check for attachmentInfo beforehand ZMS-186 ([#756](https://github.com/nodemailer/wildduck/issues/756)) ([7daa0e3](https://github.com/nodemailer/wildduck/commit/7daa0e35d5462c46ff4228638f2e9e5f30ed880d))
+* **imap-socket-hang:** When allocating IMAP connection, check if socket is still alive ZMS-196 ([#772](https://github.com/nodemailer/wildduck/issues/772)) ([8feae38](https://github.com/nodemailer/wildduck/commit/8feae388367ca8804bb009a8d745e79c64aa9d25))
+
+## [1.45.3](https://github.com/nodemailer/wildduck/compare/v1.45.2...v1.45.3) (2024-11-05)
+
+
+### Bug Fixes
+
+* **bimi:** Added 'type' for BIMI information schema ([61f03dc](https://github.com/nodemailer/wildduck/commit/61f03dce8f09e23218b4cd90e88568a5cda3c8ff))
+
+## [1.45.2](https://github.com/nodemailer/wildduck/compare/v1.45.1...v1.45.2) (2024-11-05)
+
+
+### Bug Fixes
+
+* **deps:** Upgraded mailauth for BIMI CMC support ([20f8e9a](https://github.com/nodemailer/wildduck/commit/20f8e9a39f14feda0facfa2ba5c4edb0a550811a))
+* **IMAP:** Use a non-round number for socket timeout to decrease race conditions where both the server and the client wait for the same time ([686cd86](https://github.com/nodemailer/wildduck/commit/686cd8644c34c11099752d0d26430080b649edab))
+
+## [1.45.1](https://github.com/nodemailer/wildduck/compare/v1.45.0...v1.45.1) (2024-10-28)
+
+
+### Bug Fixes
+
+* **api-attachment:** Calculate file content hash when uploading attachment ZMS-172 ([#733](https://github.com/nodemailer/wildduck/issues/733)) ([8730ed5](https://github.com/nodemailer/wildduck/commit/8730ed58f6c7630d63e86bcdc9a755d8904d3df0))
+* **api-auth:** /preauth and /authenticate endpoints also return the default address of an user ZMS-175 ([#738](https://github.com/nodemailer/wildduck/issues/738)) ([6dac6ae](https://github.com/nodemailer/wildduck/commit/6dac6ae256ef6d4c555363591392f752cd4e51d3))
+* **api-generation:** remove "version" from apigeneration.json ZMS-160 ([#729](https://github.com/nodemailer/wildduck/issues/729)) ([971a0f1](https://github.com/nodemailer/wildduck/commit/971a0f1ba1e66c4fe2bad947d090189be605d21d))
+* **api-graylog-req:** Do not use util.inspect if value already string ZMS-174 ([#736](https://github.com/nodemailer/wildduck/issues/736)) ([1a12b03](https://github.com/nodemailer/wildduck/commit/1a12b03a838a6cc2ebba81d13a6a33a8a5591783))
+* **api&imap-mailboxes:** Added mailbox subpath and whole path max length limits to API and IMAP ZMS-169 ([#732](https://github.com/nodemailer/wildduck/issues/732)) ([ee870b9](https://github.com/nodemailer/wildduck/commit/ee870b9fed8a344242349fe36581f4894f190c06))
+* **deps:** Replaced uuid dependency with crypto.randomUUID ([d462b5a](https://github.com/nodemailer/wildduck/commit/d462b5a55fd470c360d5942bbdb14c13ba6765f0))
+* **dockerfile:** Use JSON array for CMD ([6d7d47e](https://github.com/nodemailer/wildduck/commit/6d7d47e9eb61cb7fbdab70b6623a3a7ca0c77fa0))
+* **handler-filter:** Filter handler response includes file content sha256 hash ZMS-176 ([#739](https://github.com/nodemailer/wildduck/issues/739)) ([37374be](https://github.com/nodemailer/wildduck/commit/37374be43903737f6c4710537b6fe281fa3ab434))
+* **idle:** Fixed IDLE bug with Outlook ([f2c8545](https://github.com/nodemailer/wildduck/commit/f2c8545293277b382b2d357671e9649e9f7c3b9e))
+* **log:** Log validation information if command schema validation fails ([1354bf0](https://github.com/nodemailer/wildduck/commit/1354bf0c0508355f77d1fccf8877148513997b29))
+* push docker containers to GHCR too ([#746](https://github.com/nodemailer/wildduck/issues/746)) ([2a1b34a](https://github.com/nodemailer/wildduck/commit/2a1b34a2e4c08a29db08b754894228aff5040a78))
+* quering for range ZMS-182 ([#742](https://github.com/nodemailer/wildduck/issues/742)) ([3804bea](https://github.com/nodemailer/wildduck/commit/3804bea81eba2e2e865e49f268d072daab630901))
+* **readme-copyright:** Add copyright ZMS-180 ([#744](https://github.com/nodemailer/wildduck/issues/744)) ([6542e5b](https://github.com/nodemailer/wildduck/commit/6542e5b09e6b1198490896b9418dae71931be4bd))
+* **typos:** fixed typos ZMS-167 ([#740](https://github.com/nodemailer/wildduck/issues/740)) ([36fcabc](https://github.com/nodemailer/wildduck/commit/36fcabcd5b996c5afcc808d6af814d15ac652827))
+
 ## [1.45.0](https://github.com/nodemailer/wildduck/compare/v1.44.0...v1.45.0) (2024-08-01)
 
 

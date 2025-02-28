@@ -626,11 +626,12 @@ class Indexer {
                 mimeTree.attachmentMap[node.attachmentId] = id;
 
                 let attachmentInfo = maildata.attachments && maildata.attachments.find(a => a.id === node.attachmentId); // get reference to attachment info
+
                 if (attachmentInfo && node.body) {
                     attachmentInfo.size = node.body.length;
                 }
 
-                if (fileContentHash) {
+                if (attachmentInfo && fileContentHash) {
                     attachmentInfo.fileContentHash = fileContentHash;
                 }
 

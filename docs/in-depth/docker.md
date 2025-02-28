@@ -31,15 +31,16 @@ This is likely to fail due to `mongodb` and `redis` not present in `localhost` i
     ```bash
     FQDN='example.com'
     MAIL_DOMAIN='mail.example.com'
-    docker run --env CMD_ARGS="\
-    --dbs.mongo=mongodb://mongo:27017/ \
-    --dbs.redis=redis://redis:6379/3 \
-    --smtp.setup.hostname=$FQDN \
-    --log.gelf.hostname=$FQDN \
-    --imap.setup.hostname=$FQDN \
-    --emailDomain=$MAIL_DOMAIN" \
-    nodemailer/wildduck 
+    docker run \ 
+    -e APPCONF_dbs_mongo='mongodb://mongo:27017/' \
+    -e APPCONF_dbs_redis='redis://redis:6379/3' \
+    -e APPCONF_smtp_setup_hostname=$FQDN \
+    -e APPCONF_log_gelf_hostname=$FQDN \
+    -e APPCONF_imap_setup_hostname=$FQDN \
+    -e APPCONF_emailDomain=$MAIL_DOMAIN \
+    nodemailer/wildduck
     ```
+
     More details available at the [wild-config](https://github.com/nodemailer/wild-config) documentation.
 2. Mount a Docker volume with a custom configuration file:
     

@@ -13,6 +13,9 @@ module.exports = {
 
         // api changes, fix later
         'eslint',
-        'grunt-eslint'
+        'grunt-eslint',
+
+        // temporary lock to v5, openpgp v6 is "module" by default, but should be backwards compatible
+        'openpgp'
     ]
 };

@@ -13,7 +13,9 @@ const EventEmitter = require('events').EventEmitter;
 const packageInfo = require('../../package');
 const errors = require('../../lib/errors.js');
 
-const SOCKET_TIMEOUT = 5 * 60 * 1000;
+// Shift timeout by 37 seconds (randomly selected by myself, no specific meaning) to
+// avoid race conditions where both the client and the server wait for 5 minutes
+const SOCKET_TIMEOUT = 5 * 60 * 1000 + 37 * 1000;
 
 /**
  * Creates a handler for new socket

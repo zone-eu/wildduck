@@ -407,6 +407,7 @@ function markAsSeen(session, messages, callback) {
                                 command: 'FETCH',
                                 uid: message.uid,
                                 flags: message.flags.concat('\\Seen'),
+                                thread: message.thread,
                                 message: new ObjectId(message.id),
                                 modseq: mailboxData.modifyIndex,
                                 // Indicate that unseen values are changed. Not sure how much though
