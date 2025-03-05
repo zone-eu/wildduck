@@ -3,7 +3,7 @@
 BRANCH="${1:-master}"
 
 # This script downloads all the installation files.
-BASEURL="https://raw.githubusercontent.com/nodemailer/wildduck/$BRANCH/setup/"
+BASEURL="https://raw.githubusercontent.com/zone-eu/wildduck/$BRANCH/setup/"
 
 ## declare an array
 declare -a arr=(

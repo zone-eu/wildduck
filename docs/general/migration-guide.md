@@ -190,7 +190,7 @@ SyncState *
 Sync it:
 `mbsync -a`
 
-[0]: https://github.com/nodemailer/wildduck/blob/master/setup/README.md
+[0]: https://github.com/zone-eu/wildduck/blob/master/setup/README.md
 [1]: https://toolbox.googleapps.com/apps/checkmx/check?domain=yourserver.com&dkim_selector=
 [2]: https://www.mail-tester.com/
 [3]: http://www.appmaildev.com/en/dkim/
