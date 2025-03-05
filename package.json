@@ -110,7 +110,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git://github.com/nodemailer/wildduck.git"
+        "url": "git://github.com/zone-eu/wildduck.git"
     },
     "engines": {
         "node": ">=16.0.0"
