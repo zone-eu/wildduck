@@ -20,7 +20,7 @@ rm -rf /opt/haraka
 
 # fresh install
 cd /var/opt
-git clone --bare https://github.com/nodemailer/haraka-plugin-wildduck.git
+git clone --bare https://github.com/zone-eu/haraka-plugin-wildduck.git
 echo "#!/bin/bash
 git --git-dir=/var/opt/haraka-plugin-wildduck.git --work-tree=/opt/haraka/plugins/wildduck checkout "\$3" -f
 cd /opt/haraka/plugins/wildduck

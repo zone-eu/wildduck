@@ -4,7 +4,7 @@
         "title": "WildDuck API",
         "description": "WildDuck API docs",
         "contact": {
-            "url": "https://github.com/nodemailer/wildduck"
+            "url": "https://github.com/zone-eu/wildduck"
         }
     },
     "servers": [{ "url": "https://api.wildduck.email" }],

@@ -22,5 +22,5 @@ mongod --version
 echo "HOSTNAME: $HOSTNAME"
 
 echo -e "-- Installing ${RED}npm globally${NC} (workaround)"
-# See issue https://github.com/nodemailer/wildduck/issues/82
+# See issue https://github.com/zone-eu/wildduck/issues/82
 npm install npm -g

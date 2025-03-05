@@ -6,4 +6,4 @@ This message was generated and inserted to this mailbox from the /emails folder 
 
 Your friends from the WildDuck team
 
-– Check out WildDuck on Github: https://github.com/nodemailer/wildduck
+– Check out WildDuck on Github: https://github.com/zone-eu/wildduck

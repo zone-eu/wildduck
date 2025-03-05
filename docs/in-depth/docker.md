@@ -20,12 +20,12 @@ The following docker env variables are available inside the container:
 
 
 ## Running wildduck using Docker
-The image is configured to use the [default config file](https://github.com/nodemailer/wildduck/blob/master/config/default.toml)
+The image is configured to use the [default config file](https://github.com/zone-eu/wildduck/blob/master/config/default.toml)
 ```
 docker run nodemailer/wildduck
 ```
 This is likely to fail due to `mongodb` and `redis` not present in `localhost` inside the container. To pass custom configuration options/files to  wildduck inside the docker image, the following two strategies can be used:
-1. Pass `CMD_ARGS` to configure options using [wild-config](https://github.com/nodemailer/wild-config)
+1. Pass `CMD_ARGS` to configure options using [wild-config](https://github.com/zone-eu/wild-config)
     
     To set a custom `mongo` and `redis` host, and configure the `FQDN` and the domain for receiving emails:
     ```bash
@@ -41,7 +41,7 @@ This is likely to fail due to `mongodb` and `redis` not present in `localhost` i
     nodemailer/wildduck
     ```
 
-    More details available at the [wild-config](https://github.com/nodemailer/wild-config) documentation.
+    More details available at the [wild-config](https://github.com/zone-eu/wild-config) documentation.
 2. Mount a Docker volume with a custom configuration file:
     
     To replace the default config folder (`/wildduck/config`) inside the docker image

@@ -4,9 +4,9 @@
         "title": "WildDuck API",
         "description": "WildDuck API docs",
         "contact": {
-            "url": "https://github.com/nodemailer/wildduck"
+            "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.45.3"
+        "version": "1.45.4"
     },
     "servers": [
         {
@@ -147,7 +147,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -178,7 +179,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -239,11 +241,13 @@
                                     },
                                     "hashedPassword": {
                                         "type": "boolean",
-                                        "description": "If true then password is already hashed, so store as is. Supported hashes: pbkdf2, bcrypt ($2a, $2y, $2b), md5 ($1), sha512 ($6), sha256 ($5), argon2 ($argon2d, $argon2i, $argon2id). Stored hashes are rehashed to pbkdf2 on first successful password check."
+                                        "description": "If true then password is already hashed, so store as is. Supported hashes: pbkdf2, bcrypt ($2a, $2y, $2b), md5 ($1), sha512 ($6), sha256 ($5), argon2 ($argon2d, $argon2i, $argon2id). Stored hashes are rehashed to pbkdf2 on first successful password check.",
+                                        "default": false
                                     },
                                     "allowUnsafe": {
                                         "type": "boolean",
-                                        "description": "If false then validates provided passwords against Have I Been Pwned API. Experimental, so validation is disabled by default but will be enabled automatically in some future version of WildDuck."
+                                        "description": "If false then validates provided passwords against Have I Been Pwned API. Experimental, so validation is disabled by default but will be enabled automatically in some future version of WildDuck.",
+                                        "default": true
                                     },
                                     "address": {
                                         "type": "string",
@@ -251,7 +255,8 @@
                                     },
                                     "emptyAddress": {
                                         "type": "boolean",
-                                        "description": "If true then do not autogenerate missing email address for the User. Only needed if you want to create a user account that does not have any email address associated"
+                                        "description": "If true then do not autogenerate missing email address for the User. Only needed if you want to create a user account that does not have any email address associated",
+                                        "default": false
                                     },
                                     "language": {
                                         "type": "string",
@@ -259,7 +264,8 @@
                                     },
                                     "retention": {
                                         "type": "number",
-                                        "description": "Default retention time (in ms). Set to 0 to disable"
+                                        "description": "Default retention time (in ms). Set to 0 to disable",
+                                        "default": 0
                                     },
                                     "name": {
                                         "type": "string",
@@ -274,51 +280,63 @@
                                     },
                                     "spamLevel": {
                                         "type": "number",
-                                        "description": "Relative scale for detecting spam. 0 means that everything is spam, 100 means that nothing is spam"
+                                        "description": "Relative scale for detecting spam. 0 means that everything is spam, 100 means that nothing is spam",
+                                        "default": 50
                                     },
                                     "quota": {
                                         "type": "number",
-                                        "description": "Allowed quota of the user in bytes"
+                                        "description": "Allowed quota of the user in bytes",
+                                        "default": 0
                                     },
                                     "recipients": {
                                         "type": "number",
-                                        "description": "How many messages per 24 hour can be sent"
+                                        "description": "How many messages per 24 hour can be sent",
+                                        "default": 0
                                     },
                                     "forwards": {
                                         "type": "number",
-                                        "description": "How many messages per 24 hour can be forwarded"
+                                        "description": "How many messages per 24 hour can be forwarded",
+                                        "default": 0
                                     },
                                     "filters": {
                                         "type": "number",
-                                        "description": "How many filters are allowed for this account"
+                                        "description": "How many filters are allowed for this account",
+                                        "default": 0
                                     },
                                     "requirePasswordChange": {
                                         "type": "boolean",
-                                        "description": "If true then requires the user to change password, useful if password for the account was autogenerated"
+                                        "description": "If true then requires the user to change password, useful if password for the account was autogenerated",
+                                        "default": false
                                     },
                                     "imapMaxUpload": {
                                         "type": "number",
-                                        "description": "How many bytes can be uploaded via IMAP during 24 hour"
+                                        "description": "How many bytes can be uploaded via IMAP during 24 hour",
+                                        "default": 0
                                     },
                                     "imapMaxDownload": {
                                         "type": "number",
-                                        "description": "How many bytes can be downloaded via IMAP during 24 hour"
+                                        "description": "How many bytes can be downloaded via IMAP during 24 hour",
+                                        "default": 0
                                     },
                                     "pop3MaxDownload": {
                                         "type": "number",
-                                        "description": "How many bytes can be downloaded via POP3 during 24 hour"
+                                        "description": "How many bytes can be downloaded via POP3 during 24 hour",
+                                        "default": 0
                                     },
                                     "pop3MaxMessages": {
                                         "type": "number",
-                                        "description": "How many latest messages to list in POP3 session"
+                                        "description": "How many latest messages to list in POP3 session",
+                                        "default": 0
                                     },
                                     "imapMaxConnections": {
                                         "type": "number",
-                                        "description": "How many parallel IMAP connections are allowed"
+                                        "description": "How many parallel IMAP connections are allowed",
+                                        "default": 0
                                     },
                                     "receivedMax": {
                                         "type": "number",
-                                        "description": "How many messages can be received from MX during 60 seconds"
+                                        "description": "How many messages can be received from MX during 60 seconds",
+                                        "default": 0
                                     },
                                     "fromWhitelist": {
                                         "type": "array",
@@ -336,11 +354,13 @@
                                     },
                                     "addTagsToAddress": {
                                         "type": "boolean",
-                                        "description": "If true then autogenerated address gets the same tags as the user"
+                                        "description": "If true then autogenerated address gets the same tags as the user",
+                                        "default": false
                                     },
                                     "uploadSentMessages": {
                                         "type": "boolean",
-                                        "description": "If true then all messages sent through MSA are also uploaded to the Sent Mail folder. Might cause duplicates with some email clients, so disabled by default."
+                                        "description": "If true then all messages sent through MSA are also uploaded to the Sent Mail folder. Might cause duplicates with some email clients, so disabled by default.",
+                                        "default": false
                                     },
                                     "mailboxes": {
                                         "$ref": "#/components/schemas/Mailboxes"
@@ -373,18 +393,21 @@
                                     },
                                     "encryptMessages": {
                                         "type": "boolean",
-                                        "description": "If true then received messages are encrypted"
+                                        "description": "If true then received messages are encrypted",
+                                        "default": false
                                     },
                                     "encryptForwarded": {
                                         "type": "boolean",
-                                        "description": "If true then forwarded messages are encrypted"
+                                        "description": "If true then forwarded messages are encrypted",
+                                        "default": false
                                     },
                                     "featureFlags": {
                                         "type": "object",
                                         "description": "Feature flags to specify",
                                         "properties": {
                                             "indexing": {
-                                                "type": "boolean"
+                                                "type": "boolean",
+                                                "default": false
                                             }
                                         }
                                     },
@@ -546,11 +569,13 @@
                                     },
                                     "hashedPassword": {
                                         "type": "boolean",
-                                        "description": "If true then password is already hashed, so store as is. Supported hashes: pbkdf2, bcrypt ($2a, $2y, $2b), md5 ($1), sha512 ($6), sha256 ($5), argon2 ($argon2d, $argon2i, $argon2id). Stored hashes are rehashed to pbkdf2 on first successful password check."
+                                        "description": "If true then password is already hashed, so store as is. Supported hashes: pbkdf2, bcrypt ($2a, $2y, $2b), md5 ($1), sha512 ($6), sha256 ($5), argon2 ($argon2d, $argon2i, $argon2id). Stored hashes are rehashed to pbkdf2 on first successful password check.",
+                                        "default": false
                                     },
                                     "allowUnsafe": {
                                         "type": "boolean",
-                                        "description": "If false then validates provided passwords against Have I Been Pwned API. Experimental, so validation is disabled by default but will be enabled automatically in some future version of WildDuck."
+                                        "description": "If false then validates provided passwords against Have I Been Pwned API. Experimental, so validation is disabled by default but will be enabled automatically in some future version of WildDuck.",
+                                        "default": true
                                     },
                                     "language": {
                                         "type": "string",
@@ -573,7 +598,8 @@
                                     },
                                     "uploadSentMessages": {
                                         "type": "boolean",
-                                        "description": "If true then all messages sent through MSA are also uploaded to the Sent Mail folder. Might cause duplicates with some email clients, so disabled by default."
+                                        "description": "If true then all messages sent through MSA are also uploaded to the Sent Mail folder. Might cause duplicates with some email clients, so disabled by default.",
+                                        "default": false
                                     },
                                     "fromWhitelist": {
                                         "type": "array",
@@ -680,7 +706,8 @@
                                         "description": "Enabled feature flags",
                                         "properties": {
                                             "indexing": {
-                                                "type": "boolean"
+                                                "type": "boolean",
+                                                "default": false
                                             }
                                         }
                                     },
@@ -751,6 +778,7 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time",
+                            "default": false,
                             "enum": [
                                 false
                             ]
@@ -1267,7 +1295,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -1298,7 +1327,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -1736,6 +1766,7 @@
                         "example": "`limit=25`",
                         "schema": {
                             "type": "number",
+                            "default": 20,
                             "example": "`limit=25`"
                         }
                     },
@@ -1811,7 +1842,8 @@
                                     },
                                     "forwards": {
                                         "type": "number",
-                                        "description": "Daily allowed forwarding count for this address"
+                                        "description": "Daily allowed forwarding count for this address",
+                                        "default": 0
                                     },
                                     "allowWildcard": {
                                         "type": "boolean",
@@ -2208,7 +2240,8 @@
                         "description": "Should the response include only folders with specialUse flag set.",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2217,7 +2250,8 @@
                         "description": "Hidden folders are not included in the listing by default.",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2226,7 +2260,8 @@
                         "description": "Should the response include counters (total + unseen). Counters come with some overhead.",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2235,7 +2270,8 @@
                         "description": "Should the response include mailbox size in bytes. Size numbers come with a lot of overhead as an aggregated query is ran.",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2288,7 +2324,8 @@
                                     },
                                     "hidden": {
                                         "type": "boolean",
-                                        "description": "Is the folder hidden or not. Hidden folders can not be opened in IMAP."
+                                        "description": "Is the folder hidden or not. Hidden folders can not be opened in IMAP.",
+                                        "default": false
                                     },
                                     "retention": {
                                         "type": "number",
@@ -2297,6 +2334,11 @@
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
+                                    },
+                                    "encryptMessages": {
+                                        "type": "boolean",
+                                        "description": "If true then messages in this mailbox are encrypted",
+                                        "default": false
                                     },
                                     "ip": {
                                         "type": "string",
@@ -2359,7 +2401,10 @@
                         "description": "ID of the Mailbox",
                         "required": true,
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                                "resolve"
+                            ]
                         }
                     },
                     {
@@ -2426,6 +2471,10 @@
                                     "subscribed": {
                                         "type": "boolean",
                                         "description": "Change Mailbox subscription state"
+                                    },
+                                    "encryptMessages": {
+                                        "type": "boolean",
+                                        "description": "If true then messages in this mailbox are encrypted"
                                     },
                                     "hidden": {
                                         "type": "boolean",
@@ -2578,7 +2627,8 @@
                         "description": "If true, then includes metaData in the response",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2587,7 +2637,8 @@
                         "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2596,7 +2647,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -2607,6 +2659,7 @@
                         "schema": {
                             "type": "object",
                             "format": "any",
+                            "default": "desc",
                             "enum": [
                                 "asc",
                                 "desc"
@@ -2641,7 +2694,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -2830,7 +2884,8 @@
                         "description": "Schedule deletion task",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2839,7 +2894,8 @@
                         "description": "Skip archived messages",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -2894,15 +2950,18 @@
                                     },
                                     "unseen": {
                                         "type": "boolean",
-                                        "description": "Is the message unseen or not"
+                                        "description": "Is the message unseen or not",
+                                        "default": false
                                     },
                                     "flagged": {
                                         "type": "boolean",
-                                        "description": "Is the message flagged or not"
+                                        "description": "Is the message flagged or not",
+                                        "default": false
                                     },
                                     "draft": {
                                         "type": "boolean",
-                                        "description": "Is the message a draft or not"
+                                        "description": "Is the message a draft or not",
+                                        "default": false
                                     },
                                     "raw": {
                                         "type": "string",
@@ -3251,7 +3310,8 @@
                         "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -3260,7 +3320,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -3305,7 +3366,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     }
                 ],
@@ -3528,7 +3590,8 @@
                         "description": "If true then replaces cid links",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -3537,7 +3600,8 @@
                         "description": "If true then marks message as seen",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -3875,7 +3939,8 @@
                         "description": "If true then sends the original attachment back in string format with correct encoding.",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     }
                 ],
@@ -4145,7 +4210,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -4178,6 +4244,7 @@
                         "schema": {
                             "type": "object",
                             "format": "any",
+                            "default": "desc",
                             "enum": [
                                 "asc",
                                 "desc"
@@ -4201,7 +4268,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -4480,7 +4548,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -4511,7 +4580,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -4679,7 +4749,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -4710,7 +4781,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -4828,7 +4900,8 @@
                                     },
                                     "disabled": {
                                         "type": "boolean",
-                                        "description": "If true then this filter is ignored"
+                                        "description": "If true then this filter is ignored",
+                                        "default": false
                                     },
                                     "metaData": {
                                         "type": "object",
@@ -5361,7 +5434,8 @@
                         "description": "If not true then skips entries with a TTL set",
                         "required": false,
                         "schema": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -5435,7 +5509,8 @@
                                     },
                                     "generateMobileconfig": {
                                         "type": "boolean",
-                                        "description": "If true then result contains a mobileconfig formatted file with account config"
+                                        "description": "If true then result contains a mobileconfig formatted file with account config",
+                                        "default": false
                                     },
                                     "ttl": {
                                         "type": "number",
@@ -6127,7 +6202,8 @@
                                             "platform",
                                             "cross-platform"
                                         ],
-                                        "example": "cross-platform"
+                                        "example": "cross-platform",
+                                        "default": "cross-platform"
                                     },
                                     "rpId": {
                                         "type": "string",
@@ -6280,7 +6356,8 @@
                                             "platform",
                                             "cross-platform"
                                         ],
-                                        "example": "cross-platform"
+                                        "example": "cross-platform",
+                                        "default": "cross-platform"
                                     },
                                     "rpId": {
                                         "type": "string",
@@ -6368,7 +6445,8 @@
                                     },
                                     "token": {
                                         "type": "boolean",
-                                        "description": "If true response will contain the user auth token"
+                                        "description": "If true response will contain the user auth token",
+                                        "default": false
                                     },
                                     "sess": {
                                         "type": "string",
@@ -6503,7 +6581,8 @@
                                     },
                                     "scope": {
                                         "type": "string",
-                                        "description": "Required scope. One of master, imap, smtp, pop3"
+                                        "description": "Required scope. One of master, imap, smtp, pop3",
+                                        "default": "master"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -6567,11 +6646,13 @@
                                     },
                                     "protocol": {
                                         "type": "string",
-                                        "description": "Application identifier for security logs"
+                                        "description": "Application identifier for security logs",
+                                        "default": "API"
                                     },
                                     "scope": {
                                         "type": "string",
-                                        "description": "Required scope. One of master, imap, smtp, pop3"
+                                        "description": "Required scope. One of master, imap, smtp, pop3",
+                                        "default": "master"
                                     },
                                     "appId": {
                                         "type": "string",
@@ -6579,7 +6660,8 @@
                                     },
                                     "token": {
                                         "type": "boolean",
-                                        "description": "If true then generates a temporary access token that is valid for this user. Only available if scope is \"master\". When using user tokens then you can replace user ID in URLs with \"me\"."
+                                        "description": "If true then generates a temporary access token that is valid for this user. Only available if scope is \"master\". When using user tokens then you can replace user ID in URLs with \"me\".",
+                                        "default": false
                                     },
                                     "sess": {
                                         "type": "string",
@@ -6667,7 +6749,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -6698,7 +6781,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -7077,7 +7161,8 @@
                                                 },
                                                 "encoding": {
                                                     "type": "string",
-                                                    "description": "Encoding to use to store the attachments"
+                                                    "description": "Encoding to use to store the attachments",
+                                                    "default": "base64"
                                                 },
                                                 "contentTransferEncoding": {
                                                     "type": "string",
@@ -7124,7 +7209,8 @@
                                     },
                                     "isDraft": {
                                         "type": "boolean",
-                                        "description": "Is the message a draft or not"
+                                        "description": "Is the message a draft or not",
+                                        "default": false
                                     },
                                     "draft": {
                                         "type": "object",
@@ -7151,7 +7237,8 @@
                                     },
                                     "uploadOnly": {
                                         "type": "boolean",
-                                        "description": "If true only uploads the message but does not send it"
+                                        "description": "If true only uploads the message but does not send it",
+                                        "default": false
                                     },
                                     "envelope": {
                                         "type": "object",
@@ -7375,7 +7462,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -7406,7 +7494,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -7696,7 +7785,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -7727,7 +7817,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -8008,6 +8099,7 @@
                         "example": "true",
                         "schema": {
                             "type": "boolean",
+                            "default": false,
                             "example": "true"
                         }
                     },
@@ -8017,7 +8109,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -8048,7 +8141,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -8121,7 +8215,8 @@
                                     },
                                     "acme": {
                                         "type": "boolean",
-                                        "description": "If true then private key and certificate are managed automatically by ACME"
+                                        "description": "If true then private key and certificate are managed automatically by ACME",
+                                        "default": false
                                     },
                                     "sess": {
                                         "type": "string",
@@ -8170,7 +8265,8 @@
                         "required": true,
                         "example": "example.com",
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "example": "example.com"
                         }
                     },
                     {
@@ -8221,7 +8317,8 @@
                         "required": true,
                         "example": "609d201236d1d936948f23b1",
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "example": "609d201236d1d936948f23b1"
                         }
                     },
                     {
@@ -8270,7 +8367,8 @@
                         "required": true,
                         "example": "609d201236d1d936948f23b1",
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "example": "609d201236d1d936948f23b1"
                         }
                     },
                     {
@@ -8338,7 +8436,8 @@
                         "description": "How many records to return",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 20
                         }
                     },
                     {
@@ -8369,7 +8468,8 @@
                         "description": "Current page number. Informational only, page numbers start from 1",
                         "required": false,
                         "schema": {
-                            "type": "number"
+                            "type": "number",
+                            "default": 1
                         }
                     },
                     {
@@ -8607,7 +8707,23 @@
                         "description": "Key of the Setting",
                         "required": true,
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                                "const:archive:time",
+                                "const:max:storage",
+                                "const:max:recipients",
+                                "const:max:mailboxes",
+                                "const:max:rcpt_to",
+                                "const:max:forwards",
+                                "const:authlog:time",
+                                "const:autoreply:interval",
+                                "const:asp:limit",
+                                "const:max:imap:download",
+                                "const:max:pop3:download",
+                                "const:max:imap:upload",
+                                "const:max:filters",
+                                "const:sender:defer_times"
+                            ]
                         }
                     }
                 ],
@@ -9870,7 +9986,8 @@
                 "properties": {
                     "status": {
                         "type": "boolean",
-                        "description": "If true, then autoreply is enabled for this address"
+                        "description": "If true, then autoreply is enabled for this address",
+                        "default": true
                     },
                     "start": {
                         "type": "string",
@@ -10185,6 +10302,11 @@
                                     "type": "boolean",
                                     "description": "Is the folder hidden or not"
                                 },
+                                "encryptMessages": {
+                                    "type": "boolean",
+                                    "description": "If true then messages in this mailbox are encrypted",
+                                    "default": false
+                                },
                                 "total": {
                                     "type": "number",
                                     "description": "How many messages are stored in this mailbox"
@@ -10206,6 +10328,7 @@
                                 "modifyIndex",
                                 "subscribed",
                                 "hidden",
+                                "encryptMessages",
                                 "total",
                                 "unseen"
                             ]
@@ -10273,6 +10396,10 @@
                         "type": "boolean",
                         "description": "Is the folder hidden or not"
                     },
+                    "encryptMessages": {
+                        "type": "boolean",
+                        "description": "If true then messages in this mailbox are encrypted"
+                    },
                     "total": {
                         "type": "number",
                         "description": "How many messages are stored in this mailbox"
@@ -10291,6 +10418,7 @@
                     "modifyIndex",
                     "subscribed",
                     "hidden",
+                    "encryptMessages",
                     "total",
                     "unseen"
                 ]
@@ -10692,7 +10820,8 @@
                     },
                     "encoding": {
                         "type": "string",
-                        "description": "Encoding to use to store the attachments"
+                        "description": "Encoding to use to store the attachments",
+                        "default": "base64"
                     },
                     "contentTransferEncoding": {
                         "type": "string",
