@@ -63,12 +63,6 @@ jobs:
               with:
                   platforms: linux/arm64,linux/amd64,linux/arm/v7
 
-            - name: Login to DockerHub
-              uses: docker/login-action@v3
-              with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
-
             - name: Login to GHCR
               uses: docker/login-action@v3
               with:
@@ -83,9 +77,6 @@ jobs:
                   platforms: ${{ steps.buildx.outputs.platforms }}
                   push: true
                   tags: |
-                      ${{ github.repository }}:${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
-                      ${{ github.repository }}:${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}
-                      ${{ github.repository }}:${{needs.release_please.outputs.major}}
                       ghcr.io/${{ github.repository }}:${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
                       ghcr.io/${{ github.repository }}:${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}
                       ghcr.io/${{ github.repository }}:${{needs.release_please.outputs.major}}
