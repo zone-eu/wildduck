@@ -61,7 +61,7 @@ secret=\"$ZONEMTA_SECRET\"
 algo=\"md5\"" > /etc/zone-mta/plugins/loop-breaker.toml
 
 echo "[wildduck]
-enabled=[\"receiver\", \"sender\"]
+enabled=[\"receiver\", \"sender\", \"main\"]
 
 # which interfaces this plugin applies to
 interfaces=[\"feeder\"]
