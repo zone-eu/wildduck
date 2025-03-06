@@ -101,7 +101,7 @@
         "seq-index": "1.1.0",
         "smtp-server": "3.13.6",
         "speakeasy": "2.0.0",
-        "undici": "5.28.4",
+        "undici": "5.28.5",
         "unix-crypt-td-js": "1.1.4",
         "unixcrypt": "1.2.0",
         "wild-config": "1.7.1",
