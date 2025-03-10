@@ -35,7 +35,7 @@ Run the following commands as root user. Before actually starting _install.sh_ y
 > Run the following commands as `root`
 
 ```bash
-wget -O - https://raw.githubusercontent.com/nodemailer/wildduck/master/setup/get_install.sh | bash
+wget -O - https://raw.githubusercontent.com/zone-eu/wildduck/master/setup/get_install.sh | bash
 ```
 
 ```bash

@@ -79,6 +79,6 @@ echo "server {
     }
 }" > "/etc/nginx/sites-available/$HOSTNAME"
 
-#See issue https://github.com/nodemailer/wildduck/issues/83
+#See issue https://github.com/zone-eu/wildduck/issues/83
 $SYSTEMCTL_PATH start nginx
 $SYSTEMCTL_PATH reload nginx

@@ -26,13 +26,13 @@ WildDuck can be installed on any Node.js compatible platform.
 
 Every component of the WildDuck mail server can be replicated which eliminates potential single point of failures.
 
-![](https://raw.githubusercontent.com/nodemailer/wildduck/master/assets/wd.png)
+![](https://raw.githubusercontent.com/zone-eu/wildduck/master/assets/wd.png)
 
 ## Storage
 
 Attachment de-duplication and compression gives up to 56% of storage size reduction.
 
-![](https://raw.githubusercontent.com/nodemailer/wildduck/master/assets/storage.png)
+![](https://raw.githubusercontent.com/zone-eu/wildduck/master/assets/storage.png)
 
 ## Goals of the Project
 
