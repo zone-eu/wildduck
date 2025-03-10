@@ -52,7 +52,7 @@
         "@root/acme": "3.1.0",
         "@root/csr": "0.8.1",
         "accesscontrol": "2.2.1",
-        "axios": "1.7.7",
+        "axios": "1.8.2",
         "base32.js": "0.1.0",
         "bcryptjs": "2.4.3",
         "bson": "6.9.0",
