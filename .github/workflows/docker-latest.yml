@@ -8,8 +8,33 @@ on:
     push:
         branches:
             - master
+
 jobs:
+    check_commit:
+        runs-on: ubuntu-latest
+        outputs:
+            should_run: ${{ steps.check_commit_message.outputs.should_run }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+              with:
+                  fetch-depth: 2
+
+            - name: Check commit message
+              id: check_commit_message
+              run: |
+                  COMMIT_MSG=$(git log -1 --pretty=%s)
+                  if [[ "$COMMIT_MSG" == chore* ]]; then
+                    echo "should_run=false" >> $GITHUB_OUTPUT
+                    echo "Skipping workflow for commit: $COMMIT_MSG"
+                  else
+                    echo "should_run=true" >> $GITHUB_OUTPUT
+                    echo "Running workflow for commit: $COMMIT_MSG"
+                  fi
+
     docker:
+        needs: check_commit
+        if: ${{ needs.check_commit.outputs.should_run == 'true' }}
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
@@ -33,11 +58,22 @@ jobs:
                   username: ${{ github.repository_owner }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Build and push
-              uses: docker/build-push-action@v5
+            - name: Extract metadata (tags, labels) for Docker
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+                  flavor: |
+                      latest=false
+                  tags: |
+                      type=raw,value=latest
+
+            - name: Build and push Docker image
+              uses: docker/build-push-action@v6
+              id: push
               with:
                   context: .
-                  platforms: ${{ steps.buildx.outputs.platforms }}
                   push: true
-                  tags: |
-                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+                  platforms: ${{ steps.buildx.outputs.platforms }}
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
