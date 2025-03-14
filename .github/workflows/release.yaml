@@ -29,11 +29,11 @@ jobs:
                   package-name: ${{env.NPM_MODULE_NAME}}
                   pull-request-title-pattern: 'chore${scope}: release ${version} [skip-ci]'
             # The logic below handles the npm publication:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v3
               # these if statements ensure that a publication only occurs when
               # a new release is created:
               if: ${{ steps.release.outputs.release_created }}
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v3
               with:
                   node-version: 18
                   registry-url: 'https://registry.npmjs.org'
@@ -88,7 +88,7 @@ jobs:
               with:
                   images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                   flavor: |
-                      latest=false
+                      latest=auto
                   tags: |
                       type=semver,pattern={{version}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
                       type=semver,pattern={{major}}.{{minor}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
@@ -109,5 +109,4 @@ jobs:
               with:
                   subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
                   subject-digest: ${{ steps.push.outputs.digest }}
-                  push-to-registry: true
                   github-token: ${{ secrets.GITHUB_TOKEN }}
