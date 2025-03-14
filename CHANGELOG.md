@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.6](https://github.com/zone-eu/wildduck/compare/v1.45.5...v1.45.6) (2025-03-14)
+
+
+### Bug Fixes
+
+* **outbound-mta-relay:** ZMS-171 Add support for an outbound MTA relay ([#787](https://github.com/zone-eu/wildduck/issues/787)) ([77625e8](https://github.com/zone-eu/wildduck/commit/77625e89d7050653a9589610785820ddc6dc3209))
+
 ## [1.45.5](https://github.com/zone-eu/wildduck/compare/v1.45.4...v1.45.5) (2025-03-14)
 
 
