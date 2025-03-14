@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.45.5](https://github.com/zone-eu/wildduck/compare/v1.45.4...v1.45.5) (2025-03-14)
+
+
+### Bug Fixes
+
+* Added thread data to EXPUNGE command ([#783](https://github.com/zone-eu/wildduck/issues/783)) ([5ac345e](https://github.com/zone-eu/wildduck/commit/5ac345e060fd719e71ba7a076abcb8d2e1d1d677))
+* **api-getMessagesList:** getMessages list, add attachmentsList to response for easier attachment handling ZMS-195 ([#773](https://github.com/zone-eu/wildduck/issues/773)) ([959c707](https://github.com/zone-eu/wildduck/commit/959c70734b2b2c09d232aa21fedf64e8c4aadc20))
+* docker-latest workflow updates. Release workflow refactor, add latest tag on release ZMS-205 ([#797](https://github.com/zone-eu/wildduck/issues/797)) ([e6f6920](https://github.com/zone-eu/wildduck/commit/e6f69204493b94d43b65e8f79caafb75ae63b2e8))
+* **docker-workflows:** update workflows to only push to GHCR ([#793](https://github.com/zone-eu/wildduck/issues/793)) ([a6de121](https://github.com/zone-eu/wildduck/commit/a6de121d44ef277a6ddc28ae028a9dd10312cf46))
+* fixed edge case where `session` not set and uncaught exception occurs ([#780](https://github.com/zone-eu/wildduck/issues/780)) ([8244559](https://github.com/zone-eu/wildduck/commit/82445592301047d0b43992106091d10456ae5611))
+* **general-docs-docker:** fix docker general documentation ZMS-197 ([#774](https://github.com/zone-eu/wildduck/issues/774)) ([284ba63](https://github.com/zone-eu/wildduck/commit/284ba638bd633699c8792ba789722dfeb1bdef20))
+* **thread-info-expunge-moveTo:** Added thread information to EXPUNGE message called after MoveTo action ([#788](https://github.com/zone-eu/wildduck/issues/788)) ([08c5804](https://github.com/zone-eu/wildduck/commit/08c5804798e7ffe1b281859c4edcec2465d058c2))
+* Update all urls in all files to point to new repo url. ZMS-180 ([#791](https://github.com/zone-eu/wildduck/issues/791)) ([37a686d](https://github.com/zone-eu/wildduck/commit/37a686db0899078be9b666e372b49251c6dbe938))
+* update and fix docker workflows ([#794](https://github.com/zone-eu/wildduck/issues/794)) ([7e77db7](https://github.com/zone-eu/wildduck/commit/7e77db782f543b037346449592d1ff8c77570dd1))
+
 ## [1.45.4](https://github.com/nodemailer/wildduck/compare/v1.45.3...v1.45.4) (2025-01-13)
 
 
