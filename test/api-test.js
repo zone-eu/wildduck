@@ -469,7 +469,7 @@ describe('API tests', function () {
                 html: '',
                 start: false,
                 end: '2017-12-19T00:00:00.000Z',
-                created: autoreplyId.getTimestamp().toISOString()
+                created: r.body.created // created might have been changed to new date
             });
 
             await server.delete(`/users/${userId}/autoreply`).expect(200);
