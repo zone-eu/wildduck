@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.45.6](https://github.com/zone-eu/wildduck/compare/v1.45.5...v1.45.6) (2025-03-28)
+
+
+### Bug Fixes
+
+* **addMessage-moveMessage-async-await:** Rewrite addMessage, moveMessage to async/await ZMS-187 ([#779](https://github.com/zone-eu/wildduck/issues/779)) ([d91f112](https://github.com/zone-eu/wildduck/commit/d91f11233118e4b7a7ce43976adedfdbfedc5427))
+* **autoreply-test:** fix autoreply PUT test in case of high latency ([#800](https://github.com/zone-eu/wildduck/issues/800)) ([edd9a5b](https://github.com/zone-eu/wildduck/commit/edd9a5baa291e7034428c2d00f62dcd66e49d672))
+* **messages-api-timeout:** Add maxTimeMS timeout to mongopaging queries in messages api ZMS-204 ([#799](https://github.com/zone-eu/wildduck/issues/799)) ([3c9aa2a](https://github.com/zone-eu/wildduck/commit/3c9aa2ac00001c4b0e8f293a52d3bb7f9fbda8d2))
+* **outbound-mta-relay:** ZMS-171 Add support for an outbound MTA relay ([#787](https://github.com/zone-eu/wildduck/issues/787)) ([77625e8](https://github.com/zone-eu/wildduck/commit/77625e89d7050653a9589610785820ddc6dc3209))
+* **readme-fixes:** Readme fixes and changes ZMS-208 ([#801](https://github.com/zone-eu/wildduck/issues/801)) ([04b2751](https://github.com/zone-eu/wildduck/commit/04b2751f8730ba86d93c97f8c7859fd5d4edc2f7))
+
 ## [1.45.5](https://github.com/zone-eu/wildduck/compare/v1.45.4...v1.45.5) (2025-03-14)
 
 
