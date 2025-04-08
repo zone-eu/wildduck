@@ -415,10 +415,7 @@ describe('API tests', function () {
                 name: '',
                 subject: '',
                 text: '',
-                html: '',
-                start: false,
-                end: false,
-                created: false
+                html: ''
             });
 
             r = await server
@@ -467,7 +464,6 @@ describe('API tests', function () {
                 subject: '',
                 text: 'Away from office until Dec.19',
                 html: '',
-                start: false,
                 end: '2017-12-19T00:00:00.000Z',
                 created: r.body.created // created might have been changed to new date
             });
@@ -480,10 +476,7 @@ describe('API tests', function () {
                 name: '',
                 subject: '',
                 text: '',
-                html: '',
-                start: false,
-                end: false,
-                created: false
+                html: ''
             });
         });
     });
