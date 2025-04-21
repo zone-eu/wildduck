@@ -29,7 +29,7 @@ jobs:
                   package-name: ${{env.NPM_MODULE_NAME}}
                   pull-request-title-pattern: 'chore${scope}: release ${version} [skip-ci]'
             # The logic below handles the npm publication:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
               # these if statements ensure that a publication only occurs when
               # a new release is created:
               if: ${{ steps.release.outputs.release_created }}
@@ -110,3 +110,49 @@ jobs:
                   subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
                   subject-digest: ${{ steps.push.outputs.digest }}
                   github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    publish_artifacts:
+        name: Package and upload release artifacts
+        runs-on: ubuntu-latest
+        needs: release_please
+        if: ${{needs.release_please.outputs.release_created}}
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 18
+
+            - name: Install dependencies
+              run: npm install --omit=dev
+
+            - name: Move files to temporary directory
+              run: |
+                  mkdir -p /home/release_build
+                  cp -R . /home/release_build/
+
+            - name: Create zip archive
+              run: |
+                  # Create a zip archive excluding .git directory
+                  ROOT_DIR=$(pwd)
+                  cd /home/release_build
+                  zip -r $ROOT_DIR/${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip . -x "*.git" "*.git/*"
+                  cd $ROOT_DIR
+
+            - name: Create tar.gz archive
+              run: |
+                  # Create a tar.gz archive excluding .git directory
+                  tar --exclude='.git' --exclude='.git/*' -czf ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz -C /home/release_build/ .
+
+            - name: Upload artifacts to release
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: |
+                      ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip
+                      ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz
+                  tag_name: v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
