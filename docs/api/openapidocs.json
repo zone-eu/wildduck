@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.45.4"
+        "version": "1.45.5"
     },
     "servers": [
         {
@@ -277,6 +277,10 @@
                                             "type": "string"
                                         },
                                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                                    },
+                                    "mtaRelay": {
+                                        "type": "string",
+                                        "description": "An address of an SMTP MTA relay. The value should be a relay url. If specified uses the this relay as the outbound MTA."
                                     },
                                     "spamLevel": {
                                         "type": "number",
@@ -591,6 +595,10 @@
                                             "type": "string"
                                         },
                                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                                    },
+                                    "mtaRelay": {
+                                        "type": "string",
+                                        "description": "An address of an SMTP MTA relay. The value should be a relay url. If specified uses the this relay as the outbound MTA."
                                     },
                                     "spamLevel": {
                                         "type": "number",
@@ -9339,7 +9347,7 @@
                     },
                     "retention": {
                         "type": "number",
-                        "description": "Default retention time (in ms). false if not enabled"
+                        "description": "Default retention time (in ms). Not present if not enabled"
                     },
                     "enabled2fa": {
                         "type": "array",
@@ -9383,6 +9391,10 @@
                             "type": "string"
                         },
                         "description": "List of forwarding targets"
+                    },
+                    "mtaRelay": {
+                        "type": "string",
+                        "description": "MTA Relay url"
                     },
                     "spamLevel": {
                         "type": "number",
@@ -9440,7 +9452,6 @@
                     "username",
                     "name",
                     "address",
-                    "retention",
                     "enabled2fa",
                     "autoreply",
                     "encryptMessages",
@@ -9723,7 +9734,6 @@
                 },
                 "required": [
                     "id",
-                    "name",
                     "address",
                     "user",
                     "forwarded",
@@ -9853,7 +9863,6 @@
                 },
                 "required": [
                     "id",
-                    "name",
                     "address",
                     "main",
                     "created",
@@ -9931,7 +9940,6 @@
                 "required": [
                     "success",
                     "id",
-                    "name",
                     "address",
                     "main",
                     "created",
@@ -10079,11 +10087,7 @@
                     }
                 },
                 "required": [
-                    "status",
-                    "name",
-                    "subject",
-                    "text",
-                    "html"
+                    "status"
                 ]
             },
             "GetForwardedAddressResponse": {
@@ -10150,7 +10154,6 @@
                     "success",
                     "id",
                     "address",
-                    "name",
                     "limits",
                     "autoreply",
                     "created",
@@ -11542,26 +11545,12 @@
                         "description": "File ID"
                     },
                     "filename": {
-                        "oneOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "boolean"
-                            }
-                        ],
-                        "description": "Filename. False if none"
+                        "type": "string",
+                        "description": "Filename"
                     },
                     "contentType": {
-                        "oneOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "boolean"
-                            }
-                        ],
-                        "description": "Content-Type of the file. False if none"
+                        "type": "string",
+                        "description": "Content-Type of the file"
                     },
                     "cid": {
                         "type": "string",
@@ -11583,8 +11572,6 @@
                 },
                 "required": [
                     "id",
-                    "filename",
-                    "contentType",
                     "size",
                     "created",
                     "md5"
@@ -12136,18 +12123,14 @@
                 "properties": {
                     "time": {
                         "type": "string",
-                        "description": "Datestring of last use or false if password has not been used",
+                        "description": "Datestring of last use or not present if password has not been used",
                         "format": "date-time"
                     },
                     "event": {
                         "type": "string",
                         "description": "Event ID of the security log for the last authentication"
                     }
-                },
-                "required": [
-                    "time",
-                    "event"
-                ]
+                }
             },
             "GetASPsResult": {
                 "type": "object",
@@ -12978,18 +12961,12 @@
                     "start": {
                         "type": "string",
                         "description": "Datestring of the start of the autoreply or boolean false to disable start checks",
-                        "format": "date-time",
-                        "enum": [
-                            false
-                        ]
+                        "format": "date-time"
                     },
                     "end": {
                         "type": "string",
                         "description": "Datestring of the end of the autoreply or boolean false to disable end checks",
-                        "format": "date-time",
-                        "enum": [
-                            false
-                        ]
+                        "format": "date-time"
                     },
                     "created": {
                         "type": "string",
@@ -12998,8 +12975,7 @@
                     }
                 },
                 "required": [
-                    "success",
-                    "created"
+                    "success"
                 ]
             },
             "Reference": {
