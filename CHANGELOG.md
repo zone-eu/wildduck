@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.45.7](https://github.com/zone-eu/wildduck/compare/v1.45.6...v1.45.7) (2025-05-23)
+
+
+### Bug Fixes
+
+* **bulk_batch_size-settingsHandler:** in message handler add bulk_batch_size from settings ([#806](https://github.com/zone-eu/wildduck/issues/806)) ([76f79fd](https://github.com/zone-eu/wildduck/commit/76f79fd274e62da3dffe8a2aac170ba41aecaa2b))
+* **moveAsync-addAsync:** use moveAsync and addAsync directly where possible ([#810](https://github.com/zone-eu/wildduck/issues/810)) ([4dcb602](https://github.com/zone-eu/wildduck/commit/4dcb6022d792fb2c51a0a9fe47f8d353e20d4f01))
+* **release-workflows:** ZMS-214: Update release workflow. On release upload app bundle to release page ([#808](https://github.com/zone-eu/wildduck/issues/808)) ([c604385](https://github.com/zone-eu/wildduck/commit/c6043858f81d17b51315e40082522ad7ba0055de))
+* ZMS 226 ([#817](https://github.com/zone-eu/wildduck/issues/817)) ([bf878ed](https://github.com/zone-eu/wildduck/commit/bf878eda1fc6e3df3bad81d4f586aec5078bfa77))
+
 ## [1.45.6](https://github.com/zone-eu/wildduck/compare/v1.45.5...v1.45.6) (2025-04-09)
 
 
