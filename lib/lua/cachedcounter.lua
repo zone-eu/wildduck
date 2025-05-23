@@ -8,12 +8,12 @@ if redis.call("EXISTS", key) == 1 then
     local sum = tonumber(redis.call("GET", key)) or 0;
     if sum < 0 then
         redis.call("DEL", key);
-        sum = 0
-    else
-        -- extend the life of this counter by ttl seconds
-        redis.call("EXPIRE", key, ttl);
+        return nil;
     end
-    
+
+    -- extend the life of this counter by ttl seconds
+    redis.call("EXPIRE", key, ttl);
+
     return sum;
 else
     return nil;
