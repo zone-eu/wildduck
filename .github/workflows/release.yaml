@@ -131,21 +131,21 @@ jobs:
 
             - name: Move files to temporary directory
               run: |
-                  mkdir -p /home/release_build
-                  cp -R . /home/release_build/
+                  mkdir -p ${{ runner.temp }}/release_build
+                  cp -R . ${{ runner.temp }}/release_build/
 
             - name: Create zip archive
               run: |
                   # Create a zip archive excluding .git directory
                   ROOT_DIR=$(pwd)
-                  cd /home/release_build
+                  cd ${{ runner.temp }}/release_build
                   zip -r $ROOT_DIR/${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip . -x "*.git" "*.git/*"
                   cd $ROOT_DIR
 
             - name: Create tar.gz archive
               run: |
                   # Create a tar.gz archive excluding .git directory
-                  tar --exclude='.git' --exclude='.git/*' -czf ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz -C /home/release_build/ .
+                  tar --exclude='.git' --exclude='.git/*' -czf ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz -C ${{ runner.temp }}/release_build/ .
 
             - name: Upload artifacts to release
               uses: softprops/action-gh-release@v2
