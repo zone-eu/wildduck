@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.8](https://github.com/zone-eu/wildduck/compare/v1.45.7...v1.45.8) (2025-05-28)
+
+
+### Bug Fixes
+
+* **deploy-zip:** use runner.temp to store temporary files ([#819](https://github.com/zone-eu/wildduck/issues/819)) ([7f5409f](https://github.com/zone-eu/wildduck/commit/7f5409f7907fab9b16151012f60ec965ba341f0e))
+
 ## [1.45.7](https://github.com/zone-eu/wildduck/compare/v1.45.6...v1.45.7) (2025-05-27)
 
 
