@@ -121,6 +121,17 @@ const serverOptions = {
                     key = key.substr(0, 30) + '…';
                 }
 
+                try {
+                    // if the param is a date ensure it gets sent as an ISO String to logging
+                    const possibleDate = new Date(value); // Value guaranteed to be string
+                    if (!isNaN(possibleDate.getTime()) && possibleDate.toString() !== 'Invalid Date') {
+                        // valid date
+                        value = possibleDate.toISOString();
+                    }
+                } catch {
+                    // ignore
+                }
+
                 message['_req_' + key] = value;
             });
 
