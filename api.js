@@ -24,6 +24,7 @@ const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
+const { DateTime } = require('luxon');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -120,6 +121,10 @@ const serverOptions = {
                 if (key.length > 30) {
                     key = key.substr(0, 30) + '…';
                 }
+
+                if (key === "sendTime") {
+                    value = new Date(value).toISOString();
+                } 
 
                 message['_req_' + key] = value;
             });
