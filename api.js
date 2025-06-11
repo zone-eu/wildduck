@@ -122,15 +122,9 @@ const serverOptions = {
                     key = key.substr(0, 30) + '…';
                 }
 
-                try {
-                    // if the param is a date ensure it gets sent as an ISO String to logging
-                    const dt = DateTime.fromISO(value);
-                    if (dt.isValid) {
-                        value = dt.toISO();
-                    }
-                } catch {
-                    // ignore
-                }
+                if (key === "sendTime") {
+                    value = new Date(value).toISOString();
+                } 
 
                 message['_req_' + key] = value;
             });
