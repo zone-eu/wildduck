@@ -6,6 +6,7 @@ on:
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
+    PACKAGE_NAME: ${{ github.event.repository.name }}
 
 name: release
 jobs:
@@ -139,20 +140,20 @@ jobs:
                   # Create a zip archive excluding .git directory
                   ROOT_DIR=$(pwd)
                   cd ${{ runner.temp }}/release_build
-                  zip -r $ROOT_DIR/${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip . -x "*.git" "*.git/*"
+                  zip -r $ROOT_DIR/${{env.PACKAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip . -x "*.git" "*.git/*"
                   cd $ROOT_DIR
 
             - name: Create tar.gz archive
               run: |
                   # Create a tar.gz archive excluding .git directory
-                  tar --exclude='.git' --exclude='.git/*' -czf ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz -C ${{ runner.temp }}/release_build/ .
+                  tar --exclude='.git' --exclude='.git/*' -czf ${{env.PACKAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz -C ${{ runner.temp }}/release_build/ .
 
             - name: Upload artifacts to release
               uses: softprops/action-gh-release@v2
               with:
                   files: |
-                      ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip
-                      ${{env.IMAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz
+                      ${{env.PACKAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.zip
+                      ${{env.PACKAGE_NAME}}-${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}.tar.gz
                   tag_name: v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
