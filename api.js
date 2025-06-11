@@ -24,6 +24,7 @@ const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
+const { DateTime } = require('luxon');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -120,13 +121,13 @@ const serverOptions = {
                 if (key.length > 30) {
                     key = key.substr(0, 30) + '…';
                 }
+                console.log(value);
 
                 try {
                     // if the param is a date ensure it gets sent as an ISO String to logging
-                    const possibleDate = new Date(value); // Value guaranteed to be string
-                    if (!isNaN(possibleDate.getTime()) && possibleDate.toString() !== 'Invalid Date') {
-                        // valid date
-                        value = possibleDate.toISOString();
+                    const dt = DateTime.fromISO(value);
+                    if (dt.isValid) {
+                        value = dt.toISO();
                     }
                 } catch {
                     // ignore
