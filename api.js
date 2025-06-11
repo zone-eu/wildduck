@@ -121,7 +121,6 @@ const serverOptions = {
                 if (key.length > 30) {
                     key = key.substr(0, 30) + '…';
                 }
-                console.log(value);
 
                 try {
                     // if the param is a date ensure it gets sent as an ISO String to logging
