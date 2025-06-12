@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.9](https://github.com/zone-eu/wildduck/compare/v1.45.8...v1.45.9) (2025-06-12)
+
+
+### Bug Fixes
+
+* (workflow): fix api.js, fix release artifacts publishing ZMS-241 ([#826](https://github.com/zone-eu/wildduck/issues/826)) ([8c4af47](https://github.com/zone-eu/wildduck/commit/8c4af475e248b994dda563986027f7f048c6f4ba))
+
 ## [1.45.8](https://github.com/zone-eu/wildduck/compare/v1.45.7...v1.45.8) (2025-06-11)
 
 
