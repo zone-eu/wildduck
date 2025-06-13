@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.10](https://github.com/zone-eu/wildduck/compare/v1.45.9...v1.45.10) (2025-06-13)
+
+
+### Bug Fixes
+
+* **gridstore-downloadstream:** In gridstore download stream ensure that start is never bigger than end ZMS-235 ([#828](https://github.com/zone-eu/wildduck/issues/828)) ([3dfe218](https://github.com/zone-eu/wildduck/commit/3dfe218e19e03ba0b6eeaaa90b79e42962d0bc81))
+
 ## [1.45.9](https://github.com/zone-eu/wildduck/compare/v1.45.8...v1.45.9) (2025-06-12)
 
 
