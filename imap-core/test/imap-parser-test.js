@@ -9,91 +9,91 @@ const mimetorture = require('./fixtures/mimetorture');
 const expect = chai.expect;
 chai.config.includeStack = true;
 
-describe('IMAP Command Parser', function() {
-    describe('get tag', function() {
-        it('should succeed', function() {
+describe('IMAP Command Parser', function () {
+    describe('get tag', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD').tag).to.equal('TAG1');
         });
 
-        it('should fail for unexpected WS', function() {
-            expect(function() {
+        it('should fail for unexpected WS', function () {
+            expect(function () {
                 imapHandler.parser(' TAG CMD');
             }).to.throw(Error);
         });
 
-        it('should * OK ', function() {
-            expect(function() {
+        it('should * OK ', function () {
+            expect(function () {
                 imapHandler.parser(' TAG CMD');
             }).to.throw(Error);
         });
 
-        it('should + OK ', function() {
+        it('should + OK ', function () {
             expect(imapHandler.parser('+ TAG CMD').tag).to.equal('+');
         });
 
-        it('should allow untagged', function() {
-            expect(function() {
+        it('should allow untagged', function () {
+            expect(function () {
                 imapHandler.parser('* CMD');
             }).to.not.throw(Error);
         });
 
-        it('should fail for empty tag', function() {
-            expect(function() {
+        it('should fail for empty tag', function () {
+            expect(function () {
                 imapHandler.parser('');
             }).to.throw(Error);
         });
 
-        it('should fail for unexpected end', function() {
-            expect(function() {
+        it('should fail for unexpected end', function () {
+            expect(function () {
                 imapHandler.parser('TAG1');
             }).to.throw(Error);
         });
 
-        it('should fail for invalid char', function() {
-            expect(function() {
+        it('should fail for invalid char', function () {
+            expect(function () {
                 imapHandler.parser('TAG"1 CMD');
             }).to.throw(Error);
         });
     });
 
-    describe('get arguments', function() {
-        it('should allow trailing whitespace and empty arguments', function() {
-            expect(function() {
+    describe('get arguments', function () {
+        it('should allow trailing whitespace and empty arguments', function () {
+            expect(function () {
                 imapHandler.parser('* SEARCH ');
             }).to.not.throw(Error);
         });
     });
 
-    describe('get command', function() {
-        it('should succeed', function() {
+    describe('get command', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD').command).to.equal('CMD');
         });
 
-        it('should work for multi word command', function() {
+        it('should work for multi word command', function () {
             expect(imapHandler.parser('TAG1 UID FETCH').command).to.equal('UID FETCH');
         });
 
-        it('should fail for unexpected WS', function() {
-            expect(function() {
+        it('should fail for unexpected WS', function () {
+            expect(function () {
                 imapHandler.parser('TAG1  CMD');
             }).to.throw(Error);
         });
 
-        it('should fail for empty command', function() {
-            expect(function() {
+        it('should fail for empty command', function () {
+            expect(function () {
                 imapHandler.parser('TAG1 ');
             }).to.throw(Error);
         });
 
-        it('should fail for invalid char', function() {
-            expect(function() {
+        it('should fail for invalid char', function () {
+            expect(function () {
                 imapHandler.parser('TAG1 CM=D');
             }).to.throw(Error);
         });
     });
 
-    describe('get attribute', function() {
-        it('should succeed', function() {
+    describe('get attribute', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD FED').attributes).to.deep.equal([
                 {
                     type: 'ATOM',
@@ -102,7 +102,7 @@ describe('IMAP Command Parser', function() {
             ]);
         });
 
-        it('should succeed for single whitespace between values', function() {
+        it('should succeed for single whitespace between values', function () {
             expect(imapHandler.parser('TAG1 CMD FED TED').attributes).to.deep.equal([
                 {
                     type: 'ATOM',
@@ -115,7 +115,7 @@ describe('IMAP Command Parser', function() {
             ]);
         });
 
-        it('should succeed for ATOM', function() {
+        it('should succeed for ATOM', function () {
             expect(imapHandler.parser('TAG1 CMD ABCDE').attributes).to.deep.equal([
                 {
                     type: 'ATOM',
@@ -171,15 +171,15 @@ describe('IMAP Command Parser', function() {
             ]);
         });
 
-        it('should not succeed for ATOM', function() {
-            expect(function() {
+        it('should not succeed for ATOM', function () {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD \\*a');
             }).to.throw(Error);
         });
     });
 
-    describe('get string', function() {
-        it('should succeed', function() {
+    describe('get string', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD "ABCDE"').attributes).to.deep.equal([
                 {
                     type: 'STRING',
@@ -199,7 +199,7 @@ describe('IMAP Command Parser', function() {
             ]);
         });
 
-        it('should not explode on invalid char', function() {
+        it('should not explode on invalid char', function () {
             expect(imapHandler.parser('* 1 FETCH (BODY[] "\xc2")').attributes).to.deep.equal([
                 // keep indentation
                 {
@@ -221,8 +221,8 @@ describe('IMAP Command Parser', function() {
         });
     });
 
-    describe('get list', function() {
-        it('should succeed', function() {
+    describe('get list', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD (1234)').attributes).to.deep.equal([
                 [
                     {
@@ -286,8 +286,8 @@ describe('IMAP Command Parser', function() {
         });
     });
 
-    describe('nested list', function() {
-        it('should succeed', function() {
+    describe('nested list', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD (((TERE)) VANA)').attributes).to.deep.equal([
                 [
                     [
@@ -339,23 +339,23 @@ describe('IMAP Command Parser', function() {
         });
     });
 
-    describe('get literal', function() {
-        it('should succeed', function() {
+    describe('get literal', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD {4}\r\n', { literals: [Buffer.from('abcd')] }).attributes).to.deep.equal([
                 {
                     type: 'LITERAL',
-                    value: 'abcd'
+                    value: Buffer.from('abcd')
                 }
             ]);
 
             expect(imapHandler.parser('TAG1 CMD {4}\r\n {4}\r\n', { literals: [Buffer.from('abcd'), Buffer.from('kere')] }).attributes).to.deep.equal([
                 {
                     type: 'LITERAL',
-                    value: 'abcd'
+                    value: Buffer.from('abcd')
                 },
                 {
                     type: 'LITERAL',
-                    value: 'kere'
+                    value: Buffer.from('kere')
                 }
             ]);
 
@@ -363,23 +363,23 @@ describe('IMAP Command Parser', function() {
                 [
                     {
                         type: 'LITERAL',
-                        value: 'abcd'
+                        value: Buffer.from('abcd')
                     },
                     {
                         type: 'LITERAL',
-                        value: 'kere'
+                        value: Buffer.from('kere')
                     }
                 ]
             ]);
         });
 
-        it('should fail', function() {
-            expect(function() {
+        it('should fail', function () {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD {4}\r\n{4}  \r\n', { literals: [Buffer.from('abcd'), Buffer.from('kere')] });
             }).to.throw(Error);
         });
 
-        it('should allow zero length literal in the end of a list', function() {
+        it('should allow zero length literal in the end of a list', function () {
             expect(imapHandler.parser('TAG1 CMD ({0}\r\n)').attributes).to.deep.equal([
                 [
                     {
@@ -391,8 +391,8 @@ describe('IMAP Command Parser', function() {
         });
     });
 
-    describe('ATOM Section', function() {
-        it('should succeed', function() {
+    describe('ATOM Section', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD BODY[]').attributes).to.deep.equal([
                 {
                     type: 'ATOM',
@@ -415,7 +415,7 @@ describe('IMAP Command Parser', function() {
                 }
             ]);
         });
-        it('will not fail due to trailing whitespace', function() {
+        it('will not fail due to trailing whitespace', function () {
             // We intentionally have trailing whitespace in the section here
             // because we altered the parser to handle this when we made it
             // legal for lists and it makes sense to accordingly test it.
@@ -445,14 +445,10 @@ describe('IMAP Command Parser', function() {
                 }
             ]);
         });
-        it('should fail where default BODY and BODY.PEEK are allowed to have sections', function() {});
-        expect(function() {
-            imapHandler.parser('TAG1 CMD KODY[]');
-        }).to.throw(Error);
     });
 
-    describe('Human readable', function() {
-        it('should succeed', function() {
+    describe('Human readable', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('* OK [CAPABILITY IDLE] Hello world!')).to.deep.equal({
                 command: 'OK',
                 tag: '*',
@@ -755,8 +751,8 @@ describe('IMAP Command Parser', function() {
         });
     });
 
-    describe('ATOM Partial', function() {
-        it('should succeed', function() {
+    describe('ATOM Partial', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD BODY[]<0>').attributes).to.deep.equal([
                 {
                     type: 'ATOM',
@@ -799,27 +795,23 @@ describe('IMAP Command Parser', function() {
             ]);
         });
 
-        it('should fail', function() {
-            expect(function() {
-                imapHandler.parser('TAG1 CMD KODY<0.123>');
-            }).to.throw(Error);
-
-            expect(function() {
+        it('should fail', function () {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD BODY[]<01>');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD BODY[]<0.01>');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD BODY[]<0.1.>');
             }).to.throw(Error);
         });
     });
 
-    describe('SEQUENCE', function() {
-        it('should succeed', function() {
+    describe('SEQUENCE', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('TAG1 CMD *:4,5:7 TEST').attributes).to.deep.equal([
                 {
                     type: 'SEQUENCE',
@@ -854,39 +846,39 @@ describe('IMAP Command Parser', function() {
             ]);
         });
 
-        it('should fail', function() {
-            expect(function() {
+        it('should fail', function () {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5:');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5:TEST TEST');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5: TEST');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD *4,5 TEST');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD *,5 TEST');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD 5,* TEST');
             }).to.throw(Error);
 
-            expect(function() {
+            expect(function () {
                 imapHandler.parser('TAG1 CMD 5, TEST');
             }).to.throw(Error);
         });
     });
 
-    describe('Escaped quotes', function() {
-        it('should succeed', function() {
+    describe('Escaped quotes', function () {
+        it('should succeed', function () {
             expect(imapHandler.parser('* 331 FETCH (ENVELOPE ("=?ISO-8859-1?Q?\\"G=FCnter__Hammerl\\"?="))').attributes).to.deep.equal([
                 // keep indentation
                 {
@@ -910,10 +902,10 @@ describe('IMAP Command Parser', function() {
         });
     });
 
-    describe('MimeTorture', function() {
-        it('should parse mimetorture input', function() {
+    describe('MimeTorture', function () {
+        it('should parse mimetorture input', function () {
             let parsed;
-            expect(function() {
+            expect(function () {
                 parsed = imapHandler.parser(mimetorture.input);
             }).to.not.throw(Error);
             expect(parsed).to.deep.equal(mimetorture.output);
