@@ -527,11 +527,9 @@ class TokenParser {
                             this.currentNode.value = this.options.literals.shift();
 
                             // only APPEND arguments are kept as Buffers
-                            /*
                             if ((this.parent.command || '').toString().toUpperCase() !== 'APPEND') {
                                 this.currentNode.value = this.currentNode.value.toString('binary');
                             }
-                            */
 
                             this.currentNode.endPos = this.pos + i + this.currentNode.value.length;
 

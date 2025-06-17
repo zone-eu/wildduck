@@ -344,18 +344,18 @@ describe('IMAP Command Parser', function () {
             expect(imapHandler.parser('TAG1 CMD {4}\r\n', { literals: [Buffer.from('abcd')] }).attributes).to.deep.equal([
                 {
                     type: 'LITERAL',
-                    value: Buffer.from('abcd')
+                    value: 'abcd'
                 }
             ]);
 
             expect(imapHandler.parser('TAG1 CMD {4}\r\n {4}\r\n', { literals: [Buffer.from('abcd'), Buffer.from('kere')] }).attributes).to.deep.equal([
                 {
                     type: 'LITERAL',
-                    value: Buffer.from('abcd')
+                    value: 'abcd'
                 },
                 {
                     type: 'LITERAL',
-                    value: Buffer.from('kere')
+                    value: 'kere'
                 }
             ]);
 
@@ -363,11 +363,11 @@ describe('IMAP Command Parser', function () {
                 [
                     {
                         type: 'LITERAL',
-                        value: Buffer.from('abcd')
+                        value: 'abcd'
                     },
                     {
                         type: 'LITERAL',
-                        value: Buffer.from('kere')
+                        value: 'kere'
                     }
                 ]
             ]);
