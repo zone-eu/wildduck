@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.45.10](https://github.com/zone-eu/wildduck/compare/v1.45.9...v1.45.10) (2025-06-18)
+
+
+### Bug Fixes
+
+* **docs-response-bimi:** update getMessages endpoint - set the correct bimi response type ZMS-244 ([#831](https://github.com/zone-eu/wildduck/issues/831)) ([60b374e](https://github.com/zone-eu/wildduck/commit/60b374e0073fb5710fe06335dcf2aba52db96f4d))
+* **gridstore-downloadstream:** In gridstore download stream ensure that start is never bigger than end ZMS-235 ([#828](https://github.com/zone-eu/wildduck/issues/828)) ([3dfe218](https://github.com/zone-eu/wildduck/commit/3dfe218e19e03ba0b6eeaaa90b79e42962d0bc81))
+
 ## [1.45.9](https://github.com/zone-eu/wildduck/compare/v1.45.8...v1.45.9) (2025-06-12)
 
 
