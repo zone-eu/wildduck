@@ -15,6 +15,7 @@ const db = require('./lib/db');
 const certs = require('./lib/certs');
 const tools = require('./lib/tools');
 const consts = require('./lib/consts');
+const plugins = require('./lib/plugins');
 const crypto = require('crypto');
 const Gelf = require('gelf');
 const os = require('os');
@@ -581,6 +582,9 @@ module.exports = done => {
     webhooksRoutes(db, server);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
+
+    // Set the API server so plugins can access it
+    plugins.setApiServer(server);
 
     if (process.env.NODE_ENV === 'test') {
         server.get(
