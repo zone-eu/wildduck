@@ -14,17 +14,15 @@ const ImapNotifier = require('./lib/imap-notifier');
 const db = require('./lib/db');
 const certs = require('./lib/certs');
 const tools = require('./lib/tools');
-const consts = require('./lib/consts');
 const plugins = require('./lib/plugins');
-const crypto = require('crypto');
 const Gelf = require('gelf');
 const os = require('os');
 const util = require('util');
-const ObjectId = require('mongodb').ObjectId;
 const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
+const { authenticateRequest, createAuthenticator } = require('./lib/api-auth');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -242,31 +240,9 @@ server.use(async (req, res) => {
         return;
     }
 
-    let accessToken =
-        req.query.accessToken ||
-        req.headers['x-access-token'] ||
-        (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '').trim() : false) ||
-        false;
-
-    if (req.query.accessToken) {
-        // delete or it will conflict with Joi schemes
-        delete req.query.accessToken;
-    }
-
-    if (req.params.accessToken) {
-        // delete or it will conflict with Joi schemes
-        delete req.params.accessToken;
-    }
-
-    if (req.headers['x-access-token']) {
-        req.headers['x-access-token'] = '';
-    }
-
-    if (req.headers.authorization) {
-        req.headers.authorization = '';
-    }
-
-    let tokenRequired = false;
+    // Make authentication optional for plugin routes, they are responsible for ensuring
+    // security and access control
+    const isPluginRoute = req.route.path && req.route.path.startsWith('/plugin/');
 
     let fail = () => {
         let error = new errors.ForbiddenError(
@@ -287,156 +263,55 @@ server.use(async (req, res) => {
         }
     };
 
-    // hard coded master token
-    if (config.api.accessToken) {
-        tokenRequired = true;
-        if (config.api.accessToken === accessToken) {
-            req.role = 'root';
-            req.user = 'root';
-            return;
-        }
-    }
-
-    if (config.api.accessControl.enabled || accessToken) {
-        tokenRequired = true;
-        if (accessToken && accessToken.length === 40 && /^[a-fA-F0-9]{40}$/.test(accessToken)) {
-            let tokenData;
-            let tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-
+    // For plugin routes, check if a token is provided and authenticate if so
+    if (isPluginRoute) {
+        req.authenticate = createAuthenticator(config, db, userHandler);
+        
+        // Extract token from URL path parameter or query parameter
+        let accessToken = req.params.accessToken || req.query.accessToken;
+        
+        if (accessToken) {
+            // Token provided, authenticate automatically
             try {
-                let key = 'tn:token:' + tokenHash;
-                tokenData = await db.redis.hgetall(key);
+                const authResult = await req.authenticate(accessToken);
+                if (authResult.authenticated) {
+                    req.user = authResult.user;
+                    req.role = authResult.role;
+                    if (authResult.accessToken) {
+                        req.accessToken = authResult.accessToken;
+                    }
+                    
+                    // Handle 'me' user parameter
+                    if (req.params && req.params.user === 'me' && /^[0-9a-f]{24}$/i.test(req.user)) {
+                        req.params.user = req.user;
+                    }
+                }
+                // Note: We don't fail here - plugins can handle authentication as needed
             } catch (err) {
-                err.responseCode = 500;
-                err.code = 'InternalDatabaseError';
-                throw err;
-            }
-
-            if (tokenData && tokenData.user && tokenData.role && config.api.roles[tokenData.role]) {
-                let signData;
-                if ('authVersion' in tokenData) {
-                    // cast value to number
-                    tokenData.authVersion = Number(tokenData.authVersion) || 0;
-                    signData = {
-                        token: accessToken,
-                        user: tokenData.user,
-                        authVersion: tokenData.authVersion,
-                        role: tokenData.role
-                    };
-                } else {
-                    signData = {
-                        token: accessToken,
-                        user: tokenData.user,
-                        role: tokenData.role
-                    };
-                }
-
-                let signature = crypto.createHmac('sha256', config.api.accessControl.secret).update(JSON.stringify(signData)).digest('hex');
-
-                if (signature !== tokenData.s) {
-                    // rogue token or invalidated secret
-                    /*
-                        // do not delete just in case there is something wrong with the check
-                        try {
-                            await db.redis
-                                .multi()
-                                .del('tn:token:' + tokenHash)
-                                .exec();
-                        } catch (err) {
-                            // ignore
-                        }
-                        */
-                } else if (tokenData.ttl && !isNaN(tokenData.ttl) && Number(tokenData.ttl) > 0) {
-                    let tokenTTL = Number(tokenData.ttl);
-                    let tokenLifetime = config.api.accessControl.tokenLifetime || consts.ACCESS_TOKEN_MAX_LIFETIME;
-
-                    // check if token is not too old
-                    if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
-                        // token is still usable, increase session length
-                        try {
-                            await db.redis
-                                .multi()
-                                .expire('tn:token:' + tokenHash, tokenTTL)
-                                .exec();
-                        } catch (err) {
-                            // ignore
-                        }
-                        req.role = tokenData.role;
-                        req.user = tokenData.user;
-
-                        // make a reference to original method, otherwise might be overridden
-                        let setAuthToken = userHandler.setAuthToken.bind(userHandler);
-
-                        req.accessToken = {
-                            hash: tokenHash,
-                            user: tokenData.user,
-                            // if called then refreshes token data for current hash
-                            update: async () => setAuthToken(tokenData.user, accessToken)
-                        };
-                    } else {
-                        // expired token, clear it
-                        try {
-                            await db.redis
-                                .multi()
-                                .del('tn:token:' + tokenHash)
-                                .exec();
-                        } catch (err) {
-                            // ignore
-                        }
-                    }
-                } else {
-                    req.role = tokenData.role;
-                    req.user = tokenData.user;
-                }
-
-                if (req.params && req.params.user === 'me' && /^[0-9a-f]{24}$/i.test(req.user)) {
-                    req.params.user = req.user;
-                }
-
-                if (!req.role) {
-                    return fail();
-                }
-
-                if (/^[0-9a-f]{24}$/i.test(req.user)) {
-                    let tokenAuthVersion = Number(tokenData.authVersion) || 0;
-                    let userData = await db.users.collection('users').findOne(
-                        {
-                            _id: new ObjectId(req.user)
-                        },
-                        { projection: { authVersion: true } }
-                    );
-                    let userAuthVersion = Number(userData && userData.authVersion) || 0;
-                    if (!userData || tokenAuthVersion < userAuthVersion) {
-                        // unknown user or expired session
-                        try {
-                            /*
-                                // do not delete just in case there is something wrong with the check
-                                await db.redis
-                                    .multi()
-                                    .del('tn:token:' + tokenHash)
-                                    .exec();
-                                */
-                        } catch (err) {
-                            // ignore
-                        }
-                        return fail();
-                    }
-                }
-
-                // pass
-                return;
+                // Log error but don't fail - let plugins handle authentication errors
+                log.error('API', 'Plugin route authentication error', err);
             }
         }
+        return;
     }
 
-    if (tokenRequired) {
-        // no valid token found
+    // For non-plugin routes, use normal authentication
+    const authResult = await authenticateRequest(req, config, db, userHandler);
+    
+    if (authResult.error) {
+        throw authResult.error;
+    }
+
+    if (authResult.tokenRequired && !authResult.authenticated) {
+        // Authentication required but not authenticated
         return fail();
     }
 
-    // allow all
-    req.role = 'root';
-    req.user = 'root';
+    if (!authResult.tokenRequired && !req.role) {
+        // For non-plugin routes when no auth is required, set default
+        req.role = 'root';
+        req.user = 'root';
+    }
 });
 
 logger.token('user-ip', req => ((req.params && req.params.ip) || '').toString().substr(0, 40) || '-');
@@ -585,6 +460,16 @@ module.exports = done => {
 
     // Set the API server so plugins can access it
     plugins.setApiServer(server);
+    
+    // Set handlers so plugins can access them
+    plugins.setHandlers({
+        userHandler,
+        mailboxHandler,
+        messageHandler,
+        storageHandler,
+        auditHandler,
+        settingsHandler
+    });
 
     if (process.env.NODE_ENV === 'test') {
         server.get(
