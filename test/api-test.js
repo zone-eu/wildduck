@@ -677,7 +677,40 @@ describe('API tests', function () {
 
         it('should GET /users/:user/addressregister expect success', async () => {
             const response = await server.get(`/users/${userId}/addressregister?query=best`);
+
             expect(response.body.results[0].name).to.equal('test töster');
+        });
+
+        it('should GET /users/:user/addressregister expect failure', async () => {
+            const response = await server.get(`/users/${userId}/addressregister?query=wrongname`);
+
+            expect(response.body.results.length).to.equal(0);
+            expect(response.body.results).to.be.empty;
+        });
+
+        it('should GET /users/:user/addressregister expect success / search domain without tld', async () => {
+            const response = await server.get(`/users/${userId}/addressregister?query=öxample`);
+
+            expect(response.body.results[0].name).to.equal('test töster');
+        });
+
+        it('should GET /users/:user/addressregister expect success / search domain with tld', async () => {
+            const response = await server.get(`/users/${userId}/addressregister?query=öxample.com`);
+
+            expect(response.body.results[0].name).to.equal('test töster');
+        });
+
+        it('should GET /users/:user/addressregister expect success / search domain partial', async () => {
+            const response = await server.get(`/users/${userId}/addressregister?query=öx`);
+
+            expect(response.body.results[0].name).to.equal('test töster');
+        });
+
+        it('should GET /users/:user/addressregister expect failure / search domain', async () => {
+            const response = await server.get(`/users/${userId}/addressregister?query=mydomain.tld`);
+
+            expect(response.body.results.length).to.equal(0);
+            expect(response.body.results).to.be.empty;
         });
     });
 
