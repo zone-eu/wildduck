@@ -11,7 +11,7 @@ chai.config.includeStack = true;
 
 describe('POP3 onConnect Handler Tests', () => {
     let server;
-    let port = 9995;
+    let port;
 
     afterEach(done => {
         if (server) {
@@ -37,7 +37,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -64,7 +65,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -104,7 +106,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -133,7 +136,8 @@ describe('POP3 onConnect Handler Tests', () => {
         it('should work without onConnect handler (backward compatibility)', done => {
             server = new POP3Server({});
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -161,7 +165,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 // First connection should succeed
                 let client1 = net.connect(port, '127.0.0.1');
 
@@ -225,7 +230,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -257,7 +263,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -280,7 +287,8 @@ describe('POP3 onConnect Handler Tests', () => {
         it('should work without onClose handler (backward compatibility)', done => {
             server = new POP3Server({});
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -317,7 +325,8 @@ describe('POP3 onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {

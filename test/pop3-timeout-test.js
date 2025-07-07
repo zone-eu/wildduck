@@ -10,7 +10,7 @@ chai.config.includeStack = true;
 
 describe('POP3 Timeout Reset Tests', () => {
     let server;
-    let port = 9996;
+    let port;
 
     afterEach(done => {
         if (server) {
@@ -25,7 +25,8 @@ describe('POP3 Timeout Reset Tests', () => {
                 socketTimeout: 1000 // 1 second timeout for testing
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
                 let commandsSent = 0;
                 let responsesReceived = 0;
@@ -79,7 +80,8 @@ describe('POP3 Timeout Reset Tests', () => {
                 socketTimeout: 2000
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
                 let greetingReceived = false;
 

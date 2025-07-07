@@ -10,7 +10,7 @@ const net = require('net');
 chai.config.includeStack = true;
 
 describe('IMAP onConnect Handler Tests', () => {
-    let port = 19993;
+    let port;
     let server;
 
     afterEach(done => {
@@ -37,7 +37,8 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -72,7 +73,8 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -118,7 +120,8 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -146,7 +149,8 @@ describe('IMAP onConnect Handler Tests', () => {
 
             server = new IMAPServer({});
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -182,7 +186,8 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', data => {
@@ -219,7 +224,8 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', () => {
@@ -250,7 +256,8 @@ describe('IMAP onConnect Handler Tests', () => {
 
             server = new IMAPServer({});
 
-            server.listen(port, '127.0.0.1', () => {
+            server.listen(0, '127.0.0.1', () => {
+                port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
                 client.on('data', () => {
