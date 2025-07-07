@@ -2,12 +2,12 @@
 
 ## REST api
 
-Well, the whole idea is, we can administrate wilduck via the REST api. 
+Well, the whole idea is, we can administrate wilduck via the REST api.
 So we are crafting http queries, and sending it via `curl`.
 
-You can save these commands to `~/.bashrc` file (which is executed if you are coming through ssh, 
+You can save these commands to `~/.bashrc` file (which is executed if you are coming through ssh,
 the `~/.profile` file is for interactive login).
-Not as *aliases* (because *alias* can not have arguments), but you can save them 
+Not as *aliases* (because *alias* can not have arguments), but you can save them
 as bash *functions*, which behave exactly like *aliases* but can have arguments too.
 
 ## Saving functions to `~/.bashrc` file
@@ -24,7 +24,7 @@ wduck-get-user() {
 
 ### Crash course about bash functions:
 
-You only specify the function as `functionname() { ... }`, no need to specifying the 
+You only specify the function as `functionname() { ... }`, no need to specifying the
 arguments. You can call it either with or without arguments or with multiple arguments:
 
 ```
@@ -37,7 +37,7 @@ If you save it to `~/.bashrc`, then you can call it as any `alias` defined there
 
 ### Better to source our file in `.bashrc` rather then defining there
 
-It is better to have a separate file for wildduck related commands, and 
+It is better to have a separate file for wildduck related commands, and
 `source` it in `bashrc` file, then polluting it too much.
 
 So we create a file named `~/.wildduck.commands`, and `source` it.
@@ -51,8 +51,8 @@ if [ -f $HOME/.wildduck.commands ]; then
 fi
 ```
 
-Please note `. file` is the same as `source file`. But dot itself is 
-POSIX compatible, while `source` is bash builtin (and some other shells too), 
+Please note `. file` is the same as `source file`. But dot itself is
+POSIX compatible, while `source` is bash builtin (and some other shells too),
 but bash itself [does not make a distinction between dot and source](https://stackoverflow.com/a/20094373).
 
 ## List of commands

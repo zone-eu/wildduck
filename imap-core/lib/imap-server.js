@@ -31,6 +31,13 @@ class IMAPServer extends EventEmitter {
             component: this.options.component || 'imap-server'
         });
 
+        // apply shorthand handlers
+        ['onConnect', 'onClose'].forEach(handler => {
+            if (typeof this.options[handler] === 'function') {
+                this[handler] = this.options[handler];
+            }
+        });
+
         /**
          * Timeout after close has been called until pending connections are forcibly closed
          */
@@ -87,7 +94,29 @@ class IMAPServer extends EventEmitter {
         connection.loggelf = message => this.loggelf(message);
         this.connections.add(connection);
         connection.on('error', this._onError.bind(this));
-        connection.init();
+
+        // Call onConnect handler if provided
+        if (this.onConnect) {
+            this.onConnect(connection.session, err => {
+                if (err) {
+                    connection.logger.info(
+                        {
+                            tnx: 'connect',
+                            cid: connection.id,
+                            err
+                        },
+                        'Connection rejected by onConnect handler: %s',
+                        err.message
+                    );
+                    connection.send('* BYE ' + (err.message || 'Connection rejected'));
+                    setImmediate(() => connection.close());
+                    return;
+                }
+                connection.init();
+            });
+        } else {
+            connection.init();
+        }
     }
 
     /**

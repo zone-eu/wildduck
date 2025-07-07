@@ -2,7 +2,7 @@
 
 Wild Duck IMAP server has retention support built in. This means that messages that have been stored in a mailbox for a defined amount of time are deleted automatically.
 
-All Spam and Trash folders have a maximum retention time set to 30 days, other folders do not have retention time set by default.You can set the retention time when creating users via HTTP API using the `retention` property. It is a numeric field that if set, causes all mailboxes of the user to have a retention time of the value in milliseconds. 
+All Spam and Trash folders have a maximum retention time set to 30 days, other folders do not have retention time set by default.You can set the retention time when creating users via HTTP API using the `retention` property. It is a numeric field that if set, causes all mailboxes of the user to have a retention time of the value in milliseconds.
 
 Once retention time is reached, the message is deleted from database and attachment references are decremented.
 
