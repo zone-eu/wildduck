@@ -1,7 +1,7 @@
 name: Build and publish a Docker image for master branch
 
 env:
-    IMAGE_NAME: ${{ github.repository }}
+    IMAGE_NAME: ${{ github.event.repository.name }}
 
 on:
     push:
@@ -54,7 +54,7 @@ jobs:
               uses: docker/login-action@v3
               with:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }
 
             - name: Extract metadata (tags, labels) for Docker
               id: meta
