@@ -14,7 +14,7 @@ const fs = require('fs');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
-describe.only('Messages tests', function () {
+describe('Messages tests', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     let user;
