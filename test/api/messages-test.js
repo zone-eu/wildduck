@@ -95,7 +95,7 @@ describe('Messages tests', function () {
         expect(body.message.id).to.eq(1);
     });
 
-    it('should POST users/:user/mailboxes/:mailbox/messages/:message/submit expect success / encrypted mailbox', async () => {
+    it('should POST /users/:user/mailboxes/:mailbox/messages/:message/submit expect success / encrypted mailbox', async () => {
         // set test mailbox as encrypted
         await server.put(`/users/${user}/mailboxes/${testMailbox}`).send({ encryptMessages: true }).expect(200);
 
