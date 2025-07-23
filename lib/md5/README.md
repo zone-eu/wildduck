@@ -31,7 +31,7 @@ JavaScript:
 
 
 PHP:
-    
+
     echo crypt('focus123', '$1$erXgIjX7');
 
 

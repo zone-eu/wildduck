@@ -115,6 +115,9 @@ class IMAPConnection extends EventEmitter {
         } else {
             this.loggelf = () => false;
         }
+
+        // Initialize session early so it's available for onConnect handler
+        this._startSession();
     }
 
     /**
@@ -124,9 +127,6 @@ class IMAPConnection extends EventEmitter {
     init() {
         // Setup event handlers for the socket
         this._setListeners();
-
-        // make sure we have a session set up
-        this._startSession();
 
         let now = Date.now();
         let greetingSent = false;
@@ -385,6 +385,18 @@ class IMAPConnection extends EventEmitter {
             });
         }
 
+        // Call onClose handler if provided
+        if (this._server.onClose) {
+            this._server.onClose(this.session, () => {
+                // Continue with normal close handling
+                this._finishClose();
+            });
+        } else {
+            this._finishClose();
+        }
+    }
+
+    _finishClose() {
         this._closed = true;
         this._closing = false;
 

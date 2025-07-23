@@ -5,6 +5,14 @@ including emails.
 
 WildDuck tries to follow Gmail in product design. If there's a decision to be made then usually the answer is to do whatever Gmail has done.
 
+## Recent Enhancements
+
+WildDuck has been enhanced with several new features for improved connection management and protocol support:
+
+- **[Connection Management](in-depth/connection-management.md)** - Advanced onConnect and onClose handlers for IMAP and POP3 servers, enabling custom connection filtering, rate limiting, and monitoring
+- **[CONDSTORE Extension](in-depth/condstore-extension.md)** - Full RFC 4551 CONDSTORE implementation for efficient email synchronization with conditional STORE operations
+- **Smart POP3 Timeout Handling** - Automatic timeout reset during active command processing to prevent unexpected disconnections
+
 ## Contact
 
 [![Gitter chat](https://img.shields.io/gitter/room/nodemailer/wildduck?color=orange)](https://gitter.im/nodemailer/wildduck)

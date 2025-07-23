@@ -6,7 +6,7 @@ WildDuck IMAP server supports the following IMAP standards:
     list
 -   **IDLE** ([RFC2177](https://tools.ietf.org/html/rfc2177)) – notfies about new and deleted messages and also about flag updates
 -   **CONDSTORE** ([RFC4551](https://tools.ietf.org/html/rfc4551)) and **ENABLE** ([RFC5161](https://tools.ietf.org/html/rfc5161)) – supports most of the spec,
-    except metadata stuff which is ignored
+    except metadata stuff which is ignored. See [CONDSTORE Extension](condstore-extension.md) for detailed implementation guide.
 -   **STARTTLS** ([RFC2595](https://tools.ietf.org/html/rfc2595))
 -   **NAMESPACE** ([RFC2342](https://tools.ietf.org/html/rfc2342)) – minimal support, just lists the single user namespace with hierarchy separator
 -   **UNSELECT** ([RFC3691](https://tools.ietf.org/html/rfc3691))
@@ -21,6 +21,8 @@ WildDuck IMAP server supports the following IMAP standards:
 -   **QUOTA** ([RFC2087](https://tools.ietf.org/html/rfc2087)) – Quota size is global for an account, using a single quota root. Be aware that quota size does not
     mean actual byte storage in disk, it is calculated as the sum of the [RFC822](https://tools.ietf.org/html/rfc822) sources of stored messages.
 -   **COMPRESS=DEFLATE** ([RFC4978](https://tools.ietf.org/html/rfc4978)) – Compress traffic between the client and the server
+
+For advanced connection management features including onConnect/onClose handlers, see [Connection Management](connection-management.md).
 
 WildDuck more or less passes the [ImapTest](https://www.imapwiki.org/ImapTest/TestFeatures) Stress Testing run. Common errors that arise in the test are
 unknown labels (WildDuck doesn't send unsolicited `FLAGS` updates even though it does send unsolicited `FETCH FLAGS` updates) and sometimes NO for `STORE`

@@ -26,12 +26,12 @@ docker run nodemailer/wildduck
 ```
 This is likely to fail due to `mongodb` and `redis` not present in `localhost` inside the container. To pass custom configuration options/files to  wildduck inside the docker image, the following two strategies can be used:
 1. Pass `CMD_ARGS` to configure options using [wild-config](https://github.com/zone-eu/wild-config)
-    
+
     To set a custom `mongo` and `redis` host, and configure the `FQDN` and the domain for receiving emails:
     ```bash
     FQDN='example.com'
     MAIL_DOMAIN='mail.example.com'
-    docker run \ 
+    docker run \
     -e APPCONF_dbs_mongo='mongodb://mongo:27017/' \
     -e APPCONF_dbs_redis='redis://redis:6379/3' \
     -e APPCONF_smtp_setup_hostname=$FQDN \
@@ -43,7 +43,7 @@ This is likely to fail due to `mongodb` and `redis` not present in `localhost` i
 
     More details available at the [wild-config](https://github.com/zone-eu/wild-config) documentation.
 2. Mount a Docker volume with a custom configuration file:
-    
+
     To replace the default config folder (`/wildduck/config`) inside the docker image
     ```bash
     docker run -v '/config/from/host:/wildduck/config' nodemailer/wildduck

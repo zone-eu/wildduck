@@ -21,3 +21,6 @@
 13. **Better disk usage**. Attachment deduplication and MongoDB compression yield in about 40% smaller disk usage as the sum of all stored email sizes.
 14. **Extra security features** like automatic GPG encryption of all stored messages or authenticating with U2F
 15. **Exposed logs.** Users have access to logs concerning their account such as authentication attempts and other changes.
+16. **Advanced Connection Management.** Both IMAP and POP3 servers support onConnect and onClose handlers for custom connection filtering, rate limiting, IP blocking, and monitoring. Implement sophisticated access control and connection management without modifying core server code.
+17. **Smart POP3 Timeout Handling.** POP3 connections automatically reset timeouts during active command processing, preventing unexpected disconnections while maintaining security for idle connections. Ensures reliable operation for legitimate email clients.
+18. **CONDSTORE Extension Support.** Full RFC 4551 compliance with CONDSTORE (Conditional STORE) extension for enhanced synchronization. Supports ENABLE CONDSTORE, STORE/UID STORE with UNCHANGESINCE modifier, and MODIFIED response codes for conflict detection and efficient email client synchronization.
