@@ -9,6 +9,8 @@ const net = require('net');
 
 chai.config.includeStack = true;
 
+const TEST_PORT = 0; // Use port 0 to let OS assign available port
+
 describe('IMAP onConnect Handler Tests', () => {
     let port;
     let server;
@@ -37,7 +39,7 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
@@ -73,7 +75,7 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
@@ -120,7 +122,7 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
@@ -149,7 +151,7 @@ describe('IMAP onConnect Handler Tests', () => {
 
             server = new IMAPServer({});
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
@@ -186,7 +188,7 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
@@ -197,6 +199,92 @@ describe('IMAP onConnect Handler Tests', () => {
                     let response = data.toString();
                     expect(response).to.include('* OK');
                     expect(connectionCount).to.equal(1);
+                    client.end();
+                    return done();
+                });
+
+                client.on('error', err => {
+                    if (!finished) {
+                        finished = true;
+                        return done(err);
+                    }
+                });
+            });
+        });
+
+        it('should handle abrupt connection close properly', done => {
+            let onConnectCalled = false;
+            let onCloseCalled = false;
+            let sessionData = null;
+            let finished = false;
+
+            server = new IMAPServer({
+                onConnect: (session, callback) => {
+                    onConnectCalled = true;
+                    sessionData = session;
+                    return callback();
+                },
+                onClose: (session) => {
+                    onCloseCalled = true;
+                    expect(session).to.be.an('object');
+                    expect(session.id).to.be.a('string');
+                }
+            });
+
+            server.listen(TEST_PORT, '127.0.0.1', () => {
+                port = server.server.address().port;
+                let client = net.connect(port, '127.0.0.1');
+
+                client.on('data', () => {
+                    // Immediately destroy the connection after receiving data (abrupt close)
+                    client.destroy();
+                });
+
+                client.on('close', () => {
+                    if (!finished) {
+                        finished = true;
+                        setTimeout(() => {
+                            expect(onConnectCalled).to.be.true;
+                            expect(onCloseCalled).to.be.true;
+                            expect(sessionData).to.not.be.null;
+                            return done();
+                        }, 100);
+                    }
+                });
+
+                client.on('error', () => {
+                    // Connection error is expected due to abrupt close
+                });
+            });
+        });
+
+        it('should work with async onConnect handler', done => {
+            let onConnectCalled = false;
+            let finished = false;
+
+            server = new IMAPServer({
+                onConnect: async (session, callback) => {
+                    onConnectCalled = true;
+                    // Simulate async operation (e.g., Redis call)
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    expect(session).to.be.an('object');
+                    expect(session.remoteAddress).to.be.a('string');
+                    expect(session.id).to.be.a('string');
+                    return callback();
+                }
+            });
+
+            server.listen(TEST_PORT, '127.0.0.1', () => {
+                port = server.server.address().port;
+                let client = net.connect(port, '127.0.0.1');
+
+                client.on('data', data => {
+                    if (finished) return;
+                    finished = true;
+
+                    let response = data.toString();
+                    expect(response).to.include('* OK');
+                    expect(onConnectCalled).to.be.true;
                     client.end();
                     return done();
                 });
@@ -224,7 +312,7 @@ describe('IMAP onConnect Handler Tests', () => {
                 }
             });
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
@@ -256,7 +344,7 @@ describe('IMAP onConnect Handler Tests', () => {
 
             server = new IMAPServer({});
 
-            server.listen(0, '127.0.0.1', () => {
+            server.listen(TEST_PORT, '127.0.0.1', () => {
                 port = server.server.address().port;
                 let client = net.connect(port, '127.0.0.1');
 
