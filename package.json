@@ -1,6 +1,6 @@
 {
     "name": "wildduck",
-    "version": "1.45.9",
+    "version": "1.45.10",
     "description": "IMAP/POP3 server built with Node.js and MongoDB",
     "main": "server.js",
     "scripts": {
