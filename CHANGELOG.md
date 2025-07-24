@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.45.11](https://github.com/zone-eu/wildduck/compare/v1.45.10...v1.45.11) (2025-07-24)
+
+
+### Bug Fixes
+
+* add check for session existence before writing to session writeStream in message-handler ([#843](https://github.com/zone-eu/wildduck/issues/843)) ([95bc33c](https://github.com/zone-eu/wildduck/commit/95bc33c682a549a6f09131da01c180da448b74f8))
+* **connection-management:** implement connection management, POP3 timeout fixes, and comprehensive documentation ([#835](https://github.com/zone-eu/wildduck/issues/835)) ([70aed51](https://github.com/zone-eu/wildduck/commit/70aed51373803a2b92fd7fceaa9edf9e3456afad))
+* **docker-compose-wd-image:** ZMS-250 use up-to-date wildduck image from GHCR ([#842](https://github.com/zone-eu/wildduck/issues/842)) ([0ce50fd](https://github.com/zone-eu/wildduck/commit/0ce50fdf032690b5acee4033ff7edf2da9630de5))
+* **docker-compose:** ZMS-250 update docker-compose, remove CMD_ARGS, use APPCONF in environment variables instead ([#841](https://github.com/zone-eu/wildduck/issues/841)) ([68e83e4](https://github.com/zone-eu/wildduck/commit/68e83e4bedf4c2d8a1dc618d042917e185d9a1cc))
+* **logging:** ZMS-216 add logs for debugging timeout issue ([#823](https://github.com/zone-eu/wildduck/issues/823)) ([dc56afc](https://github.com/zone-eu/wildduck/commit/dc56afcbda8e6c74b64fb4664761867dfe3e4d82))
+
 ## [1.45.10](https://github.com/zone-eu/wildduck/compare/v1.45.9...v1.45.10) (2025-07-22)
 
 
