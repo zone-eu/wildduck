@@ -13,11 +13,10 @@ services:
             - redis
             - mongo
         environment:
-            CMD_ARGS: 
-                --dbs.mongo=mongodb://mongo:27017/wildduck
-                --dbs.redis=redis://redis:6379/3
-                --api.host=0.0.0.0
-                --api.accessToken=PLEASE_CHANGE_ME
+            APPCONF_dbs_mongo: mongodb://mongo:27017/wildduck
+            APPCONF_dbs_redis: redis://redis:6379/3
+            APPCONF_api_host: 0.0.0.0
+            APPCONF_api_accessToken: PLEASE_CHANGE_ME
     redis:
         image: redis:alpine
         restart: always
