@@ -2,7 +2,7 @@ version: "3.7"
 services:
     wildduck:
         restart: always
-        image: nodemailer/wildduck
+        image: ghcr.io/zone-eu/wildduck
         ports:
             - "8080:8080"
             - "143:143"
