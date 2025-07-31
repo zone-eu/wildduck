@@ -2,13 +2,13 @@
 
 OURNAME=03_install_check_running_services.sh
 
-# No $AUT_SAFETY variable present, so we have not sourced install_variables.sh yet
+# No $AUT_SAFETY variable present, so we have not sourced 00_install_global_functions_variables.sh yet
 # check if $AUT_SAFETY is unset (as opposed to empty "" string)
 if [ -z ${AUT_SAFETY+x} ]
   then
     echo "this script ${RED}called directly${NC}, and not from the main ./install.sh script"
-    echo "initializing common variables ('install_variables.sh')"
-    source "$INSTALLDIR/install_variables.sh"
+    echo "initializing common variables ('00_install_global_functions_variables.sh')"
+    source "$INSTALLDIR/00_install_global_functions_variables.sh"
 fi
 
 echo -e "\n\n-- Executing ${ORANGE}${OURNAME}${NC} subscript --"
