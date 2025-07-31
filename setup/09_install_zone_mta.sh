@@ -39,10 +39,10 @@ echo "deploy ALL = (root) NOPASSWD: $SYSTEMCTL_PATH restart zone-mta" >> /etc/su
 
 # checkout files from git to working directory
 mkdir -p /opt/zone-mta
-git --git-dir=/var/opt/zone-mta.git --work-tree=/opt/zone-mta checkout "$ZONEMTA_COMMIT"
+git --git-dir=/var/opt/zone-mta.git --work-tree=/opt/zone-mta checkout $(get_latest_release_commit "zone-mta")
 
 mkdir -p /opt/zone-mta/plugins/wildduck
-git --git-dir=/var/opt/zonemta-wildduck.git --work-tree=/opt/zone-mta/plugins/wildduck checkout "$WILDDUCK_ZONEMTA_COMMIT"
+git --git-dir=/var/opt/zonemta-wildduck.git --work-tree=/opt/zone-mta/plugins/wildduck checkout $(get_latest_release_commit "zonemta-wildduck")
 
 cp -r /opt/zone-mta/config /etc/zone-mta
 sed -i -e 's/port=2525/port=587/g;s/host="127.0.0.1"/host="0.0.0.0"/g;s/authentication=false/authentication=true/g' /etc/zone-mta/interfaces/feeder.toml

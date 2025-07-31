@@ -285,3 +285,13 @@ echo "/var/log/${SERVICE_NAME}/${SERVICE_NAME}.log {
 }
 
 export -f log_script
+
+function get_latest_release_commit {
+    REPO_NAME="$1"
+    GIT_DIR="/var/opt/${REPO_NAME}.git"
+    git --git-dir="$GIT_DIR" fetch --tags
+    LATEST_TAG=$(git --git-dir="$GIT_DIR" describe --tags $(git --git-dir="$GIT_DIR" rev-list --tags --max-count=1))
+    LATEST_COMMIT=$(git --git-dir="$GIT_DIR" rev-list -n 1 "$LATEST_TAG")
+    echo "$LATEST_COMMIT"
+}
+export -f get_latest_release_commit

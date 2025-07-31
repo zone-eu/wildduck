@@ -40,7 +40,7 @@ npm install --production --no-optional --no-package-lock --no-audit --no-shrinkw
 
 # Haraka WildDuck plugin. Install as separate repo as it can be edited more easily later
 mkdir -p plugins/wildduck
-git --git-dir=/var/opt/haraka-plugin-wildduck.git --work-tree=/opt/haraka/plugins/wildduck checkout "$WILDDUCK_HARAKA_COMMIT"
+git --git-dir=/var/opt/haraka-plugin-wildduck.git --work-tree=/opt/haraka/plugins/wildduck checkout $(get_latest_release_commit "haraka-plugin-wildduck")
 
 cd plugins/wildduck
 npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --unsafe-perm --progress=false

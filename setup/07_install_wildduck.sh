@@ -29,7 +29,7 @@ echo "deploy ALL = (root) NOPASSWD: $SYSTEMCTL_PATH restart wildduck" >> /etc/su
 
 # checkout files from git to working directory
 mkdir -p /opt/wildduck
-git --git-dir=/var/opt/wildduck.git --work-tree=/opt/wildduck checkout "$WILDDUCK_COMMIT"
+git --git-dir=/var/opt/wildduck.git --work-tree=/opt/wildduck checkout $(get_latest_release_commit "wildduck")
 cp -r /opt/wildduck/config /etc/wildduck
 mv /etc/wildduck/default.toml /etc/wildduck/wildduck.toml
 
