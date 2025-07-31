@@ -55,7 +55,7 @@ sed -i -e "s/localhost:3000/$HOSTNAME/g;s/localhost/$HOSTNAME/g;s/2587/587/g" /e
 sed -i -e "s/secret value/$SRS_SECRET/g;s/#loopSecret/loopSecret/g" /etc/wildduck/sender.toml
 
 cd /opt/wildduck
-npm install --production --unsafe-perm --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap
 
 chown -R deploy:deploy /var/opt/wildduck.git
 chown -R deploy:deploy /opt/wildduck

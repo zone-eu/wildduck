@@ -25,7 +25,7 @@ echo "#!/bin/bash
 git --git-dir=/var/opt/haraka-plugin-wildduck.git --work-tree=/opt/haraka/plugins/wildduck checkout "\$3" -f
 cd /opt/haraka/plugins/wildduck
 rm -rf package-lock.json
-npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
 sudo $SYSTEMCTL_PATH restart haraka || echo \"Failed restarting service\"" > "/var/opt/haraka-plugin-wildduck.git/hooks/update"
 chmod +x "/var/opt/haraka-plugin-wildduck.git/hooks/update"
 
@@ -33,17 +33,17 @@ chmod +x "/var/opt/haraka-plugin-wildduck.git/hooks/update"
 echo "deploy ALL = (root) NOPASSWD: $SYSTEMCTL_PATH restart haraka" >> /etc/sudoers.d/wildduck
 
 cd
-npm install --production --no-optional --no-package-lock --no-audit --no-shrinkwrap --unsafe-perm -g Haraka@$HARAKA_VERSION
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --no-shrinkwrap -g Haraka@$HARAKA_VERSION
 haraka -i /opt/haraka
 cd /opt/haraka
-npm install --production --no-optional --no-package-lock --no-audit --no-shrinkwrap --unsafe-perm --save haraka-plugin-rspamd haraka-plugin-redis Haraka@$HARAKA_VERSION
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --no-shrinkwrap --save haraka-plugin-rspamd haraka-plugin-redis Haraka@$HARAKA_VERSION
 
 # Haraka WildDuck plugin. Install as separate repo as it can be edited more easily later
 mkdir -p plugins/wildduck
 git --git-dir=/var/opt/haraka-plugin-wildduck.git --work-tree=/opt/haraka/plugins/wildduck checkout $(get_latest_release_commit "haraka-plugin-wildduck")
 
 cd plugins/wildduck
-npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --unsafe-perm --progress=false
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
 
 cd /opt/haraka
 mv config/plugins config/plugins.bak
