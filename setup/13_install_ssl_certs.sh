@@ -25,7 +25,10 @@ echo '#!/bin/bash
 echo "OK"' > /usr/local/bin/reload-services.sh
 chmod +x /usr/local/bin/reload-services.sh
 
-~/.acme.sh/acme.sh --issue --nginx --server letsencrypt \
+~/.acme.sh/acme.sh \
+    --issue \
+    --nginx \
+    --server letsencrypt \
     -d "$HOSTNAME" \
     --key-file       /etc/wildduck/certs/privkey.pem  \
     --fullchain-file /etc/wildduck/certs/fullchain.pem \
