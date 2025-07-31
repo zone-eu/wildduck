@@ -745,6 +745,15 @@ indexes:
               enumerable: 1
               key: 1
 
+    # Indexes for the domaincache collection
+    - collection: domaincache
+      type: users
+      index:
+          name: by_domain
+          unique: true
+          key:
+              domain: 1
+
 deleteindexes:
     - collection: settings
       index: key_enumerable
