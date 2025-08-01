@@ -29,7 +29,7 @@ echo "deploy ALL = (root) NOPASSWD: $SYSTEMCTL_PATH restart wildduck-webmail" >>
 
 # checkout files from git to working directory
 mkdir -p /opt/wildduck-webmail
-git --git-dir=/var/opt/wildduck-webmail.git --work-tree=/opt/wildduck-webmail checkout "$WEBMAIL_COMMIT"
+git --git-dir=/var/opt/wildduck-webmail.git --work-tree=/opt/wildduck-webmail checkout $(get_latest_release_commit "wildduck-webmail")
 cp /opt/wildduck-webmail/config/default.toml /etc/wildduck/wildduck-webmail.toml
 
 sed -i -e "s/localhost/$HOSTNAME/g;s/999/99/g;s/2587/587/g;s/proxy=false/proxy=true/g;s/domains=.*/domains=[\"$MAILDOMAIN\"]/g" /etc/wildduck/wildduck-webmail.toml

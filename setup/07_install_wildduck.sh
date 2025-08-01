@@ -29,7 +29,7 @@ echo "deploy ALL = (root) NOPASSWD: $SYSTEMCTL_PATH restart wildduck" >> /etc/su
 
 # checkout files from git to working directory
 mkdir -p /opt/wildduck
-git --git-dir=/var/opt/wildduck.git --work-tree=/opt/wildduck checkout "$WILDDUCK_COMMIT"
+git --git-dir=/var/opt/wildduck.git --work-tree=/opt/wildduck checkout $(get_latest_release_commit "wildduck")
 cp -r /opt/wildduck/config /etc/wildduck
 mv /etc/wildduck/default.toml /etc/wildduck/wildduck.toml
 
@@ -55,7 +55,7 @@ sed -i -e "s/localhost:3000/$HOSTNAME/g;s/localhost/$HOSTNAME/g;s/2587/587/g" /e
 sed -i -e "s/secret value/$SRS_SECRET/g;s/#loopSecret/loopSecret/g" /etc/wildduck/sender.toml
 
 cd /opt/wildduck
-npm install --production --unsafe-perm --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap
 
 chown -R deploy:deploy /var/opt/wildduck.git
 chown -R deploy:deploy /opt/wildduck

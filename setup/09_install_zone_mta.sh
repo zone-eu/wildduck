@@ -30,7 +30,7 @@ echo "#!/bin/bash
 git --git-dir=/var/opt/zonemta-wildduck.git --work-tree=/opt/zone-mta/plugins/wildduck checkout "\$3" -f
 cd /opt/zone-mta/plugins/wildduck
 rm -rf package-lock.json
-npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
 sudo $SYSTEMCTL_PATH restart zone-mta || echo \"Failed restarting service\"" > "/var/opt/zonemta-wildduck.git/hooks/update"
 chmod +x "/var/opt/zonemta-wildduck.git/hooks/update"
 
@@ -39,10 +39,10 @@ echo "deploy ALL = (root) NOPASSWD: $SYSTEMCTL_PATH restart zone-mta" >> /etc/su
 
 # checkout files from git to working directory
 mkdir -p /opt/zone-mta
-git --git-dir=/var/opt/zone-mta.git --work-tree=/opt/zone-mta checkout "$ZONEMTA_COMMIT"
+git --git-dir=/var/opt/zone-mta.git --work-tree=/opt/zone-mta checkout $(get_latest_release_commit "zone-mta")
 
 mkdir -p /opt/zone-mta/plugins/wildduck
-git --git-dir=/var/opt/zonemta-wildduck.git --work-tree=/opt/zone-mta/plugins/wildduck checkout "$WILDDUCK_ZONEMTA_COMMIT"
+git --git-dir=/var/opt/zonemta-wildduck.git --work-tree=/opt/zone-mta/plugins/wildduck checkout $(get_latest_release_commit "zonemta-wildduck")
 
 cp -r /opt/zone-mta/config /etc/zone-mta
 sed -i -e 's/port=2525/port=587/g;s/host="127.0.0.1"/host="0.0.0.0"/g;s/authentication=false/authentication=true/g' /etc/zone-mta/interfaces/feeder.toml
@@ -100,10 +100,10 @@ DKIM_JSON=`DOMAIN="$MAILDOMAIN" SELECTOR="$DKIM_SELECTOR" node -e 'console.log(J
 }))'`
 
 cd /opt/zone-mta
-npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --unsafe-perm
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap
 
 cd /opt/zone-mta/plugins/wildduck
-npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --unsafe-perm
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap
 
 chown -R deploy:deploy /var/opt/zone-mta.git
 chown -R deploy:deploy /var/opt/zonemta-wildduck.git

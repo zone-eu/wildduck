@@ -198,8 +198,8 @@ There is a slight difference between domainname and hostname.
 
 ${ORANGE}Simplest case${NC}:
 One server serves everything: company website, emails, webmails.
-One ip address, and domainname is the same az hostname.
-Eg. amazme.com
+One ip address, and domainname is the same as hostname.
+Eg. amazeme.com
 
 ${GREEN}More general case${NC}:
 The domainname is part of the email address:
@@ -210,11 +210,11 @@ name is: `hostname`
 
 On larger organizations, the company homepage is independent from
 the mail servers. Or the webmail servers.
-Eg. the company homepage is amazme.com [11.22.33.44],
-the mail server is mail.amazme.com [11.22.33.43]
+Eg. the company homepage is amazeme.com [11.22.33.44],
+the mail server is mail.amazeme.com [11.22.33.43]
 
-So domainname = amazme.com
-hostname = mail.amazme.com
+So domainname = amazeme.com
+hostname = mail.amazeme.com
 
 ${RED}IP address${NC} case:
 You can call this script with ip address instead of domain name:
@@ -236,7 +236,7 @@ function hook_script {
 git --git-dir=/var/opt/$1.git --work-tree=\"/opt/$1\" checkout "\$3" -f
 cd \"/opt/$1\"
 rm -rf package-lock.json
-npm install --production --no-optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
+npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scripts --no-shrinkwrap --progress=false
 sudo $SYSTEMCTL_PATH restart $1 || echo \"Failed restarting service\"" > "/var/opt/$1.git/hooks/update"
     chmod +x "/var/opt/$1.git/hooks/update"
 }
@@ -285,3 +285,13 @@ echo "/var/log/${SERVICE_NAME}/${SERVICE_NAME}.log {
 }
 
 export -f log_script
+
+function get_latest_release_commit {
+    REPO_NAME="$1"
+    GIT_DIR="/var/opt/${REPO_NAME}.git"
+    git --git-dir="$GIT_DIR" fetch --tags
+    LATEST_TAG=$(git --git-dir="$GIT_DIR" describe --tags $(git --git-dir="$GIT_DIR" rev-list --tags --max-count=1))
+    LATEST_COMMIT=$(git --git-dir="$GIT_DIR" rev-list -n 1 "$LATEST_TAG")
+    echo "$LATEST_COMMIT"
+}
+export -f get_latest_release_commit
