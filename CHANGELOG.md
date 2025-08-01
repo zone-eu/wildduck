@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.45.11](https://github.com/zone-eu/wildduck/compare/v1.45.10...v1.45.11) (2025-08-01)
+
+
+### Bug Fixes
+
+* add check for session existence before writing to session writeStream in message-handler ([#843](https://github.com/zone-eu/wildduck/issues/843)) ([95bc33c](https://github.com/zone-eu/wildduck/commit/95bc33c682a549a6f09131da01c180da448b74f8))
+* **connection-management:** implement connection management, POP3 timeout fixes, and comprehensive documentation ([#835](https://github.com/zone-eu/wildduck/issues/835)) ([70aed51](https://github.com/zone-eu/wildduck/commit/70aed51373803a2b92fd7fceaa9edf9e3456afad))
+* **docker-compose-wd-image:** ZMS-250 use up-to-date wildduck image from GHCR ([#842](https://github.com/zone-eu/wildduck/issues/842)) ([0ce50fd](https://github.com/zone-eu/wildduck/commit/0ce50fdf032690b5acee4033ff7edf2da9630de5))
+* **docker-compose:** ZMS-250 update docker-compose, remove CMD_ARGS, use APPCONF in environment variables instead ([#841](https://github.com/zone-eu/wildduck/issues/841)) ([68e83e4](https://github.com/zone-eu/wildduck/commit/68e83e4bedf4c2d8a1dc618d042917e185d9a1cc))
+* **docs-attachments:** ZMS-251 add missing fields in the response schema of attachments when fetching messages ([#846](https://github.com/zone-eu/wildduck/issues/846)) ([765c46c](https://github.com/zone-eu/wildduck/commit/765c46cb09d4e4a4828e4e2a858a3ac014784c85))
+* **domaincache:** ZMS-247 implement domain cache to store all used domains of users ([#845](https://github.com/zone-eu/wildduck/issues/845)) ([4adfce0](https://github.com/zone-eu/wildduck/commit/4adfce07c389cb25602e64bc4000d96b68ccae90))
+* **logging:** ZMS-216 add logs for debugging timeout issue ([#823](https://github.com/zone-eu/wildduck/issues/823)) ([dc56afc](https://github.com/zone-eu/wildduck/commit/dc56afcbda8e6c74b64fb4664761867dfe3e4d82))
+* revert recent readme changes, keep only necessary info ([#848](https://github.com/zone-eu/wildduck/issues/848)) ([0f1a55c](https://github.com/zone-eu/wildduck/commit/0f1a55c1c749b738325317c71911d2b4c5ef1da2))
+* **setup-script:** ZMS-252 Install script updates ([#847](https://github.com/zone-eu/wildduck/issues/847)) ([c209b3a](https://github.com/zone-eu/wildduck/commit/c209b3af2627da5b6a32b00ca705294d4344392b))
+
 ## [1.45.10](https://github.com/zone-eu/wildduck/compare/v1.45.9...v1.45.10) (2025-07-22)
 
 
