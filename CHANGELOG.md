@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.45.12](https://github.com/zone-eu/wildduck/compare/v1.45.11...v1.45.12) (2025-08-11)
+
+
+### Bug Fixes
+
+* **on-expunge:** ZMS-255 for client compatability in case no messages were deleted during expunge return no * 0 EXISTS ([#853](https://github.com/zone-eu/wildduck/issues/853)) ([897b4b3](https://github.com/zone-eu/wildduck/commit/897b4b3d67b90f81b5633e4ede8f6b5974e9c3a8))
+* **submit-addressregister:** ZMS-256 when submitting draft for delivery update addressregister ([#852](https://github.com/zone-eu/wildduck/issues/852)) ([b0eef8d](https://github.com/zone-eu/wildduck/commit/b0eef8d91742a7af44363f0e877652d5c7048b2e))
+
 ## [1.45.11](https://github.com/zone-eu/wildduck/compare/v1.45.10...v1.45.11) (2025-08-01)
 
 
