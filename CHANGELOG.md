@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.45.12](https://github.com/zone-eu/wildduck/compare/v1.45.11...v1.45.12) (2025-08-22)
+
+
+### Bug Fixes
+
+* **domaincache-and-domainaliases:** ZMS-259 add wildcard address check when adding domain to mongodb cache ([#859](https://github.com/zone-eu/wildduck/issues/859)) ([4ce3eed](https://github.com/zone-eu/wildduck/commit/4ce3eedd7b7c471cfd60210ab81c62eaa26fad16))
+* **on-expunge:** ZMS-255 for client compatability in case no messages were deleted during expunge return no * 0 EXISTS ([#853](https://github.com/zone-eu/wildduck/issues/853)) ([897b4b3](https://github.com/zone-eu/wildduck/commit/897b4b3d67b90f81b5633e4ede8f6b5974e9c3a8))
+* **submit-addressregister:** ZMS-256 when submitting draft for delivery update addressregister ([#852](https://github.com/zone-eu/wildduck/issues/852)) ([b0eef8d](https://github.com/zone-eu/wildduck/commit/b0eef8d91742a7af44363f0e877652d5c7048b2e))
+
 ## [1.45.11](https://github.com/zone-eu/wildduck/compare/v1.45.10...v1.45.11) (2025-08-01)
 
 
