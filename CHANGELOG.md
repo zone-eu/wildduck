@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.13](https://github.com/zone-eu/wildduck/compare/v1.45.12...v1.45.13) (2025-08-26)
+
+
+### Bug Fixes
+
+* **getmessages:** ZMS-260: messages.js getMessages allow unseen request flag to be false ([#861](https://github.com/zone-eu/wildduck/issues/861)) ([aab6608](https://github.com/zone-eu/wildduck/commit/aab6608119b53dd719a73ed48658ccb39532174b))
+
 ## [1.45.12](https://github.com/zone-eu/wildduck/compare/v1.45.11...v1.45.12) (2025-08-22)
 
 
