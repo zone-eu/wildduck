@@ -205,7 +205,148 @@ describe.only('Email Filtering helper functions', () => {
         });
     });
 
-    describe('Simple integration tests', () => {
+    describe('Edge Cases', () => {
+        describe('extractQuotedPhrases - edge cases', () => {
+            it('should handle quotes correctly without spaces', () => {
+                const result = extractQuotedPhrases('"he said"hello" to me"'); // a string with two exact matches -> effectively whole string becomes exact match
+
+                expect(result.cleanQuery).to.eq('__PHRASE_0__hello__PHRASE_1__');
+                expect(result.phrases).to.deep.equal(['he said', 'to me']);
+            });
+
+            it('should handle massive number of quotes', () => {
+                const manyQuotes = Array(100).fill('"phrase"').join(' ');
+                const result = extractQuotedPhrases(manyQuotes);
+                expect(result.phrases).to.have.length(100);
+                expect(result.phrases[0]).to.equal('phrase');
+                expect(result.phrases[99]).to.equal('phrase');
+            });
+
+            it('should handle quotes with special regex characters', () => {
+                const result = extractQuotedPhrases('"test.*+?^${}()|[]\\"');
+                expect(result.phrases).to.deep.equal(['test.*+?^${}()|[]\\']);
+            });
+
+            it('should handle extremely long quoted phrases', () => {
+                const longPhrase = 'word '.repeat(1000).trim();
+                const result = extractQuotedPhrases(`"${longPhrase}"`);
+                expect(result.phrases[0]).to.equal(longPhrase);
+            });
+
+            it('should handle unicode and emoji in quotes', () => {
+                const result = extractQuotedPhrases('"café naïve 🚀 中文"');
+                expect(result.phrases).to.deep.equal(['café naïve 🚀 中文']);
+            });
+
+            it('should handle newlines and tabs in quotes', () => {
+                const result = extractQuotedPhrases('"line1\nline2\tindented"');
+                expect(result.phrases).to.deep.equal(['line1\nline2\tindented']);
+            });
+        });
+
+        describe('parseFilterQueryText - edge cases', () => {
+            it('should handle massive AND terms', () => {
+                const manyTerms = Array(1000).fill('term').join(' ');
+                const result = parseFilterQueryText(manyTerms);
+                expect(result.andTerms).to.have.length(1000);
+            });
+
+            it('should handle OR with empty parts', () => {
+                const result = parseFilterQueryText('term1 OR  OR term2 OR  OR term3');
+                expect(result.orTerms).to.deep.equal(['term1', 'term2', 'term3']);
+            });
+
+            it('should handle OR at beginning and end', () => {
+                const result = parseFilterQueryText('OR term1 OR term2 OR');
+
+                console.log(result);
+
+                expect(result.orTerms).to.deep.equal(['term1', 'term2']);
+            });
+
+            it('should handle excessive whitespace and punctuation', () => {
+                const result = parseFilterQueryText('   term1   ,,,   term2     term3   ');
+                expect(result.andTerms).to.deep.equal(['term1', 'term2', 'term3']);
+            });
+
+            it('should handle strings that look like phrase placeholders', () => {
+                const result = parseFilterQueryText('__PHRASE_0__ normal term __PHRASE_999__');
+                expect(result.andTerms).to.deep.equal(['__PHRASE_0__', 'normal', 'term', '__PHRASE_999__']);
+            });
+
+            it('should handle extremely long queries', () => {
+                const longQuery = 'word '.repeat(10000) + 'OR final';
+                const result = parseFilterQueryText(longQuery);
+                expect(result.orTerms).to.have.length(2);
+                expect(result.orTerms[1]).to.equal('final');
+            });
+        });
+
+        describe('filterQueryTermMatches - edge cases', () => {
+            const weirdText = 'This is a test with 🚀 émojis and spécial chars & symbols @#$%^&*()';
+
+            it('should handle unicode and special characters', () => {
+                expect(filterQueryTermMatches(weirdText, '🚀')).to.be.true;
+                expect(filterQueryTermMatches(weirdText, 'émojis')).to.be.true;
+                expect(filterQueryTermMatches(weirdText, 'spécial')).to.be.true;
+                expect(filterQueryTermMatches(weirdText, '@#$%')).to.be.true;
+            });
+
+            it('should handle extremely long search terms', () => {
+                const longTerm = 'word'.repeat(1000);
+                const longText = 'prefix ' + longTerm + ' suffix';
+                expect(filterQueryTermMatches(longText, longTerm)).to.be.true;
+            });
+
+            it('should handle malformed phrase indices', () => {
+                const phrases = ['test'];
+                expect(filterQueryTermMatches('text', '__PHRASE_-1__', phrases)).to.be.false;
+                expect(filterQueryTermMatches('text', '__PHRASE_999__', phrases)).to.be.false;
+                expect(filterQueryTermMatches('text', '__PHRASE_1.5__', phrases)).to.be.false;
+                expect(filterQueryTermMatches('text', '__PHRASE_abc__', phrases)).to.be.false;
+            });
+
+            it('should handle circular references in phrases', () => {
+                const phrases = ['__PHRASE_0__']; // self-reference
+                expect(filterQueryTermMatches('__PHRASE_0__', '__PHRASE_0__', phrases)).to.be.true;
+            });
+
+            it('should handle terms with only punctuation', () => {
+                expect(filterQueryTermMatches('Hello, world!', ',')).to.be.true;
+                expect(filterQueryTermMatches('Hello, world!', '!@#')).to.be.false;
+                expect(filterQueryTermMatches('Test @#$% symbols', '@#$%')).to.be.true;
+            });
+
+            it('should handle exact phrases with regex metacharacters', () => {
+                const phrases = ['test.*+?^${}()|[]'];
+                const text = 'This contains test.*+?^${}()|[] literally';
+                expect(filterQueryTermMatches(text, '__PHRASE_0__', phrases)).to.be.true;
+            });
+
+            it('should handle exact phrases with newlines and tabs', () => {
+                const phrases = ['line1\nline2\ttabbed'];
+                const text = 'Content has line1\nline2\ttabbed in it';
+                expect(filterQueryTermMatches(text, '__PHRASE_0__', phrases)).to.be.true;
+            });
+        });
+
+        describe('Weird Performance Cases', () => {
+            it('should handle mixed quotes and OR with performance edge case', () => {
+                const mixedQuery = Array(50).fill('"phrase"').join(' OR ');
+                const result = parseFilterQueryText(mixedQuery);
+                expect(result.orTerms).to.have.length(50);
+                expect(result.exactPhrases).to.have.length(50);
+            });
+
+            it('should handle weird potential regex DoS', () => {
+                const evilString = '"' + 'a'.repeat(1000) + 'b';
+                const result = extractQuotedPhrases(evilString);
+                expect(result.phrases).to.deep.equal([]);
+            });
+        });
+    });
+
+    describe('Integration tests', () => {
         it('should work end-to-end with quoted phrases', () => {
             const query = 'urgent "project meeting" OR "final report"';
             const parsed = parseFilterQueryText(query);
