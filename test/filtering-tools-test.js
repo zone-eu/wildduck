@@ -4,7 +4,7 @@
 const { expect } = require('chai');
 const { extractQuotedPhrases, parseFilterQueryText, filterQueryTermMatches } = require('../lib/tools');
 
-describe.only('Email Filtering helper functions', () => {
+describe('Email Filtering helper functions', () => {
     describe('extractQuotedPhrases', () => {
         it('should extract single quoted phrase', () => {
             const result = extractQuotedPhrases('urgent "project meeting" status');
@@ -258,8 +258,6 @@ describe.only('Email Filtering helper functions', () => {
 
             it('should handle OR at beginning and end', () => {
                 const result = parseFilterQueryText('OR term1 OR term2 OR');
-
-                console.log(result);
 
                 expect(result.orTerms).to.deep.equal(['term1', 'term2']);
             });
