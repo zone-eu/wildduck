@@ -3,6 +3,7 @@
 'use strict';
 
 process.env.UV_THREADPOOL_SIZE = 16;
+process.binding('http_parser').HTTPParser = require('http-parser-js').HTTPParser;
 
 const v8 = require('node:v8');
 const Path = require('path');
