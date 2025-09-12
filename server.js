@@ -3,8 +3,15 @@
 'use strict';
 
 process.env.UV_THREADPOOL_SIZE = 16;
-process.binding('http_parser').HTTPParser = require('http-parser-js').HTTPParser;
 
+// Polyfill http_parser
+const originalBinding = process.binding;
+process.binding = function (name) {
+    if (name === 'http_parser') {
+        return require('http-parser-js');
+    }
+    return originalBinding.call(process, name);
+};
 const v8 = require('node:v8');
 const Path = require('path');
 const os = require('os');
