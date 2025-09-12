@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.45.5"
+        "version": "1.45.13"
     },
     "servers": [
         {
@@ -171,16 +171,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     },
                     {
@@ -1327,16 +1317,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     },
                     {
@@ -2623,7 +2603,7 @@
                     {
                         "name": "unseen",
                         "in": "query",
-                        "description": "If true, then returns only unseen messages",
+                        "description": "If true, then returns only unseen messages. If false, then returs only seen messages. Leave blank to return all messages",
                         "required": false,
                         "schema": {
                             "type": "boolean"
@@ -2694,16 +2674,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     },
                     {
@@ -3268,7 +3238,16 @@
                     {
                         "name": "unseen",
                         "in": "query",
-                        "description": "If true, then matches only messages without \\Seen flags",
+                        "description": "If true, then matches only messages without \\Seen flags. Takes precedence over the seen flag",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "seen",
+                        "in": "query",
+                        "description": "If true, then matches only messages with \\Seen flags",
                         "required": false,
                         "schema": {
                             "type": "boolean"
@@ -3366,16 +3345,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     }
                 ],
@@ -3487,7 +3456,11 @@
                                     },
                                     "unseen": {
                                         "type": "boolean",
-                                        "description": "If true, then matches only messages without \\Seen flags"
+                                        "description": "If true, then matches only messages without \\Seen flags. Takes precedence over the seen flag"
+                                    },
+                                    "seen": {
+                                        "type": "boolean",
+                                        "description": "If true, then matches only messages with \\Seen flags"
                                     },
                                     "includeHeaders": {
                                         "type": "string",
@@ -4271,16 +4244,6 @@
                         }
                     },
                     {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
-                        }
-                    },
-                    {
                         "name": "sess",
                         "in": "query",
                         "description": "Session identifier for the logs",
@@ -4583,16 +4546,6 @@
                         }
                     },
                     {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
-                        }
-                    },
-                    {
                         "name": "sess",
                         "in": "query",
                         "description": "Session identifier for the logs",
@@ -4781,16 +4734,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     },
                     {
@@ -6784,16 +6727,6 @@
                         }
                     },
                     {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
-                        }
-                    },
-                    {
                         "name": "filterip",
                         "in": "query",
                         "description": "Limit listing only to values with specific IP address",
@@ -7497,16 +7430,6 @@
                         }
                     },
                     {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
-                        }
-                    },
-                    {
                         "name": "sess",
                         "in": "query",
                         "description": "Session identifier for the logs",
@@ -7817,16 +7740,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     },
                     {
@@ -8141,16 +8054,6 @@
                         "schema": {
                             "type": "string",
                             "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
                         }
                     },
                     {
@@ -8471,16 +8374,6 @@
                         }
                     },
                     {
-                        "name": "page",
-                        "in": "query",
-                        "description": "Current page number. Informational only, page numbers start from 1",
-                        "required": false,
-                        "schema": {
-                            "type": "number",
-                            "default": 1
-                        }
-                    },
-                    {
                         "name": "sess",
                         "in": "query",
                         "description": "Session identifier for the logs",
@@ -8730,7 +8623,9 @@
                                 "const:max:pop3:download",
                                 "const:max:imap:upload",
                                 "const:max:filters",
-                                "const:sender:defer_times"
+                                "const:sender:defer_times",
+                                "const:max:bulk_batch_size",
+                                "const:domaincache:enabled"
                             ]
                         }
                     }
@@ -10484,23 +10379,6 @@
                     "action"
                 ]
             },
-            "Bimi": {
-                "type": "object",
-                "description": "Marks BIMI verification as passed for a domain. NB! BIMI record and logo files for the domain must be valid.",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain name for the BIMI record. It does not have to be the same as the From address."
-                    },
-                    "selector": {
-                        "type": "string",
-                        "description": "Optional BIMI selector"
-                    }
-                },
-                "required": [
-                    "domain"
-                ]
-            },
             "ContentType": {
                 "type": "object",
                 "description": "Parsed Content-Type header. Usually needed to identify encrypted messages and such",
@@ -10851,6 +10729,23 @@
                     "content"
                 ]
             },
+            "Bimi": {
+                "type": "object",
+                "description": "Marks BIMI verification as passed for a domain. NB! BIMI record and logo files for the domain must be valid.",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain name for the BIMI record. It does not have to be the same as the From address."
+                    },
+                    "selector": {
+                        "type": "string",
+                        "description": "Optional BIMI selector"
+                    }
+                },
+                "required": [
+                    "domain"
+                ]
+            },
             "UploadMessageResponse": {
                 "type": "object",
                 "properties": {
@@ -11183,6 +11078,10 @@
                                 "sizeKb": {
                                     "type": "number",
                                     "description": "Approximate size of the attachment in kilobytes"
+                                },
+                                "size": {
+                                    "type": "number",
+                                    "description": "Attachment filesize in bytes"
                                 }
                             },
                             "required": [
@@ -11192,7 +11091,8 @@
                                 "disposition",
                                 "transferEncoding",
                                 "related",
-                                "sizeKb"
+                                "sizeKb",
+                                "size"
                             ]
                         },
                         "description": "Attachments for the message"
