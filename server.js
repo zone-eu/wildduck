@@ -4,7 +4,21 @@
 
 process.env.UV_THREADPOOL_SIZE = 16;
 
-// Polyfill http_parser
+/*
+ * FIXME: Restify depends on `spdy`, which in turn depends on `http-deceiver`,
+ * which uses the legacy C library `http_parser`.
+ *
+ * Newer versions of Node.js have removed `http_parser` in favor of
+ * modern APIs. Unfortunately:
+ *   - `http-deceiver` was last updated ~9 years ago,
+ *   - `spdy` ~5 years ago,
+ *   - Restify itself ~2 years ago.
+ *
+ * As a result, these outdated libraries haven’t been replaced.
+ *
+ * Quick fix: polyfill `http_parser`.
+ * Possible Long-term fix: fork Restify and remove/replace the outdated deps.
+ */
 const originalBinding = process.binding;
 process.binding = function (name) {
     if (name === 'http_parser') {
