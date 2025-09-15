@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.45.13](https://github.com/zone-eu/wildduck/compare/v1.45.12...v1.45.13) (2025-09-11)
+
+
+### Bug Fixes
+
+* **domaincache:** ZMS-266: domaincache add updates where necessary ([#866](https://github.com/zone-eu/wildduck/issues/866)) ([eef9703](https://github.com/zone-eu/wildduck/commit/eef9703fe0c1c2d0a140abebd0a7c2d6f6b554bb))
+* **getmessages:** ZMS-260: messages.js getMessages allow unseen request flag to be false ([#861](https://github.com/zone-eu/wildduck/issues/861)) ([aab6608](https://github.com/zone-eu/wildduck/commit/aab6608119b53dd719a73ed48658ccb39532174b))
+* **messages-search:** ZMS-265: messages.js search, allow to search for only seen messages ([#865](https://github.com/zone-eu/wildduck/issues/865)) ([d0bd732](https://github.com/zone-eu/wildduck/commit/d0bd732e1a0a3c8081c6ae5d9c0a34477b7fe462))
+
 ## [1.45.12](https://github.com/zone-eu/wildduck/compare/v1.45.11...v1.45.12) (2025-08-22)
 
 
