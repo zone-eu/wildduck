@@ -90,7 +90,6 @@
         "openpgp": "5.11.2",
         "pem-jwk": "2.0.0",
         "punycode.js": "2.3.1",
-        "pwnedpasswords": "1.0.6",
         "qrcode": "1.5.4",
         "restify": "11.1.0",
         "restify-cors-middleware2": "2.2.1",
