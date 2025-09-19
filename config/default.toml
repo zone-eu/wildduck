@@ -27,7 +27,7 @@ processes = 1
 [pwned]
 # If enabled then on every login checks the user's passwords against PwnedPasswords API
 enabled = false # disabled by default
-type = "softfail" # 
+type = "softfail"
 # hardfail -> Fail auth even is API is down or the password is Pwned
 # fail -> Fail auth only if the password is Pwned
 # softfail -> Auth succeeds even if password is Pwned but a flag is added to API response
