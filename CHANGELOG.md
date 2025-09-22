@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.45.14](https://github.com/zone-eu/wildduck/compare/v1.45.13...v1.45.14) (2025-09-22)
+
+
+### Bug Fixes
+
+* **fulltext-filter:** ZMS-257: Add boolean logic to fulltext filter ([#863](https://github.com/zone-eu/wildduck/issues/863)) ([06569f6](https://github.com/zone-eu/wildduck/commit/06569f6eb93f9fccf6dfb649651158fcec807fbd))
+* **pop3download-log:** ZMS-263: POP3RETR OK also log transferred bytes' size ([#872](https://github.com/zone-eu/wildduck/issues/872)) ([5411118](https://github.com/zone-eu/wildduck/commit/5411118da00db859ec3981f525fab6c51c4b6113))
+
 ## [1.45.13](https://github.com/zone-eu/wildduck/compare/v1.45.12...v1.45.13) (2025-09-11)
 
 
