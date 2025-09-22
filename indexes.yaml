@@ -419,6 +419,14 @@ indexes:
               name: 1
               updated: -1
 
+    - collection: addressregister
+      index:
+          name: by_disabled
+          key:
+              user: 1
+              disabled: 1
+              updated: -1
+
     # indexes for deleted messages
     - collection: archived
       index:
