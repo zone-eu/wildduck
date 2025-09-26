@@ -231,8 +231,7 @@ const serverOptions = {
                         uid: message.uid
                     },
                     {
-                        mimeTree: true,
-                        size: true
+                        mimeTree: true
                     },
                     (err, message) => {
                         if (err) {
