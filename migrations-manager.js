@@ -93,13 +93,12 @@ async function executeMigration(filePath) {
     console.log(`\n🔄 Executing migration: ${fileNameWithoutExtension}`);
 
     try {
-        // Read the migration file content
         const migrationContent = fs.readFileSync(filePath, 'utf8');
 
-        // Execute the migration script
-        const migrationFunction = new Function('db', 'print', migrationContent);
+        // Run the migration script as a JS function
+        const migrationFunction = new Function('db', 'log', migrationContent);
 
-        // Call the migration with the database context
+        // Pass the db context to the script as a (global) function parameter
         let currentDb = db;
 
         if (filePath.includes('users')) {
@@ -107,10 +106,8 @@ async function executeMigration(filePath) {
         }
 
         const prefixedPrint = (...args) => {
-            // The file name provides context for the specific migration run
             const prefix = `MIGRATION [${fileNameWithoutExtension}]:`;
 
-            // Log the prefix followed by the migration's arguments
             console.log(prefix, ...args);
         };
 
@@ -129,10 +126,8 @@ async function runMigrations() {
     console.log('='.repeat(50));
 
     try {
-        // Initialize database connection
         await initializeDatabase();
 
-        // Get all migration files
         const migrationFiles = getMigrationFiles();
 
         if (migrationFiles.length === 0) {
@@ -142,19 +137,15 @@ async function runMigrations() {
 
         console.log(`📋 Found ${migrationFiles.length} migration files`);
 
-        // Filter out already executed migrations
-        const pendingMigrations = migrationFiles;
-
-        if (pendingMigrations.length === 0) {
+        if (migrationFiles.length === 0) {
             console.log('✨ No migrations to execute');
             return;
         }
 
-        console.log(`⏳ ${pendingMigrations.length} pending migrations to execute`);
-        console.log('Pending migrations:', pendingMigrations.join(', '));
+        console.log(`⏳ ${migrationFiles.length} pending migrations to execute`);
+        console.log('Pending migrations:', migrationFiles.join(', '));
 
-        // Execute each pending migration
-        for (const filepath of pendingMigrations) {
+        for (const filepath of migrationFiles) {
             await executeMigration(filepath);
         }
 
@@ -163,7 +154,7 @@ async function runMigrations() {
         console.error('\n💥 Migration process failed:', error.message);
         process.exit(1);
     } finally {
-        // Close database connection
+        // Clean and close database connections
 
         for (const client of Object.values(mongoClients)) {
             if (client && client.topology && client.topology.isConnected()) {
