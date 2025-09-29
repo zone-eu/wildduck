@@ -29,7 +29,7 @@ const taskAcmeUpdate = require('./lib/tasks/acme-update');
 const taskClearFolder = require('./lib/tasks/clear-folder');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
-const runMigrations = require('./migrations-manager');
+const runMigrations = require('./migrations-handler');
 
 let messageHandler;
 let mailboxHandler;
