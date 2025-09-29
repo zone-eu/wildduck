@@ -170,3 +170,5 @@ async function runMigrations() {
 (async () => {
     await runMigrations();
 })();
+
+module.exports = runMigrations;
