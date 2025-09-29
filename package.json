@@ -13,8 +13,7 @@
         "show": "NODE_CONFIG_ONLY=true node server.js",
         "start": "node server.js",
         "update": "rm -rf node_modules package-lock.json && ncu -u && npm install",
-        "generate-api-docs": "GENERATE_API_DOCS=true REGENERATE_API_DOCS=true node server.js",
-        "migrate": "node migrations-manager.js"
+        "generate-api-docs": "GENERATE_API_DOCS=true REGENERATE_API_DOCS=true node server.js"
     },
     "keywords": [
         "imap",
