@@ -101,17 +101,17 @@ async function executeMigration(filePath) {
         // Pass the db context to the script as a (global) function parameter
         let currentDb = db;
 
-        if (filePath.includes('users')) {
+        if (path.dirname(filePath).includes('users')) {
             currentDb = usersDb;
         }
 
-        const prefixedPrint = (...args) => {
+        const prefixedLog = (...args) => {
             const prefix = `MIGRATION [${fileNameWithoutExtension}]:`;
 
             console.log(prefix, ...args);
         };
 
-        await migrationFunction(currentDb, prefixedPrint);
+        await migrationFunction(currentDb, prefixedLog);
 
         console.log(`✅ Migration completed: ${fileNameWithoutExtension}`);
     } catch (error) {
