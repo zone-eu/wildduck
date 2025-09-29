@@ -29,6 +29,7 @@ const taskAcmeUpdate = require('./lib/tasks/acme-update');
 const taskClearFolder = require('./lib/tasks/clear-folder');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
+const runMigrations = require('./migrations-manager');
 
 let messageHandler;
 let mailboxHandler;
@@ -221,7 +222,7 @@ module.exports.start = callback => {
                             }
                         });
                     }, 60 * 1000);
-                    return start();
+                    runMigrations(db).finally(() => start());
                 });
             });
         });

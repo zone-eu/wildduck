@@ -1,48 +1,60 @@
 'use strict';
 /* global db, log */
 // MongoDB Migration Script: addressregister add disabled field to all current addressregister entries in DB
-
 const ENABLED = true;
+const BATCH_SIZE = 1000;
 
-// Main migration function
 async function addDisabledToAddressregister() {
     log('Starting migration: Adding disabled field to addressregister collection');
 
     const collection = db.collection('addressregister');
 
-    const totalCount = await collection.countDocuments();
-    if (totalCount === 0) {
-        log('addressregister collection is empty. Migration skipped.');
-        return;
-    }
+    const totalToMigrate = await collection.countDocuments({ disabled: { $exists: false } });
 
-    const documentsToUpdate = await collection.countDocuments({
-        disabled: { $exists: false }
-    });
-
-    if (documentsToUpdate === 0) {
+    if (totalToMigrate === 0) {
         log('All documents already have disabled field. Migration skipped.');
         return;
     }
 
-    log(`Updating ${documentsToUpdate} documents...`);
+    log(`Migrating ${totalToMigrate} documents in batches of ${BATCH_SIZE}...`);
 
-    try {
-        const result = await collection.updateMany({ disabled: { $exists: false } }, { $set: { disabled: false } });
+    let processedCount = 0;
+    let batchNumber = 0;
 
-        log(`Migration complete!`);
-        log(`- Documents matched: ${result.matchedCount}`);
-        log(`- Documents modified: ${result.modifiedCount}`);
+    let running = true;
 
-        if (result.matchedCount === result.modifiedCount) {
-            log('✅ All matched documents were successfully updated');
-        } else {
-            log(`${result.matchedCount - result.modifiedCount} matched documents were not modified`);
+    while (running) {
+        // Find batch of documents without the field
+        const batch = await collection
+            .find(
+                { disabled: { $exists: false } },
+                {
+                    projection: {
+                        _id: true
+                    }
+                }
+            )
+            .limit(BATCH_SIZE)
+            .toArray();
+
+        if (batch.length === 0) {
+            running = false;
+            break;
         }
-    } catch (e) {
-        log(`❌ Migration failed: ${e}`);
-        throw e;
+
+        // Update this batch
+        const ids = batch.map(doc => doc._id);
+        const result = await collection.updateMany({ _id: { $in: ids } }, { $set: { disabled: false } });
+
+        processedCount += result.modifiedCount;
+        batchNumber++;
+
+        if (batchNumber % 10 === 0) {
+            log(`Progress: ${processedCount}/${totalToMigrate} (${((processedCount / totalToMigrate) * 100).toFixed(1)}%)`);
+        }
     }
+
+    log(`✅ Migration complete! Updated ${processedCount} documents`);
 }
 
 if (ENABLED) {
