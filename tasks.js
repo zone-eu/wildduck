@@ -29,7 +29,7 @@ const taskAcmeUpdate = require('./lib/tasks/acme-update');
 const taskClearFolder = require('./lib/tasks/clear-folder');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
-const runMigrations = require('./migrations-handler');
+const taskRunMigrations = require('./lib/tasks/run-migrations');
 
 let messageHandler;
 let mailboxHandler;
@@ -139,10 +139,12 @@ module.exports.start = callback => {
             gcTimeout = setTimeout(clearExpiredMessages, consts.GC_INTERVAL);
             gcTimeout.unref();
 
-            // start processing pending tasks in 5 minuytes after start
+            // start processing pending tasks in 5 minutes after start
             taskTimeout = setTimeout(runTasks, consts.TASK_STARTUP_INTERVAL);
             taskTimeout.unref();
         });
+
+        taskHandler.add('run-migrations', {});
 
         return callback();
     };
@@ -222,7 +224,7 @@ module.exports.start = callback => {
                             }
                         });
                     }, 60 * 1000);
-                    runMigrations(db).finally(() => start());
+                    return start();
                 });
             });
         });
@@ -705,7 +707,14 @@ function processTask(task, data, callback) {
                     callback(null, true);
                 }
             );
-
+        case 'run-migrations':
+            return taskRunMigrations(task, data, { db }, err => {
+                if (err) {
+                    return callback(err);
+                }
+                // release
+                callback(null, true);
+            });
         default:
             // release task by returning true
             return callback(null, true);
