@@ -24,6 +24,16 @@ processes = 1
 #secret="a secret cat"
 #cipher="aes192" # only for decrypting legacy values (if there are any)
 
+[pwned]
+# If enabled then on every login checks the user's passwords against PwnedPasswords API
+enabled = false # disabled by default
+type = "softfail"
+# hardfail -> Fail auth even is API is down or the password is Pwned
+# fail -> Fail auth only if the password is Pwned
+# softfail -> Auth succeeds even if password is Pwned but a flag is added to API response
+# none -> No check is conducted
+apiUrl = "" # url of the PwnedPasswords API. If not set then uses the public url, if set then you can use your own API that uses HIBP Passwords downloaded via official PwnedPasswordsDownloader
+
 [webauthn]
 rpId = "example.com"             # origin domain
 rpName = "WildDuck Email Server"
