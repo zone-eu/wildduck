@@ -413,11 +413,19 @@ indexes:
 
     - collection: addressregister
       index:
-          name: by_name
+          name: by_user_disabled_partial
           key:
               user: 1
-              name: 1
               updated: -1
+          partialFilterExpression:
+              disabled: false
+
+    - collection: addressregister
+      index:
+          name: by_user_disabled
+          key:
+              user: 1
+              disabled: 1
 
     # indexes for deleted messages
     - collection: archived
