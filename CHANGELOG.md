@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.46.0](https://github.com/zone-eu/wildduck/compare/v1.45.13...v1.46.0) (2025-10-07)
+
+
+### Features
+
+* **deps-node:** ZMS-267: Bump Deps, Update API Docs, Remove support for node v16 and v18 ([#867](https://github.com/zone-eu/wildduck/issues/867)) ([48ee3ea](https://github.com/zone-eu/wildduck/commit/48ee3ead8ca4a33d2cb5bd47181ebd8814588d85))
+
+
+### Bug Fixes
+
+* **addressregister:** ZMS-268: add new addressregister endpoint to disable an entry or edit it ([#873](https://github.com/zone-eu/wildduck/issues/873)) ([08e5070](https://github.com/zone-eu/wildduck/commit/08e5070f45f8e062bc2bcb75c9ece66c9bdd6313))
+* **fulltext-filter:** ZMS-257: Add boolean logic to fulltext filter ([#863](https://github.com/zone-eu/wildduck/issues/863)) ([06569f6](https://github.com/zone-eu/wildduck/commit/06569f6eb93f9fccf6dfb649651158fcec807fbd))
+* **messages-search:** ZMS-271: optimize user messages search query ([#876](https://github.com/zone-eu/wildduck/issues/876)) ([63811c7](https://github.com/zone-eu/wildduck/commit/63811c7787b5e254f0b425d326762d05a20ba935))
+* **migrations:** ZMS-274 Implement MongoDb Migrations in Wildduck ([#879](https://github.com/zone-eu/wildduck/issues/879)) ([f71972d](https://github.com/zone-eu/wildduck/commit/f71972d1237927326259837c8163604389f9877b))
+* **pop3download-log:** ZMS-263: POP3RETR OK also log transferred bytes' size ([#872](https://github.com/zone-eu/wildduck/issues/872)) ([5411118](https://github.com/zone-eu/wildduck/commit/5411118da00db859ec3981f525fab6c51c4b6113))
+* **pwned-check:** ZMS-264: Add feature to check password with PwnedPassword API on User Login ([#864](https://github.com/zone-eu/wildduck/issues/864)) ([fb01977](https://github.com/zone-eu/wildduck/commit/fb019774c3dea7f08c7b97e8ac285aabb74bbdf8))
+* **search-apply:** ZMS-275: search-apply allow to delete found messages ([#881](https://github.com/zone-eu/wildduck/issues/881)) ([1dc422f](https://github.com/zone-eu/wildduck/commit/1dc422f993a290990618887663d61737880bfa15))
+* update api docs ([#880](https://github.com/zone-eu/wildduck/issues/880)) ([a38a704](https://github.com/zone-eu/wildduck/commit/a38a7046c2144622aedd0aabaf4b973036132b86))
+
 ## [1.45.13](https://github.com/zone-eu/wildduck/compare/v1.45.12...v1.45.13) (2025-09-11)
 
 
