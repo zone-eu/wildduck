@@ -141,13 +141,33 @@ module.exports = {
         };
 
         this._server.onAppend(path, flags, internaldate, raw, this.session, (err, success, info) => {
-            Object.keys(info || {}).forEach(key => {
-                let vkey = '_' + key.replace(/[A-Z]+/g, c => '_' + c.toLowerCase());
-                if (['_id', '_status'].includes(vkey)) {
-                    vkey = '_append' + vkey;
+            Object.keys(info || {})
+                .filter(key => key !== 'prepared')
+                .forEach(key => {
+                    let vkey = '_' + key.replace(/[A-Z]+/g, c => '_' + c.toLowerCase());
+                    if (['_id', '_status'].includes(vkey)) {
+                        vkey = '_append' + vkey;
+                    }
+                    logdata[vkey] = info[key];
+                });
+
+            if (info && info.prepared) {
+                const { headers } = info.prepared;
+
+                const from = headers.find(header => header.key === 'from');
+                const parsedFrom = info.prepared.mimeTree.parsedHeader.from[0];
+                if (from && parsedFrom) {
+                    logdata._append_header_from = parsedFrom.address;
+                    logdata._append_header_from_name = parsedFrom.name;
+                    logdata._append_header_from_value = from.value;
                 }
-                logdata[vkey] = info[key];
-            });
+
+                const { msgid } = info.prepared;
+                logdata._append_message_id = msgid;
+
+                const { subject } = info.prepared;
+                logdata._append_subject = subject;
+            }
 
             if (err) {
                 logdata._error = err.message;
