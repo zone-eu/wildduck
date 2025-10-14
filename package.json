@@ -51,6 +51,7 @@
         "@postalsys/vmc": "1.1.2",
         "@root/acme": "3.1.0",
         "@root/csr": "0.8.1",
+        "@zone-eu/wild-plugins": "1.0.1",
         "accesscontrol": "2.2.1",
         "axios": "1.12.0",
         "base32.js": "0.1.0",
@@ -105,7 +106,6 @@
         "unix-crypt-td-js": "1.1.4",
         "unixcrypt": "1.2.0",
         "wild-config": "1.7.1",
-        "wild-plugins": "1.0.0",
         "yargs": "18.0.0",
         "zone-mta": "3.10.2"
     },
