@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.1](https://github.com/zone-eu/wildduck/compare/v1.46.0...v1.46.1) (2025-10-14)
+
+
+### Bug Fixes
+
+* **imap-append:** ZMS-276: imap append improve logging add new fields to logging ([#884](https://github.com/zone-eu/wildduck/issues/884)) ([6e4b701](https://github.com/zone-eu/wildduck/commit/6e4b701a88edc671c9e8d0f816230fca26e95871))
+* **pluginhandler:** ZMS-269: plugins - use wild-plugins, update options, allow for dynamic config ([#886](https://github.com/zone-eu/wildduck/issues/886)) ([479e5bc](https://github.com/zone-eu/wildduck/commit/479e5bcccd1e351f6441216e36f3c9f6150579f4))
+
 ## [1.46.0](https://github.com/zone-eu/wildduck/compare/v1.45.13...v1.46.0) (2025-10-07)
 
 
