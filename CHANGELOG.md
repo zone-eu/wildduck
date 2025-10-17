@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.2](https://github.com/zone-eu/wildduck/compare/v1.46.1...v1.46.2) (2025-10-17)
+
+
+### Bug Fixes
+
+* ZMSA-1: update release workflow, update deps, use updated deps, scope package ([#887](https://github.com/zone-eu/wildduck/issues/887)) ([e3d3221](https://github.com/zone-eu/wildduck/commit/e3d3221bd5457400af1b07aad0a7fca80bd66191))
+
 ## [1.46.1](https://github.com/zone-eu/wildduck/compare/v1.46.0...v1.46.1) (2025-10-14)
 
 
