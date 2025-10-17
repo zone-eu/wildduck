@@ -3,7 +3,7 @@
 'use strict';
 
 const rawpath = process.argv[2];
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const { ImapFlow } = require('imapflow');
 
 const raw = require('fs').readFileSync(rawpath);

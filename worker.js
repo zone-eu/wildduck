@@ -1,6 +1,6 @@
 'use strict';
 
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const log = require('npmlog');
 const imap = require('./imap');
 const pop3 = require('./pop3');

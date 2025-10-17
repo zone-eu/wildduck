@@ -1,7 +1,7 @@
 'use strict';
 
 const log = require('npmlog');
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const Gelf = require('gelf');
 const os = require('os');
 const { Queue, Worker } = require('bullmq');

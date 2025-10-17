@@ -12,7 +12,7 @@ process.env.NODE_CONFIG_DIR = pathlib.join(__dirname, '..', 'config');
 
 const db = require('../lib/db');
 const crypto = require('crypto');
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const yargs = require('yargs');
 const util = require('util');
 

@@ -1,6 +1,6 @@
 'use strict';
 
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const restify = require('restify');
 const log = require('npmlog');
 const logger = require('restify-logger');

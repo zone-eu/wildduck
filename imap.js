@@ -1,7 +1,7 @@
 'use strict';
 
 const log = require('npmlog');
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const IMAPServerModule = require('./imap-core');
 const IMAPServer = IMAPServerModule.IMAPServer;
 const ImapNotifier = require('./lib/imap-notifier');

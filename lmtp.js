@@ -2,7 +2,7 @@
 
 // Simple LMTP server that accepts all messages for valid recipients
 
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const log = require('npmlog');
 const ObjectId = require('mongodb').ObjectId;
 const SMTPServer = require('smtp-server').SMTPServer;

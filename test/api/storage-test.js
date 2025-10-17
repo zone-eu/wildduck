@@ -9,7 +9,7 @@ const chai = require('chai');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 

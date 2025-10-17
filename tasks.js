@@ -1,7 +1,7 @@
 'use strict';
 
 const log = require('npmlog');
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const db = require('./lib/db');
 const consts = require('./lib/consts');
 const RedFour = require('ioredfour');

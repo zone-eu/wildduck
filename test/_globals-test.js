@@ -3,7 +3,7 @@
 const supertest = require('supertest');
 const fs = require('fs');
 
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
