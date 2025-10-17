@@ -23,27 +23,23 @@ jobs:
             patch: ${{ steps.release.outputs.patch }}
             release_created: ${{ steps.release.outputs.release_created }}
         steps:
-            - uses: google-github-actions/release-please-action@v3
+            - uses: google-github-actions/release-please-action@v4
               id: release
               with:
                   release-type: node
-                  package-name: ${{env.NPM_MODULE_NAME}}
-                  pull-request-title-pattern: 'chore${scope}: release ${version} [skip-ci]'
             # The logic below handles the npm publication:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
               # these if statements ensure that a publication only occurs when
               # a new release is created:
               if: ${{ steps.release.outputs.release_created }}
-            - uses: actions/setup-node@v3
+            - uses: actions/setup-node@v5
               with:
-                  node-version: 18
+                  node-version: 24
                   registry-url: 'https://registry.npmjs.org'
               if: ${{ steps.release.outputs.release_created }}
             - run: npm ci
               if: ${{ steps.release.outputs.release_created }}
             - run: npm publish --provenance --access public
-              env:
-                  NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
               if: ${{ steps.release.outputs.release_created }}
 
     publish_docker:

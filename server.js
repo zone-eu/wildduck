@@ -29,7 +29,7 @@ process.binding = function (name) {
 const v8 = require('node:v8');
 const Path = require('path');
 const os = require('os');
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 
 if (process.env.NODE_CONFIG_ONLY === 'true') {
     console.log(require('util').inspect(config, false, 22)); // eslint-disable-line

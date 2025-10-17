@@ -1,6 +1,6 @@
 'use strict';
 
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 const log = require('npmlog');
 const POP3Server = require('./lib/pop3/server');
 const UserHandler = require('./lib/user-handler');

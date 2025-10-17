@@ -9,7 +9,7 @@ const chai = require('chai');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
-const config = require('wild-config');
+const config = require('@zone-eu/wild-config');
 
 const { MAX_MAILBOX_NAME_LENGTH, MAX_SUB_MAILBOXES } = require('../../lib/consts');
 
