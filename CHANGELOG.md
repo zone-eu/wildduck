@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.3](https://github.com/zone-eu/wildduck/compare/v1.46.2...v1.46.3) (2025-10-23)
+
+
+### Bug Fixes
+
+* **addAsync-thread:** ZMSA-2: message addAsync, if a message is referenced then use reference's thread ([#889](https://github.com/zone-eu/wildduck/issues/889)) ([2e89a0e](https://github.com/zone-eu/wildduck/commit/2e89a0e8f0596eb0f9b4b066aa2ee2fc0ee53064))
+* **health:** ZMSA-4: health endpoint also add WD API version ([#890](https://github.com/zone-eu/wildduck/issues/890)) ([35ed9fc](https://github.com/zone-eu/wildduck/commit/35ed9fcfe8e27955b3aeb3ff438ae4e6610d557e))
+
 ## [1.46.2](https://github.com/zone-eu/wildduck/compare/v1.46.1...v1.46.2) (2025-10-17)
 
 
