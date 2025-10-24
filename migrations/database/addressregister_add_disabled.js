@@ -9,31 +9,49 @@ async function addDisabledToAddressregister() {
 
     const collection = db.collection('addressregister');
 
-    const totalToMigrate = await collection.countDocuments({ disabled: { $exists: false } });
+    // Get current max id
+    const maxIdDoc = await collection.find({}).sort({ _id: -1 }).limit(1).toArray();
+    const maxIdAtStart = maxIdDoc.length > 0 ? maxIdDoc[0]._id : null;
+
+    if (!maxIdAtStart) {
+        log('No documents found. Migration skipped.');
+        return;
+    }
+
+    const totalToMigrate = await collection.countDocuments({
+        disabled: { $exists: false },
+        _id: { $lte: maxIdAtStart } // Only count documents that exist now
+    });
 
     if (totalToMigrate === 0) {
         log('All documents already have disabled field. Migration skipped.');
         return;
     }
 
-    log(`Migrating ${totalToMigrate} documents in batches of ${BATCH_SIZE}...`);
+    log(`Migrating ${totalToMigrate} documents (up to _id: ${maxIdAtStart}) in batches of ${BATCH_SIZE}...`);
 
     let processedCount = 0;
     let batchNumber = 0;
-
+    let lastId = null;
     let running = true;
 
     while (running) {
-        // Find batch of documents without the field
+        const query = {
+            disabled: { $exists: false },
+            _id: { $lte: maxIdAtStart } // Cap at migration start
+        };
+
+        // cursor based pagination
+        if (lastId) {
+            query._id.$gt = lastId;
+        }
+
+        // Find batch of documents without the field and capped at max id
         const batch = await collection
-            .find(
-                { disabled: { $exists: false } },
-                {
-                    projection: {
-                        _id: true
-                    }
-                }
-            )
+            .find(query, {
+                projection: { _id: true }
+            })
+            .sort({ _id: 1 })
             .limit(BATCH_SIZE)
             .toArray();
 
@@ -49,8 +67,11 @@ async function addDisabledToAddressregister() {
         processedCount += result.modifiedCount;
         batchNumber++;
 
-        if (batchNumber % 10 === 0) {
-            log(`Progress: ${processedCount}/${totalToMigrate} (${((processedCount / totalToMigrate) * 100).toFixed(1)}%)`);
+        // Update lastId for next iteration
+        lastId = batch[batch.length - 1]._id;
+
+        if (totalToMigrate < 50000 || batchNumber % 10 === 0) {
+            log(`Progress: Batch ${batchNumber} - ${processedCount}/${totalToMigrate} (${((processedCount / totalToMigrate) * 100).toFixed(1)}%)`);
         }
     }
 
