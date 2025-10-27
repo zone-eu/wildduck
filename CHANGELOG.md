@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.46.3](https://github.com/zone-eu/wildduck/compare/v1.46.2...v1.46.3) (2025-10-27)
+
+
+### Bug Fixes
+
+* **addAsync-thread:** ZMSA-2: message addAsync, if a message is referenced then use reference's thread ([#889](https://github.com/zone-eu/wildduck/issues/889)) ([2e89a0e](https://github.com/zone-eu/wildduck/commit/2e89a0e8f0596eb0f9b4b066aa2ee2fc0ee53064))
+* **addressregister-migration:** ZMSA-6: improve addressregister migration script ([#892](https://github.com/zone-eu/wildduck/issues/892)) ([de6ee9f](https://github.com/zone-eu/wildduck/commit/de6ee9f072b360d768338856648d16c463a32af7))
+* **health:** ZMSA-4: health endpoint also add WD API version ([#890](https://github.com/zone-eu/wildduck/issues/890)) ([35ed9fc](https://github.com/zone-eu/wildduck/commit/35ed9fcfe8e27955b3aeb3ff438ae4e6610d557e))
+* **imap-onAppend-logging:** ZMSA-7: onappend logging - parsedHeader.from might not exist ([#894](https://github.com/zone-eu/wildduck/issues/894)) ([27fcd73](https://github.com/zone-eu/wildduck/commit/27fcd730bb8d9dfb9f81f0f764c9cb417ffc211f))
+* **threading:** ZMSA-5: if referencing a deleted thread then recreate it ([#893](https://github.com/zone-eu/wildduck/issues/893)) ([7b88109](https://github.com/zone-eu/wildduck/commit/7b8810993c592bacf1294e8aec2da4c9bfe0a113))
+
 ## [1.46.2](https://github.com/zone-eu/wildduck/compare/v1.46.1...v1.46.2) (2025-10-17)
 
 
