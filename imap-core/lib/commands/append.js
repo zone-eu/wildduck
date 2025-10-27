@@ -155,7 +155,7 @@ module.exports = {
                 const { headers } = info.prepared;
 
                 const from = headers.find(header => header.key === 'from');
-                const parsedFrom = info.prepared.mimeTree.parsedHeader.from[0];
+                const parsedFrom = info.prepared.mimeTree.parsedHeader?.from?.[0];
                 if (from && parsedFrom) {
                     logdata._append_header_from = parsedFrom.address;
                     logdata._append_header_from_name = parsedFrom.name;
