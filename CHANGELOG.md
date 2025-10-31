@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.4](https://github.com/zone-eu/wildduck/compare/v1.46.3...v1.46.4) (2025-10-31)
+
+
+### Bug Fixes
+
+* **threading:** fix threading ([#895](https://github.com/zone-eu/wildduck/issues/895)) ([52d5449](https://github.com/zone-eu/wildduck/commit/52d54492bf5a7c36c7eae96519ee3751daa32d82))
+
 ## [1.46.3](https://github.com/zone-eu/wildduck/compare/v1.46.2...v1.46.3) (2025-10-27)
 
 
