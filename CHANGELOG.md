@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.5](https://github.com/zone-eu/wildduck/compare/v1.46.4...v1.46.5) (2025-11-03)
+
+
+### Bug Fixes
+
+* ZMS-280: bump deps ([#897](https://github.com/zone-eu/wildduck/issues/897)) ([79994f1](https://github.com/zone-eu/wildduck/commit/79994f19e5f8798ed0007730610ef4100b19b00d))
+
 ## [1.46.4](https://github.com/zone-eu/wildduck/compare/v1.46.3...v1.46.4) (2025-10-31)
 
 
