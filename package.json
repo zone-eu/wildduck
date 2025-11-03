@@ -56,7 +56,7 @@
         "@zone-eu/seq-index": "1.1.2",
         "@zone-eu/wild-config": "1.7.2",
         "@zone-eu/wild-plugins": "1.0.4",
-        "@zone-eu/zone-mta": "3.10.4",
+        "@zone-eu/zone-mta": "3.10.5",
         "accesscontrol": "2.2.1",
         "axios": "1.13.1",
         "base32.js": "0.1.0",
