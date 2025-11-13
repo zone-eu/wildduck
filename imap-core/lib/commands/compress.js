@@ -34,6 +34,11 @@ module.exports = {
         }
 
         setImmediate(() => {
+            // Check if connection is already closed or closing
+            if (!this._parser) {
+                return this.close();
+            }
+
             this.compression = true;
 
             this._deflate = zlib.createDeflateRaw({

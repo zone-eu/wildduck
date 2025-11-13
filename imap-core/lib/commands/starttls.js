@@ -28,6 +28,11 @@ module.exports = {
  * @param {Object} connection IMAPConnection instance
  */
 function upgrade(connection) {
+    // Check if connection is already closed or closing
+    if (!connection._parser) {
+        return connection.close();
+    }
+
     connection._socket.unpipe(connection._parser);
     connection.writeStream.unpipe(connection._socket);
     connection._upgrading = true;
@@ -78,6 +83,11 @@ function upgrade(connection) {
     secureSocket.setTimeout(connection._server.options.socketTimeout || SOCKET_TIMEOUT, () => connection._onTimeout());
 
     secureSocket.on('secure', () => {
+        // Check again if connection is still active
+        if (!connection._parser) {
+            return connection.close();
+        }
+
         connection.secure = true;
         connection._socket = secureSocket;
         connection._upgrading = false;
