@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.46.6](https://github.com/zone-eu/wildduck/compare/v1.46.5...v1.46.6) (2025-11-13)
+
+
+### Bug Fixes
+
+* check password against hibp on hardfail too ([#904](https://github.com/zone-eu/wildduck/issues/904)) ([34e6be8](https://github.com/zone-eu/wildduck/commit/34e6be84ab060d4fb2eb980336d05d96baf24916))
+* fixed uncaught exception `dest.on` is not a fn (closes [#858](https://github.com/zone-eu/wildduck/issues/858)) ([#905](https://github.com/zone-eu/wildduck/issues/905)) ([f8bae92](https://github.com/zone-eu/wildduck/commit/f8bae923521f1cf27af698a1529358c6cdd3d66f))
+* **hibp-use-keepalive:** ZMSA-12: use keepalive when querying HIBP database ([#900](https://github.com/zone-eu/wildduck/issues/900)) ([1d42bc7](https://github.com/zone-eu/wildduck/commit/1d42bc7c1ba7928592bf2670ea5801f27450f1bc))
+* **hibp:** ZMSA-11: check user password in HIBP after successful password check ([#901](https://github.com/zone-eu/wildduck/issues/901)) ([ca38ef2](https://github.com/zone-eu/wildduck/commit/ca38ef2b9a20e31b186cb62364ff1ffefbac8afd))
+* **messageHandler-logging:** ZMSA-15: improve message-handler logging ([#903](https://github.com/zone-eu/wildduck/issues/903)) ([5c508fe](https://github.com/zone-eu/wildduck/commit/5c508fe491e328dd56677fb0979de639bc3c0f15))
+* **threading:** ZMS-281: refactor threading ([#899](https://github.com/zone-eu/wildduck/issues/899)) ([81c746c](https://github.com/zone-eu/wildduck/commit/81c746c280e9bada4ff60f64644baa6cc0045239))
+
 ## [1.46.5](https://github.com/zone-eu/wildduck/compare/v1.46.4...v1.46.5) (2025-11-03)
 
 

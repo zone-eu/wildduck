@@ -1,6 +1,6 @@
 {
     "name": "@zone-eu/wildduck",
-    "version": "1.46.5",
+    "version": "1.46.6",
     "description": "IMAP/POP3 server built with Node.js and MongoDB",
     "main": "server.js",
     "scripts": {
