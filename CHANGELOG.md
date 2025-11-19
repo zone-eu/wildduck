@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.8](https://github.com/zone-eu/wildduck/compare/v1.46.7...v1.46.8) (2025-11-19)
+
+
+### Bug Fixes
+
+* ZMSA-24: when updating user info and setting new password reset pwned checks ([#912](https://github.com/zone-eu/wildduck/issues/912)) ([1e2bdcd](https://github.com/zone-eu/wildduck/commit/1e2bdcd61395b2589efb2ab7787c989a8456b1b5))
+
 ## [1.46.7](https://github.com/zone-eu/wildduck/compare/v1.46.6...v1.46.7) (2025-11-19)
 
 
