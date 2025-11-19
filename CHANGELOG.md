@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.7](https://github.com/zone-eu/wildduck/compare/v1.46.6...v1.46.7) (2025-11-19)
+
+
+### Bug Fixes
+
+* ZMSA-17: improve filterHandler and messageHandler logging ([#907](https://github.com/zone-eu/wildduck/issues/907)) ([03c4ffd](https://github.com/zone-eu/wildduck/commit/03c4ffd9cdc3b47f2ff16dde583e60120c8fd9b3))
+* ZMSA-21 & ZMSA-22: fixes to pwned check and return pwned infor on get user api query ([#909](https://github.com/zone-eu/wildduck/issues/909)) ([f494c83](https://github.com/zone-eu/wildduck/commit/f494c83895ca3e8f2f092a18e1a1d3b4811b471e))
+* ZMSA-24: unset lastPwnedCheck and passwordPwned when resetting user password ([#911](https://github.com/zone-eu/wildduck/issues/911)) ([78fbe8a](https://github.com/zone-eu/wildduck/commit/78fbe8a669ddd24cbe38f4656026e9a5cfe8e2b9))
+
 ## [1.46.6](https://github.com/zone-eu/wildduck/compare/v1.46.5...v1.46.6) (2025-11-13)
 
 
