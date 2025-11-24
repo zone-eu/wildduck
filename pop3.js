@@ -250,11 +250,18 @@ const serverOptions = {
                         let limiter = new LimitedFetch({
                             key: 'pdw:' + session.user.id,
                             ttlcounter: messageHandler.counters.ttlcounter,
-                            maxBytes: limit
+                            maxBytes: limit,
+                            skipCounter: true
                         });
 
                         response.value.pipe(limiter);
                         response.value.once('error', err => limiter.emit('error', err));
+
+                        // ends all streams and cleans up
+                        limiter.abort = () => {
+                            response.value.end();
+                            limiter.end();
+                        };
 
                         callback(null, limiter);
                     }
