@@ -111,7 +111,7 @@ const serverOptions = {
                 // cast value to string if not string
                 value = typeof req.params[key] === 'string' ? req.params[key] : util.inspect(req.params[key], false, 3).toString().trim();
 
-                if (['password'].includes(key)) {
+                if (['password', 'existingPassword'].includes(key)) {
                     value = '***';
                 } else if (value.length > 128) {
                     value = value.substr(0, 128) + '…';
