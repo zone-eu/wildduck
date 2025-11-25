@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.9](https://github.com/zone-eu/wildduck/compare/v1.46.8...v1.46.9) (2025-11-25)
+
+
+### Bug Fixes
+
+* **req_existingPassword:** ZMSA-32: censor existingPassword in gelf logs ([#917](https://github.com/zone-eu/wildduck/issues/917)) ([1d04818](https://github.com/zone-eu/wildduck/commit/1d04818200e44417dfc4d15803cac2a6eff6a13c))
+* ZMSA-29: POP3 TOP command calculate counters correctly and correctly update them ([#914](https://github.com/zone-eu/wildduck/issues/914)) ([4442eb5](https://github.com/zone-eu/wildduck/commit/4442eb52e635103e6f0a9fd8c3e87de89f5ab82e))
+* ZMSA-31: when updating password set requirePasswordChange false ([#916](https://github.com/zone-eu/wildduck/issues/916)) ([551860c](https://github.com/zone-eu/wildduck/commit/551860cb0c0112af04eb4d4816151f5fb2189007))
+
 ## [1.46.8](https://github.com/zone-eu/wildduck/compare/v1.46.7...v1.46.8) (2025-11-19)
 
 
