@@ -1,7 +1,7 @@
 'use strict';
 /* global db, log */
 // MongoDB Migration Script: addressregister add disabled field to all current addressregister entries in DB
-const ENABLED = true;
+const ENABLED = process.env.NODE_ENV === 'test' ? false : true;
 const BATCH_SIZE = 1000;
 
 async function addDisabledToAddressregister() {
