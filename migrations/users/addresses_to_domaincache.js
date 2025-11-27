@@ -1,8 +1,9 @@
 'use strict';
 /* global db, log */
 // MongoDB Migration Script: addresses to domaincache
+const config = require('@zone-eu/wild-config');
 
-const ENABLED = false;
+const ENABLED = process.env.NODE_ENV === 'test' ? false : !!config?.migrations?.users?.addressesToDomaincache?.enabled;
 
 // Extract domain from email address
 function extractDomain(email) {

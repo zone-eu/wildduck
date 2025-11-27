@@ -123,3 +123,6 @@ index = "wildduck"
 [elasticsearch.indexer]
 # idexing worker
 enabled = false
+
+[migrations]
+# @include "migrations.toml"
