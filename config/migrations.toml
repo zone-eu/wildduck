@@ -1,0 +1,14 @@
+[database]
+# global database migrations settings
+
+[database.addressregisterAddDisabled]
+enabled = true
+
+[users]
+# global users db migrations settings
+
+[users.addressesToDomaincache]
+enabled = false
+
+[users.domainaliasesToDomaincache]
+enabled = false
