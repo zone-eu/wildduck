@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.45.13"
+        "version": "1.46.9"
     },
     "servers": [
         {
@@ -712,6 +712,11 @@
                                     "suspended": {
                                         "type": "boolean",
                                         "description": "If true then disables authentication"
+                                    },
+                                    "protocol": {
+                                        "type": "string",
+                                        "description": "Application identifier for security logs",
+                                        "default": "API"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -3576,6 +3581,11 @@
                                             "flagged": {
                                                 "type": "boolean",
                                                 "description": "State of the \\Flagged flag"
+                                            },
+                                            "delete": {
+                                                "type": "boolean",
+                                                "description": "If true then delete all found messages",
+                                                "default": false
                                             }
                                         }
                                     }
@@ -5549,6 +5559,11 @@
                                         "type": "number",
                                         "description": "TTL in seconds for this password. Every time password is used, TTL is reset to this value"
                                     },
+                                    "protocol": {
+                                        "type": "string",
+                                        "description": "Application identifier for security logs",
+                                        "default": "API"
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -5672,6 +5687,16 @@
                         "required": true,
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    {
+                        "name": "protocol",
+                        "in": "query",
+                        "description": "Application identifier for security logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "API"
                         }
                     },
                     {
@@ -8789,7 +8814,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SuccessResponse"
+                                    "$ref": "#/components/schemas/HealthSuccessResponse"
                                 }
                             }
                         }
@@ -8799,22 +8824,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "description": "Indicates successful response",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "description": "Error message specifying what went wrong"
-                                        }
-                                    },
-                                    "required": [
-                                        "success",
-                                        "message"
-                                    ]
+                                    "$ref": "#/components/schemas/HealthErrorResponse"
                                 }
                             }
                         }
@@ -9421,6 +9431,19 @@
                     "suspended": {
                         "type": "boolean",
                         "description": "If true then the user can not authenticate"
+                    },
+                    "lastPwnedCheck": {
+                        "type": "string",
+                        "description": "Date when the last check of password against the Pwned passwords list was done",
+                        "format": "date-time"
+                    },
+                    "passwordPwned": {
+                        "type": "boolean",
+                        "description": "Specifies whether the user password has been found in Pwned passwords list"
+                    },
+                    "requirePasswordChange": {
+                        "type": "boolean",
+                        "description": "Indicates if account password has been reset and should be replaced"
                     }
                 },
                 "required": [
@@ -9445,7 +9468,9 @@
                     "hasPasswordSet",
                     "activated",
                     "disabled",
-                    "suspended"
+                    "suspended",
+                    "passwordPwned",
+                    "requirePasswordChange"
                 ]
             },
             "SuccessResponse": {
@@ -13951,6 +13976,47 @@
                 "required": [
                     "success",
                     "key"
+                ]
+            },
+            "HealthSuccessResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "version": {
+                        "type": "string",
+                        "description": "Currently running Wildduck API version"
+                    }
+                },
+                "required": [
+                    "success",
+                    "version"
+                ]
+            },
+            "HealthErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "version": {
+                        "type": "string",
+                        "description": "Currently running Wildduck API version"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Error message specifying what went wrong"
+                    }
+                },
+                "required": [
+                    "success",
+                    "version",
+                    "message"
                 ]
             }
         },
