@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.46.10](https://github.com/zone-eu/wildduck/compare/v1.46.9...v1.46.10) (2025-12-02)
+
+
+### Bug Fixes
+
+* add config to allow use of SECLEVEL=0 to enable TLSv1 and TLSv1.1 support ([#926](https://github.com/zone-eu/wildduck/issues/926)) ([2ebb072](https://github.com/zone-eu/wildduck/commit/2ebb07248578108271b30145b4aa67b56e990b1b))
+* **api-docs:** ZMSA-36: update docs ([#925](https://github.com/zone-eu/wildduck/issues/925)) ([34c650d](https://github.com/zone-eu/wildduck/commit/34c650d095a3d402c7d4943783ecc1ceeb3fb5ca))
+* **authlog:** ZMSA-34: authLog add protocol for better logging in user update and asp generate and delete ([#924](https://github.com/zone-eu/wildduck/issues/924)) ([cf66a99](https://github.com/zone-eu/wildduck/commit/cf66a991960975662c2f9727e4bedb920d106b70))
+* **tls-sni-logging:** ZMSA-38: imap and pop3 servers when tls errors log meta regardless of error ([#928](https://github.com/zone-eu/wildduck/issues/928)) ([97149a8](https://github.com/zone-eu/wildduck/commit/97149a8d5553da06a6416883ecfe94e6f68a5c2d))
+* ZMSA-27: addressregister add disabled field migration - don't run when testing application ([#919](https://github.com/zone-eu/wildduck/issues/919)) ([94ee526](https://github.com/zone-eu/wildduck/commit/94ee5262d4d7c62a66b5bfc9fbd64632f15ec92e))
+* ZMSA-28: make migrations configurable ([#922](https://github.com/zone-eu/wildduck/issues/922)) ([a58d037](https://github.com/zone-eu/wildduck/commit/a58d0377097125e49aa2f6ca571542267352df87))
+* ZMSA-33: request user information also return requirePasswordChange flag value ([#923](https://github.com/zone-eu/wildduck/issues/923)) ([c42ad5c](https://github.com/zone-eu/wildduck/commit/c42ad5cc0e264fa575b46115cd91ba018bdac55c))
+
 ## [1.46.9](https://github.com/zone-eu/wildduck/compare/v1.46.8...v1.46.9) (2025-11-25)
 
 
