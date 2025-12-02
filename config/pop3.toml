@@ -32,6 +32,9 @@ ignoredHosts = []
 #key="/path/to/server/key.pem"
 #cert="/path/to/server/cert.pem"
 
+## In case TLSv1 and TLSv1.1 support is needed specify SECLEVEL=0
+#ciphers="DEFAULT@SECLEVEL=0"
+
 [setup]
 # Public configuration for POP3
 hostname = "localhost"
