@@ -229,7 +229,6 @@ class IMAPServer extends EventEmitter {
      * @event
      */
     _onError(err) {
-        console.log('in _onError,', err);
         errors.notifyConnection(false, err);
         this.emit('error', err);
     }
