@@ -89,13 +89,21 @@ let createInterface = (ifaceOptions, callback) => {
 
         skipFetchLog: config.log.skipFetchLog,
 
-        SNICallback(servername, cb) {
+        SNICallback(opts, cb) {
+            if (typeof opts === 'string') {
+                opts = {
+                    servername: opts,
+                    meta: {}
+                };
+            }
+
             certs
                 .getContextForServername(
-                    servername,
+                    opts.servername,
                     serverOptions,
                     {
-                        source: 'imap'
+                        source: 'imap',
+                        ...opts.meta
                     },
                     {
                         loggelf: message => loggelf(message)

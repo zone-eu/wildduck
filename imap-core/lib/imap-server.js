@@ -316,8 +316,15 @@ class IMAPServer extends EventEmitter {
             isServer: true,
             server: this.server,
             SNICallback: (servername, cb) => {
+                const opts = {
+                    servername: this._normalizeHostname(servername),
+                    meta: {
+                        remoteAddress: socket.remoteAddress
+                    }
+                };
+
                 // eslint-disable-next-line new-cap
-                this.options.SNICallback(this._normalizeHostname(servername), (err, context) => {
+                this.options.SNICallback(opts, (err, context) => {
                     if (err) {
                         this.logger.error(
                             {
@@ -338,34 +345,40 @@ class IMAPServer extends EventEmitter {
 
         let errorTimer = false;
         let returned = false;
+        let tlsSocket;
+
         let onError = err => {
             clearTimeout(errorTimer);
             if (returned) {
                 return;
             }
             returned = true;
+
+            const meta = {};
+            if (tlsSocket) {
+                meta.tlsProtocol = tlsSocket.getProtocol();
+            }
+            meta.protocol = 'imap';
+            meta.stage = 'connect';
+            meta.remoteAddress = remoteAddress;
+
+            if (err) {
+                err.meta = meta;
+            }
+
             if (err && /SSL[23]*_GET_CLIENT_HELLO|ssl[23]*_read_bytes|ssl_bytes_to_cipher_list/i.test(err.message)) {
                 let message = err.message;
                 err.message = 'Failed to establish TLS session';
                 err.responseCode = 500;
                 err.code = err.code || 'TLSError';
-                err.meta = {
-                    protocol: 'imap',
-                    stage: 'connect',
-                    message,
-                    remoteAddress
-                };
+                meta.message = message;
             }
             if (!err || !err.message) {
                 err = new Error('Socket closed while initiating TLS');
                 err.responseCode = 500;
                 err.code = 'SocketError';
                 err.report = false;
-                err.meta = {
-                    protocol: 'imap',
-                    stage: 'connect',
-                    remoteAddress
-                };
+                err.meta = meta;
             }
             callback(err);
         };
@@ -374,7 +387,7 @@ class IMAPServer extends EventEmitter {
         socket.once('error', onError);
 
         // upgrade connection
-        let tlsSocket = new tls.TLSSocket(socket, socketOptions);
+        tlsSocket = new tls.TLSSocket(socket, socketOptions);
 
         let onCloseError = hadError => {
             if (hadError) {
