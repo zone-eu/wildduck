@@ -43,8 +43,15 @@ function upgrade(connection) {
         isServer: true,
         server: connection._server.server,
         SNICallback: (servername, cb) => {
+            const opts = {
+                servername,
+                meta: {
+                    remoteAddress: connection._socket.remoteAddress
+                }
+            };
+
             // eslint-disable-next-line new-cap
-            connection._server.options.SNICallback(servername, (err, context) => {
+            connection._server.options.SNICallback(opts, (err, context) => {
                 if (err) {
                     connection._server.logger.error(
                         {

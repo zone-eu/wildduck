@@ -168,13 +168,21 @@ if (config.api.secure && certOptions.key) {
 
     let defaultSecureContext = tls.createSecureContext(httpsServerOptions);
 
-    httpsServerOptions.SNICallback = (servername, cb) => {
+    httpsServerOptions.SNICallback = (opts, cb) => {
+        if (typeof opts === 'string') {
+            opts = {
+                servername: opts,
+                meta: {}
+            };
+        }
+
         certs
             .getContextForServername(
-                servername,
+                opts.servername,
                 httpsServerOptions,
                 {
-                    source: 'API'
+                    source: 'API',
+                    ...opts.meta
                 },
                 {
                     loggelf: message => loggelf(message)

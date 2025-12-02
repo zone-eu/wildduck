@@ -40,13 +40,21 @@ const serverOptions = {
         version: config.pop3.version || packageData.version
     },
 
-    SNICallback(servername, cb) {
+    SNICallback(opts, cb) {
+        if (typeof opts === 'string') {
+            opts = {
+                servername: opts,
+                meta: {}
+            };
+        }
+
         certs
             .getContextForServername(
-                servername,
+                opts.servername,
                 serverOptions,
                 {
-                    source: 'pop3'
+                    source: 'pop3',
+                    ...opts.meta
                 },
                 {
                     loggelf: message => loggelf(message)

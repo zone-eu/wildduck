@@ -316,8 +316,15 @@ class IMAPServer extends EventEmitter {
             isServer: true,
             server: this.server,
             SNICallback: (servername, cb) => {
+                const opts = {
+                    servername: this._normalizeHostname(servername),
+                    meta: {
+                        remoteAddress: socket.remoteAddress
+                    }
+                };
+
                 // eslint-disable-next-line new-cap
-                this.options.SNICallback(this._normalizeHostname(servername), (err, context) => {
+                this.options.SNICallback(opts, (err, context) => {
                     if (err) {
                         this.logger.error(
                             {
