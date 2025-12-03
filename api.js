@@ -82,7 +82,7 @@ const serverOptions = {
             let message = {
                 short_message: 'HTTP [' + req.method + ' ' + path + '] ' + (body.success ? 'OK' : 'FAILED'),
 
-                _remoteAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+                _req_remoteAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
 
                 _ip: ((req.params && req.params.ip) || '').toString().substr(0, 40) || '',
                 _sess: ((req.params && req.params.sess) || '').toString().substr(0, 40) || '',
