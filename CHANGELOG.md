@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.11](https://github.com/zone-eu/wildduck/compare/v1.46.10...v1.46.11) (2025-12-04)
+
+
+### Bug Fixes
+
+* **gridstore-upload:** ZMSA-17: fix gridstore upload deadlock ([#918](https://github.com/zone-eu/wildduck/issues/918)) ([4ab6f8e](https://github.com/zone-eu/wildduck/commit/4ab6f8e22cdce464fffbeff817e040753dcb882f))
+* **pop3-snicallback:** ZMSA-43: fix critical SNICallback bug in POP3 server ([#931](https://github.com/zone-eu/wildduck/issues/931)) ([5fa7139](https://github.com/zone-eu/wildduck/commit/5fa7139c1a50f2bc2497b8f1bab50f8cb3b95273))
+* **tls-logging:** ZMSA-40: where possible use _ip in gelf logs instead of _remoteAddress ([#929](https://github.com/zone-eu/wildduck/issues/929)) ([25ce95f](https://github.com/zone-eu/wildduck/commit/25ce95fb5ddb887a063446b8a0ae76dad73c94bc))
+
 ## [1.46.10](https://github.com/zone-eu/wildduck/compare/v1.46.9...v1.46.10) (2025-12-02)
 
 
