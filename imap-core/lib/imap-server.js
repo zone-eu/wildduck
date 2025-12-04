@@ -360,7 +360,7 @@ class IMAPServer extends EventEmitter {
             }
             meta.protocol = 'imap';
             meta.stage = 'connect';
-            meta.remoteAddress = remoteAddress;
+            meta.ip = remoteAddress;
 
             if (err) {
                 err.meta = meta;

@@ -82,7 +82,7 @@ const serverOptions = {
             let message = {
                 short_message: 'HTTP [' + req.method + ' ' + path + '] ' + (body.success ? 'OK' : 'FAILED'),
 
-                _remote_ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+                _req_remoteAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
 
                 _ip: ((req.params && req.params.ip) || '').toString().substr(0, 40) || '',
                 _sess: ((req.params && req.params.sess) || '').toString().substr(0, 40) || '',
@@ -168,13 +168,11 @@ if (config.api.secure && certOptions.key) {
 
     let defaultSecureContext = tls.createSecureContext(httpsServerOptions);
 
-    httpsServerOptions.SNICallback = (opts, cb) => {
-        if (typeof opts === 'string') {
-            opts = {
-                servername: opts,
-                meta: {}
-            };
-        }
+    httpsServerOptions.SNICallback = (servername, cb) => {
+        const opts = {
+            servername,
+            meta: {}
+        };
 
         certs
             .getContextForServername(
