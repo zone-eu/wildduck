@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.12](https://github.com/zone-eu/wildduck/compare/v1.46.11...v1.46.12) (2025-12-09)
+
+
+### Bug Fixes
+
+* **workflows-deps:** ZMSA-46: update release workflow and other workflows , update deps ([#933](https://github.com/zone-eu/wildduck/issues/933)) ([cbf6dee](https://github.com/zone-eu/wildduck/commit/cbf6dee2a3dfb56ddfc33773fd40e253b6ad9667))
+
 ## [1.46.11](https://github.com/zone-eu/wildduck/compare/v1.46.10...v1.46.11) (2025-12-04)
 
 
