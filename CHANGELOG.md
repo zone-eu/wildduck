@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.13](https://github.com/zone-eu/wildduck/compare/v1.46.12...v1.46.13) (2025-12-11)
+
+
+### Bug Fixes
+
+* **crypto.createDecipher:** ZMSA-47: dkim legacy decipher fixes ([#935](https://github.com/zone-eu/wildduck/issues/935)) ([538b22e](https://github.com/zone-eu/wildduck/commit/538b22e78c9614bc275a18ad7674be7415e84ff7))
+
 ## [1.46.12](https://github.com/zone-eu/wildduck/compare/v1.46.11...v1.46.12) (2025-12-09)
 
 
