@@ -267,7 +267,8 @@ const serverOptions = {
 
                         // ends all streams and cleans up
                         limiter.abort = () => {
-                            response.value.end();
+                            response.value.abort(); // abort rebuilder
+                            response.value.unpipe(limiter);
                             limiter.end();
                         };
 
