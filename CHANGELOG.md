@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.13](https://github.com/zone-eu/wildduck/compare/v1.46.12...v1.46.13) (2025-12-16)
+
+
+### Bug Fixes
+
+* **crypto.createDecipher:** ZMSA-47: dkim legacy decipher fixes ([#935](https://github.com/zone-eu/wildduck/issues/935)) ([538b22e](https://github.com/zone-eu/wildduck/commit/538b22e78c9614bc275a18ad7674be7415e84ff7))
+* **pop3top:** ZMSA-55: fix POP3 TOP -ERR write after end ([#938](https://github.com/zone-eu/wildduck/issues/938)) ([42a7b4a](https://github.com/zone-eu/wildduck/commit/42a7b4aadad35d92041ca6267a5e8db1a5d8900a))
+
 ## [1.46.12](https://github.com/zone-eu/wildduck/compare/v1.46.11...v1.46.12) (2025-12-09)
 
 
