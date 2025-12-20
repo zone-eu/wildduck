@@ -739,6 +739,25 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('QUOTA');
         capabilities.push('XLIST');
         capabilities.push('CHILDREN');
+
+        // Advertise extended capabilities pre-auth (matches Gmail/Yahoo/Outlook behavior)
+        capabilities.push('SPECIAL-USE');
+        capabilities.push('UIDPLUS');
+        capabilities.push('CONDSTORE');
+        capabilities.push('UTF8=ACCEPT');
+        capabilities.push('MOVE');
+        capabilities.push('LITERAL+');
+        capabilities.push('LIST-EXTENDED');
+        capabilities.push('LIST-STATUS');
+
+        if (connection._server.options.maxMessage) {
+            capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
+        }
+
+        if (connection._server.options.aps?.enabled) {
+            capabilities.push('XAPPLEPUSHSERVICE');
+        }
+
     } else {
         capabilities.push('ID');
         capabilities.push('UNSELECT');
