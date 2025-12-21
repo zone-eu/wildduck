@@ -745,10 +745,8 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('UIDPLUS');
         capabilities.push('CONDSTORE');
         capabilities.push('UTF8=ACCEPT');
+
         capabilities.push('MOVE');
-        capabilities.push('LITERAL+');
-        capabilities.push('LIST-EXTENDED');
-        capabilities.push('LIST-STATUS');
 
         if (connection._server.options.maxMessage) {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
