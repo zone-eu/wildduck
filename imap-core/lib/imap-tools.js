@@ -739,6 +739,20 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('QUOTA');
         capabilities.push('XLIST');
         capabilities.push('CHILDREN');
+
+        // Advertise extended capabilities pre-auth (matches Gmail/Yahoo/Outlook behavior)
+        capabilities.push('SPECIAL-USE');
+        capabilities.push('UIDPLUS');
+        capabilities.push('CONDSTORE');
+        capabilities.push('UTF8=ACCEPT');
+
+        capabilities.push('MOVE');
+
+        if (connection._server.options.maxMessage) {
+            capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
+        }
+
+
     } else {
         capabilities.push('ID');
         capabilities.push('UNSELECT');
@@ -764,14 +778,12 @@ module.exports.sendCapabilityResponse = connection => {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
 
-        if (connection._server.options.aps?.enabled) {
-            capabilities.push('XAPPLEPUSHSERVICE');
-        }
     }
 
     capabilities.sort((a, b) => a.localeCompare(b));
 
-    connection.send('* CAPABILITY ' + ['IMAP4rev1'].concat(capabilities).join(' '));
+    let protocolCaps = connection._server.options.aps?.enabled ? ['XAPPLEPUSHSERVICE', 'IMAP4rev1'] : ['IMAP4rev1'];
+    connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
 };
 
 module.exports.validateInternalDate = internaldate => {
