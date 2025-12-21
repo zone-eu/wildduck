@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.14](https://github.com/zone-eu/wildduck/compare/v1.46.13...v1.46.14) (2025-12-21)
+
+
+### Bug Fixes
+
+* advertise extended capabilities pre-auth (matches Gmail/Yahoo/Outlook behavior) ([#943](https://github.com/zone-eu/wildduck/issues/943)) ([81f30cb](https://github.com/zone-eu/wildduck/commit/81f30cbfe144f0042046992755a638dfdf102e89))
+
 ## [1.46.13](https://github.com/zone-eu/wildduck/compare/v1.46.12...v1.46.13) (2025-12-16)
 
 
