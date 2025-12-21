@@ -57,8 +57,9 @@ describe('IMAP Protocol integration tests', function () {
                     port
                 },
                 function (resp) {
-                    expect(/^\* CAPABILITY IMAP4rev1 /m.test(resp.toString())).to.be.true;
-                    expect(/^T1 OK/m.test(resp.toString())).to.be.true;
+                    // CAPABILITY should contain IMAP4rev1 (may be preceded by XAPPLEPUSHSERVICE)
+                    expect(/^\* CAPABILITY .*(XAPPLEPUSHSERVICE )?IMAP4rev1 /m.test(resp.toString())).to.be.true;
+                    expect(/^T1 OK /m.test(resp.toString())).to.be.true;
                     done();
                 }
             );

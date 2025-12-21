@@ -754,9 +754,6 @@ module.exports.sendCapabilityResponse = connection => {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
 
-        if (connection._server.options.aps?.enabled) {
-            capabilities.push('XAPPLEPUSHSERVICE');
-        }
 
     } else {
         capabilities.push('ID');
@@ -783,14 +780,12 @@ module.exports.sendCapabilityResponse = connection => {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
 
-        if (connection._server.options.aps?.enabled) {
-            capabilities.push('XAPPLEPUSHSERVICE');
-        }
     }
 
     capabilities.sort((a, b) => a.localeCompare(b));
 
-    connection.send('* CAPABILITY ' + ['IMAP4rev1'].concat(capabilities).join(' '));
+    let protocolCaps = connection._server.options.aps?.enabled ? ['XAPPLEPUSHSERVICE', 'IMAP4rev1'] : ['IMAP4rev1'];
+    connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
 };
 
 module.exports.validateInternalDate = internaldate => {
