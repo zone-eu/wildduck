@@ -295,12 +295,15 @@ class Indexer {
                     // calculate the actual possible output size
                     if (attachmentData.metadata && attachmentData.metadata.decoded && attachmentData.metadata.lineLen) {
                         let b64Size = Math.ceil(attachmentData.length / 3) * 4;
-                        let lineBreaks = Math.floor(b64Size / attachmentData.metadata.lineLen);
+                        let lineBreaks = Math.floor((b64Size - 1) / attachmentData.metadata.lineLen);
 
-                        // extra case where base64 string ends at line end
-                        // in this case we do not need the ending line break
-                        if (lineBreaks && b64Size % attachmentData.metadata.lineLen === 0) {
-                            lineBreaks--;
+                        if (attachmentData.metadata.lineCount || attachmentData.metadata.lineCount === 0) {
+                            lineBreaks = attachmentData.metadata.lineCount;
+                        } else if (attachmentData.metadata.esize) {
+                            let recovered = Math.floor((attachmentData.metadata.esize - b64Size) / 2);
+                            if (recovered >= 0) {
+                                lineBreaks = Math.max(lineBreaks, recovered);
+                            }
                         }
 
                         attachmentSize = b64Size + lineBreaks * 2;
