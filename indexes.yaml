@@ -767,7 +767,6 @@ indexes:
       type: users # index applies to users database
       index:
           name: deletedusers_dotless
-          unique: true
           key:
               unameview: 1
 
@@ -775,7 +774,6 @@ indexes:
       type: users # index applies to users database
       index:
           name: deletedusers_address
-          unique: true
           key:
               address: 1
 
