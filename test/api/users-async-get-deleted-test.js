@@ -16,7 +16,7 @@ const db = require('../../lib/db');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
-describe.only('Async Get Deleted User', function () {
+describe('Async Get Deleted User', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     const username = 'deleted-user-handler';
