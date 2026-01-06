@@ -762,6 +762,21 @@ indexes:
           key:
               domain: 1
 
+    # Indexes for the deletedusers collection
+    - collection: deletedusers
+      type: users # index applies to users database
+      index:
+          name: deletedusers_dotless
+          key:
+              unameview: 1
+
+    - collection: deletedusers
+      type: users # index applies to users database
+      index:
+          name: deletedusers_address
+          key:
+              address: 1
+
 deleteindexes:
     - collection: settings
       index: key_enumerable
