@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.14](https://github.com/zone-eu/wildduck/compare/v1.46.13...v1.46.14) (2026-01-06)
+
+
+### Bug Fixes
+
+* advertise extended capabilities pre-auth (matches Gmail/Yahoo/Outlook behavior) ([#943](https://github.com/zone-eu/wildduck/issues/943)) ([81f30cb](https://github.com/zone-eu/wildduck/commit/81f30cbfe144f0042046992755a638dfdf102e89))
+* **POP3-TLSSocket:** ZMSA-57 fix bug: Possible EventEmitter memory leak detected. 11 timeout listeners added to [TLSSocket] ([#939](https://github.com/zone-eu/wildduck/issues/939)) ([b9d8957](https://github.com/zone-eu/wildduck/commit/b9d89576dba4eba1169603d3ba34edbd4d182a54))
+* **userHandler-asyncGetDeleted:** ZMSA-52: user-handler create new asyncGetDeleted function to get deleted user by username, id, main address ([#947](https://github.com/zone-eu/wildduck/issues/947)) ([f8e14f5](https://github.com/zone-eu/wildduck/commit/f8e14f5699b648a2415fb48a3f54b8fdada1f4ff))
+
 ## [1.46.13](https://github.com/zone-eu/wildduck/compare/v1.46.12...v1.46.13) (2025-12-16)
 
 
