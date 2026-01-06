@@ -571,6 +571,7 @@ class IMAPConnection extends EventEmitter {
 
         this._listenerData = {
             lock: false,
+            pending: false,
             cleared: false,
             callback(message) {
                 let selectedMailbox = conn.selected && conn.selected.mailbox;
@@ -601,6 +602,9 @@ class IMAPConnection extends EventEmitter {
 
                 if (conn._listenerData.lock || !selectedMailbox) {
                     // race condition, do not allow fetching data before previous fetch is finished
+                    if (conn._listenerData) {
+                        conn._listenerData.pending = true;
+                    }
                     return;
                 }
 
@@ -643,6 +647,12 @@ class IMAPConnection extends EventEmitter {
                     if (conn.idling) {
                         // when idling emit notifications immediately
                         conn.emitNotifications();
+                    }
+
+                    if (conn._listenerData && conn._listenerData.pending) {
+                        // If updates arrived during the fetch, run another pass.
+                        conn._listenerData.pending = false;
+                        setImmediate(() => conn._listenerData && conn._listenerData.callback());
                     }
                 });
             }
