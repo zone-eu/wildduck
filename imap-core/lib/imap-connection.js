@@ -606,7 +606,6 @@ class IMAPConnection extends EventEmitter {
                 }
 
                 conn._listenerData.lock = true;
-
                 conn._server.notifier.getUpdates(selectedMailbox, conn.selected.modifyIndex, (err, updates) => {
                     if (!conn._listenerData || conn._listenerData.cleared) {
                         // already logged out
@@ -666,10 +665,6 @@ class IMAPConnection extends EventEmitter {
             return;
         }
         this._server.notifier.removeListener(this.session, this._listenerData.callback);
-        if (this._listenerData.lockTimer) {
-            clearTimeout(this._listenerData.lockTimer);
-            this._listenerData.lockTimer = null;
-        }
         this._listenerData.cleared = true;
         this._listenerData = false;
         if (this._notificationInterval) {
