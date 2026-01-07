@@ -572,9 +572,6 @@ class IMAPConnection extends EventEmitter {
 
         this._listenerData = {
             lock: false,
-            pending: false,
-            pendingRetries: 0,
-            pendingRetryTs: 0,
             cleared: false,
             callback(message) {
                 let selectedMailbox = conn.selected && conn.selected.mailbox;
@@ -605,39 +602,15 @@ class IMAPConnection extends EventEmitter {
 
                 if (conn._listenerData.lock || !selectedMailbox) {
                     // race condition, do not allow fetching data before previous fetch is finished
-                    if (conn._listenerData) {
-                        conn._listenerData.pending = true;
-                    }
                     return;
                 }
 
                 conn._listenerData.lock = true;
-                conn._listenerData.lockTimer = setTimeout(() => {
-                    if (!conn._listenerData || conn._listenerData.cleared || !conn._listenerData.lock) {
-                        return;
-                    }
-                    conn.logger.info(
-                        {
-                            tnx: 'notifications',
-                            cid: conn.id
-                        },
-                        '[%s] Releasing stuck notification lock',
-                        conn.id
-                    );
-                    conn._listenerData.lock = false;
-                    conn._listenerData.pending = true;
-                    setImmediate(() => conn._listenerData && conn._listenerData.callback());
-                }, 5000);
-                conn._listenerData.lockTimer.unref();
 
                 conn._server.notifier.getUpdates(selectedMailbox, conn.selected.modifyIndex, (err, updates) => {
                     if (!conn._listenerData || conn._listenerData.cleared) {
                         // already logged out
                         return;
-                    }
-                    if (conn._listenerData.lockTimer) {
-                        clearTimeout(conn._listenerData.lockTimer);
-                        conn._listenerData.lockTimer = null;
                     }
                     conn._listenerData.lock = false;
 
@@ -672,32 +645,6 @@ class IMAPConnection extends EventEmitter {
                     if (conn.idling) {
                         // when idling emit notifications immediately
                         conn.emitNotifications();
-                    }
-
-                    if (conn._listenerData && conn._listenerData.pending) {
-                        let now = Date.now();
-                        if (now - conn._listenerData.pendingRetryTs > 1000) {
-                            conn._listenerData.pendingRetries = 0;
-                            conn._listenerData.pendingRetryTs = now;
-                        }
-
-                        if (conn._listenerData.pendingRetries >= 10) {
-                            conn.logger.info(
-                                {
-                                    tnx: 'notifications',
-                                    cid: conn.id
-                                },
-                                '[%s] Skipping notification reschedule due to excessive retries',
-                                conn.id
-                            );
-                            conn._listenerData.pending = false;
-                            return;
-                        }
-
-                        conn._listenerData.pendingRetries++;
-                        // If updates arrived during the fetch, run another pass.
-                        conn._listenerData.pending = false;
-                        setImmediate(() => conn._listenerData && conn._listenerData.callback());
                     }
                 });
             }
