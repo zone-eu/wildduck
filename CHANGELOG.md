@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.15](https://github.com/zone-eu/wildduck/compare/v1.46.14...v1.46.15) (2026-01-08)
+
+
+### Bug Fixes
+
+* **imap-connection:** ZMS-106: fix notification locking issues ([#949](https://github.com/zone-eu/wildduck/issues/949)) ([459bdae](https://github.com/zone-eu/wildduck/commit/459bdaeff7c4bc7bf11879e45c5b270ab9b5a0a1))
+* **pop3:** fix pipelining race condition causing mpop "invalid reply" errors ([#950](https://github.com/zone-eu/wildduck/issues/950)) ([ea86c9f](https://github.com/zone-eu/wildduck/commit/ea86c9fd464574a0b8a1bf95c6fbc29d501570a9))
+
 ## [1.46.14](https://github.com/zone-eu/wildduck/compare/v1.46.13...v1.46.14) (2026-01-06)
 
 
