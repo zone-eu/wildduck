@@ -22,7 +22,7 @@ jobs:
 
             - name: Deploy to server
               env:
-                  TARGET_HOST_02: srv-04.srv.dev
+                  TARGET_HOST_02: srv-04.emailengine.dev
                   NODE_ENV: production
                   SERVICE_NAME: wildduck
               id: deploy
