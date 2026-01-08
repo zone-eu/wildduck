@@ -572,9 +572,10 @@ class IMAPConnection extends EventEmitter {
         this._listenerData = {
             lock: false,
             cleared: false,
+            pendingUpdate: false,
             callback(message) {
                 let selectedMailbox = conn.selected && conn.selected.mailbox;
-                if (this._closing || this._closed) {
+                if (conn._closing || conn._closed) {
                     conn.clearNotificationListener();
                     return;
                 }
@@ -599,18 +600,33 @@ class IMAPConnection extends EventEmitter {
                     return;
                 }
 
-                if (conn._listenerData.lock || !selectedMailbox) {
-                    // race condition, do not allow fetching data before previous fetch is finished
+                if (!selectedMailbox) {
+                    return;
+                }
+
+                if (conn._listenerData.lock) {
+                    // Mark that we received a notification while locked, will re-check after lock is released
+                    conn._listenerData.pendingUpdate = true;
                     return;
                 }
 
                 conn._listenerData.lock = true;
+                conn._listenerData.pendingUpdate = false;
+
                 conn._server.notifier.getUpdates(selectedMailbox, conn.selected.modifyIndex, (err, updates) => {
                     if (!conn._listenerData || conn._listenerData.cleared) {
                         // already logged out
                         return;
                     }
                     conn._listenerData.lock = false;
+
+                    // Helper to re-check if we missed notifications while locked
+                    let recheckPending = () => {
+                        if (conn._listenerData && !conn._listenerData.cleared && conn._listenerData.pendingUpdate) {
+                            conn._listenerData.pendingUpdate = false;
+                            setImmediate(() => conn._listenerData.callback());
+                        }
+                    };
 
                     if (err) {
                         conn.logger.info(
@@ -623,11 +639,13 @@ class IMAPConnection extends EventEmitter {
                             conn.id,
                             err.message
                         );
+                        recheckPending();
                         return;
                     }
 
                     // check if the same mailbox is still selected
                     if (!isSelected(selectedMailbox) || !updates || !updates.length) {
+                        recheckPending();
                         return;
                     }
 
@@ -644,6 +662,8 @@ class IMAPConnection extends EventEmitter {
                         // when idling emit notifications immediately
                         conn.emitNotifications();
                     }
+
+                    recheckPending();
                 });
             }
         };
