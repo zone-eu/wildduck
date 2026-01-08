@@ -14,8 +14,32 @@ module.exports = function (grunt) {
                 options: {
                     reporter: 'spec'
                 },
-                // imap-core tests first
+                // imap-core tests (all)
                 src: ['imap-core/test/**/*-test.js']
+            },
+            'imap-unit': {
+                options: {
+                    reporter: 'spec'
+                },
+                // imap-core unit tests (no MongoDB required)
+                src: [
+                    'imap-core/test/compress-race-condition-test.js',
+                    'imap-core/test/imap-compile-stream-test.js',
+                    'imap-core/test/imap-compiler-test.js',
+                    'imap-core/test/imap-indexer-test.js',
+                    'imap-core/test/imap-parser-test.js',
+                    'imap-core/test/onconnect-test.js',
+                    'imap-core/test/parse-mime-tree-test.js',
+                    'imap-core/test/search-test.js',
+                    'imap-core/test/tools-test.js'
+                ]
+            },
+            pop3: {
+                options: {
+                    reporter: 'spec'
+                },
+                // pop3 tests (do not require server/db)
+                src: ['test/pop3-*-test.js']
             },
             api: {
                 options: {
@@ -58,5 +82,6 @@ module.exports = function (grunt) {
     // Tasks
     grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
     grunt.registerTask('testonly', ['shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
-    grunt.registerTask('proto', ['mochaTest:imap']);
+    // proto: run all protocol-level tests (IMAP unit + POP3) without requiring MongoDB/Redis
+    grunt.registerTask('proto', ['mochaTest:imap-unit', 'mochaTest:pop3']);
 };
