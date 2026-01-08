@@ -78,7 +78,6 @@ class IMAPConnection extends EventEmitter {
         this.state = 'Not Authenticated';
 
         this._listenerData = false;
-        this._notificationInterval = null;
 
         // selected mailbox metadata
         this.selected = false;
@@ -573,6 +572,7 @@ class IMAPConnection extends EventEmitter {
         this._listenerData = {
             lock: false,
             cleared: false,
+            pendingUpdate: false,
             callback(message) {
                 let selectedMailbox = conn.selected && conn.selected.mailbox;
                 if (conn._closing || conn._closed) {
@@ -600,18 +600,33 @@ class IMAPConnection extends EventEmitter {
                     return;
                 }
 
-                if (conn._listenerData.lock || !selectedMailbox) {
-                    // race condition, do not allow fetching data before previous fetch is finished
+                if (!selectedMailbox) {
+                    return;
+                }
+
+                if (conn._listenerData.lock) {
+                    // Mark that we received a notification while locked, will re-check after lock is released
+                    conn._listenerData.pendingUpdate = true;
                     return;
                 }
 
                 conn._listenerData.lock = true;
+                conn._listenerData.pendingUpdate = false;
+
                 conn._server.notifier.getUpdates(selectedMailbox, conn.selected.modifyIndex, (err, updates) => {
                     if (!conn._listenerData || conn._listenerData.cleared) {
                         // already logged out
                         return;
                     }
                     conn._listenerData.lock = false;
+
+                    // Helper to re-check if we missed notifications while locked
+                    let recheckPending = () => {
+                        if (conn._listenerData && !conn._listenerData.cleared && conn._listenerData.pendingUpdate) {
+                            conn._listenerData.pendingUpdate = false;
+                            setImmediate(() => conn._listenerData.callback());
+                        }
+                    };
 
                     if (err) {
                         conn.logger.info(
@@ -624,11 +639,13 @@ class IMAPConnection extends EventEmitter {
                             conn.id,
                             err.message
                         );
+                        recheckPending();
                         return;
                     }
 
                     // check if the same mailbox is still selected
                     if (!isSelected(selectedMailbox) || !updates || !updates.length) {
+                        recheckPending();
                         return;
                     }
 
@@ -645,19 +662,13 @@ class IMAPConnection extends EventEmitter {
                         // when idling emit notifications immediately
                         conn.emitNotifications();
                     }
+
+                    recheckPending();
                 });
             }
         };
 
         this._server.notifier.addListener(this.session, this._listenerData.callback);
-
-        // Poll as a safety net in case notifier events are delayed or dropped under load.
-        this._notificationInterval = setInterval(() => {
-            if (this._listenerData && !this._listenerData.cleared) {
-                this._listenerData.callback();
-            }
-        }, 1000);
-        this._notificationInterval.unref();
     }
 
     clearNotificationListener() {
@@ -667,10 +678,6 @@ class IMAPConnection extends EventEmitter {
         this._server.notifier.removeListener(this.session, this._listenerData.callback);
         this._listenerData.cleared = true;
         this._listenerData = false;
-        if (this._notificationInterval) {
-            clearInterval(this._notificationInterval);
-            this._notificationInterval = null;
-        }
     }
 
     // send notifications to client
@@ -678,10 +685,6 @@ class IMAPConnection extends EventEmitter {
         if (this.state !== 'Selected' || !this.selected || !this.selected.notifications.length) {
             return;
         }
-
-        // Detach current notifications to avoid dropping any updates that arrive mid-send.
-        let notifications = this.selected.notifications;
-        this.selected.notifications = [];
 
         let changed = false;
         let existsResponse;
@@ -694,7 +697,7 @@ class IMAPConnection extends EventEmitter {
             },
             '[%s] Pending notifications: %s',
             this.id,
-            notifications.length
+            this.selected.notifications.length
         );
 
         // find UIDs that are both added and removed
@@ -702,8 +705,8 @@ class IMAPConnection extends EventEmitter {
         let removed = new Set(); // removed UIDs
         let skip = new Set(); // UIDs that are removed before ever seen
 
-        for (let i = 0, len = notifications.length; i < len; i++) {
-            let update = notifications[i];
+        for (let i = 0, len = this.selected.notifications.length; i < len; i++) {
+            let update = this.selected.notifications[i];
             if (update.command === 'EXISTS') {
                 added.add(update.uid);
             } else if (update.command === 'EXPUNGE') {
@@ -719,20 +722,20 @@ class IMAPConnection extends EventEmitter {
 
         // filter multiple FETCH calls, only keep latest, otherwise might mess up MODSEQ responses
         let fetches = new Set();
-        for (let i = notifications.length - 1; i >= 0; i--) {
-            let update = notifications[i];
+        for (let i = this.selected.notifications.length - 1; i >= 0; i--) {
+            let update = this.selected.notifications[i];
             if (update.command === 'FETCH') {
                 // skip multiple flag updates and updates for removed or newly added messages
                 if (fetches.has(update.uid) || added.has(update.uid) || removed.has(update.uid)) {
-                    notifications.splice(i, 1);
+                    this.selected.notifications.splice(i, 1);
                 } else {
                     fetches.add(update.uid);
                 }
             }
         }
 
-        for (let i = 0, len = notifications.length; i < len; i++) {
-            let update = notifications[i];
+        for (let i = 0, len = this.selected.notifications.length; i < len; i++) {
+            let update = this.selected.notifications[i];
 
             // skip unnecessary entries that are already removed
             if (skip.has(update.uid)) {
@@ -826,7 +829,8 @@ class IMAPConnection extends EventEmitter {
             });
         }
 
-        // if new notifications arrived during processing, they remain queued
+        // clear queue
+        this.selected.notifications = [];
     }
 
     formatResponse(command, uid, data) {
