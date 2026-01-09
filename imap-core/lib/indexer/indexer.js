@@ -70,7 +70,10 @@ class Indexer {
 
             let finalize = () => {
                 if (node.boundary) {
-                    append(`--${node.boundary}--\r\n`);
+                    append(`--${node.boundary}--`);
+                    if (node.epilogue && node.epilogue.length) {
+                        size += node.epilogue.length;
+                    }
                 }
 
                 append();
@@ -136,6 +139,8 @@ class Indexer {
 
         let curWritePos = 0;
         let writeLength = 0;
+        let lastByte = null;
+        let forceSeparator = false;
 
         let getCurrentBounds = size => {
             if (curWritePos + size < startFrom) {
@@ -163,6 +168,10 @@ class Indexer {
         };
 
         let write = async chunk => {
+            if (!chunk || !chunk.length) {
+                return;
+            }
+            chunk = normalizeChunk(chunk);
             if (!chunk || !chunk.length) {
                 return;
             }
@@ -196,6 +205,7 @@ class Indexer {
                 }
             }
 
+            lastByte = chunk[chunk.length - 1];
             if (output.write(chunk) === false) {
                 await new Promise(resolve => {
                     output.once('drain', resolve());
@@ -212,7 +222,10 @@ class Indexer {
             let emit = async (data, force) => {
                 if (remainder || data || force) {
                     if (!firstLine) {
-                        await write(NEWLINE);
+                        if (forceSeparator || lastByte !== 0x0a) {
+                            await write(NEWLINE);
+                        }
+                        forceSeparator = false;
                     } else {
                         firstLine = false;
                     }
@@ -235,9 +248,11 @@ class Indexer {
 
                 if (!textOnly || !isRootNode) {
                     await emit(formatHeaders(node.header).join('\r\n') + '\r\n');
+                    forceSeparator = true;
                 }
 
                 isRootNode = false;
+                let epilogue = null;
                 if (Buffer.isBuffer(node.body)) {
                     // node Buffer
                     remainder = node.body;
@@ -250,6 +265,16 @@ class Indexer {
                 } else {
                     // whatever
                     remainder = node.body;
+                }
+
+                if (node.boundary) {
+                    if (node.epilogue && node.epilogue.length) {
+                        epilogue = normalizeChunk(node.epilogue);
+                    } else if (remainder && remainder.length) {
+                        let splitBody = splitMultipartBody(remainder);
+                        remainder = splitBody.preamble;
+                        epilogue = splitBody.epilogue;
+                    }
                 }
 
                 if (node.boundary) {
@@ -290,15 +315,20 @@ class Indexer {
                     }
 
                     let attachmentSize = node.size;
+                    let nodeTransferEncoding = ((node.parsedHeader && node.parsedHeader['content-transfer-encoding']) || '7bit')
+                        .toString()
+                        .toLowerCase()
+                        .trim();
                     // we need to calculate expected length as the original does not apply anymore
                     // original size matches input data but decoding/encoding is not 100% lossless so we need to
                     // calculate the actual possible output size
                     if (attachmentData.metadata && attachmentData.metadata.decoded && attachmentData.metadata.lineLen) {
                         let b64Size = Math.ceil(attachmentData.length / 3) * 4;
                         let lineBreaks = Math.floor((b64Size - 1) / attachmentData.metadata.lineLen);
+                        let storedLineCount = normalizeLineCount(attachmentData.metadata.lineCount);
 
-                        if (attachmentData.metadata.lineCount || attachmentData.metadata.lineCount === 0) {
-                            lineBreaks = attachmentData.metadata.lineCount;
+                        if (storedLineCount !== null) {
+                            lineBreaks = storedLineCount;
                         } else if (attachmentData.metadata.esize) {
                             let recovered = Math.floor((attachmentData.metadata.esize - b64Size) / 2);
                             if (recovered >= 0) {
@@ -319,6 +349,13 @@ class Indexer {
                         if (node.size > readBounds.startFrom) {
                             let attachmentStream = this.attachmentStorage.createReadStream(attachmentId, attachmentData, readBounds);
                             await new Promise((resolve, reject) => {
+                                let attachmentOutputBytes = 0;
+                                attachmentStream.on('data', chunk => {
+                                    if (chunk && chunk.length) {
+                                        lastByte = chunk[chunk.length - 1];
+                                        attachmentOutputBytes += chunk.length;
+                                    }
+                                });
                                 attachmentStream.once('error', err => {
                                     if (err.code === 'ENOENT') {
                                         this.loggelf({
@@ -333,8 +370,15 @@ class Indexer {
 
                                 attachmentStream.once('end', () => {
                                     // update read offset counters
+                                    let bytes = attachmentOutputBytes;
 
-                                    let bytes = 'outputBytes' in attachmentStream ? attachmentStream.outputBytes : readBounds.maxLength;
+                                    if (!bytes && 'outputBytes' in attachmentStream) {
+                                        bytes = attachmentStream.outputBytes;
+                                    }
+
+                                    if (!bytes) {
+                                        bytes = readBounds.maxLength;
+                                    }
 
                                     if (bytes) {
                                         curWritePos += bytes;
@@ -342,7 +386,20 @@ class Indexer {
                                             writeLength += bytes;
                                         }
                                     }
-                                    resolve();
+
+                                    if (!output.isLimited && node.size && bytes && bytes < node.size) {
+                                        let missing = node.size - bytes;
+                                        if (missing > 0 && missing % 2 === 0) {
+                                            let transferEncoding = (attachmentData && attachmentData.transferEncoding) || nodeTransferEncoding;
+                                            if (transferEncoding === 'base64') {
+                                                return write(Buffer.alloc(missing, '\r\n'))
+                                                    .then(resolve)
+                                                    .catch(reject);
+                                            }
+                                        }
+                                    }
+
+                                    return resolve();
                                 });
 
                                 attachmentStream.pipe(output, {
@@ -370,17 +427,16 @@ class Indexer {
                 }
 
                 if (node.boundary) {
-                    await emit(`--${node.boundary}--\r\n`);
+                    await emit(`--${node.boundary}--`);
+                    if (epilogue && epilogue.length) {
+                        await write(epilogue);
+                    }
                 }
 
                 await emit();
             };
 
             await walk(mimeTree);
-
-            if (mimeTree.lineCount > 1) {
-                await write(NEWLINE);
-            }
 
             output.end();
         };
@@ -880,6 +936,81 @@ function formatHeaders(headers) {
         headers = [].concat(headers || []);
     }
     return headers;
+}
+
+function normalizeChunk(chunk) {
+    if (!chunk) {
+        return chunk;
+    }
+    if (Buffer.isBuffer(chunk)) {
+        return chunk;
+    }
+    if (chunk.buffer && Buffer.isBuffer(chunk.buffer)) {
+        return chunk.buffer;
+    }
+    if (typeof chunk === 'string') {
+        return Buffer.from(chunk, 'binary');
+    }
+    try {
+        return Buffer.from(chunk);
+    } catch {
+        return null;
+    }
+}
+
+function normalizeLineCount(value) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        return value;
+    }
+    if (!value) {
+        return null;
+    }
+    if (typeof value.toNumber === 'function') {
+        const num = value.toNumber();
+        if (Number.isFinite(num) && num >= 0) {
+            return num;
+        }
+    }
+    const coerced = Number(value);
+    if (Number.isFinite(coerced) && coerced >= 0) {
+        return coerced;
+    }
+    return null;
+}
+
+function splitMultipartBody(body) {
+    if (!body || !body.length) {
+        return { preamble: body, epilogue: null };
+    }
+
+    let buffer = Buffer.isBuffer(body) ? body : Buffer.from(body, 'binary');
+
+    // Find last non-linebreak byte to ensure there is actual content.
+    let lastContent = buffer.length - 1;
+    while (lastContent >= 0 && (buffer[lastContent] === 0x0d || buffer[lastContent] === 0x0a)) {
+        lastContent--;
+    }
+
+    if (lastContent < 0) {
+        return { preamble: buffer, epilogue: null };
+    }
+
+    let pos = buffer.length;
+    let crlfCount = 0;
+    while (pos >= 2 && buffer[pos - 2] === 0x0d && buffer[pos - 1] === 0x0a) {
+        crlfCount++;
+        pos -= 2;
+    }
+
+    if (crlfCount <= 1) {
+        return { preamble: buffer, epilogue: null };
+    }
+
+    let splitIndex = buffer.length - (crlfCount - 1) * 2;
+    return {
+        preamble: buffer.slice(0, splitIndex),
+        epilogue: buffer.slice(splitIndex)
+    };
 }
 
 function textToHtml(str) {
