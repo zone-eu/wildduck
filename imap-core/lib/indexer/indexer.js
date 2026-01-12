@@ -85,7 +85,21 @@ class Indexer {
                 if (!node.boundary) {
                     append(false, true); // force newline
                 }
-                size += node.size;
+                let nodeSize = Number(node.size);
+                if (!Number.isFinite(nodeSize)) {
+                    if (Buffer.isBuffer(node.body)) {
+                        nodeSize = node.body.length;
+                    } else if (node.body && node.body.buffer && Buffer.isBuffer(node.body.buffer)) {
+                        nodeSize = node.body.buffer.length;
+                    } else if (typeof node.body === 'string') {
+                        nodeSize = Buffer.byteLength(node.body, 'binary');
+                    } else if (Array.isArray(node.body)) {
+                        nodeSize = Buffer.byteLength(node.body.join(''), 'binary');
+                    } else {
+                        nodeSize = 0;
+                    }
+                }
+                size += nodeSize;
             }
 
             if (node.boundary) {
@@ -314,7 +328,16 @@ class Indexer {
                         }
                     }
 
-                    let attachmentSize = node.size;
+                    let attachmentSize = Number(node.size);
+                    if (!Number.isFinite(attachmentSize)) {
+                        attachmentSize = Number(attachmentData && attachmentData.metadata && attachmentData.metadata.esize);
+                    }
+                    if (!Number.isFinite(attachmentSize)) {
+                        attachmentSize = Number(attachmentData && attachmentData.length);
+                    }
+                    if (!Number.isFinite(attachmentSize)) {
+                        attachmentSize = 0;
+                    }
                     let nodeTransferEncoding = ((node.parsedHeader && node.parsedHeader['content-transfer-encoding']) || '7bit')
                         .toString()
                         .toLowerCase()
@@ -336,17 +359,22 @@ class Indexer {
                             }
                         }
 
-                        attachmentSize = b64Size + lineBreaks * 2;
+                        let computedSize = b64Size + lineBreaks * 2;
+                        if (Number.isFinite(attachmentSize)) {
+                            attachmentSize = Math.max(attachmentSize, computedSize);
+                        } else {
+                            attachmentSize = computedSize;
+                        }
                     }
 
                     let readBounds = getCurrentBounds(attachmentSize);
                     if (readBounds) {
                         // move write pointer ahead by skipped base64 bytes
-                        let bytes = Math.min(readBounds.startFrom, node.size);
+                        let bytes = Math.min(readBounds.startFrom, attachmentSize);
                         curWritePos += bytes;
 
                         // only process attachment if we are reading inside existing bounds
-                        if (node.size > readBounds.startFrom) {
+                        if (attachmentSize > readBounds.startFrom) {
                             let attachmentStream = this.attachmentStorage.createReadStream(attachmentId, attachmentData, readBounds);
                             await new Promise((resolve, reject) => {
                                 let attachmentOutputBytes = 0;
@@ -387,8 +415,8 @@ class Indexer {
                                         }
                                     }
 
-                                    if (!output.isLimited && node.size && bytes && bytes < node.size) {
-                                        let missing = node.size - bytes;
+                                    if (!output.isLimited && attachmentSize && bytes && bytes < attachmentSize) {
+                                        let missing = attachmentSize - bytes;
                                         if (missing > 0 && missing % 2 === 0) {
                                             let transferEncoding = (attachmentData && attachmentData.transferEncoding) || nodeTransferEncoding;
                                             if (transferEncoding === 'base64') {
