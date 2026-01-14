@@ -33,7 +33,7 @@ module.exports = {
         let parsed;
 
         try {
-            parsed = parseQueryTerms(terms, this.selected.uidList);
+            parsed = parseQueryTerms(terms, this.selected.uidList, isUid);
         } catch (E) {
             return callback(E);
         }
@@ -90,24 +90,34 @@ module.exports = {
                 if (Array.isArray(matches) && matches.length) {
                     matches.sort((a, b) => a - b);
 
-                    matches.forEach(nr => {
-                        let seq;
+                    if (isUid) {
+                        response.attributes.push({
+                            type: 'TEXT',
+                            value: matches.join(' ')
+                        });
+                    } else {
+                        let uidList = this.selected.uidList || [];
+                        let uidIndex = new Map();
+                        let seqList = [];
 
-                        if (!isUid) {
-                            seq = this.selected.uidList.indexOf(nr) + 1;
+                        for (let i = 0; i < uidList.length; i++) {
+                            uidIndex.set(uidList[i], i + 1);
+                        }
+
+                        for (let i = 0; i < matches.length; i++) {
+                            let seq = uidIndex.get(matches[i]);
                             if (seq) {
-                                response.attributes.push({
-                                    type: 'atom',
-                                    value: String(seq)
-                                });
+                                seqList.push(seq);
                             }
-                        } else {
+                        }
+
+                        if (seqList.length) {
                             response.attributes.push({
-                                type: 'atom',
-                                value: String(nr)
+                                type: 'TEXT',
+                                value: seqList.join(' ')
                             });
                         }
-                    });
+                    }
                 }
 
                 // append (MODSEQ 123) for queries that include MODSEQ criteria
@@ -136,8 +146,14 @@ module.exports = {
     parseQueryTerms // expose for testing
 };
 
-function parseQueryTerms(terms, uidList) {
+function isFixedRange(value) {
+    value = (value || '').toString();
+    return value.indexOf(':') >= 0 && value.indexOf(',') < 0;
+}
+
+function parseQueryTerms(terms, uidList, isUidSearch) {
     terms = [].concat(terms || []);
+    isUidSearch = !!isUidSearch;
 
     let pos = 0;
     let term;
@@ -168,8 +184,12 @@ function parseQueryTerms(terms, uidList) {
         if (!termType) {
             // try if it is a sequence set
             if (imapTools.validateSequence(term)) {
+                let messageRange = imapTools.getMessageRange(uidList, term, isUidSearch);
+                if (isUidSearch && isFixedRange(term)) {
+                    messageRange.isContiguous = true;
+                }
                 // resolve sequence list to an array of UID values
-                curTerm = ['uid', imapTools.getMessageRange(uidList, term, false)];
+                curTerm = ['uid', messageRange];
             } else {
                 // no idea what the term is for
                 throw new Error('Unknown search term ' + term.toUpperCase());
@@ -183,7 +203,14 @@ function parseQueryTerms(terms, uidList) {
                         throw new Error('Invalid sequence set for ' + term.toUpperCase());
                     }
                     // resolve sequence list to an array of UID values
-                    curTerm.push(imapTools.getMessageRange(uidList, terms[pos++], true));
+                    {
+                        let sequence = terms[pos++];
+                        let messageRange = imapTools.getMessageRange(uidList, sequence, true);
+                        if (isFixedRange(sequence)) {
+                            messageRange.isContiguous = true;
+                        }
+                        curTerm.push(messageRange);
+                    }
                 } else {
                     curTerm.push(terms[pos++]);
                 }
