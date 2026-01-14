@@ -33,7 +33,7 @@ module.exports = {
         let parsed;
 
         try {
-            parsed = parseQueryTerms(terms, this.selected.uidList);
+            parsed = parseQueryTerms(terms, this.selected.uidList, isUid);
         } catch (E) {
             return callback(E);
         }
@@ -146,8 +146,14 @@ module.exports = {
     parseQueryTerms // expose for testing
 };
 
-function parseQueryTerms(terms, uidList) {
+function isFixedRange(value) {
+    value = (value || '').toString();
+    return value.indexOf(':') >= 0 && value.indexOf(',') < 0;
+}
+
+function parseQueryTerms(terms, uidList, isUidSearch) {
     terms = [].concat(terms || []);
+    isUidSearch = !!isUidSearch;
 
     let pos = 0;
     let term;
@@ -178,8 +184,12 @@ function parseQueryTerms(terms, uidList) {
         if (!termType) {
             // try if it is a sequence set
             if (imapTools.validateSequence(term)) {
+                let messageRange = imapTools.getMessageRange(uidList, term, isUidSearch);
+                if (isUidSearch && isFixedRange(term)) {
+                    messageRange.isContiguous = true;
+                }
                 // resolve sequence list to an array of UID values
-                curTerm = ['uid', imapTools.getMessageRange(uidList, term, false)];
+                curTerm = ['uid', messageRange];
             } else {
                 // no idea what the term is for
                 throw new Error('Unknown search term ' + term.toUpperCase());
@@ -193,7 +203,14 @@ function parseQueryTerms(terms, uidList) {
                         throw new Error('Invalid sequence set for ' + term.toUpperCase());
                     }
                     // resolve sequence list to an array of UID values
-                    curTerm.push(imapTools.getMessageRange(uidList, terms[pos++], true));
+                    {
+                        let sequence = terms[pos++];
+                        let messageRange = imapTools.getMessageRange(uidList, sequence, true);
+                        if (isFixedRange(sequence)) {
+                            messageRange.isContiguous = true;
+                        }
+                        curTerm.push(messageRange);
+                    }
                 } else {
                     curTerm.push(terms[pos++]);
                 }
