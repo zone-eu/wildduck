@@ -641,7 +641,7 @@ class IMAPConnection extends EventEmitter {
                     let queued = 0;
                     for (let update of updates) {
                         let key = update && update._id ? update._id.toString() : '';
-                        if (!key || (key && conn.selected.notificationQueueKeys.has(key))) {
+                        if (!key || conn.selected.notificationQueueKeys.has(key)) {
                             continue;
                         }
 
