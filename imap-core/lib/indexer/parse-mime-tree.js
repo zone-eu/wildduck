@@ -56,6 +56,12 @@ class MIMEParser {
                     this.rawBody += prevBr + line;
 
                     if (this._node.parentBoundary && (line === '--' + this._node.parentBoundary || line === '--' + this._node.parentBoundary + '--')) {
+                        if (prevBr) {
+                            let target = this._node.inEpilogue && Array.isArray(this._node.epilogue) ? this._node.epilogue : this._node.body;
+                            if (target && target.length) {
+                                target[target.length - 1] += prevBr;
+                            }
+                        }
                         if (
                             this._node.parsedHeader['content-type'].value === 'message/rfc822' &&
                             (!this._node.parsedHeader['content-transfer-encoding'] ||
@@ -68,14 +74,28 @@ class MIMEParser {
                             this._node = this.createNode(this._node.parentNode);
                         } else {
                             this._node = this._node.parentNode;
+                            if (this._node) {
+                                if (!Array.isArray(this._node.epilogue)) {
+                                    this._node.epilogue = [];
+                                }
+                                this._node.inEpilogue = true;
+                            }
                         }
                     } else if (this._node.boundary && line === '--' + this._node.boundary) {
+                        if (prevBr) {
+                            let target = this._node.inEpilogue && Array.isArray(this._node.epilogue) ? this._node.epilogue : this._node.body;
+                            if (target && target.length) {
+                                target[target.length - 1] += prevBr;
+                            }
+                        }
                         this._node = this.createNode(this._node);
                     } else {
                         // push the line with previous linebreak value
                         // if the array is joined together to a one string,
                         // then the linebreaks in the string are the 'original' ones
-                        this._node.body.push((this._node.body.length ? prevBr : '') + line);
+                        let target = this._node.inEpilogue && Array.isArray(this._node.epilogue) ? this._node.epilogue : this._node.body;
+                        let usePrevBr = target.length ? prevBr : this._node.inEpilogue ? prevBr : '';
+                        target.push((usePrevBr || '') + line);
                     }
                     break;
 
@@ -142,7 +162,6 @@ class MIMEParser {
                     }
                 }
 
-                node.lineCount = node.body.length ? node.body.length - 1 : 0;
                 node.body = Buffer.from(
                     node.body
                         .join('')
@@ -150,13 +169,34 @@ class MIMEParser {
                         .replace(/\r?\n/g, '\r\n'),
                     'binary'
                 );
+                node.lineCount = 0;
+                for (let i = 0; i < node.body.length; i++) {
+                    if (node.body[i] === 0x0a) {
+                        node.lineCount++;
+                    }
+                }
                 node.size = node.body.length;
+            }
+
+            if (Array.isArray(node.epilogue)) {
+                if (node.epilogue.length) {
+                    node.epilogue = Buffer.from(
+                        node.epilogue
+                            .join('')
+                            // ensure proper line endings
+                            .replace(/\r?\n/g, '\r\n'),
+                        'binary'
+                    );
+                } else {
+                    node.epilogue = false;
+                }
             }
             node.childNodes.forEach(walker);
 
             // remove unneeded properties
             delete node.parentNode;
             delete node.state;
+            delete node.inEpilogue;
             if (!node.childNodes.length) {
                 delete node.childNodes;
             }
@@ -175,6 +215,8 @@ class MIMEParser {
             header: [],
             parsedHeader: {},
             body: [],
+            epilogue: false,
+            inEpilogue: false,
             multipart: false,
             parentBoundary: parentNode.boundary,
             boundary: false,

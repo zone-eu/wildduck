@@ -1438,7 +1438,7 @@ describe('IMAP Protocol integration tests', function () {
                         resp = resp.toString();
                         expect(
                             resp.indexOf(
-                                '\n* 3 FETCH (BODYSTRUCTURE (("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 107 (NIL "" ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "pangalink.net")) NIL NIL "<test1>" NIL) ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 14 0 NIL NIL NIL NIL) 5 NIL NIL NIL NIL)("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 85 (NIL "" ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "pangalink.net")) NIL NIL NIL NIL) ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 14 0 NIL NIL NIL NIL) 4 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "QUOTED-PRINTABLE" 21 0 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "----mailcomposer-?=_1-1328088797399") NIL NIL NIL))\r\n'
+                                '\n* 3 FETCH (BODYSTRUCTURE (("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 109 (NIL "" ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "pangalink.net")) NIL NIL "<test1>" NIL) ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 16 1 NIL NIL NIL NIL) 6 NIL NIL NIL NIL)("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 87 (NIL "" ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "kreata.ee")) ((NIL NIL "andris" "pangalink.net")) NIL NIL NIL NIL) ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 16 1 NIL NIL NIL NIL) 5 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "QUOTED-PRINTABLE" 23 1 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "----mailcomposer-?=_1-1328088797399") NIL NIL NIL))\r\n'
                             ) >= 0
                         ).to.be.true;
                         expect(/^T3 OK/m.test(resp)).to.be.true;
@@ -1550,7 +1550,7 @@ describe('IMAP Protocol integration tests', function () {
                         resp = resp.toString();
                         expect(
                             resp.indexOf(
-                                '\r\n* 3 FETCH (BODY[1] {107}\r\nMIME-Version: 1.0\r\nFrom: andris@kreata.ee\r\nTo: andris@pangalink.net\r\nIn-Reply-To: <test1>\r\n\r\nHello world 1!)\r\n'
+                                '\r\n* 3 FETCH (BODY[1] {109}\r\nMIME-Version: 1.0\r\nFrom: andris@kreata.ee\r\nTo: andris@pangalink.net\r\nIn-Reply-To: <test1>\r\n\r\nHello world 1!\r\n)\r\n'
                             ) >= 0
                         ).to.be.true;
 
