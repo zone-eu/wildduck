@@ -66,6 +66,7 @@ NODE_ENV=test ./node_modules/.bin/mocha test/api-test.js
 - **DkimHandler** (`lib/dkim-handler.js`) - DKIM key management
 - **CertHandler** (`lib/cert-handler.js`) - TLS certificate management, ACME
 - **TaskHandler** (`lib/task-handler.js`) - MongoDB-based task queue management
+- **BimiHandler** (`lib/bimi-handler.js`) - BIMI (Brand Indicators for Message Identification) support
 
 ### Handler Async Pattern
 
@@ -79,7 +80,7 @@ await handler.asyncResolveAddress(address, options);
 
 ### API Routes
 
-REST API routes in `lib/api/` (23 modules): users, addresses, mailboxes, messages, filters, 2fa (totp, webauthn, custom), webhooks, storage, submit, audit, settings, health, acme, dkim, certs, asps, domainaccess, domainaliases, autoreply, updates.
+REST API routes in `lib/api/` (23 modules): users, addresses, mailboxes, messages, filters, auth, 2fa (totp, webauthn, custom), webhooks, storage, submit, audit, settings, health, acme, dkim, certs, asps, domainaccess, domainaliases, autoreply, updates.
 
 ### IMAP Core (`imap-core/lib/`)
 
@@ -133,6 +134,7 @@ module.exports = {
 - `onSubscribe/onUnsubscribe(path, session, cb)` - Subscriptions
 - `onGetQuota/onGetQuotaRoot(path, session, cb)` - Quota
 - `onConnect/onClose(session, cb)` - Lifecycle
+- `onXAPPLEPUSHSERVICE(data, session, cb)` - Apple Push Service support
 
 **Session Object** (available in callbacks):
 ```javascript
@@ -195,15 +197,15 @@ const DkimHandler = require('@zone-eu/wildduck/lib/dkim-handler');
 
 ### IMAP Handler Integration (`imap.js`)
 
-WildDuck implements imap-core callbacks as handler factories in `lib/imap-handler/`:
+WildDuck implements imap-core callbacks as handler factories in `lib/handlers/`:
 ```javascript
 // Handler factory pattern - returns callback function
-server.onFetch = require('./lib/imap-handler/on-fetch')(server, messageHandler, userCache);
-server.onAuth = require('./lib/imap-handler/on-auth')(server, userHandler);
+server.onFetch = require('./lib/handlers/on-fetch')(server, messageHandler, userCache);
+server.onAuth = require('./lib/handlers/on-auth')(server, userHandler);
 // ... etc for all callbacks
 ```
 
-Key handler files: `on-auth.js`, `on-fetch.js`, `on-store.js`, `on-copy.js`, `on-move.js`, `on-append.js`, `on-create.js`, `on-delete.js`, `on-list.js`, `on-open.js`, `on-search.js`, `on-expunge.js`
+Key handler files: `on-auth.js`, `on-fetch.js`, `on-store.js`, `on-copy.js`, `on-move.js`, `on-append.js`, `on-create.js`, `on-delete.js`, `on-list.js`, `on-lsub.js`, `on-open.js`, `on-rename.js`, `on-search.js`, `on-status.js`, `on-expunge.js`, `on-subscribe.js`, `on-unsubscribe.js`, `on-get-quota.js`, `on-get-quota-root.js`, `on-xapplepushservice.js`
 
 ## Background Job Systems
 
@@ -250,7 +252,7 @@ Redis-based queues for ElasticSearch synchronization:
 
 **Auth/Security**: `authlog` (TTL indexed), `asps` (app-specific passwords), `audits`
 
-**System**: `settings`, `tasks`, `dkim`, `certs`, `domainaccess`, `domainaliases`, `journal`, `webhooks`
+**System**: `settings`, `tasks`, `dkim`, `certs`, `domainaccess`, `domainaliases`, `domaincache`, `journal`, `webhooks`, `bimi`
 
 **Archival**: `archived` (deleted messages), `deletedusers`
 
