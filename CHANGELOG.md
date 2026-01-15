@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.16](https://github.com/zone-eu/wildduck/compare/v1.46.15...v1.46.16) (2026-01-15)
+
+
+### Bug Fixes
+
+* **deps:** bump deps ([#959](https://github.com/zone-eu/wildduck/issues/959)) ([4c38d29](https://github.com/zone-eu/wildduck/commit/4c38d29d0bf264f026e41514ce16a6e738ef343c))
+* **logging:** ZMSA-58: revert ZMS-216 ([#956](https://github.com/zone-eu/wildduck/issues/956)) ([dec117d](https://github.com/zone-eu/wildduck/commit/dec117ddf41231e6f2e8960d6022eae424158b68))
+* **uid-search:** ZMSA-67: improve UID SEARCH performance by reducing calls to imap-compiler ([#955](https://github.com/zone-eu/wildduck/issues/955)) ([6ffd0e6](https://github.com/zone-eu/wildduck/commit/6ffd0e6d1ea8eb51d9fe5008e500aada79c873cf))
+
 ## [1.46.15](https://github.com/zone-eu/wildduck/compare/v1.46.14...v1.46.15) (2026-01-08)
 
 
