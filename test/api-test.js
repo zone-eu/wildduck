@@ -587,10 +587,10 @@ describe('API tests', function () {
                     disposition: 'inline',
                     fileContentHash: 'SnEfXNA8Cf15ri8Zuy9xFo5xwYt1YmJqGujZnrwyEv8=',
                     filename: 'attachment-1.png',
-                    hash: '6bb932138c9062004611ca0170d773e78d79154923c5daaf6d8a2f27361c33a2',
+                    hash: '049e38d27657b44b4bf76cc2334f0970de52ef09d1634720ffe8daa5d75e9e53',
                     id: 'ATT00001',
                     related: true,
-                    size: 118,
+                    size: 120,
                     sizeKb: 1,
                     transferEncoding: 'base64',
                     cid: messageData.attachments[0].cid
