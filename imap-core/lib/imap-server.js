@@ -326,6 +326,15 @@ class IMAPServer extends EventEmitter {
                 // eslint-disable-next-line new-cap
                 this.options.SNICallback(opts, (err, context) => {
                     if (err) {
+                        this.loggelf({
+                            short_message: '[IMAPSNIERR] ' + (err.message || 'SNI error'),
+                            full_message: err.stack,
+                            _error: err.message,
+                            _code: err.code,
+                            _tnx: 'sni',
+                            _servername: servername,
+                            _ip: opts && opts.meta && opts.meta.remoteAddress
+                        });
                         this.logger.error(
                             {
                                 tnx: 'sni',
