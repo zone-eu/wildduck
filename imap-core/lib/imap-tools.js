@@ -352,44 +352,89 @@ module.exports.filterFolders = function (folders, query) {
 };
 
 module.exports.getMessageRange = function (uidList, range, isUid) {
-    range = (range || '').toString();
+    if (!range || uidList.length === 0) {
+        return [];
+    }
 
-    let result = [];
-    let rangeParts = range.split(',');
-    let uid, i, len;
-    let totalMessages = uidList.length;
+    range = range.toString();
+    const rangeParts = range.split(',');
+    const totalMessages = uidList.length;
+
     let maxUid = 0;
-
-    let inRange = (nr, ranges, total) => {
-        let range, from, to;
-        for (let i = 0, len = ranges.length; i < len; i++) {
-            range = ranges[i];
-            to = range.split(':');
-            from = to.shift();
-            if (from === '*') {
-                from = total;
-            }
-            from = Number(from) || 1;
-            to = to.pop() || from;
-            to = Number((to === '*' && total) || to) || from;
-
-            if (nr >= Math.min(from, to) && nr <= Math.max(from, to)) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    for (i = 0, len = uidList.length; i < len; i++) {
+    for (let i = 0; i < uidList.length; i++) {
         if (uidList[i] > maxUid) {
             maxUid = uidList[i];
         }
     }
 
-    for (i = 0, len = uidList.length; i < len; i++) {
-        uid = uidList[i] || 1;
-        if (inRange(isUid ? uid : i + 1, rangeParts, isUid ? maxUid : totalMessages)) {
-            result.push(uidList[i]);
+    const maxValue = isUid ? maxUid : totalMessages;
+
+    const parsedRanges = [];
+    for (let i = 0; i < rangeParts.length; i++) {
+        const part = rangeParts[i];
+        const colonIndex = part.indexOf(':');
+        let from, to;
+
+        if (colonIndex === -1) {
+            // single number
+            from = part === '*' ? maxValue : Number(part) || 1;
+            to = from;
+        } else {
+            // range
+            const fromStr = part.substring(0, colonIndex);
+            const toStr = part.substring(colonIndex + 1);
+            from = fromStr === '*' ? maxValue : Number(fromStr) || 1;
+            to = toStr === '*' ? maxValue : Number(toStr) || from;
+        }
+
+        parsedRanges.push([Math.min(from, to), Math.max(from, to)]);
+    }
+
+    // sort and merge overlapping ranges
+    parsedRanges.sort((a, b) => a[0] - b[0]);
+    const mergedRanges = [];
+    for (let i = 0; i < parsedRanges.length; i++) {
+        const current = parsedRanges[i];
+        if (mergedRanges.length === 0 || mergedRanges[mergedRanges.length - 1][1] < current[0] - 1) {
+            mergedRanges.push(current);
+        } else {
+            mergedRanges[mergedRanges.length - 1][1] = Math.max(mergedRanges[mergedRanges.length - 1][1], current[1]);
+        }
+    }
+
+    // for sequence numbers, use direct indexing
+    if (!isUid) {
+        const result = [];
+        for (let i = 0; i < mergedRanges.length; i++) {
+            const [min, max] = mergedRanges[i];
+            for (let seq = min; seq <= max && seq <= totalMessages; seq++) {
+                if (seq >= 1) {
+                    result.push(uidList[seq - 1]);
+                }
+            }
+        }
+        return result;
+    }
+
+    // two pointer approach
+    const result = [];
+    let rangeIndex = 0;
+    let currentRange = mergedRanges[0];
+
+    for (let i = 0; i < uidList.length; i++) {
+        const uid = uidList[i];
+
+        // move to next range if current UID is past current range
+        while (currentRange && uid > currentRange[1]) {
+            rangeIndex++;
+            currentRange = mergedRanges[rangeIndex];
+        }
+
+        if (!currentRange) break;
+
+        // check if UID is in current range
+        if (uid >= currentRange[0] && uid <= currentRange[1]) {
+            result.push(uid);
         }
     }
 
@@ -766,8 +811,6 @@ module.exports.sendCapabilityResponse = connection => {
         if (connection._server.options.maxMessage) {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
-
-
     } else {
         capabilities.push('ID');
         capabilities.push('UNSELECT');
@@ -792,7 +835,6 @@ module.exports.sendCapabilityResponse = connection => {
         if (connection._server.options.maxMessage) {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
-
     }
 
     capabilities.sort((a, b) => a.localeCompare(b));
