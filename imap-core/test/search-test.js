@@ -7,12 +7,32 @@ const parseQueryTerms = require('../lib/commands/search').parseQueryTerms;
 const matchSearchQuery = require('../lib/search').matchSearchQuery;
 const Indexer = require('../lib/indexer/indexer');
 const indexer = new Indexer();
+const crypto = require('crypto');
 
 const chai = require('chai');
 const expect = chai.expect;
 chai.config.includeStack = true;
 
-function buildLargeSequenceSet() {
+function seededRandom(seed) {
+    let counter = 0;
+    const seedStr = String(seed);
+    return () => {
+        const hash = crypto.createHash('sha256').update(seedStr).update(':').update(String(counter++)).digest();
+        return hash.readUInt32BE(0) / 0x100000000;
+    };
+}
+
+function shuffleArray(values, seed) {
+    const rng = seededRandom(seed);
+    for (let i = values.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [values[i], values[j]] = [values[j], values[i]];
+    }
+    return values;
+}
+
+function buildLargeSequenceSet(options) {
+    options = options || {};
     let parts = [];
     for (let i = 1; i <= 500; i++) {
         parts.push(String(i * 2));
@@ -20,6 +40,9 @@ function buildLargeSequenceSet() {
     for (let i = 0; i < 200; i++) {
         let start = 2000 + i * 10;
         parts.push(start + ':' + (start + 5));
+    }
+    if (options.randomize) {
+        shuffleArray(parts, options.seed || 1337);
     }
     return parts.join(',');
 }
@@ -570,7 +593,8 @@ describe('UID SEARCH parse performance', function () {
     this.timeout(3000);
 
     const largeUidList = Array.from({ length: 200000 }, (_, i) => i + 1);
-    const largeSequenceSet = buildLargeSequenceSet();
+    const largeSequenceSet = buildLargeSequenceSet({ randomize: true, seed: 7331 });
+    const orderedSequenceSet = buildLargeSequenceSet();
 
     it('should parse many individual and ranged UIDs quickly', function () {
         const start = process.hrtime.bigint();
@@ -594,6 +618,17 @@ describe('UID SEARCH parse performance', function () {
         expect(elapsedMs).to.be.below(1500);
     });
 
+    it('should parse many ordered individual and ranged UIDs quickly', function () {
+        const start = process.hrtime.bigint();
+        const parsed = parseQueryTerms(['UID', orderedSequenceSet], largeUidList, true);
+        const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+
+        expect(parsed.query).to.have.length(1);
+        expect(parsed.query[0].key).to.equal('uid');
+        expect(parsed.query[0].value).to.be.an('array');
+        expect(elapsedMs).to.be.below(1500);
+    });
+
     it('should parse a very large mixed sequence set quickly', function () {
         const hugeUidList = Array.from({ length: 500000 }, (_, i) => i + 1);
         let parts = [];
@@ -607,7 +642,7 @@ describe('UID SEARCH parse performance', function () {
         parts.push('1:*');
         parts.push('300000:100000'); // reversed range
         parts.push('*'); // max
-        const seq = parts.join(',');
+        const seq = shuffleArray(parts, 4242).join(',');
 
         const start = process.hrtime.bigint();
         const parsed = parseQueryTerms(['UID', seq], hugeUidList, true);
