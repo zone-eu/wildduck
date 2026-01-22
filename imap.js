@@ -129,6 +129,17 @@ let createInterface = (ifaceOptions, callback) => {
             return callback(err);
         }
 
+        if (typeof loggelf === 'function') {
+            loggelf({
+                short_message: '[IMAPERROR] ' + (err && err.message ? err.message : 'Server error'),
+                full_message: err && err.stack,
+                _error: err && err.message,
+                _code: err && err.code,
+                _tnx: 'server',
+                _service: 'imap'
+            });
+        }
+
         logger.error(
             {
                 err
@@ -286,6 +297,18 @@ module.exports = done => {
 
         createInterface(opts, err => {
             if (err) {
+                if (typeof loggelf === 'function') {
+                    loggelf({
+                        short_message: '[IMAPBINDFAIL] ' + (err && err.message ? err.message : 'Bind failed'),
+                        full_message: err && err.stack,
+                        _error: err && err.message,
+                        _code: err && err.code,
+                        _tnx: 'bind',
+                        _host: opts.host,
+                        _port: opts.port,
+                        _secure: opts.secure ? 'yes' : 'no'
+                    });
+                }
                 logger.error(
                     {
                         err,

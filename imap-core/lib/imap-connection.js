@@ -230,6 +230,15 @@ class IMAPConnection extends EventEmitter {
                             this.id,
                             args[0].message || args[0]
                         );
+                        this.loggelf({
+                            short_message: '[IMAPSENDERR] ' + (args[0] && args[0].message ? args[0].message : 'Send error'),
+                            full_message: args[0] && args[0].stack,
+                            _error: args[0] && (args[0].message || args[0]),
+                            _code: args[0] && args[0].code,
+                            _tnx: 'send',
+                            _sess: this.id,
+                            _ip: this.remoteAddress
+                        });
                         return this.close();
                     }
                     if (typeof callback === 'function') {
@@ -248,6 +257,15 @@ class IMAPConnection extends EventEmitter {
                     this.id,
                     err.message || err
                 );
+                this.loggelf({
+                    short_message: '[IMAPSENDERR] ' + (err && err.message ? err.message : 'Send error'),
+                    full_message: err && err.stack,
+                    _error: err && (err.message || err),
+                    _code: err && err.code,
+                    _tnx: 'send',
+                    _sess: this.id,
+                    _ip: this.remoteAddress
+                });
                 return this.close();
             }
             if (this.compression) {
@@ -469,6 +487,14 @@ class IMAPConnection extends EventEmitter {
             this.id,
             err.message
         );
+        this.loggelf({
+            short_message: '[IMAPCONNERR] ' + (err && err.message ? err.message : 'Connection error'),
+            full_message: err && err.stack,
+            _error: err && err.message,
+            _code: err && err.code,
+            _sess: this.id,
+            _ip: this.remoteAddress
+        });
         this.emit('error', err);
     }
 
