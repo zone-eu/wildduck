@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.46.18](https://github.com/zone-eu/wildduck/compare/v1.46.17...v1.46.18) (2026-01-22)
+
+
+### Bug Fixes
+
+* **filter-handler:** ZMSA-63: filter handler store message return stored message size ([#968](https://github.com/zone-eu/wildduck/issues/968)) ([fb32e9e](https://github.com/zone-eu/wildduck/commit/fb32e9e5874d939bba4687a71811cad8f2f9498b))
+* **filters-actions-spam:** ZMSA-71-2: Allow spam action to be null thus deleting it ([#967](https://github.com/zone-eu/wildduck/issues/967)) ([0529f8f](https://github.com/zone-eu/wildduck/commit/0529f8f5d7922dfde4a3cde09d8d8a87e4c22883))
+* **filters-list:** ZMSA-71: when requesting filters list value also return original query and action field values ([#965](https://github.com/zone-eu/wildduck/issues/965)) ([cdc7c63](https://github.com/zone-eu/wildduck/commit/cdc7c63ad3a010d39a4b42831abb83420e93aea5))
+* **logging:** ZMSA-56: IMAP and POP3 servers loggelf errors ([#962](https://github.com/zone-eu/wildduck/issues/962)) ([88ea15c](https://github.com/zone-eu/wildduck/commit/88ea15c75a183630c91de3ba83292c2720de5a58))
+* **on-move:** ZMSA-73: on move if failed to get folder write lock, treat as tempfail ([#970](https://github.com/zone-eu/wildduck/issues/970)) ([967e4b1](https://github.com/zone-eu/wildduck/commit/967e4b1fd39b236ffe975dec8b5eef026f94aed0))
+* **tests-hibp:** ZMSA-30: add more hibp tests, enable hibp for tests in general ([#964](https://github.com/zone-eu/wildduck/issues/964)) ([af6bde3](https://github.com/zone-eu/wildduck/commit/af6bde35b0c8675b5acb80117eaaf5390db2b9db))
+
 ## [1.46.17](https://github.com/zone-eu/wildduck/compare/v1.46.16...v1.46.17) (2026-01-22)
 
 
