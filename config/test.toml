@@ -23,6 +23,7 @@ host = "127.0.0.1"
 enabled = true
 port = 2424
 
+# enable pwned checks for tests
 [pwned]
 enabled = true
 type = "softfail"
