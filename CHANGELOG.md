@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.17](https://github.com/zone-eu/wildduck/compare/v1.46.16...v1.46.17) (2026-01-22)
+
+
+### Bug Fixes
+
+* **imap-client-uid-search:** ZMSA-70: optimize search query client command parsing ([#963](https://github.com/zone-eu/wildduck/issues/963)) ([3b14035](https://github.com/zone-eu/wildduck/commit/3b14035f05fb5edb4dc57b1908cc57d9ae7ab592))
+* **imap-notifications:** ZMS-106: imap-connection notifiations handling remove lock, use queue instead ([#954](https://github.com/zone-eu/wildduck/issues/954)) ([1346054](https://github.com/zone-eu/wildduck/commit/1346054c4aec73b2b462f3ff70a1fe543f473dc0))
+* **rebuild:** ZMSA-48: fix rebuilding of multipart parts ([#942](https://github.com/zone-eu/wildduck/issues/942)) ([11b4fcb](https://github.com/zone-eu/wildduck/commit/11b4fcbcd4cb5926f469046645ea193d0d7a8624))
+
 ## [1.46.16](https://github.com/zone-eu/wildduck/compare/v1.46.15...v1.46.16) (2026-01-15)
 
 
