@@ -207,6 +207,50 @@ describe('API Filters', function () {
         expect(responseGet.body.action.mailbox).to.be.equal(inbox);
     });
 
+    describe.only('Filter spam action', function () {
+        let spamFilter;
+
+        it('should POST /users/{user}/filters expect success / with spam action', async () => {
+            const response = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'spam action filter',
+                    query: {
+                        from: 'account-spam'
+                    },
+                    action: {
+                        spam: true,
+                        seen: true
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            spamFilter = response.body.id;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${spamFilter}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action.spam).to.equal(true);
+            expect(filterDataResponse.body.action.seen).to.equal(true);
+        });
+
+        it('should PUT /users/{user}/filters/{filter} expect success / clear spam action', async () => {
+            const response = await server
+                .put(`/users/${user}/filters/${spamFilter}`)
+                .send({
+                    action: {
+                        spam: null
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${spamFilter}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action).to.not.have.property('spam');
+            expect(filterDataResponse.body.action.seen).to.equal(true);
+        });
+    });
+
     describe('Filter metaData', function () {
         let metaDataFilter;
 
