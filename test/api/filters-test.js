@@ -207,7 +207,7 @@ describe('API Filters', function () {
         expect(responseGet.body.action.mailbox).to.be.equal(inbox);
     });
 
-    describe.only('Filter spam action', function () {
+    describe('Filter spam action', function () {
         let spamFilter;
 
         it('should POST /users/{user}/filters expect success / with spam action', async () => {
