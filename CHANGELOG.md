@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.19](https://github.com/zone-eu/wildduck/compare/v1.46.18...v1.46.19) (2026-01-27)
+
+
+### Bug Fixes
+
+* **api:** ZMSA-62: API response type fixes ([#975](https://github.com/zone-eu/wildduck/issues/975)) ([f7fe4d7](https://github.com/zone-eu/wildduck/commit/f7fe4d7334d69088077b113a7b4363c19b91a89d))
+* **imap-search:** ZMSA-77: revert ZMSA-67, add UID SEARCH protocol tests ([#977](https://github.com/zone-eu/wildduck/issues/977)) ([da2ea50](https://github.com/zone-eu/wildduck/commit/da2ea5033cebcbd01f333202e0447d82af5cb357))
+
 ## [1.46.18](https://github.com/zone-eu/wildduck/compare/v1.46.17...v1.46.18) (2026-01-22)
 
 
