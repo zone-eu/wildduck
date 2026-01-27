@@ -1924,5 +1924,81 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should treat 1:10 as sequence and 20:30 as UID set (empty intersection)', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 1:10 UID 20:30', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH \d/m.test(resp)).to.be.false;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should treat UID 1:10 as UID set and 20:30 as sequence (empty intersection)', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH UID 1:10 20:30', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH \d/m.test(resp)).to.be.false;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should intersect sequence set with UID set when both match', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 1:4 UID 102:104', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* SEARCH /gm).length).to.equal(1);
+                    expect(/^\* SEARCH 102 103 104$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should intersect UID set first and sequence set second', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH UID 101:104 2:3', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* SEARCH /gm).length).to.equal(1);
+                    expect(/^\* SEARCH 102 103$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 });
