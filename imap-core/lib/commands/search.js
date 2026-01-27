@@ -33,7 +33,7 @@ module.exports = {
         let parsed;
 
         try {
-            parsed = parseQueryTerms(terms, this.selected.uidList, isUid);
+            parsed = parseQueryTerms(terms, this.selected.uidList);
         } catch (E) {
             return callback(E);
         }
@@ -151,9 +151,8 @@ function isFixedRange(value) {
     return value.indexOf(':') >= 0 && value.indexOf(',') < 0;
 }
 
-function parseQueryTerms(terms, uidList, isUidSearch) {
+function parseQueryTerms(terms, uidList) {
     terms = [].concat(terms || []);
-    isUidSearch = !!isUidSearch;
 
     let pos = 0;
     let term;
@@ -184,12 +183,8 @@ function parseQueryTerms(terms, uidList, isUidSearch) {
         if (!termType) {
             // try if it is a sequence set
             if (imapTools.validateSequence(term)) {
-                let messageRange = imapTools.getMessageRange(uidList, term, isUidSearch);
-                if (isUidSearch && isFixedRange(term)) {
-                    messageRange.isContiguous = true;
-                }
                 // resolve sequence list to an array of UID values
-                curTerm = ['uid', messageRange];
+                curTerm = ['uid', imapTools.getMessageRange(uidList, term, false)];
             } else {
                 // no idea what the term is for
                 throw new Error('Unknown search term ' + term.toUpperCase());
