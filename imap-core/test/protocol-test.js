@@ -1868,7 +1868,7 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
-        it('should treat UID SEARCH 1:N as sequence when N equals EXISTS', function (done) {
+        it('should search with UID SEARCH 1:N correctly if N equals to EXISTS response', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 1:6 NOT DELETED', 'T4 LOGOUT'];
 
             testClient(
@@ -1887,7 +1887,7 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
-        it('should treat UID SEARCH 1:N as sequence when N is not EXISTS', function (done) {
+        it('should search with UID SEARCH 1:N correctly if N does not equal to EXISTS response', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 1:3', 'T4 LOGOUT'];
 
             testClient(
