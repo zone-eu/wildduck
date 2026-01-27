@@ -151,6 +151,29 @@ function isFixedRange(value) {
     return value.indexOf(':') >= 0 && value.indexOf(',') < 0;
 }
 
+function shouldTreatUidSearchRangeAsSequence(value, uidList, isUidSearch) {
+    if (!isUidSearch || !Array.isArray(uidList) || !uidList.length) {
+        return false;
+    }
+
+    value = (value || '').toString();
+    if (!isFixedRange(value)) {
+        return false;
+    }
+
+    let parts = value.split(':');
+    if (parts.length !== 2 || parts[0] !== '1' || parts[1] === '*') {
+        return false;
+    }
+
+    let end = Number(parts[1]);
+    if (!Number.isFinite(end)) {
+        return false;
+    }
+
+    return end === uidList.length;
+}
+
 function parseQueryTerms(terms, uidList, isUidSearch) {
     terms = [].concat(terms || []);
     isUidSearch = !!isUidSearch;
@@ -184,8 +207,9 @@ function parseQueryTerms(terms, uidList, isUidSearch) {
         if (!termType) {
             // try if it is a sequence set
             if (imapTools.validateSequence(term)) {
-                let messageRange = imapTools.getMessageRange(uidList, term, isUidSearch);
-                if (isUidSearch && isFixedRange(term)) {
+                let useUidRange = isUidSearch && !shouldTreatUidSearchRangeAsSequence(term, uidList, isUidSearch);
+                let messageRange = imapTools.getMessageRange(uidList, term, useUidRange);
+                if (useUidRange && isFixedRange(term)) {
                     messageRange.isContiguous = true;
                 }
                 // resolve sequence list to an array of UID values
