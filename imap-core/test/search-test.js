@@ -547,14 +547,14 @@ describe('#parseQueryTerms', function () {
 
 describe('UID sequence edge cases', function () {
     this.timeout(1000);
-    it('should treat UID SEARCH 1:N as sequence when N equals EXISTS', function () {
-        const testUidList = [39, 40, 44, 52, 53, 54, 59, 72]; // 8 elements
+    it('should treat bare sequence set as sequence numbers in UID SEARCH', function () {
+        const testUidList = [39, 40, 44, 52, 53, 54, 59, 72];
 
-        const parsed = parseQueryTerms(['1:8'], testUidList, true); // 3rd param true -> isUid = true
+        const parsed = parseQueryTerms(['1:3'], testUidList, true);
 
         expect(parsed.query).to.have.length(1);
         expect(parsed.query[0].key).to.equal('uid');
-        expect(parsed.query[0].value).to.deep.equal(testUidList);
+        expect(parsed.query[0].value).to.deep.equal([39, 40, 44]);
     });
 
     it('should handle overlaps, duplicates, reversed ranges, and *', function () {

@@ -1867,5 +1867,62 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should treat UID SEARCH 1:N as sequence when N equals EXISTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 1:6 NOT DELETED', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* SEARCH /gm).length).to.equal(1);
+                    expect(/^\* SEARCH 101 102 103 104 105 106$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should treat UID SEARCH 1:N as sequence when N is not EXISTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 1:3', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* SEARCH /gm).length).to.equal(1);
+                    expect(/^\* SEARCH 101 102 103$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should intersect sequence set with UID search key in UID SEARCH', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SEARCH 2:5 UID 103:104', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* SEARCH /gm).length).to.equal(1);
+                    expect(/^\* SEARCH 103 104$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 });
