@@ -183,9 +183,8 @@ function parseQueryTerms(terms, uidList) {
         if (!termType) {
             // try if it is a sequence set
             if (imapTools.validateSequence(term)) {
-                let messageRange = imapTools.getMessageRange(uidList, term, false);
                 // resolve sequence list to an array of UID values
-                curTerm = ['uid', messageRange];
+                curTerm = ['uid', imapTools.getMessageRange(uidList, term, false)];
             } else {
                 // no idea what the term is for
                 throw new Error('Unknown search term ' + term.toUpperCase());
