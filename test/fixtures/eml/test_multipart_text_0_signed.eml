@@ -1,0 +1,154 @@
+Date: Wed, 7 Jan 2026 18:29:00 +0200
+To: =?UTF-8?Q?L=C3=B5ks?= <loks@naide.ee>
+From: =?UTF-8?Q?L=C3=B5ks?= <loks@naide.ee>
+Subject: This is a test letter #2
+MIME-Version: 1.0
+Content-Type: multipart/signed; protocol="application/x-pkcs7-signature"; micalg="sha-256"; boundary="----720BA042C91842075C1A2AAEE36E3BB1"
+
+This is an S/MIME signed message
+
+------720BA042C91842075C1A2AAEE36E3BB1
+Message-ID: <b0179cd6-402a-4034-b716-5086270eeef1@naide.ee>
+Date: Tue, 6 Jan 2026 18:28:16 +0200
+MIME-Version: 1.0
+User-Agent: Mozilla Thunderbird
+Content-Language: la-VA
+To: =?UTF-8?Q?L=C3=B5ks?= <loks@naide.ee>
+From: =?UTF-8?Q?L=C3=B5ks?= <loks@naide.ee>
+Subject: This is a test letter #2
+Content-Type: multipart/alternative; boundary="e60533cb-5476-4254-b4f0-c0d6502883cc"; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+--e60533cb-5476-4254-b4f0-c0d6502883cc
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset=UTF-8
+
+Lorem,
+
+Ipsum dolor sit amet, consectetur adipiscing elit. Donec in nulla
+eu tortor lobortis condimentum quis quis enim. Fusce commodo nibh
+a neque pretium aliquet. Quisque aliquet non erat in maximus. Sed
+sagittis rutrum risus ac convallis. Phasellus porta ipsum vel 
+tortor faucibus, molestie luctus metus tristique. Phasellus
+fringilla pharetra ullamcorper. Nam congue mi tristique, sodales
+ante sed, volutpat eros.
+
+Proin erat quam,
+cursus sit amet condimentum auctor,
+ultrices eu nulla.
+--e60533cb-5476-4254-b4f0-c0d6502883cc
+Content-Transfer-Encoding: 7bit
+Content-Type: text/html; charset=UTF-8
+
+<!DOCTYPE html>
+<html>
+  <head>
+
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  </head>
+  <body>
+    Lorem,
+    <p>Ipsum dolor sit amet, consectetur adipiscing elit. Donec in nulla
+      eu tortor lobortis condimentum quis quis enim. Fusce commodo nibh
+      a neque pretium aliquet. Quisque aliquet non erat in maximus. Sed
+      sagittis rutrum risus ac convallis. Phasellus porta ipsum vel
+      tortor faucibus, molestie luctus metus tristique. Phasellus
+      fringilla pharetra ullamcorper. Nam congue mi tristique, sodales
+      ante sed, volutpat eros.</p>
+    <p>Proin erat quam,<br>
+      cursus sit amet condimentum auctor,<br>
+      ultrices eu nulla.</p>
+  </body>
+</html>
+--e60533cb-5476-4254-b4f0-c0d6502883cc--
+
+------720BA042C91842075C1A2AAEE36E3BB1
+Content-Type: application/x-pkcs7-signature; name="smime.p7s"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="smime.p7s"
+
+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
+4WgsPXNklgMV+DDDIZN8fFtp8w3ibiNpBx9I
+
+------720BA042C91842075C1A2AAEE36E3BB1--
+

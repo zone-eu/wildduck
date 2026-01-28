@@ -7,6 +7,8 @@ let config = require('@zone-eu/wild-config');
 //let testServer = require('./test-server.js');
 let testClient = require('./test-client.js');
 let exec = require('child_process').exec;
+let fs = require('fs');
+let path = require('path');
 
 let chai = require('chai');
 let chunks = require('./fixtures/chunks');
@@ -14,6 +16,14 @@ let expect = chai.expect;
 chai.config.includeStack = true;
 
 const { MAX_SUB_MAILBOXES, MAX_MAILBOX_NAME_LENGTH } = require('../../lib/consts.js');
+const fixtureDir = path.join(__dirname, '..', '..', 'test', 'fixtures', 'eml');
+const readFixture = name => fs.readFileSync(path.join(fixtureDir, name));
+// const baseFixtureNames = ['simple-1.eml', 'simple-2.eml', 'with-attachment.eml'];
+// const extraFixtureNames = fs
+//     .readdirSync(fixtureDir)
+//     .filter(name => /^test_.*\.eml$/.test(name))
+//     .sort();
+// const fixtureNames = baseFixtureNames.concat(extraFixtureNames.filter(name => !baseFixtureNames.includes(name)));
 
 describe('IMAP Protocol integration tests', function () {
     this.timeout(100000); // eslint-disable-line no-invalid-this
@@ -1555,6 +1565,106 @@ describe('IMAP Protocol integration tests', function () {
                         ).to.be.true;
 
                         expect(/^T3 OK/m.test(resp)).to.be.true;
+                        done();
+                    }
+                );
+            });
+
+            // it('should append and fetch identical EML files with and without attachments', function (done) {
+            //     const mailbox = 'IMAPROUNDTRIP';
+
+            //     const fixtures = fixtureNames.map(name => ({
+            //         name,
+            //         raw: readFixture(name)
+            //     }));
+
+            //     let tag = 1;
+            //     let cmds = [];
+            //     cmds.push('T' + tag++ + ' LOGIN testuser pass');
+            //     cmds.push('T' + tag++ + ' CREATE ' + mailbox);
+            //     for (let item of fixtures) {
+            //         cmds.push('T' + tag++ + ' APPEND ' + mailbox + ' {' + item.raw.length + '}\r\n' + item.raw.toString('binary'));
+            //     }
+            //     cmds.push('T' + tag++ + ' SELECT ' + mailbox);
+            //     let fetchTags = [];
+            //     for (let i = 0; i < fixtures.length; i++) {
+            //         let fetchTag = 'T' + tag++;
+            //         fetchTags.push(fetchTag);
+            //         cmds.push(fetchTag + ' FETCH ' + (i + 1) + ' BODY.PEEK[]');
+            //     }
+            //     cmds.push('T' + tag++ + ' LOGOUT');
+
+            //     testClient(
+            //         {
+            //             commands: cmds,
+            //             secure: true,
+            //             port
+            //         },
+            //         function (resp) {
+            //             resp = resp.toString('binary');
+
+            //             for (let i = 0; i < fixtures.length; i++) {
+            //                 const item = fixtures[i];
+            //                 const expected =
+            //                     '\r\n* ' +
+            //                     (i + 1) +
+            //                     ' FETCH (BODY[] {' +
+            //                     item.raw.length +
+            //                     '}\r\n' +
+            //                     item.raw.toString('binary') +
+            //                     ')\r\n';
+            //                 expect(resp.indexOf(expected) >= 0).to.be.true;
+            //             }
+            //             for (let fetchTag of fetchTags) {
+            //                 expect(new RegExp('^' + fetchTag + ' OK', 'm').test(resp)).to.be.true;
+            //             }
+            //             done();
+            //         }
+            //     );
+            // });
+
+            it('should return partial BODY.PEEK[] for messages with and without attachments', function (done) {
+                const simple = readFixture('simple-2.eml');
+                const withAttachment = readFixture('with-attachment.eml');
+                const mailbox = 'IMAPPARTIAL';
+
+                const simpleOffset = 5;
+                const simpleLength = 20;
+                const simpleSlice = simple.subarray(simpleOffset, simpleOffset + simpleLength);
+
+                const attachOffset = 7;
+                const attachLength = 25;
+                const attachSlice = withAttachment.subarray(attachOffset, attachOffset + attachLength);
+
+                let cmds = [
+                    'T1 LOGIN testuser pass',
+                    'T2 CREATE ' + mailbox,
+                    'T3 APPEND ' + mailbox + ' {' + simple.length + '}\r\n' + simple.toString('binary'),
+                    'T4 APPEND ' + mailbox + ' {' + withAttachment.length + '}\r\n' + withAttachment.toString('binary'),
+                    'T5 SELECT ' + mailbox,
+                    'T6 FETCH 1 BODY.PEEK[]<' + simpleOffset + '.' + simpleLength + '>',
+                    'T7 FETCH 2 BODY.PEEK[]<' + attachOffset + '.' + attachLength + '>',
+                    'T8 LOGOUT'
+                ];
+
+                testClient(
+                    {
+                        commands: cmds,
+                        secure: true,
+                        port
+                    },
+                    function (resp) {
+                        resp = resp.toString('binary');
+
+                        const expectedSimple =
+                            '\r\n* 1 FETCH (BODY[]<' + simpleOffset + '> {' + simpleSlice.length + '}\r\n' + simpleSlice.toString('binary') + ')\r\n';
+                        const expectedAttachment =
+                            '\r\n* 2 FETCH (BODY[]<' + attachOffset + '> {' + attachSlice.length + '}\r\n' + attachSlice.toString('binary') + ')\r\n';
+
+                        expect(resp.indexOf(expectedSimple) >= 0).to.be.true;
+                        expect(resp.indexOf(expectedAttachment) >= 0).to.be.true;
+                        expect(/^T6 OK/m.test(resp)).to.be.true;
+                        expect(/^T7 OK/m.test(resp)).to.be.true;
                         done();
                     }
                 );

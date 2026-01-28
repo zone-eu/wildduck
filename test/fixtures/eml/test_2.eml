@@ -1,0 +1,33 @@
+Message-ID: <6cd7a198-fdde-47b4-9703-894733d21658@naide.ee>
+Date: Tue, 6 Jan 2026 15:28:16 +0200
+MIME-Version: 1.0
+User-Agent: Mozilla Thunderbird
+Content-Language: la-VA
+To: =?UTF-8?Q?L=C3=B5ks?= <loks@naide.ee>
+From: =?UTF-8?Q?L=C3=B5ks?= <loks@naide.ee>
+Subject: This is a test letter
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+<!DOCTYPE html>
+<html>
+  <head>
+
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  </head>
+  <body>
+    Lorem,
+    <p>Ipsum dolor sit amet, consectetur adipiscing elit. Donec in nulla
+      eu tortor lobortis condimentum quis quis enim. Fusce commodo nibh
+      a neque pretium aliquet. Quisque aliquet non erat in maximus. Sed
+      sagittis rutrum risus ac convallis. Phasellus porta ipsum vel
+      tortor faucibus, molestie luctus metus tristique. Phasellus
+      fringilla pharetra ullamcorper. Nam congue mi tristique, sodales
+      ante sed, volutpat eros.</p>
+    <p>Proin erat quam,<br>
+      cursus sit amet condimentum auctor,<br>
+      ultrices eu nulla.</p>
+  </body>
+</html>
+
+

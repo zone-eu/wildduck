@@ -51,6 +51,8 @@ class Indexer {
         let size = 0;
         let first = true;
         let root = true;
+        let lastByte = null;
+        let forceSeparator = false;
 
         // make sure that mixed body + mime gets rebuilt correctly
         let append = (data, force) => {
@@ -58,14 +60,29 @@ class Indexer {
                 data = data.join('\r\n');
             }
             if (data || force) {
-                size += Buffer.byteLength((first ? '' : '\r\n') + (data || ''), 'binary');
-                first = false;
+                if (!first) {
+                    if (forceSeparator || force || lastByte !== 0x0a) {
+                        size += NEWLINE.length;
+                    }
+                    forceSeparator = false;
+                } else {
+                    first = false;
+                }
+
+                if (data) {
+                    let buf = Buffer.from(data, 'binary');
+                    size += buf.length;
+                    lastByte = buf[buf.length - 1];
+                } else if (force) {
+                    lastByte = 0x0a;
+                }
             }
         };
 
         let walk = (node, next) => {
             if (!textOnly || !root) {
                 append(formatHeaders(node.header).join('\r\n') + '\r\n');
+                forceSeparator = true;
             }
 
             let finalize = () => {
@@ -73,6 +90,7 @@ class Indexer {
                     append(`--${node.boundary}--`);
                     if (node.epilogue && node.epilogue.length) {
                         size += node.epilogue.length;
+                        lastByte = node.epilogue[node.epilogue.length - 1];
                     }
                 }
 
@@ -100,6 +118,31 @@ class Indexer {
                     }
                 }
                 size += nodeSize;
+                if (nodeSize) {
+                    if (Buffer.isBuffer(node.body)) {
+                        lastByte = node.body[node.body.length - 1];
+                    } else if (node.body && node.body.buffer && Buffer.isBuffer(node.body.buffer)) {
+                        lastByte = node.body.buffer[node.body.buffer.length - 1];
+                    } else if (typeof node.body === 'string' && node.body.length) {
+                        lastByte = Buffer.from(node.body, 'binary').at(-1);
+                    } else if (Array.isArray(node.body)) {
+                        let lastChar;
+                        for (let i = node.body.length - 1; i >= 0; i--) {
+                            if (typeof node.body[i] === 'string' && node.body[i].length) {
+                                lastChar = node.body[i].at(-1);
+                                break;
+                            }
+                        }
+                        if (lastChar) {
+                            lastByte = Buffer.from(lastChar, 'binary')[0];
+                        } else {
+                            lastByte = 0x0a;
+                        }
+                    } else {
+                        // Externalized body; assume it ends with a line break as boundaries require.
+                        lastByte = 0x0a;
+                    }
+                }
             }
 
             if (node.boundary) {

@@ -1,0 +1,19 @@
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+Subject: With Attachment
+Date: Tue, 6 Jan 2026 12:10:00 +0000
+Message-ID: <with-attachment@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY-123"
+
+--BOUNDARY-123
+Content-Type: text/plain; charset=us-ascii
+
+This is the body.
+--BOUNDARY-123
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="hello.txt"
+Content-Transfer-Encoding: base64
+
+SGVsbG8gYXR0YWNobWVudCE=
+--BOUNDARY-123--
