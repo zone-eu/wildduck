@@ -54,8 +54,15 @@ class MIMEParser {
 
                 case 'body': // process body section
                     this.rawBody += prevBr + line;
+                    // eslint-disable-next-line no-case-declarations
+                    const lineBoundary = line && /[ \t]$/.test(line) ? line.replace(/[ \t]+$/, '') : line;
+                    // eslint-disable-next-line no-case-declarations
+                    const boundarySuffix = lineBoundary && line ? line.slice(lineBoundary.length) : '';
 
-                    if (this._node.parentBoundary && (line === '--' + this._node.parentBoundary || line === '--' + this._node.parentBoundary + '--')) {
+                    if (
+                        this._node.parentBoundary &&
+                        (lineBoundary === '--' + this._node.parentBoundary || lineBoundary === '--' + this._node.parentBoundary + '--')
+                    ) {
                         if (prevBr) {
                             let target = this._node.inEpilogue && Array.isArray(this._node.epilogue) ? this._node.epilogue : this._node.body;
                             if (target && target.length) {
@@ -70,9 +77,12 @@ class MIMEParser {
                             this._node.message = parse(this._node.body.join(''));
                         }
 
-                        if (line === '--' + this._node.parentBoundary) {
+                        if (lineBoundary === '--' + this._node.parentBoundary) {
                             this._node = this.createNode(this._node.parentNode);
                         } else {
+                            if (boundarySuffix && this._node.parentNode && !this._node.parentNode.boundarySuffix) {
+                                this._node.parentNode.boundarySuffix = boundarySuffix;
+                            }
                             this._node = this._node.parentNode;
                             if (this._node) {
                                 if (!Array.isArray(this._node.epilogue)) {
@@ -81,7 +91,7 @@ class MIMEParser {
                                 this._node.inEpilogue = true;
                             }
                         }
-                    } else if (this._node.boundary && line === '--' + this._node.boundary) {
+                    } else if (this._node.boundary && lineBoundary === '--' + this._node.boundary) {
                         if (prevBr) {
                             let target = this._node.inEpilogue && Array.isArray(this._node.epilogue) ? this._node.epilogue : this._node.body;
                             if (target && target.length) {

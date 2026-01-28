@@ -53,6 +53,7 @@ class Indexer {
         let root = true;
         let lastByte = null;
         let forceSeparator = false;
+        let boundarySuffixes = new Map();
 
         // make sure that mixed body + mime gets rebuilt correctly
         let append = (data, force) => {
@@ -79,7 +80,19 @@ class Indexer {
             }
         };
 
-        let walk = (node, next) => {
+        let walk = (node, next, parentBoundary) => {
+            let nodeBody = node.body;
+            let cleaned = false;
+            if (node.boundary && parentBoundary && nodeBody && nodeBody.length) {
+                let cleanup = stripParentClosingBoundaryFromPreamble(nodeBody, parentBoundary);
+                if (cleanup) {
+                    nodeBody = cleanup.preamble;
+                    cleaned = true;
+                    if (cleanup.suffix && cleanup.suffix.length && !boundarySuffixes.has(parentBoundary)) {
+                        boundarySuffixes.set(parentBoundary, cleanup.suffix);
+                    }
+                }
+            }
             if (!textOnly || !root) {
                 append(formatHeaders(node.header).join('\r\n') + '\r\n');
                 forceSeparator = true;
@@ -87,7 +100,8 @@ class Indexer {
 
             let finalize = () => {
                 if (node.boundary) {
-                    append(`--${node.boundary}--`);
+                    let boundarySuffix = node.boundarySuffix || boundarySuffixes.get(node.boundary) || '';
+                    append(`--${node.boundary}--${boundarySuffix}`);
                     if (node.epilogue && node.epilogue.length) {
                         size += node.epilogue.length;
                         lastByte = node.epilogue[node.epilogue.length - 1];
@@ -104,32 +118,32 @@ class Indexer {
                     append(false, true); // force newline
                 }
                 let nodeSize = Number(node.size);
-                if (!Number.isFinite(nodeSize)) {
-                    if (Buffer.isBuffer(node.body)) {
-                        nodeSize = node.body.length;
-                    } else if (node.body && node.body.buffer && Buffer.isBuffer(node.body.buffer)) {
-                        nodeSize = node.body.buffer.length;
-                    } else if (typeof node.body === 'string') {
-                        nodeSize = Buffer.byteLength(node.body, 'binary');
-                    } else if (Array.isArray(node.body)) {
-                        nodeSize = Buffer.byteLength(node.body.join(''), 'binary');
+                if (!Number.isFinite(nodeSize) || cleaned) {
+                    if (Buffer.isBuffer(nodeBody)) {
+                        nodeSize = nodeBody.length;
+                    } else if (nodeBody && nodeBody.buffer && Buffer.isBuffer(nodeBody.buffer)) {
+                        nodeSize = nodeBody.buffer.length;
+                    } else if (typeof nodeBody === 'string') {
+                        nodeSize = Buffer.byteLength(nodeBody, 'binary');
+                    } else if (Array.isArray(nodeBody)) {
+                        nodeSize = Buffer.byteLength(nodeBody.join(''), 'binary');
                     } else {
                         nodeSize = 0;
                     }
                 }
                 size += nodeSize;
                 if (nodeSize) {
-                    if (Buffer.isBuffer(node.body)) {
-                        lastByte = node.body[node.body.length - 1];
-                    } else if (node.body && node.body.buffer && Buffer.isBuffer(node.body.buffer)) {
-                        lastByte = node.body.buffer[node.body.buffer.length - 1];
-                    } else if (typeof node.body === 'string' && node.body.length) {
-                        lastByte = Buffer.from(node.body, 'binary').at(-1);
-                    } else if (Array.isArray(node.body)) {
+                    if (Buffer.isBuffer(nodeBody)) {
+                        lastByte = nodeBody[nodeBody.length - 1];
+                    } else if (nodeBody && nodeBody.buffer && Buffer.isBuffer(nodeBody.buffer)) {
+                        lastByte = nodeBody.buffer[nodeBody.buffer.length - 1];
+                    } else if (typeof nodeBody === 'string' && nodeBody.length) {
+                        lastByte = Buffer.from(nodeBody, 'binary').at(-1);
+                    } else if (Array.isArray(nodeBody)) {
                         let lastChar;
-                        for (let i = node.body.length - 1; i >= 0; i--) {
-                            if (typeof node.body[i] === 'string' && node.body[i].length) {
-                                lastChar = node.body[i].at(-1);
+                        for (let i = nodeBody.length - 1; i >= 0; i--) {
+                            if (typeof nodeBody[i] === 'string' && nodeBody[i].length) {
+                                lastChar = nodeBody[i].at(-1);
                                 break;
                             }
                         }
@@ -161,7 +175,7 @@ class Indexer {
                             append(`--${node.boundary}`);
                         }
                         return processChildNodes();
-                    });
+                    }, node.boundary);
                 };
                 processChildNodes();
             } else {
@@ -193,6 +207,7 @@ class Indexer {
         let output = new PassThrough();
         let aborted = false;
         let appendTrailingNewline = !textOnly && needsTrailingNewline(mimeTree);
+        let boundarySuffixes = new Map();
 
         let startFrom = Math.max(Number(options.startFrom) || 0, 0);
         let maxLength = Math.max(Number(options.maxLength) || 0, 0);
@@ -303,7 +318,7 @@ class Indexer {
                 remainder = false;
             };
 
-            let walk = async node => {
+            let walk = async (node, parentBoundary) => {
                 if (aborted) {
                     return;
                 }
@@ -327,6 +342,16 @@ class Indexer {
                 } else {
                     // whatever
                     remainder = node.body;
+                }
+
+                if (node.boundary && parentBoundary && remainder && remainder.length) {
+                    let cleanup = stripParentClosingBoundaryFromPreamble(remainder, parentBoundary);
+                    if (cleanup) {
+                        remainder = cleanup.preamble;
+                        if (cleanup.suffix && cleanup.suffix.length && !boundarySuffixes.has(parentBoundary)) {
+                            boundarySuffixes.set(parentBoundary, cleanup.suffix);
+                        }
+                    }
                 }
 
                 if (node.boundary) {
@@ -489,7 +514,7 @@ class Indexer {
                 if (Array.isArray(node.childNodes)) {
                     let pos = 0;
                     for (let childNode of node.childNodes) {
-                        await walk(childNode);
+                        await walk(childNode, node.boundary);
 
                         if (aborted) {
                             return;
@@ -503,7 +528,8 @@ class Indexer {
                 }
 
                 if (node.boundary) {
-                    await emit(`--${node.boundary}--`);
+                    let boundarySuffix = node.boundarySuffix || boundarySuffixes.get(node.boundary) || '';
+                    await emit(`--${node.boundary}--${boundarySuffix}`);
                     if (epilogue && epilogue.length) {
                         await write(epilogue);
                     }
@@ -1113,6 +1139,53 @@ function splitMultipartBody(body) {
     return {
         preamble: buffer.slice(0, splitIndex),
         epilogue: buffer.slice(splitIndex)
+    };
+}
+
+function stripParentClosingBoundaryFromPreamble(body, parentBoundary) {
+    if (!body || !body.length || !parentBoundary) {
+        return false;
+    }
+
+    let buffer = Buffer.isBuffer(body) ? body : Buffer.from(body, 'binary');
+    if (!buffer.length) {
+        return false;
+    }
+
+    let boundaryLine = `--${parentBoundary}--`;
+    let text = buffer.toString('binary');
+    if (text.indexOf(boundaryLine) === -1) {
+        return false;
+    }
+
+    let lines = text.split(/\r\n/);
+    let suffix = '';
+    let found = false;
+    for (let line of lines) {
+        if (!line || /^[ \t]*$/.test(line)) {
+            continue;
+        }
+        if (found) {
+            return false;
+        }
+        if (!line.startsWith(boundaryLine)) {
+            return false;
+        }
+        let candidate = line.slice(boundaryLine.length);
+        if (!/^[ \t]*$/.test(candidate)) {
+            return false;
+        }
+        found = true;
+        suffix = candidate;
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    return {
+        preamble: Buffer.alloc(0),
+        suffix
     };
 }
 
