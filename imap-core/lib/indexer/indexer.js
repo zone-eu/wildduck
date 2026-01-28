@@ -128,7 +128,7 @@ class Indexer {
 
         walk(mimeTree, () => false);
 
-        if (needsTrailingNewline(mimeTree)) {
+        if (!textOnly && needsTrailingNewline(mimeTree)) {
             size += NEWLINE.length;
         }
 
@@ -149,7 +149,7 @@ class Indexer {
 
         let output = new PassThrough();
         let aborted = false;
-        let appendTrailingNewline = needsTrailingNewline(mimeTree);
+        let appendTrailingNewline = !textOnly && needsTrailingNewline(mimeTree);
 
         let startFrom = Math.max(Number(options.startFrom) || 0, 0);
         let maxLength = Math.max(Number(options.maxLength) || 0, 0);
@@ -995,31 +995,27 @@ function normalizeChunk(chunk) {
     }
 }
 
-function getTerminalChunk(node) {
+function needsTrailingNewline(node) {
     if (!node) {
-        return null;
+        return false;
     }
 
     if (node.boundary) {
         if (node.epilogue && node.epilogue.length) {
-            return normalizeChunk(node.epilogue);
+            const epilogue = normalizeChunk(node.epilogue);
+            return !!epilogue && epilogue.length && epilogue[epilogue.length - 1] !== 0x0a;
         }
-        return Buffer.from(`--${node.boundary}--`, 'binary');
+        // No epilogue means final boundary is the last bytes, which need CRLF.
+        return true;
     }
 
     if (node.body) {
-        return normalizeChunk(node.body);
+        const body = normalizeChunk(node.body);
+        return !!body && body.length && body[body.length - 1] !== 0x0a;
     }
 
-    return null;
-}
-
-function needsTrailingNewline(node) {
-    const terminalChunk = getTerminalChunk(node);
-    if (!terminalChunk || !terminalChunk.length) {
-        return true;
-    }
-    return terminalChunk[terminalChunk.length - 1] !== 0x0a;
+    // Externalized body or empty content – avoid guessing.
+    return false;
 }
 
 function normalizeLineCount(value) {
