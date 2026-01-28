@@ -23,6 +23,8 @@ const extraFixtureNames = fs
     .sort();
 const fixtureNames = baseFixtureNames.concat(extraFixtureNames.filter(name => !baseFixtureNames.includes(name)));
 
+const normalizeToCrlf = buffer => Buffer.from(buffer.toString('binary').replace(/\r?\n/g, '\r\n'), 'binary');
+
 const binaryParser = (res, callback) => {
     const chunks = [];
     res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'binary')));
@@ -66,7 +68,8 @@ describe('EML API roundtrip tests', function () {
 
     it('should upload and download identical EML files', async () => {
         for (const name of fixtureNames) {
-            const raw = fs.readFileSync(path.join(fixtureDir, name));
+            const rawOnDisk = fs.readFileSync(path.join(fixtureDir, name));
+            const raw = normalizeToCrlf(rawOnDisk);
 
             const upload = await server.post(`/users/${user}/mailboxes/${inbox}/messages`).set('Content-Type', 'message/rfc822').send(raw).expect(200);
 

@@ -17,13 +17,14 @@ chai.config.includeStack = true;
 
 const { MAX_SUB_MAILBOXES, MAX_MAILBOX_NAME_LENGTH } = require('../../lib/consts.js');
 const fixtureDir = path.join(__dirname, '..', '..', 'test', 'fixtures', 'eml');
-const readFixture = name => fs.readFileSync(path.join(fixtureDir, name));
-// const baseFixtureNames = ['simple-1.eml', 'simple-2.eml', 'with-attachment.eml'];
-// const extraFixtureNames = fs
-//     .readdirSync(fixtureDir)
-//     .filter(name => /^test_.*\.eml$/.test(name))
-//     .sort();
-// const fixtureNames = baseFixtureNames.concat(extraFixtureNames.filter(name => !baseFixtureNames.includes(name)));
+const normalizeToCrlf = buffer => Buffer.from(buffer.toString('binary').replace(/\r?\n/g, '\r\n'), 'binary');
+const readFixture = name => normalizeToCrlf(fs.readFileSync(path.join(fixtureDir, name)));
+const baseFixtureNames = ['simple-1.eml', 'simple-2.eml', 'with-attachment.eml'];
+const extraFixtureNames = fs
+    .readdirSync(fixtureDir)
+    .filter(name => /^test_.*\.eml$/.test(name))
+    .sort();
+const fixtureNames = baseFixtureNames.concat(extraFixtureNames.filter(name => !baseFixtureNames.includes(name)));
 
 describe('IMAP Protocol integration tests', function () {
     this.timeout(100000); // eslint-disable-line no-invalid-this
@@ -1570,58 +1571,51 @@ describe('IMAP Protocol integration tests', function () {
                 );
             });
 
-            // it('should append and fetch identical EML files with and without attachments', function (done) {
-            //     const mailbox = 'IMAPROUNDTRIP';
+            it('should append and fetch identical EML files with and without attachments', function (done) {
+                const mailbox = 'IMAPROUNDTRIP';
 
-            //     const fixtures = fixtureNames.map(name => ({
-            //         name,
-            //         raw: readFixture(name)
-            //     }));
+                const fixtures = fixtureNames.map(name => ({
+                    name,
+                    raw: readFixture(name)
+                }));
 
-            //     let tag = 1;
-            //     let cmds = [];
-            //     cmds.push('T' + tag++ + ' LOGIN testuser pass');
-            //     cmds.push('T' + tag++ + ' CREATE ' + mailbox);
-            //     for (let item of fixtures) {
-            //         cmds.push('T' + tag++ + ' APPEND ' + mailbox + ' {' + item.raw.length + '}\r\n' + item.raw.toString('binary'));
-            //     }
-            //     cmds.push('T' + tag++ + ' SELECT ' + mailbox);
-            //     let fetchTags = [];
-            //     for (let i = 0; i < fixtures.length; i++) {
-            //         let fetchTag = 'T' + tag++;
-            //         fetchTags.push(fetchTag);
-            //         cmds.push(fetchTag + ' FETCH ' + (i + 1) + ' BODY.PEEK[]');
-            //     }
-            //     cmds.push('T' + tag++ + ' LOGOUT');
+                let tag = 1;
+                let cmds = [];
+                cmds.push('T' + tag++ + ' LOGIN testuser pass');
+                cmds.push('T' + tag++ + ' CREATE ' + mailbox);
+                for (let item of fixtures) {
+                    cmds.push('T' + tag++ + ' APPEND ' + mailbox + ' {' + item.raw.length + '}\r\n' + item.raw.toString('binary'));
+                }
+                cmds.push('T' + tag++ + ' SELECT ' + mailbox);
+                let fetchTags = [];
+                for (let i = 0; i < fixtures.length; i++) {
+                    let fetchTag = 'T' + tag++;
+                    fetchTags.push(fetchTag);
+                    cmds.push(fetchTag + ' FETCH ' + (i + 1) + ' BODY.PEEK[]');
+                }
+                cmds.push('T' + tag++ + ' LOGOUT');
 
-            //     testClient(
-            //         {
-            //             commands: cmds,
-            //             secure: true,
-            //             port
-            //         },
-            //         function (resp) {
-            //             resp = resp.toString('binary');
+                testClient(
+                    {
+                        commands: cmds,
+                        secure: true,
+                        port
+                    },
+                    function (resp) {
+                        resp = resp.toString('binary');
 
-            //             for (let i = 0; i < fixtures.length; i++) {
-            //                 const item = fixtures[i];
-            //                 const expected =
-            //                     '\r\n* ' +
-            //                     (i + 1) +
-            //                     ' FETCH (BODY[] {' +
-            //                     item.raw.length +
-            //                     '}\r\n' +
-            //                     item.raw.toString('binary') +
-            //                     ')\r\n';
-            //                 expect(resp.indexOf(expected) >= 0).to.be.true;
-            //             }
-            //             for (let fetchTag of fetchTags) {
-            //                 expect(new RegExp('^' + fetchTag + ' OK', 'm').test(resp)).to.be.true;
-            //             }
-            //             done();
-            //         }
-            //     );
-            // });
+                        for (let i = 0; i < fixtures.length; i++) {
+                            const item = fixtures[i];
+                            const expected = '\r\n* ' + (i + 1) + ' FETCH (BODY[] {' + item.raw.length + '}\r\n' + item.raw.toString('binary') + ')\r\n';
+                            expect(resp.indexOf(expected) >= 0).to.be.true;
+                        }
+                        for (let fetchTag of fetchTags) {
+                            expect(new RegExp('^' + fetchTag + ' OK', 'm').test(resp)).to.be.true;
+                        }
+                        done();
+                    }
+                );
+            });
 
             it('should return partial BODY.PEEK[] for messages with and without attachments', function (done) {
                 const simple = readFixture('simple-2.eml');
