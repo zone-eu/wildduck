@@ -678,7 +678,12 @@ module.exports.getQueryResponse = function (query, message, options) {
                 break;
 
             case 'rfc822.size':
-                if (message.size) {
+                if (!mimeTree && message.mimeTree) {
+                    mimeTree = message.mimeTree;
+                }
+                if (mimeTree) {
+                    value = indexer.getSize(mimeTree);
+                } else if (message.size) {
                     value = message.size;
                 } else {
                     if (!mimeTree) {

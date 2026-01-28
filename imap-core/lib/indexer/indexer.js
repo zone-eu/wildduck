@@ -128,6 +128,10 @@ class Indexer {
 
         walk(mimeTree, () => false);
 
+        if (needsTrailingNewline(mimeTree)) {
+            size += NEWLINE.length;
+        }
+
         return size;
     }
 
@@ -145,6 +149,7 @@ class Indexer {
 
         let output = new PassThrough();
         let aborted = false;
+        let appendTrailingNewline = needsTrailingNewline(mimeTree);
 
         let startFrom = Math.max(Number(options.startFrom) || 0, 0);
         let maxLength = Math.max(Number(options.maxLength) || 0, 0);
@@ -465,6 +470,10 @@ class Indexer {
             };
 
             await walk(mimeTree);
+
+            if (appendTrailingNewline) {
+                await write(NEWLINE);
+            }
 
             output.end();
         };
@@ -984,6 +993,33 @@ function normalizeChunk(chunk) {
     } catch {
         return null;
     }
+}
+
+function getTerminalChunk(node) {
+    if (!node) {
+        return null;
+    }
+
+    if (node.boundary) {
+        if (node.epilogue && node.epilogue.length) {
+            return normalizeChunk(node.epilogue);
+        }
+        return Buffer.from(`--${node.boundary}--`, 'binary');
+    }
+
+    if (node.body) {
+        return normalizeChunk(node.body);
+    }
+
+    return null;
+}
+
+function needsTrailingNewline(node) {
+    const terminalChunk = getTerminalChunk(node);
+    if (!terminalChunk || !terminalChunk.length) {
+        return true;
+    }
+    return terminalChunk[terminalChunk.length - 1] !== 0x0a;
 }
 
 function normalizeLineCount(value) {
