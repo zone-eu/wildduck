@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.46.9"
+        "version": "1.46.19"
     },
     "servers": [
         {
@@ -1378,10 +1378,11 @@
                                                 "description": "E-mail Address"
                                             },
                                             {
-                                                "type": "string"
+                                                "type": "string",
+                                                "description": "Wildcard address"
                                             }
                                         ],
-                                        "description": "E-mail Address"
+                                        "description": "String. Either an e-mail address or a wildduck address"
                                     },
                                     "name": {
                                         "type": "string",
@@ -4265,7 +4266,7 @@
                     "Archive"
                 ],
                 "summary": "List archived messages",
-                "description": "Archive contains all recently deleted messages besides Drafts etc.",
+                "description": "Lists archived (recently deleted) messages for the user. Drafts are not archived.",
                 "operationId": "getArchivedMessages",
                 "parameters": [
                     {
@@ -4275,6 +4276,16 @@
                         "required": true,
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    {
+                        "name": "metaData",
+                        "in": "query",
+                        "description": "If true, then includes metaData in the response",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -4322,6 +4333,16 @@
                                 "asc",
                                 "desc"
                             ]
+                        }
+                    },
+                    {
+                        "name": "threadCounters",
+                        "in": "query",
+                        "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -4373,8 +4394,8 @@
                 "tags": [
                     "Archive"
                 ],
-                "summary": "Restore archived messages",
-                "description": "Initiates a restore task to move archived messages of a date range back to the mailboxes the messages were deleted from. If target mailbox does not exist, then the messages are moved to INBOX.",
+                "summary": "Restore archived messages by date range",
+                "description": "Initiates a restore task to move archived messages within the specified date range back to the mailboxes the messages were deleted from. If a target mailbox does not exist, then the messages are moved to INBOX.",
                 "operationId": "restoreMessages",
                 "requestBody": {
                     "content": {
@@ -4440,8 +4461,8 @@
                 "tags": [
                     "Archive"
                 ],
-                "summary": "Restore archived messages",
-                "description": "Initiates a restore task to move archived messages of a date range back to the mailboxes the messages were deleted from. If target mailbox does not exist, then the messages are moved to INBOX.",
+                "summary": "Restore a single archived message",
+                "description": "Restores one archived message to its original mailbox, or to the specified target mailbox if provided.",
                 "operationId": "restoreMessage",
                 "requestBody": {
                     "content": {
@@ -10333,9 +10354,7 @@
                                 "modifyIndex",
                                 "subscribed",
                                 "hidden",
-                                "encryptMessages",
-                                "total",
-                                "unseen"
+                                "encryptMessages"
                             ]
                         },
                         "description": "List of user mailboxes"
@@ -10405,6 +10424,10 @@
                         "type": "boolean",
                         "description": "If true then messages in this mailbox are encrypted"
                     },
+                    "retention": {
+                        "type": "number",
+                        "description": "Retention policy for this mailbox (in ms). If set then messages added to this mailbox will be automatically deleted after retention time."
+                    },
                     "total": {
                         "type": "number",
                         "description": "How many messages are stored in this mailbox"
@@ -10443,47 +10466,6 @@
                 "required": [
                     "name",
                     "address"
-                ]
-            },
-            "ReferenceWithAttachments": {
-                "type": "object",
-                "properties": {
-                    "mailbox": {
-                        "type": "string",
-                        "description": "ID of the Mailbox"
-                    },
-                    "id": {
-                        "type": "number",
-                        "description": "Message ID"
-                    },
-                    "action": {
-                        "type": "string",
-                        "description": "Either reply, replyAll or forward",
-                        "enum": [
-                            "reply",
-                            "replyAll",
-                            "forward"
-                        ]
-                    },
-                    "attachments": {
-                        "oneOf": [
-                            {
-                                "type": "boolean"
-                            },
-                            {
-                                "type": "array",
-                                "items": {
-                                    "type": "string"
-                                }
-                            }
-                        ],
-                        "description": "If true, then includes all attachments from the original message. If it is an array of attachment ID's includes attachments from the list"
-                    }
-                },
-                "required": [
-                    "mailbox",
-                    "id",
-                    "action"
                 ]
             },
             "ContentType": {
@@ -10574,6 +10556,61 @@
                         "type": "boolean",
                         "description": "Does the message have attachments"
                     },
+                    "attachmentsList": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Attachment ID"
+                                },
+                                "hash": {
+                                    "type": "string",
+                                    "description": "SHA-256 hash of the contents of the attachment"
+                                },
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Filename of the attachment"
+                                },
+                                "contentType": {
+                                    "type": "string",
+                                    "description": "MIME type"
+                                },
+                                "disposition": {
+                                    "type": "string",
+                                    "description": "Attachment disposition"
+                                },
+                                "transferEncoding": {
+                                    "type": "string",
+                                    "description": "Which transfer encoding was used (actual content when fetching attachments is not encoded)"
+                                },
+                                "related": {
+                                    "type": "boolean",
+                                    "description": "Was this attachment found from a multipart/related node. This usually means that this is an embedded image"
+                                },
+                                "sizeKb": {
+                                    "type": "number",
+                                    "description": "Approximate size of the attachment in kilobytes"
+                                },
+                                "size": {
+                                    "type": "number",
+                                    "description": "Attachment filesize in bytes"
+                                }
+                            },
+                            "required": [
+                                "id",
+                                "filename",
+                                "contentType",
+                                "disposition",
+                                "transferEncoding",
+                                "related",
+                                "sizeKb",
+                                "size"
+                            ]
+                        },
+                        "description": "Attachments for the message"
+                    },
                     "size": {
                         "type": "number",
                         "description": "Message size in bytes"
@@ -10605,12 +10642,35 @@
                     "references": {
                         "type": "array",
                         "items": {
-                            "$ref": "#/components/schemas/ReferenceWithAttachments"
+                            "type": "string"
                         },
                         "description": "References"
                     },
                     "bimi": {
-                        "$ref": "#/components/schemas/Bimi"
+                        "type": "object",
+                        "description": "BIMI logo info. If logo validation failed in any way, then this property is not set",
+                        "properties": {
+                            "certified": {
+                                "type": "boolean",
+                                "description": "If true, then this logo is from a VMC file"
+                            },
+                            "url": {
+                                "type": "string",
+                                "description": "URL of the resource the logo was retrieved from"
+                            },
+                            "image": {
+                                "type": "string",
+                                "description": "Data URL for the SVG image"
+                            },
+                            "type": {
+                                "type": "string",
+                                "description": "Certificate type (only for VMC files)",
+                                "enum": [
+                                    "VMC",
+                                    "CMC"
+                                ]
+                            }
+                        }
                     },
                     "contentType": {
                         "$ref": "#/components/schemas/ContentType"
@@ -10650,7 +10710,6 @@
                     "answered",
                     "forwarded",
                     "references",
-                    "bimi",
                     "contentType"
                 ]
             },
@@ -10752,17 +10811,23 @@
                     },
                     "deleted": {
                         "type": "number",
-                        "description": "Indicates the count of deleted messages"
+                        "description": "Indicates the count of deleted messages (synchronous response)"
                     },
                     "errors": {
                         "type": "number",
-                        "description": "Indicate the count of errors during the delete"
+                        "description": "Indicate the count of errors during the delete (synchronous response)"
+                    },
+                    "existing": {
+                        "type": "boolean",
+                        "description": "Indicates if a scheduled delete task already exists (async response)"
+                    },
+                    "scheduled": {
+                        "type": "string",
+                        "description": "ID of the scheduled delete task (async response)"
                     }
                 },
                 "required": [
-                    "success",
-                    "deleted",
-                    "errors"
+                    "success"
                 ]
             },
             "AddressOptionalName": {
@@ -10834,6 +10899,48 @@
                 },
                 "required": [
                     "content"
+                ]
+            },
+            "ReferenceWithAttachments": {
+                "type": "object",
+                "description": "Optional referenced email. If uploaded message is a reply draft and relevant fields are not provided then these are resolved from the message to be replied to",
+                "properties": {
+                    "mailbox": {
+                        "type": "string",
+                        "description": "ID of the Mailbox"
+                    },
+                    "id": {
+                        "type": "number",
+                        "description": "Message ID"
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Either reply, replyAll or forward",
+                        "enum": [
+                            "reply",
+                            "replyAll",
+                            "forward"
+                        ]
+                    },
+                    "attachments": {
+                        "oneOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        ],
+                        "description": "If true, then includes all attachments from the original message. If it is an array of attachment ID's includes attachments from the list"
+                    }
+                },
+                "required": [
+                    "mailbox",
+                    "id",
+                    "action"
                 ]
             },
             "Bimi": {
@@ -11013,42 +11120,157 @@
                     "from"
                 ]
             },
+            "ListId": {
+                "type": "object",
+                "description": "Parsed List-ID entry",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "List-ID display name"
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "List-ID value"
+                    }
+                }
+            },
+            "ListUnsubscribe": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "List-Unsubscribe display name"
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "List-Unsubscribe value"
+                    }
+                }
+            },
             "List": {
                 "type": "object",
                 "description": "If set then this message is from a mailing list",
                 "properties": {
                     "id": {
-                        "type": "string",
-                        "description": "Value from List-ID header"
+                        "$ref": "#/components/schemas/ListId"
                     },
                     "unsubscribe": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ListUnsubscribe"
+                        },
+                        "description": "Parsed List-Unsubscribe entries"
+                    }
+                }
+            },
+            "StoredFile": {
+                "type": "object",
+                "properties": {
+                    "id": {
                         "type": "string",
-                        "description": "Value from List-Unsubscribe header"
+                        "description": "Storage file ID"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename of the stored file"
+                    },
+                    "contentType": {
+                        "type": "string",
+                        "description": "MIME type of the stored file"
+                    },
+                    "size": {
+                        "type": "number",
+                        "description": "Stored file size in bytes"
+                    },
+                    "cid": {
+                        "type": "string",
+                        "description": "Content-ID of the stored file"
                     }
                 },
                 "required": [
-                    "id",
-                    "unsubscribe"
+                    "id"
                 ]
             },
-            "Tls": {
+            "OutboundQueueEntry": {
                 "type": "object",
-                "description": "TLS information. Value is false if TLS was not used",
                 "properties": {
-                    "name": {
-                        "type": "object",
-                        "description": "Cipher name, eg \"ECDHE-RSA-AES128-GCM-SHA256\"",
-                        "properties": {}
+                    "seq": {
+                        "type": "number",
+                        "description": "Queue entry sequence"
                     },
-                    "version": {
-                        "type": "object",
-                        "description": "TLS version, eg \"TLSv1/SSLv3\"",
-                        "properties": {}
+                    "recipient": {
+                        "type": "string",
+                        "description": "Recipient address"
+                    },
+                    "sendingZone": {
+                        "type": "string",
+                        "description": "Sending zone identifier"
+                    },
+                    "queued": {
+                        "type": "string",
+                        "description": "Queue entry time",
+                        "format": "date-time"
+                    }
+                }
+            },
+            "OutboundQueue": {
+                "type": "object",
+                "properties": {
+                    "queueId": {
+                        "type": "string",
+                        "description": "Outbound queue ID"
+                    },
+                    "entries": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OutboundQueueEntry"
+                        },
+                        "description": "Queue entries for the outbound message"
                     }
                 },
                 "required": [
-                    "name",
-                    "version"
+                    "queueId"
+                ]
+            },
+            "ForwardTarget": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "description": "Forward target type"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Forward target value"
+                    }
+                }
+            },
+            "Reference": {
+                "type": "object",
+                "description": "Optional referenced email. If uploaded message is a reply draft and relevant fields are not provided then these are resolved from the message to be replied to",
+                "properties": {
+                    "mailbox": {
+                        "type": "string",
+                        "description": "ID of the Mailbox"
+                    },
+                    "id": {
+                        "type": "number",
+                        "description": "Message ID"
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Either reply, replyAll or forward",
+                        "enum": [
+                            "reply",
+                            "replyAll",
+                            "forward"
+                        ]
+                    }
+                },
+                "required": [
+                    "mailbox",
+                    "id",
+                    "action"
                 ]
             },
             "GetMessageResponse": {
@@ -11079,19 +11301,35 @@
                         "description": "ID of the Thread"
                     },
                     "from": {
-                        "$ref": "#/components/schemas/Address"
+                        "$ref": "#/components/schemas/AddressOptionalName"
                     },
                     "replyTo": {
-                        "$ref": "#/components/schemas/Address"
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AddressOptionalName"
+                        },
+                        "description": "Addresses for the Reply-To: header"
                     },
                     "to": {
-                        "$ref": "#/components/schemas/Address"
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AddressOptionalName"
+                        },
+                        "description": "Addresses for the To: header"
                     },
                     "cc": {
-                        "$ref": "#/components/schemas/Address"
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AddressOptionalName"
+                        },
+                        "description": "Addresses for the Cc: header"
                     },
                     "bcc": {
-                        "$ref": "#/components/schemas/Address"
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AddressOptionalName"
+                        },
+                        "description": "Addresses for the Bcc: header"
                     },
                     "subject": {
                         "type": "string",
@@ -11104,12 +11342,18 @@
                     "date": {
                         "type": "string",
                         "description": "Date string from header",
-                        "format": "date-time"
+                        "format": "date-time",
+                        "enum": [
+                            null
+                        ]
                     },
                     "idate": {
                         "type": "string",
                         "description": "Date string of receive time",
-                        "format": "date-time"
+                        "format": "date-time",
+                        "enum": [
+                            null
+                        ]
                     },
                     "list": {
                         "$ref": "#/components/schemas/List"
@@ -11209,24 +11453,55 @@
                         "description": "Security verification info if message was received from MX. If this property is missing then do not automatically assume invalid TLS, SPF or DKIM.",
                         "properties": {
                             "tls": {
-                                "$ref": "#/components/schemas/Tls"
+                                "oneOf": [
+                                    {
+                                        "type": "object",
+                                        "description": "TLS information",
+                                        "properties": {
+                                            "name": {
+                                                "type": "string",
+                                                "description": "Cipher name, eg \"ECDHE-RSA-AES128-GCM-SHA256\""
+                                            },
+                                            "version": {
+                                                "type": "string",
+                                                "description": "TLS version, eg \"TLSv1/SSLv3\""
+                                            }
+                                        },
+                                        "objectName": "Tls",
+                                        "required": [
+                                            "name",
+                                            "version"
+                                        ]
+                                    },
+                                    {
+                                        "type": "boolean"
+                                    }
+                                ],
+                                "description": "TLS information. Value is false if TLS was not used"
                             },
                             "spf": {
-                                "type": "object",
-                                "description": "Domain name (either MFROM or HELO) of verified SPF or false if no SPF match was found",
-                                "properties": {}
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "boolean"
+                                    }
+                                ],
+                                "description": "Domain name (either MFROM or HELO) of verified SPF or false if no SPF match was found"
                             },
                             "dkim": {
-                                "type": "object",
-                                "description": "Domain name of verified DKIM signature or false if no valid signature was found",
-                                "properties": {}
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "boolean"
+                                    }
+                                ],
+                                "description": "Domain name of verified DKIM signature or false if no valid signature was found"
                             }
-                        },
-                        "required": [
-                            "tls",
-                            "spf",
-                            "dkim"
-                        ]
+                        }
                     },
                     "bimi": {
                         "type": "object",
@@ -11269,44 +11544,51 @@
                             }
                         },
                         "required": [
-                            "value",
-                            "params"
+                            "value"
                         ]
                     },
                     "metaData": {
-                        "type": "object",
-                        "description": "Custom metadata object set for this message",
-                        "properties": {}
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {}
+                            },
+                            {
+                                "type": "string"
+                            }
+                        ],
+                        "description": "Custom metadata object set for this message"
                     },
                     "references": {
                         "type": "array",
                         "items": {
-                            "$ref": "#/components/schemas/ReferenceWithAttachments"
+                            "type": "string"
                         },
                         "description": "References"
                     },
                     "files": {
-                        "type": "object",
-                        "description": "List of files added to this message as attachments. Applies to Drafts, normal messages do not have this property. Needed to prevent uploading the same attachment every time a draft is updated",
-                        "properties": {}
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StoredFile"
+                        },
+                        "description": "List of files added to this message as attachments. Applies to Drafts, normal messages do not have this property. Needed to prevent uploading the same attachment every time a draft is updated"
                     },
                     "outbound": {
                         "type": "array",
                         "items": {
-                            "type": "object",
-                            "properties": {}
+                            "$ref": "#/components/schemas/OutboundQueue"
                         },
                         "description": "Outbound queue entries"
                     },
                     "forwardTargets": {
-                        "type": "object",
-                        "description": "Forward targets",
-                        "properties": {}
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ForwardTarget"
+                        },
+                        "description": "Forward targets"
                     },
                     "reference": {
-                        "type": "object",
-                        "description": "Referenced message info",
-                        "properties": {}
+                        "$ref": "#/components/schemas/Reference"
                     },
                     "answered": {
                         "type": "boolean",
@@ -11337,7 +11619,6 @@
                     "deleted",
                     "flagged",
                     "draft",
-                    "contentType",
                     "references",
                     "answered",
                     "forwarded"
@@ -11641,6 +11922,77 @@
                     "results"
                 ]
             },
+            "Query": {
+                "type": "object",
+                "description": "Rules that a message must match",
+                "properties": {
+                    "from": {
+                        "type": "string",
+                        "description": "Partial match for the From: header (case insensitive)"
+                    },
+                    "to": {
+                        "type": "string",
+                        "description": "Partial match for the To:/Cc: headers (case insensitive)"
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Partial match for the Subject: header (case insensitive)"
+                    },
+                    "listId": {
+                        "type": "string",
+                        "description": "Partial match for the List-ID: header (case insensitive)"
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Fulltext search against message text. Implements boolean logic where terms like OR and AND are treated as boolean operators. Space and commas are to be treated as AND terms as there is no separate \"AND\" term. Supports exact matches enclosed in double quotes \"exact match text\".",
+                        "example": "urgent,immediate OR deadline OR meeting standup"
+                    },
+                    "ha": {
+                        "type": "boolean",
+                        "description": "Does a message have to have an attachment or not"
+                    },
+                    "size": {
+                        "type": "number",
+                        "description": "Message size in bytes. If the value is a positive number then message needs to be larger, if negative then message needs to be smaller than abs(size) value"
+                    }
+                }
+            },
+            "Action": {
+                "type": "object",
+                "description": "Action to take with a matching message",
+                "properties": {
+                    "seen": {
+                        "type": "boolean",
+                        "description": "If true then mark matching messages as Seen"
+                    },
+                    "flag": {
+                        "type": "boolean",
+                        "description": "If true then mark matching messages as Flagged"
+                    },
+                    "delete": {
+                        "type": "boolean",
+                        "description": "If true then do not store matching messages"
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "description": "Mailbox ID to store matching messages to"
+                    },
+                    "targets": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                    },
+                    "spam": {
+                        "type": "boolean",
+                        "description": "If true then store matching messages to Junk Mail folder (null clears action)",
+                        "enum": [
+                            null
+                        ]
+                    }
+                }
+            },
             "GetAllFiltersResult": {
                 "type": "object",
                 "properties": {
@@ -11696,16 +12048,22 @@
                             "type": "string"
                         },
                         "description": "List of forwarding targets"
+                    },
+                    "originalQuery": {
+                        "$ref": "#/components/schemas/Query"
+                    },
+                    "originalAction": {
+                        "$ref": "#/components/schemas/Action"
                     }
                 },
                 "required": [
                     "id",
-                    "user",
-                    "name",
                     "created",
                     "query",
                     "action",
-                    "disabled"
+                    "disabled",
+                    "originalQuery",
+                    "originalAction"
                 ]
             },
             "GetAllFiltersResponse": {
@@ -11808,6 +12166,12 @@
                         "type": "object",
                         "description": "Custom metadata value. Included if metaData query argument was true",
                         "properties": {}
+                    },
+                    "originalQuery": {
+                        "$ref": "#/components/schemas/Query"
+                    },
+                    "originalAction": {
+                        "$ref": "#/components/schemas/Action"
                     }
                 },
                 "required": [
@@ -11816,7 +12180,9 @@
                     "created",
                     "query",
                     "action",
-                    "disabled"
+                    "disabled",
+                    "originalQuery",
+                    "originalAction"
                 ]
             },
             "GetFiltersResponse": {
@@ -11854,74 +12220,6 @@
                     "limits",
                     "results"
                 ]
-            },
-            "Query": {
-                "type": "object",
-                "description": "Rules that a message must match",
-                "properties": {
-                    "from": {
-                        "type": "string",
-                        "description": "Partial match for the From: header (case insensitive)"
-                    },
-                    "to": {
-                        "type": "string",
-                        "description": "Partial match for the To:/Cc: headers (case insensitive)"
-                    },
-                    "subject": {
-                        "type": "string",
-                        "description": "Partial match for the Subject: header (case insensitive)"
-                    },
-                    "listId": {
-                        "type": "string",
-                        "description": "Partial match for the List-ID: header (case insensitive)"
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "Fulltext search against message text. Implements boolean logic where terms like OR and AND are treated as boolean operators. Space and commas are to be treated as AND terms as there is no separate \"AND\" term. Supports exact matches enclosed in double quotes \"exact match text\".",
-                        "example": "urgent,immediate OR deadline OR meeting standup"
-                    },
-                    "ha": {
-                        "type": "boolean",
-                        "description": "Does a message have to have an attachment or not"
-                    },
-                    "size": {
-                        "type": "number",
-                        "description": "Message size in bytes. If the value is a positive number then message needs to be larger, if negative then message needs to be smaller than abs(size) value"
-                    }
-                }
-            },
-            "Action": {
-                "type": "object",
-                "description": "Action to take with a matching message",
-                "properties": {
-                    "seen": {
-                        "type": "boolean",
-                        "description": "If true then mark matching messages as Seen"
-                    },
-                    "flag": {
-                        "type": "boolean",
-                        "description": "If true then mark matching messages as Flagged"
-                    },
-                    "delete": {
-                        "type": "boolean",
-                        "description": "If true then do not store matching messages"
-                    },
-                    "spam": {
-                        "type": "boolean",
-                        "description": "If true then store matching messages to Junk Mail folder"
-                    },
-                    "mailbox": {
-                        "type": "string",
-                        "description": "Mailbox ID to store matching messages to"
-                    },
-                    "targets": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
-                    }
-                }
             },
             "UpdateFilterResponse": {
                 "type": "object",
@@ -12795,7 +13093,6 @@
                 "required": [
                     "id",
                     "action",
-                    "result",
                     "created",
                     "last",
                     "events",
@@ -12823,14 +13120,26 @@
                         "description": "Current page number. Derived from page query argument"
                     },
                     "previousCursor": {
-                        "type": "string",
-                        "description": "Cursor value for previous page, retrieved from previousCursor response value",
-                        "example": "TMIjjIy23ZGM2kk0lIixygWomEknQDWdmzMNIkbNeO0NNjR"
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ],
+                        "description": "Either a cursor string or false if there are not any previous results"
                     },
                     "nextCursor": {
-                        "type": "string",
-                        "description": "Cursor value for next page, retrieved from nextCursor response value",
-                        "example": "eyIkb2lkIjoiNWRmMWZkMmQ3NzkyNTExOGI2MDdjNjg0In0"
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ],
+                        "description": "Either a cursor string or false if there are not any next results"
                     },
                     "results": {
                         "type": "array",
@@ -12841,15 +13150,21 @@
                 },
                 "required": [
                     "success",
-                    "action",
                     "total",
                     "page",
+                    "previousCursor",
+                    "nextCursor",
                     "results"
                 ]
             },
             "GetAuthlogEventResponse": {
                 "type": "object",
                 "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
                     "id": {
                         "type": "string",
                         "description": "ID of the event"
@@ -12903,9 +13218,9 @@
                     }
                 },
                 "required": [
+                    "success",
                     "id",
                     "action",
-                    "result",
                     "created",
                     "last",
                     "events",
@@ -12988,34 +13303,6 @@
                 },
                 "required": [
                     "success"
-                ]
-            },
-            "Reference": {
-                "type": "object",
-                "description": "Optional referenced email. If uploaded message is a reply draft and relevant fields are not provided then these are resolved from the message to be replied to",
-                "properties": {
-                    "mailbox": {
-                        "type": "string",
-                        "description": "ID of the Mailbox"
-                    },
-                    "id": {
-                        "type": "number",
-                        "description": "Message ID"
-                    },
-                    "action": {
-                        "type": "string",
-                        "description": "Either reply, replyAll or forward",
-                        "enum": [
-                            "reply",
-                            "replyAll",
-                            "forward"
-                        ]
-                    }
-                },
-                "required": [
-                    "mailbox",
-                    "id",
-                    "action"
                 ]
             },
             "MessageWithQueueId": {
