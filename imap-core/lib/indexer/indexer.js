@@ -70,10 +70,7 @@ class Indexer {
 
             let finalize = () => {
                 if (node.boundary) {
-                    append(`--${node.boundary}--`);
-                    if (node.epilogue && node.epilogue.length) {
-                        size += node.epilogue.length;
-                    }
+                    append(`--${node.boundary}--\r\n`);
                 }
 
                 append();
@@ -85,21 +82,7 @@ class Indexer {
                 if (!node.boundary) {
                     append(false, true); // force newline
                 }
-                let nodeSize = Number(node.size);
-                if (!Number.isFinite(nodeSize)) {
-                    if (Buffer.isBuffer(node.body)) {
-                        nodeSize = node.body.length;
-                    } else if (node.body && node.body.buffer && Buffer.isBuffer(node.body.buffer)) {
-                        nodeSize = node.body.buffer.length;
-                    } else if (typeof node.body === 'string') {
-                        nodeSize = Buffer.byteLength(node.body, 'binary');
-                    } else if (Array.isArray(node.body)) {
-                        nodeSize = Buffer.byteLength(node.body.join(''), 'binary');
-                    } else {
-                        nodeSize = 0;
-                    }
-                }
-                size += nodeSize;
+                size += node.size;
             }
 
             if (node.boundary) {
@@ -153,8 +136,6 @@ class Indexer {
 
         let curWritePos = 0;
         let writeLength = 0;
-        let lastByte = null;
-        let forceSeparator = false;
 
         let getCurrentBounds = size => {
             if (curWritePos + size < startFrom) {
@@ -182,10 +163,6 @@ class Indexer {
         };
 
         let write = async chunk => {
-            if (!chunk || !chunk.length) {
-                return;
-            }
-            chunk = normalizeChunk(chunk);
             if (!chunk || !chunk.length) {
                 return;
             }
@@ -219,7 +196,6 @@ class Indexer {
                 }
             }
 
-            lastByte = chunk[chunk.length - 1];
             if (output.write(chunk) === false) {
                 await new Promise(resolve => {
                     output.once('drain', resolve());
@@ -236,10 +212,7 @@ class Indexer {
             let emit = async (data, force) => {
                 if (remainder || data || force) {
                     if (!firstLine) {
-                        if (forceSeparator || lastByte !== 0x0a) {
-                            await write(NEWLINE);
-                        }
-                        forceSeparator = false;
+                        await write(NEWLINE);
                     } else {
                         firstLine = false;
                     }
@@ -262,11 +235,9 @@ class Indexer {
 
                 if (!textOnly || !isRootNode) {
                     await emit(formatHeaders(node.header).join('\r\n') + '\r\n');
-                    forceSeparator = true;
                 }
 
                 isRootNode = false;
-                let epilogue = null;
                 if (Buffer.isBuffer(node.body)) {
                     // node Buffer
                     remainder = node.body;
@@ -279,16 +250,6 @@ class Indexer {
                 } else {
                     // whatever
                     remainder = node.body;
-                }
-
-                if (node.boundary) {
-                    if (node.epilogue && node.epilogue.length) {
-                        epilogue = normalizeChunk(node.epilogue);
-                    } else if (remainder && remainder.length) {
-                        let splitBody = splitMultipartBody(remainder);
-                        remainder = splitBody.preamble;
-                        epilogue = splitBody.epilogue;
-                    }
                 }
 
                 if (node.boundary) {
@@ -328,62 +289,33 @@ class Indexer {
                         }
                     }
 
-                    let attachmentSize = Number(node.size);
-                    if (!Number.isFinite(attachmentSize)) {
-                        attachmentSize = Number(attachmentData && attachmentData.metadata && attachmentData.metadata.esize);
-                    }
-                    if (!Number.isFinite(attachmentSize)) {
-                        attachmentSize = Number(attachmentData && attachmentData.length);
-                    }
-                    if (!Number.isFinite(attachmentSize)) {
-                        attachmentSize = 0;
-                    }
-                    let nodeTransferEncoding = ((node.parsedHeader && node.parsedHeader['content-transfer-encoding']) || '7bit')
-                        .toString()
-                        .toLowerCase()
-                        .trim();
+                    let attachmentSize = node.size;
                     // we need to calculate expected length as the original does not apply anymore
                     // original size matches input data but decoding/encoding is not 100% lossless so we need to
                     // calculate the actual possible output size
                     if (attachmentData.metadata && attachmentData.metadata.decoded && attachmentData.metadata.lineLen) {
                         let b64Size = Math.ceil(attachmentData.length / 3) * 4;
-                        let lineBreaks = Math.floor((b64Size - 1) / attachmentData.metadata.lineLen);
-                        let storedLineCount = normalizeLineCount(attachmentData.metadata.lineCount);
+                        let lineBreaks = Math.floor(b64Size / attachmentData.metadata.lineLen);
 
-                        if (storedLineCount !== null) {
-                            lineBreaks = storedLineCount;
-                        } else if (attachmentData.metadata.esize) {
-                            let recovered = Math.floor((attachmentData.metadata.esize - b64Size) / 2);
-                            if (recovered >= 0) {
-                                lineBreaks = Math.max(lineBreaks, recovered);
-                            }
+                        // extra case where base64 string ends at line end
+                        // in this case we do not need the ending line break
+                        if (lineBreaks && b64Size % attachmentData.metadata.lineLen === 0) {
+                            lineBreaks--;
                         }
 
-                        let computedSize = b64Size + lineBreaks * 2;
-                        if (Number.isFinite(attachmentSize)) {
-                            attachmentSize = Math.max(attachmentSize, computedSize);
-                        } else {
-                            attachmentSize = computedSize;
-                        }
+                        attachmentSize = b64Size + lineBreaks * 2;
                     }
 
                     let readBounds = getCurrentBounds(attachmentSize);
                     if (readBounds) {
                         // move write pointer ahead by skipped base64 bytes
-                        let bytes = Math.min(readBounds.startFrom, attachmentSize);
+                        let bytes = Math.min(readBounds.startFrom, node.size);
                         curWritePos += bytes;
 
                         // only process attachment if we are reading inside existing bounds
-                        if (attachmentSize > readBounds.startFrom) {
+                        if (node.size > readBounds.startFrom) {
                             let attachmentStream = this.attachmentStorage.createReadStream(attachmentId, attachmentData, readBounds);
                             await new Promise((resolve, reject) => {
-                                let attachmentOutputBytes = 0;
-                                attachmentStream.on('data', chunk => {
-                                    if (chunk && chunk.length) {
-                                        lastByte = chunk[chunk.length - 1];
-                                        attachmentOutputBytes += chunk.length;
-                                    }
-                                });
                                 attachmentStream.once('error', err => {
                                     if (err.code === 'ENOENT') {
                                         this.loggelf({
@@ -398,15 +330,8 @@ class Indexer {
 
                                 attachmentStream.once('end', () => {
                                     // update read offset counters
-                                    let bytes = attachmentOutputBytes;
 
-                                    if (!bytes && 'outputBytes' in attachmentStream) {
-                                        bytes = attachmentStream.outputBytes;
-                                    }
-
-                                    if (!bytes) {
-                                        bytes = readBounds.maxLength;
-                                    }
+                                    let bytes = 'outputBytes' in attachmentStream ? attachmentStream.outputBytes : readBounds.maxLength;
 
                                     if (bytes) {
                                         curWritePos += bytes;
@@ -414,20 +339,7 @@ class Indexer {
                                             writeLength += bytes;
                                         }
                                     }
-
-                                    if (!output.isLimited && attachmentSize && bytes && bytes < attachmentSize) {
-                                        let missing = attachmentSize - bytes;
-                                        if (missing > 0 && missing % 2 === 0) {
-                                            let transferEncoding = (attachmentData && attachmentData.transferEncoding) || nodeTransferEncoding;
-                                            if (transferEncoding === 'base64') {
-                                                return write(Buffer.alloc(missing, '\r\n'))
-                                                    .then(resolve)
-                                                    .catch(reject);
-                                            }
-                                        }
-                                    }
-
-                                    return resolve();
+                                    resolve();
                                 });
 
                                 attachmentStream.pipe(output, {
@@ -455,16 +367,17 @@ class Indexer {
                 }
 
                 if (node.boundary) {
-                    await emit(`--${node.boundary}--`);
-                    if (epilogue && epilogue.length) {
-                        await write(epilogue);
-                    }
+                    await emit(`--${node.boundary}--\r\n`);
                 }
 
                 await emit();
             };
 
             await walk(mimeTree);
+
+            if (mimeTree.lineCount > 1) {
+                await write(NEWLINE);
+            }
 
             output.end();
         };
@@ -964,81 +877,6 @@ function formatHeaders(headers) {
         headers = [].concat(headers || []);
     }
     return headers;
-}
-
-function normalizeChunk(chunk) {
-    if (!chunk) {
-        return chunk;
-    }
-    if (Buffer.isBuffer(chunk)) {
-        return chunk;
-    }
-    if (chunk.buffer && Buffer.isBuffer(chunk.buffer)) {
-        return chunk.buffer;
-    }
-    if (typeof chunk === 'string') {
-        return Buffer.from(chunk, 'binary');
-    }
-    try {
-        return Buffer.from(chunk);
-    } catch {
-        return null;
-    }
-}
-
-function normalizeLineCount(value) {
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-        return value;
-    }
-    if (!value) {
-        return null;
-    }
-    if (typeof value.toNumber === 'function') {
-        const num = value.toNumber();
-        if (Number.isFinite(num) && num >= 0) {
-            return num;
-        }
-    }
-    const coerced = Number(value);
-    if (Number.isFinite(coerced) && coerced >= 0) {
-        return coerced;
-    }
-    return null;
-}
-
-function splitMultipartBody(body) {
-    if (!body || !body.length) {
-        return { preamble: body, epilogue: null };
-    }
-
-    let buffer = Buffer.isBuffer(body) ? body : Buffer.from(body, 'binary');
-
-    // Find last non-linebreak byte to ensure there is actual content.
-    let lastContent = buffer.length - 1;
-    while (lastContent >= 0 && (buffer[lastContent] === 0x0d || buffer[lastContent] === 0x0a)) {
-        lastContent--;
-    }
-
-    if (lastContent < 0) {
-        return { preamble: buffer, epilogue: null };
-    }
-
-    let pos = buffer.length;
-    let crlfCount = 0;
-    while (pos >= 2 && buffer[pos - 2] === 0x0d && buffer[pos - 1] === 0x0a) {
-        crlfCount++;
-        pos -= 2;
-    }
-
-    if (crlfCount <= 1) {
-        return { preamble: buffer, epilogue: null };
-    }
-
-    let splitIndex = buffer.length - (crlfCount - 1) * 2;
-    return {
-        preamble: buffer.slice(0, splitIndex),
-        epilogue: buffer.slice(splitIndex)
-    };
 }
 
 function textToHtml(str) {
