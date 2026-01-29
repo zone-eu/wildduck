@@ -668,13 +668,6 @@ module.exports.getQueryResponse = function (query, message, options) {
                     mimeTree = indexer.parseMimeTree(message.raw);
                 }
                 value = indexer.getContents(mimeTree);
-                if (value && value.type === 'stream') {
-                    let messageSize = Number(message.size);
-                    let expectedLength = Number(value.expectedLength);
-                    if (!Number.isFinite(expectedLength) && Number.isFinite(messageSize)) {
-                        value.expectedLength = messageSize;
-                    }
-                }
                 break;
 
             case 'rfc822.size':
@@ -732,14 +725,6 @@ module.exports.getQueryResponse = function (query, message, options) {
                         startFrom: item.partial && item.partial.startFrom,
                         maxLength: item.partial && item.partial.maxLength
                     });
-                }
-
-                if (value && value.type === 'stream' && item.path === '' && item.type === 'content') {
-                    let messageSize = Number(message.size);
-                    let expectedLength = Number(value.expectedLength);
-                    if (!Number.isFinite(expectedLength) && Number.isFinite(messageSize)) {
-                        value.expectedLength = messageSize;
-                    }
                 }
 
                 if (item.partial) {
