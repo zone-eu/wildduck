@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.20](https://github.com/zone-eu/wildduck/compare/v1.46.19...v1.46.20) (2026-01-29)
+
+
+### Bug Fixes
+
+* **docs:** update docs ([#981](https://github.com/zone-eu/wildduck/issues/981)) ([d7f3658](https://github.com/zone-eu/wildduck/commit/d7f365885bc06b3aec8ba78a2045438a8160acb7))
+* **imap-indexer:** Revert "fix(rebuild): ZMSA-48: fix rebuilding of multipart parts ([#942](https://github.com/zone-eu/wildduck/issues/942))" ([#980](https://github.com/zone-eu/wildduck/issues/980)) ([545800d](https://github.com/zone-eu/wildduck/commit/545800d17a395370f42c4da9518b72e7a3f299d5))
+
 ## [1.46.19](https://github.com/zone-eu/wildduck/compare/v1.46.18...v1.46.19) (2026-01-27)
 
 
