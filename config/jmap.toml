@@ -1,0 +1,21 @@
+# JMAP configuration
+# enable JMAP HTTP endpoint
+enabled = true
+# base path for JMAP HTTP POST calls
+basePath = "/jmap"
+# enable well-known discovery endpoint
+wellKnown = true
+# supported auth methods: bearer, basic, oauth
+auth = ["bearer", "basic"]
+# maximum upload size in megabytes
+maxUploadMB = 25
+# concurrency limit for POST requests
+maxConcurrentRequests = 4
+# push options
+[push]
+# reuse existing SSE updates
+sse = true
+
+# changelog retention/compact settings
+# how many recent changelog entries to keep in Redis per user
+changelogKeep = 1000

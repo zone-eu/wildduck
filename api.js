@@ -39,6 +39,7 @@ const custom2faRoutes = require('./lib/api/2fa/custom');
 const webauthnRoutes = require('./lib/api/2fa/webauthn');
 const updatesRoutes = require('./lib/api/updates');
 const authRoutes = require('./lib/api/auth');
+const jmapRoutes = require('./lib/api/jmap');
 const autoreplyRoutes = require('./lib/api/autoreply');
 const submitRoutes = require('./lib/api/submit');
 const auditRoutes = require('./lib/api/audit');
@@ -247,10 +248,12 @@ server.use(async (req, res) => {
         return;
     }
 
+    let origAuthorization = req.headers.authorization || '';
+
     let accessToken =
         req.query.accessToken ||
         req.headers['x-access-token'] ||
-        (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '').trim() : false) ||
+        (origAuthorization && origAuthorization.replace(/^Bearer\s+/i, '').trim()) ||
         false;
 
     if (req.query.accessToken) {
@@ -267,7 +270,8 @@ server.use(async (req, res) => {
         req.headers['x-access-token'] = '';
     }
 
-    if (req.headers.authorization) {
+    // preserve Basic auth header for endpoints that need to perform Basic auth (e.g., JMAP)
+    if (origAuthorization && /^Bearer\s+/i.test(origAuthorization)) {
         req.headers.authorization = '';
     }
 
@@ -587,6 +591,12 @@ module.exports = done => {
     webhooksRoutes(db, server);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
+    // JMAP routes
+    if (config.jmap && config.jmap.enabled) {
+        jmapRoutes(db, server, messageHandler, mailboxHandler, userHandler, storageHandler, notifier, settingsHandler);
+    } else {
+        log.info('API', 'JMAP support disabled by configuration');
+    }
 
     if (process.env.NODE_ENV === 'test') {
         server.get(
