@@ -30,6 +30,7 @@ const taskClearFolder = require('./lib/tasks/clear-folder');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
+const taskJmapCompact = require('./lib/tasks/jmap-compact');
 
 let messageHandler;
 let mailboxHandler;
@@ -504,6 +505,22 @@ async function runTasks() {
                 await timer(consts.TASK_IDLE_INTERVAL);
             }
 
+            // run JMAP changelog compaction periodically (best-effort background task)
+            try {
+                await new Promise((resolve, reject) => {
+                    processTask({ type: 'jmap-compact', _id: 'jmap-compact-id', lock: 'jmap-compact-lock', silent: true }, {}, err => {
+                        if (err) {
+                            return reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
+                });
+            } catch (err) {
+                log.error('Tasks', 'Failed running jmap changelog compact. error=%s', err.message);
+                await timer(consts.TASK_IDLE_INTERVAL);
+            }
+
             pendingCheckTime = Date.now();
         }
 
@@ -715,6 +732,24 @@ function processTask(task, data, callback) {
                 // release
                 callback(null, true);
             });
+
+        case 'jmap-compact':
+            return taskJmapCompact(
+                task,
+                data,
+                {
+                    db,
+                    redis: db.redis,
+                    loggelf,
+                    config
+                },
+                err => {
+                    if (err) {
+                        return callback(err);
+                    }
+                    callback(null, true);
+                }
+            );
         default:
             // release task by returning true
             return callback(null, true);

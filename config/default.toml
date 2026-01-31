@@ -81,6 +81,9 @@ connection = "lan"
 [api]
 # @include "api.toml"
 
+[jmap]
+# @include "jmap.toml"
+
 [sender]
 # @include "sender.toml"
 
