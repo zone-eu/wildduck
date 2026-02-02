@@ -231,6 +231,13 @@ indexes:
               user: 1
               specialUse: 1
 
+    - collection: mailboxes
+      index:
+          # JMAP: index for getCurrentState() to efficiently find latest modifyIndex
+          name: jmap_modify_index
+          key:
+              modifyIndex: -1
+
     # Indexes for the messages collection
 
     - collection: messages
@@ -401,6 +408,13 @@ indexes:
           key:
               exp: 1
               rdate: 1
+
+    - collection: messages
+      index:
+          # JMAP: index for getCurrentState() to efficiently find latest modseq globally
+          name: jmap_global_modseq
+          key:
+              modseq: -1
 
     # indexes for address register
     - collection: addressregister
