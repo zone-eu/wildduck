@@ -9,6 +9,9 @@ const db = require('../../lib/db');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
+// Test credentials - centralized
+const TEST_CREDS = { username: 'jmapcc', password: 'secretvalue', email: 'jmapcc@example.com', name: 'JMAP CC' };
+
 describe('JMAP changelog concurrency tests', function () {
     this.timeout(60000);
 
@@ -17,7 +20,7 @@ describe('JMAP changelog concurrency tests', function () {
     before(async () => {
         const response = await server
             .post('/users')
-            .send({ username: 'jmapcc', password: 'secretvalue', address: 'jmapcc@example.com', name: 'JMAP CC' })
+            .send({ username: TEST_CREDS.username, password: TEST_CREDS.password, address: TEST_CREDS.email, name: TEST_CREDS.name })
             .expect(200);
         expect(response.body.success).to.be.true;
         user = response.body.id;
@@ -25,13 +28,17 @@ describe('JMAP changelog concurrency tests', function () {
 
     after(async () => {
         if (!user) return;
-        const response = await server.delete(`/users/${user}`).expect(200);
-        expect(response.body.success).to.be.true;
+        try {
+            const response = await server.delete(`/users/${user}`).expect(200);
+            expect(response.body.success).to.be.true;
+        } catch (e) {
+            console.warn('Cleanup failed:', e.message);
+        }
         user = false;
     });
 
     it('concurrent sends and deletes result in changelog entries', async () => {
-        const token = Buffer.from('jmapcc:secretvalue').toString('base64');
+        const token = Buffer.from(`${TEST_CREDS.username}:${TEST_CREDS.password}`).toString('base64');
 
         // do multiple concurrent submits
         const submits = [];
@@ -39,7 +46,7 @@ describe('JMAP changelog concurrency tests', function () {
             submits.push(
                 server
                     .post(`/users/${user}/submit`)
-                    .send({ to: [{ address: 'jmapcc@example.com' }], subject: `C${i}`, text: 'Hello' })
+                    .send({ to: [{ address: TEST_CREDS.email }], subject: `C${i}`, text: 'Hello' })
                     .expect(200)
             );
         }

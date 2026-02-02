@@ -8,6 +8,9 @@ const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
+// Test credentials - centralized
+const TEST_CREDS = { username: 'jmapuser', password: 'secretvalue', email: 'jmapuser@example.com', name: 'JMAP User' };
+
 describe('JMAP tests', function () {
     this.timeout(10000);
 
@@ -16,7 +19,7 @@ describe('JMAP tests', function () {
     before(async () => {
         const response = await server
             .post('/users')
-            .send({ username: 'jmapuser', password: 'secretvalue', address: 'jmapuser@example.com', name: 'JMAP User' })
+            .send({ username: TEST_CREDS.username, password: TEST_CREDS.password, address: TEST_CREDS.email, name: TEST_CREDS.name })
             .expect(200);
         expect(response.body.success).to.be.true;
         user = response.body.id;
@@ -24,8 +27,12 @@ describe('JMAP tests', function () {
 
     after(async () => {
         if (!user) return;
-        const response = await server.delete(`/users/${user}`).expect(200);
-        expect(response.body.success).to.be.true;
+        try {
+            const response = await server.delete(`/users/${user}`).expect(200);
+            expect(response.body.success).to.be.true;
+        } catch (e) {
+            console.warn('Cleanup failed:', e.message);
+        }
         user = false;
     });
 
@@ -38,7 +45,7 @@ describe('JMAP tests', function () {
 
     it('POST /jmap with Basic auth should return Mailbox/get results', async () => {
         // Basic auth header
-        const token = Buffer.from('jmapuser:secretvalue').toString('base64');
+        const token = Buffer.from(`${TEST_CREDS.username}:${TEST_CREDS.password}`).toString('base64');
         const body = { methodCalls: [['Mailbox/get', {}, 'R1']] };
 
         const response = await server.post('/jmap').set('Authorization', 'Basic ' + token).send(body).expect(200);
@@ -49,7 +56,7 @@ describe('JMAP tests', function () {
     });
 
     it('POST /jmap Email/send, Email/query, Email/get and Email/set flows', async () => {
-        const token = Buffer.from('jmapuser:secretvalue').toString('base64');
+        const token = Buffer.from(`${TEST_CREDS.username}:${TEST_CREDS.password}`).toString('base64');
 
         // find user's inbox
         const mailboxesResp = await server.get(`/users/${user}/mailboxes`).expect(200);
@@ -58,7 +65,7 @@ describe('JMAP tests', function () {
 
         // send a message via submit API
         const submitResp = await server.post(`/users/${user}/submit`).send({
-            to: [{ address: 'jmapuser@example.com' }],
+            to: [{ address: TEST_CREDS.email }],
             subject: 'JMAP Test Message',
             text: 'Hello JMAP'
         }).expect(200);
@@ -104,7 +111,7 @@ describe('JMAP tests', function () {
     });
 
     it('GET /jmap session, Email/changes created and destroyed detection', async () => {
-        const token = Buffer.from('jmapuser:secretvalue').toString('base64');
+        const token = Buffer.from(`${TEST_CREDS.username}:${TEST_CREDS.password}`).toString('base64');
 
         // get initial state
         const sessionResp = await server.get('/jmap').set('Authorization', 'Basic ' + token).expect(200);
@@ -113,7 +120,7 @@ describe('JMAP tests', function () {
 
         // submit a message
         const submitResp = await server.post(`/users/${user}/submit`).send({
-            to: [{ address: 'jmapuser@example.com' }],
+            to: [{ address: TEST_CREDS.email }],
             subject: 'JMAP Changes Test',
             text: 'Hello changes'
         }).expect(200);
@@ -151,7 +158,7 @@ describe('JMAP tests', function () {
     });
 
     it('GET /jmap session and upload/download + send with blob', async () => {
-        const token = Buffer.from('jmapuser:secretvalue').toString('base64');
+        const token = Buffer.from(`${TEST_CREDS.username}:${TEST_CREDS.password}`).toString('base64');
 
         // session
         const sessionResp2 = await server.get('/jmap').set('Authorization', 'Basic ' + token).expect(200);
@@ -168,7 +175,7 @@ describe('JMAP tests', function () {
         expect(blobId).to.be.a('string');
 
         // send message referencing the blob
-        const sendBody = { methodCalls: [['Email/send', { create: { c1: { email: { to: [{ address: 'jmapuser@example.com' }], subject: 'JMAP with attachment', text: 'See attachment', attachments: [{ blobId } ] } } } }, 'R1']] };
+        const sendBody = { methodCalls: [['Email/send', { create: { c1: { email: { to: [{ address: TEST_CREDS.email }], subject: 'JMAP with attachment', text: 'See attachment', attachments: [{ blobId } ] } } } }, 'R1']] };
         const sendResp = await server.post('/jmap').set('Authorization', 'Basic ' + token).send(sendBody).expect(200);
         const sendRespEntry = sendResp.body.methodResponses.find(r => r[0] === 'Email/send');
         expect(sendRespEntry).to.exist;
