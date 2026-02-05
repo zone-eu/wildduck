@@ -80,8 +80,12 @@ const serverOptions = {
 
             let path = (req.route && req.route.path) || (req.url || '').replace(/(accessToken=)[^&]+/, '$1xxxxxx');
 
+            // JMAP responses use methodResponses instead of success field
+            let isJmapResponse = body && body.methodResponses && Array.isArray(body.methodResponses);
+            let isSuccess = isJmapResponse || body.success;
+
             let message = {
-                short_message: 'HTTP [' + req.method + ' ' + path + '] ' + (body.success ? 'OK' : 'FAILED'),
+                short_message: 'HTTP [' + req.method + ' ' + path + '] ' + (isSuccess ? 'OK' : 'FAILED'),
 
                 _req_remoteAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
 
@@ -93,7 +97,7 @@ const serverOptions = {
                 _user: req.user,
                 _role: req.role,
 
-                _api_response: body.success ? 'success' : 'fail',
+                _api_response: isSuccess ? 'success' : 'fail',
 
                 _error: body.error,
                 _code: body.code,
