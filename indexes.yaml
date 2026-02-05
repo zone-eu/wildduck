@@ -767,6 +767,22 @@ indexes:
               enumerable: 1
               key: 1
 
+    # Indexes for the jmap_changes collection (archived changelog entries)
+    - collection: jmap_changes
+      index:
+          name: jmap_changes_ttl
+          # Auto-remove archived changelog entries after 30 days
+          expireAfterSeconds: 2592000
+          key:
+              ts: 1
+
+    - collection: jmap_changes
+      index:
+          name: jmap_changes_user_seq
+          key:
+              user: 1
+              seq: 1
+
     # Indexes for the domaincache collection
     - collection: domaincache
       type: users

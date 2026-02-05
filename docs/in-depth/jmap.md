@@ -1,10 +1,8 @@
-# JMAP Support in WildDuck ✨
+# JMAP Support in WildDuck
 
-This document describes the comprehensive JMAP (JSON Meta Application Protocol) support implemented in WildDuck. JMAP is a modern, efficient protocol for email client-server communication, defined in [RFC 8620](https://www.rfc-editor.org/rfc/rfc8620.html) (JMAP Core) and [RFC 8621](https://www.rfc-editor.org/rfc/rfc8621.html) (JMAP for Mail).
+This document describes the JMAP (JSON Meta Application Protocol) support implemented in WildDuck. JMAP is a modern, efficient protocol for email client-server communication, defined in [RFC 8620](https://www.rfc-editor.org/rfc/rfc8620.html) (JMAP Core) and [RFC 8621](https://www.rfc-editor.org/rfc/rfc8621.html) (JMAP for Mail).
 
----
-
-## Status ✅
+## Implementation Status
 
 WildDuck implements JMAP with the following features:
 
@@ -59,7 +57,7 @@ WildDuck implements JMAP with the following features:
 
 ---
 
-## Quick Start 🚀
+## Quick Start
 
 ### 1. Enable JMAP
 
@@ -537,7 +535,7 @@ curl -X POST https://example.com/jmap/upload \
 
 ---
 
-## Advanced Features 🔧
+## Advanced Features
 
 ### Chaining Method Calls
 
@@ -596,7 +594,7 @@ The `jmap-compact` task runs periodically and:
 
 ---
 
-## Configuration Reference ⚙️
+## Configuration Reference
 
 **File: `config/jmap.toml`**
 
@@ -680,7 +678,7 @@ curl -X POST http://localhost:8080/jmap \
 
 ---
 
-## Architecture 🏗️
+## Architecture
 
 ### Components
 
@@ -770,7 +768,7 @@ DEBUG=api:jmap* node server.js
 
 ---
 
-## Next Steps & Roadmap 🚀
+## Next Steps & Roadmap
 
 ### Planned Enhancements
 
