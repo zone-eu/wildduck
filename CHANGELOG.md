@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.46.21](https://github.com/zone-eu/wildduck/compare/v1.46.20...v1.46.21) (2026-02-09)
+
+
+### Bug Fixes
+
+* **logging-autoreply:** ZMSA-65: loggelf autoreply error in filterHandler.storeMessage ([#983](https://github.com/zone-eu/wildduck/issues/983)) ([7b43049](https://github.com/zone-eu/wildduck/commit/7b43049a614a3bafc6d878e8923b81557e80e789))
+* **logging-redis:** ZMSA-78: Improve redis config, error logging and retry handling ([#987](https://github.com/zone-eu/wildduck/issues/987)) ([86d2627](https://github.com/zone-eu/wildduck/commit/86d26276a5ad58a689ea60378a71ec6f827bdad2))
+* **messages-search:** ZMSA-80: fix SearchString import. Fix messages search q param parsing, add search tests for q param ([#990](https://github.com/zone-eu/wildduck/issues/990)) ([312f9f7](https://github.com/zone-eu/wildduck/commit/312f9f787fc75881c15303f7833be978e4325f21))
+* ZMSA-64: on API outbound email sends add passwordType: master to envelope object ([#978](https://github.com/zone-eu/wildduck/issues/978)) ([24ba575](https://github.com/zone-eu/wildduck/commit/24ba57520afd88aa5435fc365f55ea3695f0d66a))
+
 ## [1.46.20](https://github.com/zone-eu/wildduck/compare/v1.46.19...v1.46.20) (2026-01-29)
 
 
