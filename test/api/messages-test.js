@@ -13,11 +13,24 @@ const config = require('@zone-eu/wild-config');
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 describe('Messages tests', function () {
-    this.timeout(10000); // eslint-disable-line no-invalid-this
+    this.timeout(20000); // eslint-disable-line no-invalid-this
 
     let user;
     let testMailbox;
     let trashId;
+    let queryMailbox;
+    let queryThread;
+
+    const queryFixture = {
+        subjectKeyword: 'Search Query Keyword Phrase',
+        subjectExcluded: 'Search Query Excluded Phrase',
+        subjectAttachment: 'Search Query Attachment Marker',
+        body: 'searchquerybodytoken',
+        attachmentBody: 'searchqueryattachmenttoken',
+        toAddress: 'search.query.to@to.com',
+        ccAddress: 'search.query.cc@to.com',
+        fromAddress: 'messagestestsuser@web.zone.test'
+    };
 
     before(async () => {
         // ensure that we have an existing user account
@@ -60,6 +73,54 @@ describe('Messages tests', function () {
             initialMessages.push(messageCreationPromise);
         }
         await Promise.all(initialMessages);
+
+        const queryMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: '/search-query-tests', hidden: false, retention: 10000 })
+            .expect(200);
+        queryMailbox = queryMailboxResponse.body.id;
+
+        const keywordMessage = await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }, { address: queryFixture.ccAddress }],
+                cc: [{ address: queryFixture.ccAddress }],
+                bcc: [{ address: queryFixture.ccAddress }],
+                subject: queryFixture.subjectKeyword,
+                text: `${queryFixture.body} keyword marker`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: queryFixture.subjectExcluded,
+                text: `${queryFixture.body} excluded marker`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: queryFixture.subjectAttachment,
+                text: `attachment marker ${queryFixture.attachmentBody}`,
+                attachments: [{ content: 'dGVzdA==', contentType: 'text/plain' }]
+            })
+            .expect(200);
+
+        const keywordMessageDetails = await server
+            .get(`/users/${user}/mailboxes/${queryMailbox}/messages/${keywordMessage.body.message.id}`)
+            .send({})
+            .expect(200);
+        queryThread = keywordMessageDetails.body.thread;
     });
 
     it('should POST /users/:user/mailboxes/:mailbox/messages/:message/submit expect success / normal submit', async () => {
@@ -151,6 +212,102 @@ describe('Messages tests', function () {
             .get(`/users/${user}/search?previous=${search4.body.previousCursor}&order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`)
             .send({}); // page 2 -> page 1
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
+    });
+
+    it('should GET /users/:user/search expect success / q supports subject and in keywords', async () => {
+        const q = `subject:"${queryFixture.subjectKeyword}" in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(search.body.results.map(entry => entry.mailbox)).to.eql([queryMailbox]);
+    });
+
+    it('should GET /users/:user/search expect success / q to: matches Cc recipients', async () => {
+        const q = `to:${queryFixture.toAddress} in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+    });
+
+    it('should GET /users/:user/search expect success / q has:attachment matches attachment messages', async () => {
+        const q = `has:attachment in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectAttachment);
+        expect(search.body.results.every(entry => entry.attachments)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q supports fulltext terms', async () => {
+        const q = `${queryFixture.body} in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectExcluded);
+    });
+
+    it('should GET /users/:user/search expect success / q supports OR groups', async () => {
+        const q = `(${queryFixture.body} OR ${queryFixture.attachmentBody}) in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectAttachment);
+    });
+
+    it('should GET /users/:user/search expect success / q supports focused OR groups with subject keywords', async () => {
+        const q = `(subject:Keyword OR subject:Attachment) in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectAttachment);
+    });
+
+    it('should GET /users/:user/search expect success / q supports negated subject filters', async () => {
+        const q = `from:${queryFixture.fromAddress} -subject:"${queryFixture.subjectExcluded}" in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(search.body.results.map(entry => entry.subject)).to.not.include(queryFixture.subjectExcluded);
+    });
+
+    it('should GET /users/:user/search expect success / q thread limits results to matching thread', async () => {
+        const q = `thread:${queryThread}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results.length).to.be.above(0);
+        expect(search.body.results.every(entry => entry.thread === queryThread)).to.be.true;
     });
 
     it('should GET /users/:user/mailboxes/:mailbox/messages expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
