@@ -309,7 +309,7 @@ class MIMEParser {
                 if (!processEncodedWords[match[1]]) {
                     processEncodedWords[match[1]] = [];
 
-                    if (key.match(/^([^*]+)\*(\d)?\*$/)) {
+                    if (key.match(/^([^*]+)\*(?:\d+\*)?$/)) {
                         // must have charset
                         charsetRequired.add(processEncodedWords[match[1]]);
                     }
