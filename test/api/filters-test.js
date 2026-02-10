@@ -251,6 +251,71 @@ describe('API Filters', function () {
         });
     });
 
+    describe('Filter nullable boolean actions', function () {
+        let nullableUpdateFilter;
+
+        it('should POST /users/{user}/filters expect success / ignore null seen, flag and delete actions', async () => {
+            const response = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'nullable boolean actions create',
+                    query: {
+                        from: 'nullable-create'
+                    },
+                    action: {
+                        seen: null,
+                        flag: null,
+                        delete: null
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${response.body.id}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action).to.not.have.property('seen');
+            expect(filterDataResponse.body.action).to.not.have.property('flag');
+            expect(filterDataResponse.body.action).to.not.have.property('delete');
+        });
+
+        it('should PUT /users/{user}/filters/{filter} expect success / clear seen, flag and delete actions with null values', async () => {
+            const createResponse = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'nullable boolean actions update',
+                    query: {
+                        from: 'nullable-update'
+                    },
+                    action: {
+                        seen: true,
+                        flag: true,
+                        delete: true
+                    }
+                })
+                .expect(200);
+            expect(createResponse.body.success).to.be.true;
+            nullableUpdateFilter = createResponse.body.id;
+
+            const response = await server
+                .put(`/users/${user}/filters/${nullableUpdateFilter}`)
+                .send({
+                    action: {
+                        seen: null,
+                        flag: null,
+                        delete: null
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${nullableUpdateFilter}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action).to.not.have.property('seen');
+            expect(filterDataResponse.body.action).to.not.have.property('flag');
+            expect(filterDataResponse.body.action).to.not.have.property('delete');
+        });
+    });
+
     describe('Filter metaData', function () {
         let metaDataFilter;
 
