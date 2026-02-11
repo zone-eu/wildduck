@@ -27,6 +27,8 @@ describe('Messages tests', function () {
         subjectAttachment: 'Search Query Attachment Marker',
         body: 'searchquerybodytoken',
         attachmentBody: 'searchqueryattachmenttoken',
+        multiTerm1: 'searchquerymultiterm1token',
+        multiTerm2: 'searchquerymultiterm2token',
         toAddress: 'search.query.to@to.com',
         ccAddress: 'search.query.cc@to.com',
         fromAddress: 'messagestestsuser@web.zone.test'
@@ -89,7 +91,7 @@ describe('Messages tests', function () {
                 cc: [{ address: queryFixture.ccAddress }],
                 bcc: [{ address: queryFixture.ccAddress }],
                 subject: queryFixture.subjectKeyword,
-                text: `${queryFixture.body} keyword marker`
+                text: `${queryFixture.body} keyword marker ${queryFixture.multiTerm1} ${queryFixture.multiTerm2}`
             })
             .expect(200);
 
@@ -260,6 +262,27 @@ describe('Messages tests', function () {
         expect(search.body.success).to.be.true;
         expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
         expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectExcluded);
+    });
+
+    it('should GET /users/:user/search expect success / q with two terms and searchable=1', async () => {
+        const q = `${queryFixture.multiTerm1} ${queryFixture.multiTerm2} in:${queryMailbox}`;
+
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .send({})
+            .expect(200);
+
+        const searchWithSearchable = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(searchWithSearchable.body.success).to.be.true;
+        expect(searchWithSearchable.body.query).to.equal(q);
+        expect(search.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(searchWithSearchable.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
+        expect(searchWithSearchable.body.results).to.deep.equal(search.body.results);
     });
 
     it('should GET /users/:user/search expect success / q supports OR groups', async () => {
