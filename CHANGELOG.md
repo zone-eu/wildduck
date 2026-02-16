@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.23](https://github.com/zone-eu/wildduck/compare/v1.46.22...v1.46.23) (2026-02-16)
+
+
+### Bug Fixes
+
+* **RFC5987-filename:** ZMS-14: Allow RFC5987 encoded filenames (filename*=charset'language'text) ([#993](https://github.com/zone-eu/wildduck/issues/993)) ([53e220a](https://github.com/zone-eu/wildduck/commit/53e220a8e290c43262a4a1588d9bed4b757bd3cb))
+
 ## [1.46.22](https://github.com/zone-eu/wildduck/compare/v1.46.21...v1.46.22) (2026-02-16)
 
 
