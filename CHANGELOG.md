@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.46.22](https://github.com/zone-eu/wildduck/compare/v1.46.21...v1.46.22) (2026-02-16)
+
+
+### Bug Fixes
+
+* **api-filters:** ZMS-15: unify FilterAction and FilterActionUpdate joi schemas, allow actions to be nullable ([#994](https://github.com/zone-eu/wildduck/issues/994)) ([17fcf3c](https://github.com/zone-eu/wildduck/commit/17fcf3c049ccbe943f69aff90e5fc90fbcc4a68e))
+* **api-messages-search:** ZMSA-80: fix messages search q param parsing for AND fulltext search ([#995](https://github.com/zone-eu/wildduck/issues/995)) ([d3e9f63](https://github.com/zone-eu/wildduck/commit/d3e9f63cef1f4d7412c72e0816d4039ca194ba40))
+* **api:** ZMSA-74: fix api endpoints' input and output object types ([#988](https://github.com/zone-eu/wildduck/issues/988)) ([ec1ed40](https://github.com/zone-eu/wildduck/commit/ec1ed407f692e1f5754bd12498492b8de6cd18b3))
+* update test workflow, bump mongodb action version ([#998](https://github.com/zone-eu/wildduck/issues/998)) ([fe2d4a5](https://github.com/zone-eu/wildduck/commit/fe2d4a5cbc57d55c2d7ed31090739349fc5f996d))
+
 ## [1.46.21](https://github.com/zone-eu/wildduck/compare/v1.46.20...v1.46.21) (2026-02-09)
 
 
