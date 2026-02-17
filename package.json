@@ -58,7 +58,7 @@
         "@zone-eu/wild-plugins": "1.0.5",
         "@zone-eu/zone-mta": "3.10.11",
         "accesscontrol": "2.2.1",
-        "axios": "1.13.2",
+        "axios": "1.13.5",
         "base32.js": "0.1.0",
         "bcryptjs": "3.0.3",
         "bson": "7.0.0",
