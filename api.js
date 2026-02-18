@@ -560,8 +560,8 @@ module.exports = done => {
     server.loggelf = (message, requiredKeys = []) => loggelf(message, requiredKeys);
 
     server.lock = new Lock({
-        redis: db.redis,
-        namespace: 'mail'
+        redis: db.redis.isCluster ? db.redis.redisMaster : db.redis,
+        namespace: db.redis.isCluster ? '{mail}' : 'mail'
     });
 
     acmeRoutes(db, server, { disableRedirect: true });
