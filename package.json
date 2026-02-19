@@ -5,6 +5,7 @@
     "main": "server.js",
     "scripts": {
         "test": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli -n 13 flushdb && npm run runtest",
+        "test:cluster": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli --cluster call 127.0.0.1:7000 flushdb && npm run runtest",
         "test:proto": "NODE_ENV=test grunt proto",
         "printconf": "NODE_CONFIG_ONLY=true npm start",
         "runtest": "NODE_ENV=test grunt",
