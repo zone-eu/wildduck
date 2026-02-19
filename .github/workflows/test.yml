@@ -93,10 +93,10 @@ jobs:
               with:
                   node-version: 24.x
 
-            - name: Install mongosh and mpop
+            - name: Install mongosh, mpop and redis-cli
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y wget gnupg mpop
+                  sudo apt-get install -y wget gnupg mpop redis-tools
                   wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | sudo apt-key add -
                   echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
                   sudo apt-get update
@@ -104,6 +104,7 @@ jobs:
 
             - run: which mongosh
             - run: which mpop
+            - run: which redis-cli
             - run: npm install
 
             - name: Wait for Redis Cluster
@@ -124,6 +125,6 @@ jobs:
                   done
 
             - name: Run tests against Redis cluster
-              run: npm run runtest
+              run: NODE_ENV=test-cluster npx grunt
               env:
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
