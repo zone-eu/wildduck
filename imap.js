@@ -155,7 +155,7 @@ let createInterface = (ifaceOptions, callback) => {
 
     server.lock = new Lock({
         redis: db.redis.isCluster ? db.redis.redisMaster : db.redis,
-        namespace: 'mail'
+        namespace: db.redis.isCluster ? '{mail}' : 'mail'
     });
 
     // setup command handlers for the server instance

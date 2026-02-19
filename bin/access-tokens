@@ -40,10 +40,7 @@ let argv = yargs
             await dbconnect();
 
             let accessToken = crypto.randomBytes(20).toString('hex');
-            let tokenHash = crypto
-                .createHash('sha256')
-                .update(accessToken)
-                .digest('hex');
+            let tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
             let key = 'tn:token:' + tokenHash;
 
             let tokenData = {
@@ -64,7 +61,7 @@ let argv = yargs
             };
 
             await db.redis
-                .multi()
+                .pipeline()
                 .hmset(key, tokenData)
                 .sadd('tn:user:' + argv.user, tokenHash)
                 .exec();
@@ -92,10 +89,7 @@ let argv = yargs
 
             let accessToken = argv.token;
 
-            let tokenHash = crypto
-                .createHash('sha256')
-                .update(accessToken)
-                .digest('hex');
+            let tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
 
             let key = 'tn:token:' + tokenHash;
 
@@ -132,7 +126,7 @@ let argv = yargs
                 process.exit();
             }
 
-            let query = await db.redis.multi().del('tn:user:' + user);
+            let query = await db.redis.pipeline().del('tn:user:' + user);
 
             tokens.forEach(tokenHash => {
                 query = query.del('tn:token:' + tokenHash);

@@ -88,7 +88,7 @@ module.exports.start = callback => {
 
     gcLock = new RedFour({
         redis: db.redis.isCluster ? db.redis.redisMaster : db.redis,
-        namespace: 'wildduck'
+        namespace: db.redis.isCluster ? '{wildduck}' : 'wildduck'
     });
 
     messageHandler = new MessageHandler({

@@ -290,8 +290,8 @@ function indexingJob(esclient) {
                 case 'new': {
                     // check tombstone for race conditions (might be already deleted)
 
-                    let [[err1, isDeleted1], [err2, isDeleted2]] = await db.redis
-                        .multi()
+                    const [[err1, isDeleted1], [err2, isDeleted2]] = await db.redis
+                        .pipeline()
                         .sismember(tombstoneTdy, data.message)
                         .sismember(tombstoneYdy, data.message)
                         .exec();

@@ -561,7 +561,7 @@ module.exports = done => {
 
     server.lock = new Lock({
         redis: db.redis.isCluster ? db.redis.redisMaster : db.redis,
-        namespace: 'mail'
+        namespace: db.redis.isCluster ? '{mail}' : 'mail'
     });
 
     acmeRoutes(db, server, { disableRedirect: true });

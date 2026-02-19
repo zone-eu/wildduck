@@ -133,7 +133,7 @@ const serverOptions = {
                 session.user.mailbox = mailbox._id;
 
                 db.redis
-                    .multi()
+                    .pipeline()
                     // "new" limit store
                     .hget(`pxm:${session.user.id}`, mailbox._id.toString())
                     // fallback store
@@ -179,7 +179,7 @@ const serverOptions = {
                                         }
                                         // try to update index, ignore result
                                         db.redis
-                                            .multi()
+                                            .pipeline()
                                             // update limit store
                                             .hset(`pxm:${session.user.id}`, mailbox._id.toString(), oldestMessageData.uid)
                                             // delete fallback store as it is no longer needed
@@ -218,7 +218,9 @@ const serverOptions = {
                 return callback(err);
             }
 
-            messageHandler.counters.ttlcounter('pdw:' + session.user.id, 0, limit, false, (err, res) => {
+            let counterKey = 'pdw:' + tools.redisClusterValue(session.user.id, db.redis);
+
+            messageHandler.counters.ttlcounter(counterKey, 0, limit, false, (err, res) => {
                 if (err) {
                     return callback(err);
                 }
@@ -256,7 +258,7 @@ const serverOptions = {
                         }
 
                         let limiter = new LimitedFetch({
-                            key: 'pdw:' + session.user.id,
+                            key: counterKey,
                             ttlcounter: messageHandler.counters.ttlcounter,
                             maxBytes: limit,
                             skipCounter: true
