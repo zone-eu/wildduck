@@ -13,6 +13,7 @@ const { ObjectId } = require('mongodb');
 const libmime = require('libmime');
 const punycode = require('punycode.js');
 const { getClient } = require('./lib/elasticsearch');
+const tools = require('./lib/tools');
 
 let loggelf;
 let processlock;
@@ -283,15 +284,16 @@ function indexingJob(esclient) {
 
             const dateKeyTdy = new Date().toISOString().substring(0, 10).replace(/-/g, '');
             const dateKeyYdy = new Date(Date.now() - 24 * 3600 * 1000).toISOString().substring(0, 10).replace(/-/g, '');
-            const tombstoneTdy = `indexer:tomb:${dateKeyTdy}`;
-            const tombstoneYdy = `indexer:tomb:${dateKeyYdy}`;
+            const tombstoneTag = tools.redisClusterValue('indexer:tomb', db.redis);
+            const tombstoneTdy = `${tombstoneTag}:${dateKeyTdy}`;
+            const tombstoneYdy = `${tombstoneTag}:${dateKeyYdy}`;
 
             switch (data.action) {
                 case 'new': {
                     // check tombstone for race conditions (might be already deleted)
 
                     const [[err1, isDeleted1], [err2, isDeleted2]] = await db.redis
-                        .pipeline()
+                        .multi()
                         .sismember(tombstoneTdy, data.message)
                         .sismember(tombstoneYdy, data.message)
                         .exec();

@@ -131,20 +131,17 @@ const serverOptions = {
                 }
 
                 session.user.mailbox = mailbox._id;
+                let messageIndexKey = `pxm:${tools.redisClusterValue(session.user.id, db.redis)}`;
 
-                db.redis
-                    .pipeline()
-                    // "new" limit store
-                    .hget(`pxm:${session.user.id}`, mailbox._id.toString())
-                    // fallback store
-                    .hget(`pop3uid`, mailbox._id.toString())
-                    .exec((err, res) => {
-                        let lastIndex = res && ((res[0] && res[0][1]) || (res[1] && res[1][1]));
+                db.redis.hget(messageIndexKey, mailbox._id.toString(), (err, messageIndex) => {
+                    let lastIndex = !err && messageIndex;
 
-                        let query = {
-                            mailbox: mailbox._id
-                        };
-                        if (!err && lastIndex && !isNaN(lastIndex)) {
+                    let query = {
+                        mailbox: mailbox._id
+                    };
+
+                    let processMessages = () => {
+                        if (lastIndex && !isNaN(lastIndex)) {
                             query.uid = { $gte: Number(lastIndex) };
                         }
 
@@ -177,14 +174,11 @@ const serverOptions = {
                                         if (!oldestMessageData || !oldestMessageData.uid) {
                                             return done();
                                         }
-                                        // try to update index, ignore result
-                                        db.redis
-                                            .pipeline()
-                                            // update limit store
-                                            .hset(`pxm:${session.user.id}`, mailbox._id.toString(), oldestMessageData.uid)
+
+                                        db.redis.hset(messageIndexKey, mailbox._id.toString(), oldestMessageData.uid, () => {
                                             // delete fallback store as it is no longer needed
-                                            .hdel(`pop3uid`, mailbox._id.toString())
-                                            .exec(done);
+                                            db.redis.hdel(`pop3uid`, mailbox._id.toString(), done);
+                                        });
                                     };
 
                                     updateUIDIndex(() =>
@@ -207,7 +201,20 @@ const serverOptions = {
                                     );
                                 });
                         });
+                    };
+
+                    if (lastIndex) {
+                        return processMessages();
+                    }
+
+                    // fallback store
+                    db.redis.hget(`pop3uid`, mailbox._id.toString(), (fallbackErr, fallbackIndex) => {
+                        if (!fallbackErr && fallbackIndex) {
+                            lastIndex = fallbackIndex;
+                        }
+                        processMessages();
                     });
+                });
             }
         );
     },

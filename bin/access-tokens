@@ -60,11 +60,8 @@ let argv = yargs
                     .digest('hex')
             };
 
-            await db.redis
-                .pipeline()
-                .hmset(key, tokenData)
-                .sadd('tn:user:' + argv.user, tokenHash)
-                .exec();
+            await db.redis.hmset(key, tokenData);
+            await db.redis.sadd('tn:user:' + argv.user, tokenHash);
 
             console.error('Generated access token for %s[%s]:', tokenData.user, tokenData.role);
 
@@ -126,13 +123,11 @@ let argv = yargs
                 process.exit();
             }
 
-            let query = await db.redis.pipeline().del('tn:user:' + user);
+            await db.redis.del('tn:user:' + user);
 
-            tokens.forEach(tokenHash => {
-                query = query.del('tn:token:' + tokenHash);
-            });
-
-            await query.exec();
+            for (let tokenHash of tokens) {
+                await db.redis.del('tn:token:' + tokenHash);
+            }
 
             console.error('Deleted %s tokens for %s', tokens.length, user);
 
