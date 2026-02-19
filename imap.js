@@ -154,7 +154,7 @@ let createInterface = (ifaceOptions, callback) => {
     server.notifier = notifier;
 
     server.lock = new Lock({
-        redis: db.redis,
+        redis: db.redis.isCluster ? db.redis.redisMaster : db.redis,
         namespace: 'mail'
     });
 
