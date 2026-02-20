@@ -57,3 +57,74 @@ jobs:
               env:
                   APPCONF_dbs_redis: redis://127.0.0.1:6379/1
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
+
+    test-redis-cluster:
+        runs-on: ubuntu-latest
+        services:
+            redis-cluster:
+                image: grokzen/redis-cluster:7.0.10
+                env:
+                    IP: 127.0.0.1
+                    INITIAL_PORT: 7000
+                    MASTERS: 3
+                    SLAVES_PER_MASTER: 0
+                options: >-
+                    --health-cmd "redis-cli -c -p 7000 ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 20
+                ports:
+                    - 7000:7000
+                    - 7001:7001
+                    - 7002:7002
+
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Start MongoDB
+              uses: supercharge/mongodb-github-action@1.12.1
+              with:
+                  mongodb-version: 6.0
+                  mongodb-port: 27017
+                  mongodb-db: wildduck-test
+
+            - name: Use Node.js 24.x
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 24.x
+
+            - name: Install mongosh, mpop and redis-cli
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y wget gnupg mpop redis-tools
+                  wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | sudo apt-key add -
+                  echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
+                  sudo apt-get update
+                  sudo apt-get install -y mongodb-mongosh
+
+            - run: which mongosh
+            - run: which mpop
+            - run: which redis-cli
+            - run: npm install
+
+            - name: Wait for Redis Cluster
+              run: |
+                  for port in 7000 7001 7002; do
+                    for i in $(seq 1 60); do
+                      redis-cli -c -h 127.0.0.1 -p "$port" ping && break
+                      sleep 1
+                    done
+                  done
+                  redis-cli -c -h 127.0.0.1 -p 7000 cluster info | grep 'cluster_state:ok'
+
+            - name: Reset DB and Redis cluster
+              run: |
+                  mongosh --eval 'db.dropDatabase()' wildduck-test
+                  for port in 7000 7001 7002; do
+                    redis-cli -c -h 127.0.0.1 -p "$port" flushdb
+                  done
+
+            - name: Run tests against Redis cluster
+              run: NODE_ENV=test-cluster npx grunt
+              env:
+                  APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'

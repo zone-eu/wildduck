@@ -1,0 +1,41 @@
+[api]
+port = 8080
+host = "127.0.0.1"
+secure = false
+
+[log]
+level = "silly"
+
+[dbs]
+# mongodb connection string for the main database
+mongo = "mongodb://127.0.0.1:27017/wildduck-test"
+
+dbname = "wildduck-test"
+
+[dbs.redis]
+cluster = true
+password = ""
+
+[[dbs.redis.nodes]]
+host = "127.0.0.1"
+port = 7000
+
+[[dbs.redis.nodes]]
+host = "127.0.0.1"
+port = 7001
+
+[[dbs.redis.nodes]]
+host = "127.0.0.1"
+port = 7002
+
+[imap]
+port = 9993
+host = "127.0.0.1"
+
+[lmtp]
+enabled = true
+port = 2424
+
+[pwned]
+enabled = true
+type = "softfail"
