@@ -4,7 +4,7 @@ host = "127.0.0.1"
 secure = false
 
 [log]
-level = "silly"
+level = "error"
 
 [dbs]
 # mongodb connection string for the main database
