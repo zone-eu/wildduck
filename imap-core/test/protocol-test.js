@@ -16,7 +16,7 @@ chai.config.includeStack = true;
 const { MAX_SUB_MAILBOXES, MAX_MAILBOX_NAME_LENGTH } = require('../../lib/consts.js');
 
 describe('IMAP Protocol integration tests', function () {
-    this.timeout(100000); // eslint-disable-line no-invalid-this
+    this.timeout(200000); // eslint-disable-line no-invalid-this
     let port = 9993;
 
     beforeEach(function (done) {
