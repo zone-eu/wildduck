@@ -16,6 +16,7 @@ const certs = require('./lib/certs');
 const Gelf = require('gelf');
 const os = require('os');
 const Lock = require('ioredfour');
+const { resolveLoggelfLevel } = require('./lib/loggelf-level');
 
 const onFetch = require('./lib/handlers/on-fetch');
 const onAuth = require('./lib/handlers/on-auth');
@@ -217,6 +218,7 @@ module.exports = done => {
         }
 
         message = message || {};
+        message.level = resolveLoggelfLevel(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
