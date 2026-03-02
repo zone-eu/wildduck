@@ -131,7 +131,7 @@ const serverOptions = {
                 }
 
                 session.user.mailbox = mailbox._id;
-                let messageIndexKey = `pxm:${tools.redisClusterValue(session.user.id, db.redis)}`;
+                let messageIndexKey = `pxm:{${session.user.id.toString()}}`;
 
                 db.redis.hget(messageIndexKey, mailbox._id.toString(), (err, messageIndex) => {
                     let lastIndex = !err && messageIndex;
@@ -225,7 +225,7 @@ const serverOptions = {
                 return callback(err);
             }
 
-            let counterKey = 'pdw:' + tools.redisClusterValue(session.user.id, db.redis);
+            let counterKey = `pdw:{${session.user.id.toString()}}`;
 
             messageHandler.counters.ttlcounter(counterKey, 0, limit, false, (err, res) => {
                 if (err) {
