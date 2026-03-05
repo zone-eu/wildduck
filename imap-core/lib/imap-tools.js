@@ -790,6 +790,7 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('UIDPLUS');
         capabilities.push('CONDSTORE');
         capabilities.push('UTF8=ACCEPT');
+        capabilities.push('SORT');
 
         capabilities.push('MOVE');
 
@@ -810,6 +811,7 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('ENABLE');
         capabilities.push('CONDSTORE');
         capabilities.push('UTF8=ACCEPT');
+        capabilities.push('SORT');
 
         capabilities.push('MOVE');
 

@@ -2001,4 +2001,60 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
     });
+
+    describe('SORT command', function () {
+        it('should sort by FROM', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 SORT (FROM) UTF-8 ALL', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SORT 3 2 1 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should support UID SORT', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID SORT (FROM) UTF-8 ALL', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SORT 103 102 101 104 105 106$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should reject unsupported charset', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 SORT (FROM) ISO-8859-1 ALL', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SORT/m.test(resp)).to.be.false;
+                    expect(/^T3 NO \[BADCHARSET\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
 });

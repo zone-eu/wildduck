@@ -6,6 +6,7 @@ const MemoryNotifier = require('./memory-notifier.js');
 const fs = require('fs');
 const parseMimeTree = require('../lib/indexer/parse-mime-tree');
 const imapHandler = require('../lib/handler/imap-handler');
+const { sortSearchResults } = require('../lib/sort-search-results');
 
 module.exports = function (options) {
     // This example uses global folders and subscriptions
@@ -592,11 +593,19 @@ module.exports = function (options) {
 
         let folder = folders.get(mailbox);
         let highestModseq = 0;
+        let useSorting = Array.isArray(options.sort) && options.sort.length;
 
         let uidList = [];
+        let matchedMessages = [];
         let checked = 0;
         let checkNext = () => {
             if (checked >= folder.messages.length) {
+                if (useSorting) {
+                    uidList = sortSearchResults(matchedMessages, options.sort, {
+                        uidList: session.selected && session.selected.uidList
+                    }).map(message => message.uid);
+                }
+
                 return callback(null, {
                     uidList,
                     highestModseq
@@ -611,7 +620,11 @@ module.exports = function (options) {
                     highestModseq = message.modseq;
                 }
                 if (match) {
-                    uidList.push(message.uid);
+                    if (useSorting) {
+                        matchedMessages.push(message);
+                    } else {
+                        uidList.push(message.uid);
+                    }
                 }
                 checkNext();
             });

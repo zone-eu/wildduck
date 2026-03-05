@@ -45,6 +45,8 @@ const commands = new Map([
     ['UID FETCH', require('./commands/fetch')],
     ['SEARCH', require('./commands/search')],
     ['UID SEARCH', require('./commands/search')],
+    ['SORT', require('./commands/sort')],
+    ['UID SORT', require('./commands/sort')],
     ['ENABLE', require('./commands/enable')],
     ['GETQUOTAROOT', require('./commands/getquotaroot')],
     ['SETQUOTA', require('./commands/setquota')],
