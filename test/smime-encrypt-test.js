@@ -38,6 +38,15 @@ describe('S/MIME encryption', function () {
     let rsaCerts = {};
 
     before(function () {
+        // Probe PKCS#1 v1.5 availability (normally done in server.js at startup)
+        try {
+            let { publicKey: probeKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+            let probeCt = crypto.publicEncrypt({ key: probeKey, padding: crypto.constants.RSA_PKCS1_PADDING }, Buffer.from('smime-probe'));
+            SMIMEEncryptor.pkcs1v15Available = probeCt && probeCt.length > 0;
+        } catch (err) {
+            // not available
+        }
+
         // Create a minimal MessageHandler instance (only encryption methods needed)
         handler = Object.create(MessageHandler.prototype);
         handler.loggelf = () => false;

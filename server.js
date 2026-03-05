@@ -44,6 +44,29 @@ const { init: initElasticSearch } = require('./lib/elasticsearch');
 
 log.level = config.log.level;
 
+// Detect whether RSA PKCS#1 v1.5 is available
+// OpenSSL 3.x may have it disabled by-default
+const crypto = require('crypto');
+const SMIMEEncryptor = require('./lib/smime');
+try {
+    let { publicKey: probeKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    let probeCt = crypto.publicEncrypt({ key: probeKey, padding: crypto.constants.RSA_PKCS1_PADDING }, Buffer.from('smime-probe'));
+    SMIMEEncryptor.pkcs1v15Available = probeCt && probeCt.length > 0;
+} catch (err) {
+    // Not available
+}
+if (SMIMEEncryptor.pkcs1v15Available) {
+    log.info('SMIME', 'RSA PKCS#1 v1.5 key transport is available (OpenSSL %s)', process.versions.openssl);
+} else {
+    log.warn(
+        'SMIME',
+        'RSA PKCS#1 v1.5 key transport is NOT available (OpenSSL %s). ' +
+            'Users configured with PKCS#1 v1.5 key transport will fail to encrypt. ' +
+            'Restart with --openssl-legacy-provider or switch to OAEP.',
+        process.versions.openssl
+    );
+}
+
 const printLogo = () => {
     let logo = fs
         .readFileSync(__dirname + '/logo.txt', 'utf-8')
