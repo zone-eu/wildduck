@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.46.24](https://github.com/zone-eu/wildduck/compare/v1.46.23...v1.46.24) (2026-03-06)
+
+
+### Bug Fixes
+
+* [#86](https://github.com/zone-eu/wildduck/issues/86)c89t0yc: Remove --platform=${BUILDPLATFORM} from Dockerfile ([#1004](https://github.com/zone-eu/wildduck/issues/1004)) ([ad1c444](https://github.com/zone-eu/wildduck/commit/ad1c444d73b5a1102bb2b2cb1389147aac5fe0fb))
+* ZMS-23: messageHandler delAsync add subject to archived log ([#1012](https://github.com/zone-eu/wildduck/issues/1012)) ([1634f49](https://github.com/zone-eu/wildduck/commit/1634f4911c522b9e9e442d49571c771cc17759b6))
+* ZMS-24: small messages search fixes ([#1014](https://github.com/zone-eu/wildduck/issues/1014)) ([4b91116](https://github.com/zone-eu/wildduck/commit/4b91116759648ebc714f718c3a1dc5514caf2565))
+* ZMS-27: when creating thread use $literal for subject ([#1017](https://github.com/zone-eu/wildduck/issues/1017)) ([6efc5a4](https://github.com/zone-eu/wildduck/commit/6efc5a4543527dbc3ff4856949a91260037f8255))
+
 ## [1.46.23](https://github.com/zone-eu/wildduck/compare/v1.46.22...v1.46.23) (2026-02-25)
 
 
