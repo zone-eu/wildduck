@@ -400,6 +400,14 @@ describe('#parseFilename (MIMEParser-driven)', function () {
         });
     });
 
+    it('continuation supports multi-digit section numbers (unencoded)', function () {
+        let headers = 'Content-Disposition: attachment; filename*0="part-A"; filename*10="part-K"';
+        expect(parseFilename(headers)).to.deep.equal({
+            filename: 'part-Apart-K',
+            source: 'filename*0'
+        });
+    });
+
     it('continuation with missing segment concatenates existing parts (encoded)', function () {
         let headers = "Content-Disposition: attachment; filename*0*=UTF-8''A; filename*2*=C";
         expect(parseFilename(headers)).to.deep.equal({

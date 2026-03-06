@@ -305,11 +305,11 @@ class MIMEParser {
             // which are encoded with lang/charset info as well as a continuation.
             // See https://tools.ietf.org/html/rfc2231 section 4.1.
 
-            if ((match = key.match(/^([^*]+)\*(\d)?\*?$/))) {
+            if ((match = key.match(/^([^*]+)\*(\d+)?\*?$/))) {
                 if (!processEncodedWords[match[1]]) {
                     processEncodedWords[match[1]] = [];
 
-                    // Additionally allow RFC5987 section 3.2.1 encoded values
+                    // Additionally allow RFC2231 encoded values
                     if (key.match(/^([^*]+)\*(?:\d+\*)?$/)) {
                         // must have charset
                         charsetRequired.add(processEncodedWords[match[1]]);
