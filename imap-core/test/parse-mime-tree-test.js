@@ -400,6 +400,16 @@ describe('#parseFilename (MIMEParser-driven)', function () {
         });
     });
 
+    it('continuation concatenates out-of-order sections in numeric order (unencoded)', function () {
+        let headers =
+            'Content-Disposition: attachment; ' +
+            'filename*0="part-0"; filename*3="part-3"; filename*2="part-2"; filename*5="part-5"; filename*4="part-4"';
+        expect(parseFilename(headers)).to.deep.equal({
+            filename: 'part-0part-2part-3part-4part-5',
+            source: 'filename*0'
+        });
+    });
+
     it('continuation supports multi-digit section numbers (unencoded)', function () {
         let headers = 'Content-Disposition: attachment; filename*0="part-A"; filename*10="part-K"';
         expect(parseFilename(headers)).to.deep.equal({
@@ -412,6 +422,14 @@ describe('#parseFilename (MIMEParser-driven)', function () {
         let headers = "Content-Disposition: attachment; filename*0*=UTF-8''A; filename*2*=C";
         expect(parseFilename(headers)).to.deep.equal({
             filename: 'AC',
+            source: 'filename*0*'
+        });
+    });
+
+    it('continuation concatenates out-of-order sections in numeric order (encoded)', function () {
+        let headers = "Content-Disposition: attachment; filename*0*=UTF-8''A; filename*3*=D; filename*2*=C; filename*5*=F; filename*4*=E";
+        expect(parseFilename(headers)).to.deep.equal({
+            filename: 'ACDEF',
             source: 'filename*0*'
         });
     });
