@@ -488,7 +488,7 @@ describe('IMAP Protocol integration tests', function () {
                 function (resp) {
                     resp = resp.toString();
                     expect(/^T2 OK/m.test(resp)).to.be.true;
-                    expect(/^\* OK \[HIGHESTMODSEQ 1\]$/m.test(resp)).to.be.true;
+                    expect(/^\* OK \[HIGHESTMODSEQ 1\]/m.test(resp)).to.be.true;
                     expect(/^T3 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
                     expect(/^\* STATUS modseqtest \(HIGHESTMODSEQ 1\)$/m.test(resp)).to.be.true;
                     expect(/^T4 OK/m.test(resp)).to.be.true;
@@ -1381,8 +1381,8 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.slice(/\n/).indexOf('* 3 FETCH (FLAGS (\\Seen) UID 103 MODSEQ (3))') >= 0).to.be.true; // UID FETCH FLAGS
-                    expect(resp.slice(/\n/).indexOf('* 3 FETCH (FLAGS (\\Seen) MODSEQ (3))') >= 0).to.be.true; // FETCH FLAGS
+                    expect(/^\* 3 FETCH \(FLAGS \(\\Seen\) UID 103 MODSEQ \(4\)\)$/m.test(resp)).to.be.true; // UID FETCH FLAGS
+                    expect(/^\* 3 FETCH \(FLAGS \(\\Seen\) MODSEQ \(4\)\)$/m.test(resp)).to.be.true; // FETCH FLAGS
                     expect(resp.match(/^\* \d+ FETCH/gm).length).to.equal(2);
                     expect(/^T3 OK/m.test(resp)).to.be.true;
                     expect(/^T4 OK/m.test(resp)).to.be.true;
