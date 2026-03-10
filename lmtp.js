@@ -75,6 +75,9 @@ const serverOptions = {
                 encryptMessages: true,
                 encryptForwarded: true,
                 pubKey: true,
+                smimeCerts: true,
+                smimeCipher: true,
+                smimeKeyTransport: true,
                 spamLevel: true
             },
             (err, userData) => {
