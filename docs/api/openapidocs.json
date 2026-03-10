@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.46.19"
+        "version": "1.46.24"
     },
     "servers": [
         {
@@ -1244,7 +1244,8 @@
                         "description": "Partial match of an address",
                         "required": false,
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "default": ""
                         }
                     },
                     {
@@ -1363,7 +1364,7 @@
                     "Addresses"
                 ],
                 "summary": "Create new Address",
-                "description": "Add a new email address for a User. Addresses can contain unicode characters. Dots in usernames are normalized so no need to create both \"firstlast@example.com\" and \"first.last@example.com\" Special addresses `*@example.com`, `*suffix@example.com` and `username@*` catches all emails to these domains or users without a registered destination (requires allowWildcard argument)",
+                "description": "Add a new email address for a User. Addresses can contain unicode characters. Dots in usernames are normalized so no need to create both \"firstlast@example.com\" and \"first.last@example.com\" Special addresses `*@example.com` and `username@*` catch all emails to these domains or users without a registered destination (requires allowWildcard argument)",
                 "operationId": "createUserAddress",
                 "requestBody": {
                     "content": {
@@ -1379,10 +1380,10 @@
                                             },
                                             {
                                                 "type": "string",
-                                                "description": "Wildcard address"
+                                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
                                             }
                                         ],
-                                        "description": "String. Either an e-mail address or a wildduck address"
+                                        "description": "String. Either an e-mail address or a wildcard address"
                                     },
                                     "name": {
                                         "type": "string",
@@ -1421,7 +1422,10 @@
                                         "type": "string",
                                         "description": "IP address for the logs "
                                     }
-                                }
+                                },
+                                "required": [
+                                    "address"
+                                ]
                             }
                         }
                     },
@@ -1900,10 +1904,11 @@
                                                 "description": "E-mail Address"
                                             },
                                             {
-                                                "type": "string"
+                                                "type": "string",
+                                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
                                             }
                                         ],
-                                        "description": "E-mail Address"
+                                        "description": "E-mail address or wildcard address"
                                     },
                                     "name": {
                                         "type": "string",
@@ -1923,7 +1928,7 @@
                                     },
                                     "allowWildcard": {
                                         "type": "boolean",
-                                        "description": "If true then address value can be in the form of `*@example.com`, otherwise using * is not allowed"
+                                        "description": "If true then address value can be in the form of `*@example.com` or `username@*`, otherwise using * is not allowed"
                                     },
                                     "autoreply": {
                                         "$ref": "#/components/schemas/Autoreply"
@@ -2181,7 +2186,7 @@
                     {
                         "name": "address",
                         "in": "path",
-                        "description": "ID of the Address or e-mail address string",
+                        "description": "ID of the Address or e-mail address string (including wildcard addresses)",
                         "required": true,
                         "schema": {
                             "oneOf": [
@@ -2190,8 +2195,17 @@
                                     "description": "ID of the Address"
                                 },
                                 {
-                                    "type": "string",
-                                    "description": "E-mail Address"
+                                    "oneOf": [
+                                        {
+                                            "type": "string",
+                                            "description": "E-mail Address"
+                                        },
+                                        {
+                                            "type": "string",
+                                            "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
+                                        }
+                                    ],
+                                    "description": "E-mail Address or wildcard address"
                                 }
                             ]
                         }
@@ -2785,7 +2799,7 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response",
+                        "description": "Comma separated list of header keys to include in the response or true to return all headers",
                         "required": false,
                         "schema": {
                             "oneOf": [
@@ -3353,6 +3367,16 @@
                         }
                     },
                     {
+                        "name": "metaData",
+                        "in": "query",
+                        "description": "If true, then includes metaData in the response",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "searchable",
                         "in": "query",
                         "description": "If true, then matches messages not in Junk or Trash",
@@ -3554,6 +3578,11 @@
                                         "type": "string",
                                         "description": "Comma separated list of header keys to include in the response",
                                         "example": "List-ID, MIME-Version"
+                                    },
+                                    "metaData": {
+                                        "type": "boolean",
+                                        "description": "If true, then includes metaData in the response",
+                                        "default": false
                                     },
                                     "searchable": {
                                         "type": "boolean",
@@ -3947,14 +3976,9 @@
                         "content": {
                             "message/rfc822": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "success": {
-                                            "type": "string",
-                                            "description": "Success",
-                                            "format": "binary"
-                                        }
-                                    }
+                                    "type": "string",
+                                    "description": "RFC822 message source",
+                                    "format": "binary"
                                 }
                             }
                         }
@@ -4024,13 +4048,9 @@
                         "content": {
                             "application/octet-stream": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "success": {
-                                            "type": "string",
-                                            "format": "binary"
-                                        }
-                                    }
+                                    "type": "string",
+                                    "description": "Attachment contents",
+                                    "format": "binary"
                                 }
                             }
                         }
@@ -4501,7 +4521,7 @@
                     {
                         "name": "message",
                         "in": "path",
-                        "description": "Message ID",
+                        "description": "Archived message ID",
                         "required": true,
                         "schema": {
                             "type": "number"
@@ -4546,7 +4566,7 @@
                                     },
                                     "encoding": {
                                         "type": "string",
-                                        "description": "Encoding of the file content. Useful if you want to upload the file in base64 encoded format. Valid options \"base64\", \"hex\", \"utf8\"",
+                                        "description": "Encoding of the file content. Useful if you want to upload the file in base64 encoded format. Valid option \"base64\"",
                                         "enum": [
                                             "base64"
                                         ]
@@ -7408,6 +7428,15 @@
                                         "description": "Expiration date. Audit data is deleted after this date",
                                         "format": "date-time"
                                     },
+                                    "notes": {
+                                        "type": "string",
+                                        "description": "Optional audit notes"
+                                    },
+                                    "meta": {
+                                        "type": "object",
+                                        "description": "Optional metadata, must be an object or JSON formatted string",
+                                        "format": "any"
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -9167,8 +9196,18 @@
                         "description": "How many messages are forwarded during current 24 hour period"
                     },
                     "ttl": {
-                        "type": "number",
-                        "description": "Time until the end of current 24 hour period"
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "Time until the end of current 24 hour period or false if not available"
                     }
                 },
                 "required": [
@@ -9715,7 +9754,16 @@
                         "description": "Identity name"
                     },
                     "address": {
-                        "type": "string",
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "E-mail Address"
+                            },
+                            {
+                                "type": "string",
+                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
+                            }
+                        ],
                         "description": "E-mail address string"
                     },
                     "user": {
@@ -9757,8 +9805,6 @@
                 },
                 "required": [
                     "id",
-                    "address",
-                    "user",
                     "forwarded",
                     "forwardedDisabled",
                     "tags"
@@ -9854,8 +9900,17 @@
                         "description": "Identity name"
                     },
                     "address": {
-                        "type": "string",
-                        "description": "E-mail Address"
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "E-mail Address"
+                            },
+                            {
+                                "type": "string",
+                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
+                            }
+                        ],
+                        "description": "E-mail Address or wildcard address"
                     },
                     "main": {
                         "type": "boolean",
@@ -9886,7 +9941,6 @@
                 },
                 "required": [
                     "id",
-                    "address",
                     "main",
                     "created",
                     "tags"
@@ -9930,8 +9984,17 @@
                         "description": "Identity name"
                     },
                     "address": {
-                        "type": "string",
-                        "description": "E-mail Address"
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "E-mail Address"
+                            },
+                            {
+                                "type": "string",
+                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
+                            }
+                        ],
+                        "description": "E-mail Address or wildcard address"
                     },
                     "main": {
                         "type": "boolean",
@@ -9963,7 +10026,6 @@
                 "required": [
                     "success",
                     "id",
-                    "address",
                     "main",
                     "created",
                     "tags"
@@ -10092,21 +10154,63 @@
                         "type": "boolean",
                         "description": "If true, then autoreply is enabled for this address"
                     },
+                    "start": {
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "Either a date string or boolean false to disable start time checks"
+                    },
+                    "end": {
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "Either a date string or boolean false to disable end time checks"
+                    },
                     "name": {
                         "type": "string",
-                        "description": "Name that is used for the From: header in autoreply message"
+                        "description": "Name that is used for the From: header in autoreply message",
+                        "enum": [
+                            ""
+                        ]
                     },
                     "subject": {
                         "type": "string",
-                        "description": "Autoreply subject line"
+                        "description": "Autoreply subject line",
+                        "enum": [
+                            ""
+                        ]
                     },
                     "text": {
                         "type": "string",
-                        "description": "Autoreply plaintext content"
+                        "description": "Autoreply plaintext content",
+                        "enum": [
+                            ""
+                        ]
                     },
                     "html": {
                         "type": "string",
-                        "description": "Autoreply HTML content"
+                        "description": "Autoreply HTML content",
+                        "enum": [
+                            ""
+                        ]
                     }
                 },
                 "required": [
@@ -10126,8 +10230,17 @@
                         "description": "ID of the Address"
                     },
                     "address": {
-                        "type": "string",
-                        "description": "E-mail Address"
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "E-mail Address"
+                            },
+                            {
+                                "type": "string",
+                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
+                            }
+                        ],
+                        "description": "E-mail Address or wildcard address"
                     },
                     "name": {
                         "type": "string",
@@ -10176,7 +10289,6 @@
                 "required": [
                     "success",
                     "id",
-                    "address",
                     "limits",
                     "autoreply",
                     "created",
@@ -10196,12 +10308,28 @@
                         "description": "ID of the Address"
                     },
                     "address": {
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "E-mail Address"
+                            },
+                            {
+                                "type": "string",
+                                "description": "Wildcard address (\"*@example.com\", \"*suffix@example.com\" or \"user@*\")"
+                            }
+                        ],
+                        "description": "E-mail Address or wildcard address"
+                    },
+                    "user": {
                         "type": "string",
-                        "description": "E-mail Address"
+                        "description": "User ID this address belongs to if this is a User address"
                     },
                     "name": {
                         "type": "string",
-                        "description": "Identity name"
+                        "description": "Identity name",
+                        "enum": [
+                            ""
+                        ]
                     },
                     "targets": {
                         "type": "array",
@@ -10242,10 +10370,6 @@
                 "required": [
                     "success",
                     "id",
-                    "address",
-                    "name",
-                    "limits",
-                    "autoreply",
                     "tags",
                     "created"
                 ]
@@ -10310,7 +10434,10 @@
                                 },
                                 "specialUse": {
                                     "type": "string",
-                                    "description": "Either special use identifier or null. One of Drafts, Junk, Sent or Trash"
+                                    "description": "Either special use identifier or null. One of Drafts, Junk, Sent or Trash",
+                                    "enum": [
+                                        null
+                                    ]
                                 },
                                 "modifyIndex": {
                                     "type": "number",
@@ -10335,11 +10462,17 @@
                                 },
                                 "total": {
                                     "type": "number",
-                                    "description": "How many messages are stored in this mailbox"
+                                    "description": "How many messages are stored in this mailbox",
+                                    "enum": [
+                                        null
+                                    ]
                                 },
                                 "unseen": {
                                     "type": "number",
-                                    "description": "How many unseen messages are stored in this mailbox"
+                                    "description": "How many unseen messages are stored in this mailbox",
+                                    "enum": [
+                                        null
+                                    ]
                                 },
                                 "size": {
                                     "type": "number",
@@ -10406,6 +10539,9 @@
                     "specialUse": {
                         "type": "string",
                         "description": "Either special use identifier or null. One of Drafts, Junk, Sent or Trash",
+                        "enum": [
+                            null
+                        ],
                         "example": "\\Draft"
                     },
                     "modifyIndex": {
@@ -10430,11 +10566,17 @@
                     },
                     "total": {
                         "type": "number",
-                        "description": "How many messages are stored in this mailbox"
+                        "description": "How many messages are stored in this mailbox",
+                        "enum": [
+                            null
+                        ]
                     },
                     "unseen": {
                         "type": "number",
-                        "description": "How many unseen messages are stored in this mailbox"
+                        "description": "How many unseen messages are stored in this mailbox",
+                        "enum": [
+                            null
+                        ]
                     }
                 },
                 "required": [
@@ -10783,8 +10925,10 @@
                     "id": {
                         "type": "array",
                         "items": {
-                            "type": "object",
-                            "properties": {}
+                            "type": "array",
+                            "items": {
+                                "type": "number"
+                            }
                         },
                         "description": "If messages were moved then lists new ID values. Array entry is an array with first element pointing to old ID and second to new ID"
                     },
@@ -10976,7 +11120,7 @@
                                 "type": "number",
                                 "description": "Message ID in mailbox"
                             },
-                            "malbox": {
+                            "mailbox": {
                                 "type": "string",
                                 "description": "Mailbox ID the message was stored into"
                             },
@@ -10987,7 +11131,7 @@
                         },
                         "required": [
                             "id",
-                            "malbox",
+                            "mailbox",
                             "size"
                         ]
                     },
@@ -11160,6 +11304,94 @@
                             "$ref": "#/components/schemas/ListUnsubscribe"
                         },
                         "description": "Parsed List-Unsubscribe entries"
+                    }
+                }
+            },
+            "Dmarc": {
+                "type": "object",
+                "description": "Verified DMARC domain and applied policy",
+                "properties": {
+                    "domain": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ],
+                        "description": "Domain name of verified DMARC or false if no DMARC match was found"
+                    },
+                    "policy": {
+                        "type": "string",
+                        "description": "Applied DMARC policy",
+                        "enum": [
+                            "none",
+                            "quarantine",
+                            "reject"
+                        ]
+                    }
+                },
+                "required": [
+                    "domain",
+                    "policy"
+                ]
+            },
+            "VerificationResults": {
+                "type": "object",
+                "description": "Security verification info if message was received from MX. If this property is missing then do not automatically assume invalid TLS, SPF, DKIM or DMARC.",
+                "properties": {
+                    "tls": {
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "description": "TLS information",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Cipher name, eg \"ECDHE-RSA-AES128-GCM-SHA256\""
+                                    },
+                                    "version": {
+                                        "type": "string",
+                                        "description": "TLS version, eg \"TLSv1/SSLv3\""
+                                    }
+                                },
+                                "objectName": "Tls",
+                                "required": [
+                                    "name",
+                                    "version"
+                                ]
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ],
+                        "description": "TLS information. Value is false if TLS was not used"
+                    },
+                    "spf": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ],
+                        "description": "Domain name (either MFROM or HELO) of verified SPF or false if no SPF match was found"
+                    },
+                    "dkim": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ],
+                        "description": "Domain name of verified DKIM signature or false if no valid signature was found"
+                    },
+                    "dmarc": {
+                        "$ref": "#/components/schemas/Dmarc"
                     }
                 }
             },
@@ -11449,59 +11681,7 @@
                         "description": "Attachments for the message"
                     },
                     "verificationResults": {
-                        "type": "object",
-                        "description": "Security verification info if message was received from MX. If this property is missing then do not automatically assume invalid TLS, SPF or DKIM.",
-                        "properties": {
-                            "tls": {
-                                "oneOf": [
-                                    {
-                                        "type": "object",
-                                        "description": "TLS information",
-                                        "properties": {
-                                            "name": {
-                                                "type": "string",
-                                                "description": "Cipher name, eg \"ECDHE-RSA-AES128-GCM-SHA256\""
-                                            },
-                                            "version": {
-                                                "type": "string",
-                                                "description": "TLS version, eg \"TLSv1/SSLv3\""
-                                            }
-                                        },
-                                        "objectName": "Tls",
-                                        "required": [
-                                            "name",
-                                            "version"
-                                        ]
-                                    },
-                                    {
-                                        "type": "boolean"
-                                    }
-                                ],
-                                "description": "TLS information. Value is false if TLS was not used"
-                            },
-                            "spf": {
-                                "oneOf": [
-                                    {
-                                        "type": "string"
-                                    },
-                                    {
-                                        "type": "boolean"
-                                    }
-                                ],
-                                "description": "Domain name (either MFROM or HELO) of verified SPF or false if no SPF match was found"
-                            },
-                            "dkim": {
-                                "oneOf": [
-                                    {
-                                        "type": "string"
-                                    },
-                                    {
-                                        "type": "boolean"
-                                    }
-                                ],
-                                "description": "Domain name of verified DKIM signature or false if no valid signature was found"
-                            }
-                        }
+                        "$ref": "#/components/schemas/VerificationResults"
                     },
                     "bimi": {
                         "type": "object",
@@ -11861,8 +12041,7 @@
                 "required": [
                     "id",
                     "size",
-                    "created",
-                    "md5"
+                    "created"
                 ]
             },
             "GetFilesResponse": {
@@ -11872,6 +12051,10 @@
                         "type": "boolean",
                         "description": "Indicates successful response",
                         "example": true
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Additional query string"
                     },
                     "total": {
                         "type": "number",
@@ -11963,15 +12146,31 @@
                 "properties": {
                     "seen": {
                         "type": "boolean",
-                        "description": "If true then mark matching messages as Seen"
+                        "description": "If true then mark matching messages as Seen (null clears action)",
+                        "enum": [
+                            null
+                        ]
                     },
                     "flag": {
                         "type": "boolean",
-                        "description": "If true then mark matching messages as Flagged"
+                        "description": "If true then mark matching messages as Flagged (null clears action)",
+                        "enum": [
+                            null
+                        ]
                     },
                     "delete": {
                         "type": "boolean",
-                        "description": "If true then do not store matching messages"
+                        "description": "If true then do not store matching messages (null clears action)",
+                        "enum": [
+                            null
+                        ]
+                    },
+                    "spam": {
+                        "type": "boolean",
+                        "description": "If true then store matching messages to Junk Mail folder (null clears action)",
+                        "enum": [
+                            null
+                        ]
                     },
                     "mailbox": {
                         "type": "string",
@@ -11983,13 +12182,6 @@
                             "type": "string"
                         },
                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
-                    },
-                    "spam": {
-                        "type": "boolean",
-                        "description": "If true then store matching messages to Junk Mail folder (null clears action)",
-                        "enum": [
-                            null
-                        ]
                     }
                 }
             },
@@ -12018,7 +12210,14 @@
                         "items": {
                             "type": "array",
                             "items": {
-                                "type": "string"
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "number"
+                                    }
+                                ]
                             }
                         },
                         "description": "Filter query strings"
@@ -12143,7 +12342,14 @@
                         "items": {
                             "type": "array",
                             "items": {
-                                "type": "string"
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "number"
+                                    }
+                                ]
                             }
                         },
                         "description": "Filter query strings"
@@ -12176,7 +12382,6 @@
                 },
                 "required": [
                     "id",
-                    "name",
                     "created",
                     "query",
                     "action",
@@ -12274,7 +12479,6 @@
                 "required": [
                     "success",
                     "id",
-                    "name",
                     "created",
                     "query",
                     "action",
@@ -12481,8 +12685,7 @@
                     "description",
                     "scopes",
                     "lastUse",
-                    "created",
-                    "expires"
+                    "created"
                 ]
             },
             "GetASPsResponse": {
@@ -12524,24 +12727,21 @@
                     },
                     "mobileconfig": {
                         "type": "string",
-                        "description": "Base64 encoded mobileconfig file. Generated profile file should be sent to the client with Content-Type value of application/x-apple-aspen-config."
+                        "description": "Base64 encoded mobileconfig file. Present when generateMobileconfig is true. Generated profile file should be sent to the client with Content-Type value of application/x-apple-aspen-config."
                     },
                     "name": {
                         "type": "string",
-                        "description": "Account name"
+                        "description": "Account name. Present when generateMobileconfig is true."
                     },
                     "address": {
                         "type": "string",
-                        "description": "Account address or the address specified in params of this endpoint"
+                        "description": "Account address or the address specified in params of this endpoint. Present when generateMobileconfig is true."
                     }
                 },
                 "required": [
                     "success",
                     "id",
-                    "password",
-                    "mobileconfig",
-                    "name",
-                    "address"
+                    "password"
                 ]
             },
             "GetASPResponse": {
@@ -12593,8 +12793,7 @@
                     "description",
                     "scopes",
                     "lastUse",
-                    "created",
-                    "expires"
+                    "created"
                 ]
             },
             "GenerateTOTPSeedResponse": {
@@ -12965,11 +13164,21 @@
                         "description": "The scope this authentication is valid for"
                     },
                     "require2fa": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "List of enabled 2FA mechanisms"
+                        "oneOf": [
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "List of enabled 2FA mechanisms or false if not required"
                     }
                 },
                 "required": [
@@ -13006,11 +13215,21 @@
                         "description": "The scope this authentication is valid for"
                     },
                     "require2fa": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "List of enabled 2FA mechanisms"
+                        "oneOf": [
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "List of enabled 2FA mechanisms or false if not required"
                     },
                     "requirePasswordChange": {
                         "type": "boolean",
@@ -13050,6 +13269,11 @@
                         "type": "string",
                         "description": "Did the action succeed"
                     },
+                    "key": {
+                        "type": "object",
+                        "description": "Event merge key",
+                        "format": "any"
+                    },
                     "sess": {
                         "type": "string",
                         "description": "Session identifier for the logs"
@@ -13070,6 +13294,48 @@
                     "requiredScope": {
                         "type": "string",
                         "description": "Scope of the auth"
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Target value for the action"
+                    },
+                    "asp": {
+                        "type": "string",
+                        "description": "Application password ID"
+                    },
+                    "aname": {
+                        "type": "string",
+                        "description": "Application password description"
+                    },
+                    "temporary": {
+                        "type": "boolean",
+                        "description": "Whether the action used a temporary credential"
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Filter ID associated with the event"
+                    },
+                    "credential": {
+                        "type": "string",
+                        "description": "WebAuthn credential ID"
+                    },
+                    "appId": {
+                        "type": "string",
+                        "description": "Optional appId which is the URL of the app"
+                    },
+                    "require2fa": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "2FA requirement detail"
                     },
                     "last": {
                         "type": "string",
@@ -13177,6 +13443,11 @@
                         "type": "string",
                         "description": "Did the action succeed"
                     },
+                    "key": {
+                        "type": "object",
+                        "description": "Event merge key",
+                        "format": "any"
+                    },
                     "sess": {
                         "type": "string",
                         "description": "Session identifier for the logs"
@@ -13197,6 +13468,48 @@
                     "requiredScope": {
                         "type": "string",
                         "description": "Scope of the auth"
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Target value for the action"
+                    },
+                    "asp": {
+                        "type": "string",
+                        "description": "Application password ID"
+                    },
+                    "aname": {
+                        "type": "string",
+                        "description": "Application password description"
+                    },
+                    "temporary": {
+                        "type": "boolean",
+                        "description": "Whether the action used a temporary credential"
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Filter ID associated with the event"
+                    },
+                    "credential": {
+                        "type": "string",
+                        "description": "WebAuthn credential ID"
+                    },
+                    "appId": {
+                        "type": "string",
+                        "description": "Optional appId which is the URL of the app"
+                    },
+                    "require2fa": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean",
+                                "enum": [
+                                    false
+                                ]
+                            }
+                        ],
+                        "description": "2FA requirement detail"
                     },
                     "last": {
                         "type": "string",
@@ -13287,17 +13600,17 @@
                     },
                     "start": {
                         "type": "string",
-                        "description": "Datestring of the start of the autoreply or boolean false to disable start checks",
+                        "description": "Datestring of the start of the autoreply or undefined if missing",
                         "format": "date-time"
                     },
                     "end": {
                         "type": "string",
-                        "description": "Datestring of the end of the autoreply or boolean false to disable end checks",
+                        "description": "Datestring of the end of the autoreply or undefined if missing",
                         "format": "date-time"
                     },
                     "created": {
                         "type": "string",
-                        "description": "Datestring of when the Autoreply was created",
+                        "description": "Datestring of when the Autoreply was created or undefined if missing",
                         "format": "date-time"
                     }
                 },
@@ -13311,15 +13624,15 @@
                 "properties": {
                     "mailbox": {
                         "type": "string",
-                        "description": "Mailbox ID the message was stored to"
+                        "description": "Mailbox ID the message was stored to or false if not stored"
                     },
                     "id": {
                         "type": "number",
-                        "description": "Message ID in the Mailbox"
+                        "description": "Message ID in the Mailbox or false if not stored"
                     },
                     "queueId": {
                         "type": "string",
-                        "description": "Queue ID in MTA"
+                        "description": "Queue ID in MTA or false if not queued"
                     }
                 },
                 "required": [
@@ -13400,6 +13713,33 @@
                         "description": "Expiration date. Audit data is deleted after this date",
                         "format": "date-time"
                     },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional audit notes"
+                    },
+                    "meta": {
+                        "type": "object",
+                        "description": "Custom metadata for this audit",
+                        "properties": {}
+                    },
+                    "deleted": {
+                        "type": "boolean",
+                        "description": "If true then audit has been deleted"
+                    },
+                    "deletedTime": {
+                        "type": "string",
+                        "description": "Time the audit was deleted",
+                        "format": "date-time"
+                    },
+                    "audited": {
+                        "type": "number",
+                        "description": "How many messages have been audited"
+                    },
+                    "lastAuditedMessage": {
+                        "type": "string",
+                        "description": "Timestamp of the last audited message",
+                        "format": "date-time"
+                    },
                     "import": {
                         "type": "object",
                         "description": "Audit import data",
@@ -13461,6 +13801,10 @@
                         "type": "boolean",
                         "description": "Indicates successful response",
                         "example": true
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Custom query string"
                     },
                     "total": {
                         "type": "number",
@@ -13578,7 +13922,6 @@
                     "id",
                     "domain",
                     "selector",
-                    "description",
                     "fingerprint",
                     "created"
                 ]
@@ -13641,7 +13984,6 @@
                     "page",
                     "previousCursor",
                     "nextCursor",
-                    "query",
                     "results"
                 ]
             },
@@ -13704,7 +14046,6 @@
                     "id",
                     "domain",
                     "selector",
-                    "description",
                     "fingerprint",
                     "publicKey",
                     "dnsTxt"
@@ -13775,7 +14116,6 @@
                     "id",
                     "domain",
                     "selector",
-                    "description",
                     "fingerprint",
                     "publicKey",
                     "dnsTxt",
@@ -13838,10 +14178,6 @@
                     "id",
                     "servername",
                     "acme",
-                    "description",
-                    "fingerprint",
-                    "created",
-                    "expires",
                     "altNames"
                 ]
             },
@@ -13955,9 +14291,6 @@
                     "success",
                     "id",
                     "servername",
-                    "description",
-                    "fingerprint",
-                    "expires",
                     "altNames",
                     "acme"
                 ]
@@ -14026,10 +14359,6 @@
                     "success",
                     "id",
                     "servername",
-                    "description",
-                    "fingerprint",
-                    "expires",
-                    "created",
                     "altNames",
                     "acme",
                     "hasCert"
@@ -14051,18 +14380,27 @@
                     },
                     "user": {
                         "type": "string",
-                        "description": "User ID or null"
+                        "description": "User ID or null",
+                        "enum": [
+                            null
+                        ]
                     },
                     "url": {
                         "type": "string",
                         "description": "Webhook URL"
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Created datestring",
+                        "format": "date-time"
                     }
                 },
                 "required": [
                     "id",
                     "type",
                     "user",
-                    "url"
+                    "url",
+                    "created"
                 ]
             },
             "GetWebhooksResponse": {
@@ -14072,6 +14410,17 @@
                         "type": "boolean",
                         "description": "Indicates successful response",
                         "example": true
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "Optional webhook type filter"
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "Optional user filter",
+                        "enum": [
+                            null
+                        ]
                     },
                     "total": {
                         "type": "number",
@@ -14156,6 +14505,10 @@
                             {
                                 "type": "number",
                                 "description": "Setting value"
+                            },
+                            {
+                                "type": "boolean",
+                                "description": "Setting value"
                             }
                         ],
                         "description": "Setting value"
@@ -14167,6 +14520,23 @@
                     "description": {
                         "type": "string",
                         "description": "Setting description"
+                    },
+                    "default": {
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "Default value"
+                            },
+                            {
+                                "type": "number",
+                                "description": "Default value"
+                            },
+                            {
+                                "type": "boolean",
+                                "description": "Default value"
+                            }
+                        ],
+                        "description": "Default value"
                     },
                     "type": {
                         "type": "string",
@@ -14182,6 +14552,7 @@
                     "value",
                     "name",
                     "description",
+                    "default",
                     "type",
                     "custom"
                 ]
@@ -14249,6 +14620,10 @@
                             },
                             {
                                 "type": "number",
+                                "description": "Setting value"
+                            },
+                            {
+                                "type": "boolean",
                                 "description": "Setting value"
                             }
                         ],
