@@ -57,6 +57,7 @@ module.exports = {
         let markAsSeen = false;
         let metadataOnly = true;
         let changedSince = 0;
+        let changedSinceSpecified = false;
         let query = [];
 
         let params = [].concat(command.attributes[1] || []);
@@ -67,7 +68,8 @@ module.exports = {
                 return callback(new Error('Invalid modifier for ' + command.command));
             }
             changedSince = Number(extensions[1]);
-            if (changedSince && !this.selected.condstoreEnabled) {
+            changedSinceSpecified = true;
+            if (!this.selected.condstoreEnabled) {
                 this.condstoreEnabled = this.selected.condstoreEnabled = true;
             }
         }
@@ -117,6 +119,9 @@ module.exports = {
 
             if (param.value.toUpperCase() === 'MODSEQ') {
                 modseqExist = true;
+                if (!this.selected.condstoreEnabled) {
+                    this.condstoreEnabled = this.selected.condstoreEnabled = true;
+                }
             }
 
             if (param.value.toUpperCase() === 'BODYSTRUCTURE') {
@@ -174,7 +179,7 @@ module.exports = {
         }
 
         // ensure MODSEQ is listed if the command uses CHANGEDSINCE modifier
-        if (changedSince && !modseqExist) {
+        if (changedSinceSpecified && !modseqExist) {
             params.push({
                 type: 'ATOM',
                 value: 'MODSEQ'
