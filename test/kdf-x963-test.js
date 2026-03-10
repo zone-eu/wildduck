@@ -8,11 +8,11 @@ const SMIMEEncryptor = require('../lib/smime');
 const kdfX963 = SMIMEEncryptor._kdfX963;
 
 // ---------------------------------------------------------------------------
-// NIST CAVP test vectors (CAVS 12.0) — ANS X9.63-2001 KDF, SHA-256
+// NIST CAVP test vectors (CAVS 12.0) - ANS X9.63-2001 KDF, SHA-256
 // Source: https://github.com/pyca/cryptography/blob/main/vectors/cryptography_vectors/KDF/ansx963_2001.txt
 // ---------------------------------------------------------------------------
 
-describe('kdfX963 — NIST CAVP vectors (SHA-256)', function () {
+describe('kdfX963 - NIST CAVP vectors (SHA-256)', function () {
     // [SHA-256] [shared secret length = 192] [SharedInfo length = 0] [key data length = 128]
     // Single-block derivation, no SharedInfo
     describe('single block, no SharedInfo (128-bit output)', function () {
@@ -132,7 +132,7 @@ describe('kdfX963 — NIST CAVP vectors (SHA-256)', function () {
 // Misuse and edge-case tests
 // ---------------------------------------------------------------------------
 
-describe('kdfX963 — misuse and edge cases', function () {
+describe('kdfX963 - misuse and edge cases', function () {
     it('should return an empty buffer when keyLength is 0', function () {
         let z = Buffer.from('aabbccdd', 'hex');
         let result = kdfX963(z, 0, Buffer.alloc(0));

@@ -287,7 +287,7 @@ describe('S/MIME encryption', function () {
         expect(Buffer.compare(decryptedBuf, rawCopy)).to.equal(0);
     });
 
-    // EC key tests — GCM (AuthEnvelopedData)
+    // EC key tests - GCM (AuthEnvelopedData)
     for (let curve of ['P-256', 'P-384', 'P-521']) {
         it(`GCM: should encrypt and decrypt with EC ${curve} certificate`, async function () {
             let raw = makeMessage({});
@@ -309,7 +309,7 @@ describe('S/MIME encryption', function () {
         });
     }
 
-    // EC key tests — CBC (EnvelopedData via pkijs)
+    // EC key tests - CBC (EnvelopedData via pkijs)
     for (let curve of ['P-256', 'P-384', 'P-521']) {
         it(`CBC: should encrypt and decrypt with EC ${curve} certificate`, async function () {
             let raw = makeMessage({});
@@ -331,7 +331,7 @@ describe('S/MIME encryption', function () {
         });
     }
 
-    // RSA size variants — GCM
+    // RSA size variants - GCM
     for (let bits of [2048, 3072, 4096]) {
         it(`GCM: should encrypt and decrypt with RSA ${bits} certificate`, async function () {
             let raw = makeMessage({});
@@ -351,7 +351,7 @@ describe('S/MIME encryption', function () {
         });
     }
 
-    // RSA size variants — CBC
+    // RSA size variants - CBC
     for (let bits of [2048, 3072, 4096]) {
         it(`CBC: should encrypt and decrypt with RSA ${bits} certificate`, async function () {
             let raw = makeMessage({});
