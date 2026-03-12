@@ -39,7 +39,7 @@
         "grunt-shell-spawn": "0.5.0",
         "grunt-wait": "0.3.0",
         "imapflow": "1.2.6",
-        "mailparser": "3.9.1",
+        "mailparser": "3.9.3",
         "mocha": "11.7.5",
         "request": "2.88.2",
         "supertest": "7.2.2"
