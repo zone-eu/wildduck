@@ -30,7 +30,7 @@ const taskClearFolder = require('./lib/tasks/clear-folder');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
-const { resolveLoggelfLevel } = require('./lib/loggelf-level');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let messageHandler;
 let mailboxHandler;
@@ -66,7 +66,7 @@ module.exports.start = callback => {
         }
 
         message = message || {};
-        message.level = resolveLoggelfLevel(message);
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');

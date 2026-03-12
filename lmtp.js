@@ -14,7 +14,7 @@ const db = require('./lib/db');
 const certs = require('./lib/certs');
 const Gelf = require('gelf');
 const os = require('os');
-const { resolveLoggelfLevel } = require('./lib/loggelf-level');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let messageHandler;
 let userHandler;
@@ -218,7 +218,7 @@ module.exports = done => {
             };
         }
         message = message || {};
-        message.level = resolveLoggelfLevel(message);
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
