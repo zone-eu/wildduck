@@ -54,6 +54,25 @@ const commands = new Map([
     /*eslint-enable global-require*/
 ]);
 
+function createCommandFailureLogEntry(connection, err, extra = {}) {
+    let logEntry = {
+        short_message: `[IMAPCMDERR] ${err.message}`,
+        _service: 'imap',
+        _failure_msg: err.message,
+        _code: err.code,
+        _response: err.response,
+        _responseCode: err.responseCode,
+        _selected: connection.selected?.mailbox,
+        _userId: connection.session?.user?.id?.toString(),
+        _sess: connection.id,
+        _remoteAddress: connection.session?.remoteAddress,
+        _isUTF8Enabled: !!connection.acceptUTF8Enabled,
+        ...extra
+    };
+
+    return errors.applyErrorLogMeta(logEntry, err);
+}
+
 class IMAPCommand {
     constructor(connection) {
         this.connection = connection;
@@ -86,24 +105,9 @@ class IMAPCommand {
                     if (this.payload && this.connection && typeof this.connection.loggelf === 'function') {
                         // no payload means empty line
                         // Log malformed client input where the line can not be matched to a valid IMAP tag.
-                        let logEntry = {
-                            short_message: '[IMAPCMDERR] ' + err.message,
-                            _service: 'imap',
-                            _failure_msg: err.message,
-                            _code: err.code,
-                            _responseCode: err.responseCode,
-                            _payload: this.payload.length < 256 ? this.payload : this.payload.toString().substr(0, 150) + '...',
-                            _selected: this.connection.selected && this.connection.selected.mailbox,
-                            _userId:
-                                this.connection.session &&
-                                this.connection.session.user &&
-                                this.connection.session.user.id &&
-                                this.connection.session.user.id.toString(),
-                            _sess: this.connection.id,
-                            _remoteAddress: this.connection.session && this.connection.session.remoteAddress,
-                            _isUTF8Enabled: !!this.connection.acceptUTF8Enabled
-                        };
-                        errors.applyErrorLogMeta(logEntry, err);
+                        let logEntry = createCommandFailureLogEntry(this.connection, err, {
+                            _payload: this.payload.length < 256 ? this.payload : this.payload.toString().substr(0, 150) + '...'
+                        });
                         this.connection.loggelf(logEntry);
                     }
                     this.connection.send('* BAD Invalid tag');
@@ -116,25 +120,10 @@ class IMAPCommand {
                     err.code = 'UnknownCommand';
                     if (this.connection && typeof this.connection.loggelf === 'function') {
                         // Log tagged IMAP input that names a command this server does not implement.
-                        let logEntry = {
-                            short_message: '[IMAPCMDERR] ' + err.message,
-                            _service: 'imap',
-                            _failure_msg: err.message,
-                            _code: err.code,
-                            _responseCode: err.responseCode,
+                        let logEntry = createCommandFailureLogEntry(this.connection, err, {
                             _command: this.command,
-                            _payload: this.payload ? (this.payload.length < 256 ? this.payload : this.payload.toString().substr(0, 150) + '...') : false,
-                            _selected: this.connection.selected && this.connection.selected.mailbox,
-                            _userId:
-                                this.connection.session &&
-                                this.connection.session.user &&
-                                this.connection.session.user.id &&
-                                this.connection.session.user.id.toString(),
-                            _sess: this.connection.id,
-                            _remoteAddress: this.connection.session && this.connection.session.remoteAddress,
-                            _isUTF8Enabled: !!this.connection.acceptUTF8Enabled
-                        };
-                        errors.applyErrorLogMeta(logEntry, err);
+                            _payload: this.payload ? (this.payload.length < 256 ? this.payload : this.payload.toString().substr(0, 150) + '...') : false
+                        });
                         this.connection.loggelf(logEntry);
                     }
                     this.connection.send(this.tag + ' BAD Unknown command: ' + this.command);
@@ -151,25 +140,10 @@ class IMAPCommand {
                 err.code = 'InvalidLiteralSize';
                 if (this.connection && typeof this.connection.loggelf === 'function') {
                     // Log commands that advertise an invalid literal byte count before literal parsing starts.
-                    let logEntry = {
-                        short_message: '[IMAPCMDERR] ' + err.message,
-                        _service: 'imap',
-                        _failure_msg: err.message,
-                        _code: err.code,
-                        _responseCode: err.responseCode,
+                    let logEntry = createCommandFailureLogEntry(this.connection, err, {
                         _command: this.command,
-                        _literal_expecting: command.expecting,
-                        _selected: this.connection.selected && this.connection.selected.mailbox,
-                        _userId:
-                            this.connection.session &&
-                            this.connection.session.user &&
-                            this.connection.session.user.id &&
-                            this.connection.session.user.id.toString(),
-                        _sess: this.connection.id,
-                        _remoteAddress: this.connection.session && this.connection.session.remoteAddress,
-                        _isUTF8Enabled: !!this.connection.acceptUTF8Enabled
-                    };
-                    errors.applyErrorLogMeta(logEntry, err);
+                        _literal_expecting: command.expecting
+                    });
                     this.connection.loggelf(logEntry);
                 }
                 this.connection.send(this.tag + ' BAD Invalid literal size');
@@ -304,26 +278,10 @@ class IMAPCommand {
             } catch (E) {
                 if (this.connection && typeof this.connection.loggelf === 'function') {
                     // Log IMAP parser failures where the raw command can not be tokenized into a valid request.
-                    let logEntry = {
-                        short_message: '[IMAPCMDERR] ' + E.message,
-                        _service: 'imap',
-                        _failure_msg: E.message,
-                        _code: E.code,
-                        _response: E.response,
-                        _responseCode: E.responseCode,
+                    let logEntry = createCommandFailureLogEntry(this.connection, E, {
                         _command: this.command,
-                        _payload: this.payload ? (this.payload.length < 256 ? this.payload : this.payload.toString().substr(0, 150) + '...') : false,
-                        _selected: this.connection.selected && this.connection.selected.mailbox,
-                        _userId:
-                            this.connection.session &&
-                            this.connection.session.user &&
-                            this.connection.session.user.id &&
-                            this.connection.session.user.id.toString(),
-                        _sess: this.connection.id,
-                        _remoteAddress: this.connection.session && this.connection.session.remoteAddress,
-                        _isUTF8Enabled: !!this.connection.acceptUTF8Enabled
-                    };
-                    errors.applyErrorLogMeta(logEntry, E);
+                        _payload: this.payload ? (this.payload.length < 256 ? this.payload : this.payload.toString().substr(0, 150) + '...') : false
+                    });
                     this.connection.loggelf(logEntry);
                 }
                 this.connection.logger.debug(
@@ -375,26 +333,10 @@ class IMAPCommand {
                     let payload = imapHandler.compiler(this.parsed, false, true);
                     if (this.connection && typeof this.connection.loggelf === 'function') {
                         // Log IMAP state/schema validation failures before the command handler is invoked.
-                        let logEntry = {
-                            short_message: '[IMAPCMDERR] ' + err.message,
-                            _service: 'imap',
-                            _failure_msg: err.message,
-                            _code: err.code,
-                            _response: err.response,
-                            _responseCode: err.responseCode,
+                        let logEntry = createCommandFailureLogEntry(this.connection, err, {
                             _command: this.command,
-                            _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false,
-                            _selected: this.connection.selected && this.connection.selected.mailbox,
-                            _userId:
-                                this.connection.session &&
-                                this.connection.session.user &&
-                                this.connection.session.user.id &&
-                                this.connection.session.user.id.toString(),
-                            _sess: this.connection.id,
-                            _remoteAddress: this.connection.session && this.connection.session.remoteAddress,
-                            _isUTF8Enabled: !!this.connection.acceptUTF8Enabled
-                        };
-                        errors.applyErrorLogMeta(logEntry, err);
+                            _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
+                        });
                         this.connection.loggelf(logEntry);
                     }
                     this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
@@ -414,26 +356,10 @@ class IMAPCommand {
                                 let payload = imapHandler.compiler(this.parsed, false, true);
                                 if (this.connection && typeof this.connection.loggelf === 'function') {
                                     // Log command handler failures that return BAD/NO without destroying the IMAP connection.
-                                    let logEntry = {
-                                        short_message: '[IMAPCMDERR] ' + err.message,
-                                        _service: 'imap',
-                                        _failure_msg: err.message,
-                                        _code: err.code,
-                                        _response: err.response,
-                                        _responseCode: err.responseCode,
+                                    let logEntry = createCommandFailureLogEntry(this.connection, err, {
                                         _command: this.command,
-                                        _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false,
-                                        _selected: this.connection.selected && this.connection.selected.mailbox,
-                                        _userId:
-                                            this.connection.session &&
-                                            this.connection.session.user &&
-                                            this.connection.session.user.id &&
-                                            this.connection.session.user.id.toString(),
-                                        _sess: this.connection.id,
-                                        _remoteAddress: this.connection.session && this.connection.session.remoteAddress,
-                                        _isUTF8Enabled: !!this.connection.acceptUTF8Enabled
-                                    };
-                                    errors.applyErrorLogMeta(logEntry, err);
+                                        _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
+                                    });
                                     this.connection.loggelf(logEntry);
                                 }
                                 this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
