@@ -10186,31 +10186,19 @@
                     },
                     "name": {
                         "type": "string",
-                        "description": "Name that is used for the From: header in autoreply message",
-                        "enum": [
-                            ""
-                        ]
+                        "description": "Name that is used for the From: header in autoreply message"
                     },
                     "subject": {
                         "type": "string",
-                        "description": "Autoreply subject line",
-                        "enum": [
-                            ""
-                        ]
+                        "description": "Autoreply subject line"
                     },
                     "text": {
                         "type": "string",
-                        "description": "Autoreply plaintext content",
-                        "enum": [
-                            ""
-                        ]
+                        "description": "Autoreply plaintext content"
                     },
                     "html": {
                         "type": "string",
-                        "description": "Autoreply HTML content",
-                        "enum": [
-                            ""
-                        ]
+                        "description": "Autoreply HTML content"
                     }
                 },
                 "required": [
