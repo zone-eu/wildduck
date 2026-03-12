@@ -13,6 +13,7 @@ const LimitedFetch = require('./lib/limited-fetch');
 const tools = require('./lib/tools');
 const Gelf = require('gelf');
 const os = require('os');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 const MAX_MESSAGES = 250;
 
@@ -466,6 +467,7 @@ module.exports = done => {
             };
         }
         message = message || {};
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');

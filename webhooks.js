@@ -11,6 +11,7 @@ const { ObjectId } = require('mongodb');
 const axios = require('axios');
 const packageData = require('./package.json');
 const { MARKED_SPAM, MARKED_HAM } = require('./lib/events');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let loggelf;
 let queueWorkers = {};
@@ -97,6 +98,7 @@ module.exports.start = callback => {
         }
 
         message = message || {};
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
