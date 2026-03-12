@@ -476,7 +476,7 @@ class IMAPConnection extends EventEmitter {
             };
         }
 
-        errors.notifyConnection(this.this, err);
+        errors.notifyConnection(this, err);
 
         this.logger.error(
             {
