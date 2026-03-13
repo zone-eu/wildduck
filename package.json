@@ -5,6 +5,7 @@
     "main": "server.js",
     "scripts": {
         "test": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli -n 13 flushdb && npm run runtest",
+        "test:cluster": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli --cluster call 127.0.0.1:7000 flushdb && npm run runtest",
         "test:proto": "NODE_ENV=test grunt proto",
         "printconf": "NODE_CONFIG_ONLY=true npm start",
         "runtest": "NODE_ENV=test grunt",
@@ -72,7 +73,7 @@
         "http-parser-js": "0.5.10",
         "humanname": "0.2.2",
         "iconv-lite": "0.7.2",
-        "ioredfour": "1.3.0-ioredis-07",
+        "ioredfour": "1.4.0",
         "ioredis": "5.9.1",
         "ipaddr.js": "2.3.0",
         "isemail": "3.2.0",
