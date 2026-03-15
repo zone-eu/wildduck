@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.46.24"
+        "version": "1.46.25"
     },
     "servers": [
         {
@@ -2883,6 +2883,27 @@
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
                                     },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the message. Replaces all existing custom keywords. System flags are not affected."
+                                    },
+                                    "addKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to add to the message without affecting existing keywords."
+                                    },
+                                    "removeKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to remove from the message without affecting other keywords."
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -3042,6 +3063,13 @@
                                         "type": "boolean",
                                         "description": "Is the message a draft or not",
                                         "default": false
+                                    },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the uploaded message"
                                     },
                                     "raw": {
                                         "type": "string",
@@ -3356,6 +3384,15 @@
                         }
                     },
                     {
+                        "name": "keyword",
+                        "in": "query",
+                        "description": "If set, then matches only messages that have this custom keyword set",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
                         "name": "includeHeaders",
                         "in": "query",
                         "description": "Comma separated list of header keys to include in the response",
@@ -3574,6 +3611,10 @@
                                         "type": "boolean",
                                         "description": "If true, then matches only messages with \\Seen flags"
                                     },
+                                    "keyword": {
+                                        "type": "string",
+                                        "description": "If set, then matches only messages that have this custom keyword set"
+                                    },
                                     "includeHeaders": {
                                         "type": "string",
                                         "description": "Comma separated list of header keys to include in the response",
@@ -3616,6 +3657,27 @@
                                                 "type": "boolean",
                                                 "description": "If true then delete all found messages",
                                                 "default": false
+                                            },
+                                            "keywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to set on matched messages. Replaces all existing custom keywords."
+                                            },
+                                            "addKeywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to add to matched messages without affecting existing keywords."
+                                            },
+                                            "removeKeywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to remove from matched messages without affecting other keywords."
                                             }
                                         }
                                     }
@@ -3791,6 +3853,27 @@
                                         "type": "object",
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
+                                    },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the message, overrides any existing keywords"
+                                    },
+                                    "addKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to add to the message without affecting existing keywords, can not be used together with `keywords`"
+                                    },
+                                    "removeKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to remove from the message without affecting other keywords, can not be used together with `keywords`"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -10769,6 +10852,13 @@
                         "type": "boolean",
                         "description": "Does this message have a $Forwarded flag"
                     },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Custom keywords set on this message"
+                    },
                     "references": {
                         "type": "array",
                         "items": {
@@ -11726,6 +11816,13 @@
                             }
                         ],
                         "description": "Custom metadata object set for this message"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Custom keywords set on this message"
                     },
                     "references": {
                         "type": "array",

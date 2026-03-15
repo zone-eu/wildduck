@@ -714,6 +714,193 @@ describe('API tests', function () {
         });
     });
 
+    describe('keywords', () => {
+        let messageId;
+
+        before(async () => {
+            const response = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
+                    subject: 'keyword test message',
+                    text: 'Testing keywords'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            messageId = response.body.message.id;
+        });
+
+        after(async () => {
+            if (messageId) {
+                await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            }
+        });
+
+        it('should POST /users/:user/mailboxes/:mailbox/messages with keywords expect success / keywords appear in GET', async () => {
+            const uploadResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
+                    subject: 'upload with keywords',
+                    text: 'Testing upload keywords',
+                    keywords: ['important', 'project-x']
+                })
+                .expect(200);
+            expect(uploadResponse.body.success).to.be.true;
+
+            const msgId = uploadResponse.body.message.id;
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${msgId}`).expect(200);
+            expect(getResponse.body.keywords).to.have.members(['important', 'project-x']);
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${msgId}`).expect(200);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message set and replace keywords expect success', async () => {
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['todo', 'urgent'] })
+                .expect(200);
+            expect(putResponse.body.success).to.be.true;
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.keywords).to.have.members(['todo', 'urgent']);
+
+            // Replacing keywords removes the old ones
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ keywords: ['new-tag'] }).expect(200);
+
+            const getResponse2 = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse2.body.keywords).to.deep.equal(['new-tag']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message clear keywords with empty array expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['to-be-cleared'] })
+                .expect(200);
+
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ keywords: [] }).expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.keywords).to.deep.equal([]);
+        });
+
+        it('should GET /users/:user/mailboxes/:mailbox/messages keywords appear in listing expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['list-test'] })
+                .expect(200);
+
+            const listResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages`).expect(200);
+            expect(listResponse.body.success).to.be.true;
+            const found = listResponse.body.results.find(m => m.id === messageId);
+            expect(found).to.exist;
+            expect(found.keywords).to.include('list-test');
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message system flags unaffected by keyword changes expect success', async () => {
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ seen: true }).expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['check-flags'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.seen).to.be.true;
+            expect(getResponse.body.keywords).to.include('check-flags');
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addKeywords expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['base'] })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ addKeywords: ['added'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.keywords).to.include.members(['base', 'added']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message removeKeywords expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['keep', 'remove-me'] })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ removeKeywords: ['remove-me'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.keywords).to.deep.equal(['keep']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message keywords with addKeywords expect failure', async () => {
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['a'], addKeywords: ['b'] })
+                .expect(400);
+            expect(putResponse.body.error).to.exist;
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addKeywords and removeKeywords together expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['keep', 'remove-me'] })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ addKeywords: ['added'], removeKeywords: ['remove-me'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.keywords).to.deep.equal(['keep', 'added']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message multiple flag changes in single request expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ seen: true, keywords: ['old'] })
+                .expect(200);
+
+            // Flip seen, add deleted, and replace keywords — all in one atomic operation
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ seen: false, deleted: true, keywords: ['new'] })
+                .expect(200);
+            expect(putResponse.body.success).to.be.true;
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.seen).to.be.false;
+            expect(getResponse.body.deleted).to.be.true;
+            expect(getResponse.body.keywords).to.deep.equal(['new']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message invalid keyword expect failure', async () => {
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ keywords: ['invalid keyword'] })
+                .expect(400);
+            expect(putResponse.body.error).to.exist;
+        });
+
+        it('should GET /users/:user/search keyword filter expect success', async () => {
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ keywords: ['search-target'] }).expect(200);
+
+            const searchResponse = await server.get(`/users/${userId}/search?keyword=search-target`).expect(200);
+            expect(searchResponse.body.results.some(result => result.id === messageId)).to.be.true;
+
+            const noMatchResponse = await server.get(`/users/${userId}/search?keyword=nonexistent-keyword`).expect(200);
+            expect(noMatchResponse.body.results.some(result => result.id === messageId)).to.be.false;
+        });
+    });
+
     describe('certs', () => {
         it('should POST /certs expect success', async () => {
             const response1 = await server
