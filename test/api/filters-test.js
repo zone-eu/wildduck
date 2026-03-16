@@ -207,7 +207,7 @@ describe('API Filters', function () {
         expect(responseGet.body.action.mailbox).to.be.equal(inbox);
     });
 
-    it('should preserve full HTTP target URL when returning filter info', async () => {
+    it('should preserve full HTTP target URL when returning filter listings', async () => {
         const targetUrl = 'https://example.com/inbound/email?token=abc123';
         const createResponse = await server
             .post(`/users/${user}/filters`)
@@ -225,9 +225,15 @@ describe('API Filters', function () {
 
         const filter = createResponse.body.id;
 
-        const singleResponse = await server.get(`/users/${user}/filters/${filter}`).expect(200);
-        expect(singleResponse.body.success).to.be.true;
-        expect(singleResponse.body.action.targets).to.deep.equal([targetUrl]);
+        const authResponse = await server
+            .post('/authenticate')
+            .send({
+                username: 'filteruser',
+                password: 'secretvalue',
+                token: true
+            })
+            .expect(200);
+        expect(authResponse.body.success).to.be.true;
 
         const userListResponse = await server.get(`/users/${user}/filters`).expect(200);
         expect(userListResponse.body.success).to.be.true;
@@ -236,6 +242,15 @@ describe('API Filters', function () {
         expect(userListFilter).to.exist;
         expect(userListFilter.action).to.deep.equal([['forward to', targetUrl]]);
         expect(userListFilter.originalAction.targets).to.deep.equal([targetUrl]);
+
+        const ownFiltersResponse = await server.get(`/filters?accessToken=${authResponse.body.token}`).expect(200);
+        expect(ownFiltersResponse.body.success).to.be.true;
+
+        const ownFiltersEntry = ownFiltersResponse.body.results.find(entry => entry.id === filter);
+        expect(ownFiltersEntry).to.exist;
+        expect(ownFiltersEntry.action).to.deep.equal([['forward to', targetUrl]]);
+        expect(ownFiltersEntry.originalAction.targets).to.deep.equal([targetUrl]);
+        expect(ownFiltersEntry.targets).to.deep.equal([targetUrl]);
 
         const allFiltersResponse = await server.get(`/filters`).expect(200);
         expect(allFiltersResponse.body.success).to.be.true;
