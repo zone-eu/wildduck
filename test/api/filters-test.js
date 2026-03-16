@@ -207,6 +207,46 @@ describe('API Filters', function () {
         expect(responseGet.body.action.mailbox).to.be.equal(inbox);
     });
 
+    it('should preserve full HTTP target URL when returning filter info', async () => {
+        const targetUrl = 'https://example.com/inbound/email?token=abc123';
+        const createResponse = await server
+            .post(`/users/${user}/filters`)
+            .send({
+                name: 'http target filter',
+                query: {
+                    from: 'http-target'
+                },
+                action: {
+                    targets: [targetUrl]
+                }
+            })
+            .expect(200);
+        expect(createResponse.body.success).to.be.true;
+
+        const filter = createResponse.body.id;
+
+        const singleResponse = await server.get(`/users/${user}/filters/${filter}`).expect(200);
+        expect(singleResponse.body.success).to.be.true;
+        expect(singleResponse.body.action.targets).to.deep.equal([targetUrl]);
+
+        const userListResponse = await server.get(`/users/${user}/filters`).expect(200);
+        expect(userListResponse.body.success).to.be.true;
+
+        const userListFilter = userListResponse.body.results.find(entry => entry.id === filter);
+        expect(userListFilter).to.exist;
+        expect(userListFilter.action).to.deep.equal([['forward to', targetUrl]]);
+        expect(userListFilter.originalAction.targets).to.deep.equal([targetUrl]);
+
+        const allFiltersResponse = await server.get(`/filters`).expect(200);
+        expect(allFiltersResponse.body.success).to.be.true;
+
+        const allFiltersEntry = allFiltersResponse.body.results.find(entry => entry.id === filter);
+        expect(allFiltersEntry).to.exist;
+        expect(allFiltersEntry.action).to.deep.equal([['forward to', targetUrl]]);
+        expect(allFiltersEntry.originalAction.targets).to.deep.equal([targetUrl]);
+        expect(allFiltersEntry.targets).to.deep.equal([targetUrl]);
+    });
+
     describe('Filter spam action', function () {
         let spamFilter;
 
