@@ -49,6 +49,7 @@ authenticatorUserVerification = "discouraged"
 level = "silly"
 
 skipFetchLog = false # if true, then does not output individual * FETCH responses to log
+updateStream = false # if true, then logs EventSource updates stream lifecycle and emitted events to console
 
 # delete authentication log entries after 30 days
 # changing this value only affects new entries
