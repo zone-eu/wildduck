@@ -216,7 +216,29 @@ module.exports.start = callback => {
                     data.date = messageData.idate.toISOString();
 
                     if (messageData.verificationResults) {
-                        data.verificationResults = messageData.verificationResults;
+                        data.verificationResults = Object.assign({}, messageData.verificationResults);
+
+                        if (data.verificationResults.bimi) {
+                            try {
+                                let bimiData = await db.database.collection('bimi').findOne({ _id: data.verificationResults.bimi });
+                                if (bimiData?.content && !bimiData?.error) {
+                                    data.bimi = {
+                                        certified: bimiData.type === 'authority',
+                                        url: bimiData.url,
+                                        image: `data:image/svg+xml;base64,${bimiData.content.toString('base64')}`,
+                                        type: bimiData.type === 'authority' ? bimiData.vmc?.type || 'VMC' : undefined
+                                    };
+                                }
+                            } catch (err) {
+                                log.error('BIMI', 'message=%s error=%s', messageData._id, err.message);
+                            }
+
+                            delete data.verificationResults.bimi;
+                        }
+
+                        if (!Object.keys(data.verificationResults).length) {
+                            delete data.verificationResults;
+                        }
                     }
                 }
 
