@@ -170,7 +170,8 @@ module.exports.start = callback => {
                                 subject: true,
                                 mailbox: true,
                                 mimeTree: true,
-                                idate: true
+                                idate: true,
+                                verificationResults: true
                             }
                         }
                     );
@@ -213,6 +214,10 @@ module.exports.start = callback => {
                     data.messageId = messageData.msgid;
                     data.subject = messageData.subject;
                     data.date = messageData.idate.toISOString();
+
+                    if (messageData.verificationResults) {
+                        data.verificationResults = messageData.verificationResults;
+                    }
                 }
 
                 for (let webhook of webhooks) {
