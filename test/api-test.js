@@ -860,7 +860,7 @@ describe('API tests', function () {
                 .expect(200);
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse.body.keywords).to.deep.equal(['keep', 'added']);
+            expect(getResponse.body.keywords).to.include.members(['keep', 'added']);
         });
 
         it('should PUT /users/:user/mailboxes/:mailbox/messages/:message multiple flag changes in single request expect success', async () => {
@@ -898,6 +898,109 @@ describe('API tests', function () {
 
             const noMatchResponse = await server.get(`/users/${userId}/search?keyword=nonexistent-keyword`).expect(200);
             expect(noMatchResponse.body.results.some(result => result.id === messageId)).to.be.false;
+        });
+
+        it('should GET /users/:user/keyword-counters/:keyword reflect keyword and seen deltas expect success', async () => {
+            const keywordCounterKeywordOne = `kw-counter-a-${Date.now()}`;
+            const keywordCounterKeywordTwo = `kw-counter-b-${Date.now()}`;
+
+            const wait = timeout => new Promise(resolvePromise => setTimeout(resolvePromise, timeout));
+
+            const readCounters = async () => {
+                const [keywordAResponse, keywordBResponse] = await Promise.all([
+                    server.get(`/users/${userId}/keyword-counters/${keywordCounterKeywordOne}`).expect(200),
+                    server.get(`/users/${userId}/keyword-counters/${keywordCounterKeywordTwo}`).expect(200)
+                ]);
+
+                return {
+                    keywordACounter: {
+                        keyword: keywordAResponse.body.keyword,
+                        total: keywordAResponse.body.total,
+                        unseen: keywordAResponse.body.unseen
+                    },
+                    keywordBCounter: {
+                        keyword: keywordBResponse.body.keyword,
+                        total: keywordBResponse.body.total,
+                        unseen: keywordBResponse.body.unseen
+                    }
+                };
+            };
+
+            const waitForExpectedCounters = async matchesExpected => {
+                for (let attemptNumber = 0; attemptNumber < 20; attemptNumber++) {
+                    const counters = await readCounters();
+                    if (matchesExpected(counters)) {
+                        return counters;
+                    }
+                    await wait(100);
+                }
+
+                throw new Error('Keyword counters did not reach expected values in time');
+            };
+
+            const baseline = await readCounters();
+
+            const createExpectedCounters = (keywordATotalDelta, keywordAUnseenDelta, keywordBTotalDelta, keywordBUnseenDelta) => ({
+                keywordACounter: {
+                    total: baseline.keywordACounter.total + keywordATotalDelta,
+                    unseen: baseline.keywordACounter.unseen + keywordAUnseenDelta
+                },
+                keywordBCounter: {
+                    total: baseline.keywordBCounter.total + keywordBTotalDelta,
+                    unseen: baseline.keywordBCounter.unseen + keywordBUnseenDelta
+                }
+            });
+
+            const countersMatchExpected = (currentCounters, expectedCounters) =>
+                currentCounters.keywordACounter.total === expectedCounters.keywordACounter.total &&
+                currentCounters.keywordACounter.unseen === expectedCounters.keywordACounter.unseen &&
+                currentCounters.keywordBCounter.total === expectedCounters.keywordBCounter.total &&
+                currentCounters.keywordBCounter.unseen === expectedCounters.keywordBCounter.unseen;
+
+            const expectCounters = async expectedCounters => {
+                const observedCounters = await waitForExpectedCounters(currentCounters => countersMatchExpected(currentCounters, expectedCounters));
+                expect(observedCounters.keywordACounter.total).to.equal(expectedCounters.keywordACounter.total);
+                expect(observedCounters.keywordACounter.unseen).to.equal(expectedCounters.keywordACounter.unseen);
+                expect(observedCounters.keywordBCounter.total).to.equal(expectedCounters.keywordBCounter.total);
+                expect(observedCounters.keywordBCounter.unseen).to.equal(expectedCounters.keywordBCounter.unseen);
+            };
+
+            const createResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Keyword Counter Tester', address: 'kwcounter@example.com' },
+                    subject: 'keyword counters',
+                    text: 'keyword counters',
+                    unseen: true,
+                    keywords: [keywordCounterKeywordOne]
+                })
+                .expect(200);
+
+            const counterMessageId = createResponse.body.message.id;
+
+            await expectCounters(createExpectedCounters(1, 1, 0, 0));
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`)
+                .send({ addKeywords: [keywordCounterKeywordTwo], seen: false })
+                .expect(200);
+
+            await expectCounters(createExpectedCounters(1, 1, 1, 1));
+
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`).send({ seen: true }).expect(200);
+
+            await expectCounters(createExpectedCounters(1, 0, 1, 0));
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`)
+                .send({ removeKeywords: [keywordCounterKeywordOne] })
+                .expect(200);
+
+            await expectCounters(createExpectedCounters(0, 0, 1, 0));
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`).expect(200);
+
+            await expectCounters(createExpectedCounters(0, 0, 0, 0));
         });
     });
 

@@ -2675,6 +2675,66 @@
                 }
             }
         },
+        "/users/{user}/keyword-counters/{keyword}": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get keyword counter",
+                "description": "Returns total and unseen counters for a custom keyword",
+                "operationId": "getKeywordCounters",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "keyword",
+                        "in": "path",
+                        "description": "Keyword to count",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/KeywordCounterResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/mailboxes/{mailbox}/messages": {
             "get": {
                 "tags": [
@@ -10660,6 +10720,32 @@
                     "subscribed",
                     "hidden",
                     "encryptMessages",
+                    "total",
+                    "unseen"
+                ]
+            },
+            "KeywordCounterResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Keyword name"
+                    },
+                    "total": {
+                        "type": "number",
+                        "description": "Total number of messages with this keyword"
+                    },
+                    "unseen": {
+                        "type": "number",
+                        "description": "Unseen number of messages with this keyword"
+                    }
+                },
+                "required": [
+                    "success",
+                    "keyword",
                     "total",
                     "unseen"
                 ]
