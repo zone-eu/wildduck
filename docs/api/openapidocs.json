@@ -2735,6 +2735,57 @@
                 }
             }
         },
+        "/users/{user}/flagged-counter": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get flagged counter",
+                "description": "Returns total and unseen counters for flagged messages",
+                "operationId": "getFlaggedCounter",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FlaggedCounterResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/mailboxes/{mailbox}/messages": {
             "get": {
                 "tags": [
@@ -10746,6 +10797,27 @@
                 "required": [
                     "success",
                     "keyword",
+                    "total",
+                    "unseen"
+                ]
+            },
+            "FlaggedCounterResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "total": {
+                        "type": "number",
+                        "description": "Total number of flagged messages"
+                    },
+                    "unseen": {
+                        "type": "number",
+                        "description": "Unseen number of flagged messages"
+                    }
+                },
+                "required": [
+                    "success",
                     "total",
                     "unseen"
                 ]

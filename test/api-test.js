@@ -1002,6 +1002,73 @@ describe('API tests', function () {
 
             await expectCounters(createExpectedCounters(0, 0, 0, 0));
         });
+
+        it('should GET /users/:user/flagged-counter reflect flagged and seen deltas expect success', async () => {
+            const wait = timeout => new Promise(resolvePromise => setTimeout(resolvePromise, timeout));
+
+            const readFlaggedCounter = async () => {
+                const flaggedCounterResponse = await server.get(`/users/${userId}/flagged-counter`).expect(200);
+
+                return {
+                    total: flaggedCounterResponse.body.total,
+                    unseen: flaggedCounterResponse.body.unseen
+                };
+            };
+
+            const waitForExpectedCounter = async matchesExpected => {
+                for (let attemptNumber = 0; attemptNumber < 20; attemptNumber++) {
+                    const counter = await readFlaggedCounter();
+                    if (matchesExpected(counter)) {
+                        return counter;
+                    }
+                    await wait(100);
+                }
+
+                throw new Error('Flagged counter did not reach expected values in time');
+            };
+
+            const baseline = await readFlaggedCounter();
+
+            const createExpectedCounter = (totalDelta, unseenDelta) => ({
+                total: baseline.total + totalDelta,
+                unseen: baseline.unseen + unseenDelta
+            });
+
+            const expectCounter = async expectedCounter => {
+                const observedCounter = await waitForExpectedCounter(
+                    currentCounter => currentCounter.total === expectedCounter.total && currentCounter.unseen === expectedCounter.unseen
+                );
+                expect(observedCounter.total).to.equal(expectedCounter.total);
+                expect(observedCounter.unseen).to.equal(expectedCounter.unseen);
+            };
+
+            const createResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Flagged Counter Tester', address: 'flagcounter@example.com' },
+                    subject: 'flagged counters',
+                    text: 'flagged counters',
+                    unseen: true,
+                    flagged: true
+                })
+                .expect(200);
+
+            const flaggedMessageId = createResponse.body.message.id;
+
+            await expectCounter(createExpectedCounter(1, 1));
+
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${flaggedMessageId}`).send({ seen: true }).expect(200);
+
+            await expectCounter(createExpectedCounter(1, 0));
+
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${flaggedMessageId}`).send({ flagged: false }).expect(200);
+
+            await expectCounter(createExpectedCounter(0, 0));
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${flaggedMessageId}`).expect(200);
+
+            await expectCounter(createExpectedCounter(0, 0));
+        });
     });
 
     describe('certs', () => {
