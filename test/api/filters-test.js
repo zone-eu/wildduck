@@ -316,6 +316,81 @@ describe('API Filters', function () {
         });
     });
 
+    describe('Filter keywords action', function () {
+        let keywordFilterId;
+
+        it('should POST /users/{user}/filters expect success / with keywords action', async () => {
+            const response = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'keywords action create',
+                    query: {
+                        from: 'keywords-create'
+                    },
+                    action: {
+                        keywords: ['important', 'project-x']
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            keywordFilterId = response.body.id;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${keywordFilterId}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action.keywords).to.deep.equal(['important', 'project-x']);
+        });
+
+        it('should PUT /users/{user}/filters/{filter} expect success / update keywords action', async () => {
+            const response = await server
+                .put(`/users/${user}/filters/${keywordFilterId}`)
+                .send({
+                    action: {
+                        keywords: ['priority', 'customer']
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${keywordFilterId}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action.keywords).to.deep.equal(['priority', 'customer']);
+        });
+
+        it('should PUT /users/{user}/filters/{filter} expect success / clear keywords action with empty array', async () => {
+            const response = await server
+                .put(`/users/${user}/filters/${keywordFilterId}`)
+                .send({
+                    action: {
+                        keywords: []
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${keywordFilterId}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action).to.not.have.property('keywords');
+        });
+
+        it('should POST /users/{user}/filters expect failure / reject invalid keyword value', async () => {
+            const response = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'keywords action invalid',
+                    query: {
+                        from: 'keywords-invalid'
+                    },
+                    action: {
+                        keywords: ['contains space']
+                    }
+                })
+                .expect(400);
+
+            expect(response.body.success).to.not.exist;
+            expect(response.body.code).to.equal('InputValidationError');
+        });
+    });
+
     describe('Filter metaData', function () {
         let metaDataFilter;
 

@@ -12353,6 +12353,13 @@
                             "type": "string"
                         },
                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "An array of keywords to apply to matching messages"
                     }
                 }
             },
