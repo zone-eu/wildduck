@@ -230,13 +230,24 @@ describe('Filter actions runtime behavior', function () {
             }
         },
         {
+            caseName: 'keywords action',
+            actionBuilder: async () => ({ keywords: ['runtime-keyword'] }),
+            verify: async context => {
+                const inboxMessage = await waitForMessageBySubject({
+                    userId: context.mainUser.userId,
+                    mailboxId: context.inboxMailbox.id,
+                    subjectToken: context.subjectToken
+                });
+
+                expect(inboxMessage).to.exist;
+                expect(inboxMessage.keywords).to.include('runtime-keyword');
+            }
+        },
+        {
             caseName: 'spam action',
             actionBuilder: async () => ({ spam: true }),
             verify: async context => {
-                const junkMailbox = await findMailbox(
-                    context.mainUser.userId,
-                    mailboxData => mailboxData.specialUse === '\\Junk'
-                );
+                const junkMailbox = await findMailbox(context.mainUser.userId, mailboxData => mailboxData.specialUse === '\\Junk');
 
                 const junkMessage = await waitForMessageBySubject({
                     userId: context.mainUser.userId,
@@ -319,6 +330,37 @@ describe('Filter actions runtime behavior', function () {
                 });
                 expect(forwardQueueEntry).to.exist;
             }
+        },
+        {
+            caseName: 'combined action in one filter',
+            actionBuilder: async context => {
+                context.forwardTargetAddress = `queued-combined-${Date.now()}${crypto.randomBytes(4).toString('hex')}@example.net`;
+                return {
+                    seen: true,
+                    flag: true,
+                    keywords: ['combined-a', 'combined-b'],
+                    targets: [context.forwardTargetAddress]
+                };
+            },
+            verify: async context => {
+                const inboxMessage = await waitForMessageBySubject({
+                    userId: context.mainUser.userId,
+                    mailboxId: context.inboxMailbox.id,
+                    subjectToken: context.subjectToken
+                });
+
+                expect(inboxMessage).to.exist;
+                expect(inboxMessage.seen).to.equal(true);
+                expect(inboxMessage.flagged).to.equal(true);
+                expect(inboxMessage.keywords).to.include.members(['combined-a', 'combined-b']);
+
+                const forwardQueueEntry = await waitForForwardQueueEntry({
+                    recipientAddress: context.forwardTargetAddress,
+                    attempts: 24,
+                    delayMs: 500
+                });
+                expect(forwardQueueEntry).to.exist;
+            }
         }
     ];
 
@@ -363,4 +405,82 @@ describe('Filter actions runtime behavior', function () {
             }
         });
     }
+
+    it('should combine actions from multiple matching filters', async () => {
+        const context = {
+            createdUsers: []
+        };
+
+        try {
+            context.mainUser = await createUser('runtimeaction');
+            context.createdUsers.push(context.mainUser.userId);
+            context.inboxMailbox = await findMailbox(context.mainUser.userId, mailboxData => mailboxData.path === 'INBOX');
+
+            context.senderTag = `runtime-multi-filters-${Date.now()}${crypto.randomBytes(2).toString('hex')}`;
+            context.senderAddress = `${context.senderTag}@example.com`;
+            context.subjectToken = `multiple-filters-${Date.now()}${crypto.randomBytes(2).toString('hex')}`;
+            context.forwardTargetAddressOne = `queued-multi-one-${Date.now()}${crypto.randomBytes(4).toString('hex')}@example.net`;
+            context.forwardTargetAddressTwo = `queued-multi-two-${Date.now()}${crypto.randomBytes(4).toString('hex')}@example.net`;
+
+            await createFilter({
+                userId: context.mainUser.userId,
+                queryFrom: context.senderTag,
+                action: {
+                    seen: true,
+                    keywords: ['multi-one'],
+                    targets: [context.forwardTargetAddressOne]
+                }
+            });
+
+            await createFilter({
+                userId: context.mainUser.userId,
+                queryFrom: context.senderTag,
+                action: {
+                    flag: true,
+                    keywords: ['multi-two'],
+                    targets: [context.forwardTargetAddressTwo]
+                }
+            });
+
+            await sendMatchingMessage({
+                recipientAddress: context.mainUser.address,
+                senderAddress: context.senderAddress,
+                subjectToken: context.subjectToken
+            });
+
+            const inboxMessage = await waitForMessageBySubject({
+                userId: context.mainUser.userId,
+                mailboxId: context.inboxMailbox.id,
+                subjectToken: context.subjectToken
+            });
+
+            expect(inboxMessage).to.exist;
+            expect(inboxMessage.seen).to.equal(true);
+            expect(inboxMessage.flagged).to.equal(true);
+            expect(inboxMessage.keywords).to.include.members(['multi-one', 'multi-two']);
+
+            const forwardQueueEntryOne = await waitForForwardQueueEntry({
+                recipientAddress: context.forwardTargetAddressOne,
+                attempts: 24,
+                delayMs: 500
+            });
+            expect(forwardQueueEntryOne).to.exist;
+
+            const forwardQueueEntryTwo = await waitForForwardQueueEntry({
+                recipientAddress: context.forwardTargetAddressTwo,
+                attempts: 24,
+                delayMs: 500
+            });
+            expect(forwardQueueEntryTwo).to.exist;
+        } finally {
+            while (context.createdUsers.length) {
+                const userId = context.createdUsers.pop();
+                if (!userId) {
+                    continue;
+                }
+
+                await deleteUser(userId);
+            }
+        }
+    });
 });
