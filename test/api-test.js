@@ -609,7 +609,7 @@ describe('API tests', function () {
                 attachments: [
                     {
                         filename: 'inline-test.txt',
-                        contentType: 'text/plain',
+                        contentType: 'text/csv',
                         contentDisposition: 'inline',
                         content: Buffer.from('test').toString('base64')
                     }
@@ -647,7 +647,7 @@ describe('API tests', function () {
                 attachments: [
                     {
                         filename: utf8Filename,
-                        contentType: 'text/plain',
+                        contentType: 'text/csv',
                         contentDisposition: 'inline',
                         content: Buffer.from('test').toString('base64')
                     }
