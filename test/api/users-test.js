@@ -36,6 +36,7 @@ describe('API Users', function () {
                 recipients: 2000,
                 forwards: 2000,
                 requirePasswordChange: false,
+                require2faEnabled: true,
                 imapMaxUpload: 5368709120,
                 imapMaxDownload: 21474836480,
                 pop3MaxDownload: 21474836480,
@@ -89,6 +90,7 @@ describe('API Users', function () {
             username: 'myuser2',
             scope: 'master',
             require2fa: false,
+            require2faEnabled: true,
             requirePasswordChange: false
         });
     });
@@ -165,6 +167,7 @@ describe('API Users', function () {
             username: 'myuser2hash',
             scope: 'master',
             require2fa: false,
+            require2faEnabled: false,
             requirePasswordChange: false
         });
     });
@@ -194,6 +197,7 @@ describe('API Users', function () {
         let response = await server.get(`/users/${user}`).expect(200);
         expect(response.body.success).to.be.true;
         expect(response.body.id).to.equal(user);
+        expect(response.body.require2faEnabled).to.equal(true);
     });
 
     it('should GET /users/{user} expect success / using a token', async () => {
@@ -230,7 +234,8 @@ describe('API Users', function () {
         const response = await server
             .put(`/users/${user}`)
             .send({
-                name
+                name,
+                require2faEnabled: false
             })
             .expect(200);
 
@@ -241,6 +246,7 @@ describe('API Users', function () {
         expect(getResponse.body.success).to.be.true;
         expect(getResponse.body.id).to.equal(user);
         expect(getResponse.body.name).to.equal(name);
+        expect(getResponse.body.require2faEnabled).to.equal(false);
     });
 
     it('should PUT /users/{user} expect success / and renew a token', async () => {
@@ -343,6 +349,7 @@ describe('API Users', function () {
             username: 'myuser2',
             scope: 'master',
             require2fa: false,
+            require2faEnabled: false,
             // using a temporary password requires a password change
             requirePasswordChange: true
         });
