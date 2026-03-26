@@ -6,6 +6,9 @@
 
 const supertest = require('supertest');
 const chai = require('chai');
+const db = require('../../lib/db');
+const ObjectId = require('mongodb').ObjectId;
+const taskMailboxRetention = require('../../lib/tasks/mailbox-retention');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -22,6 +25,8 @@ describe('Mailboxes tests', function () {
     let mailboxForPut;
 
     before(async () => {
+        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+
         // ensure that we have an existing user account
         const response = await server
             .post('/users')
@@ -279,6 +284,106 @@ describe('Mailboxes tests', function () {
             .expect(200);
 
         expect(response.body.success).to.be.true;
+    });
+
+    it('should PUT /users/{user}/mailboxes/{mailbox} backfill retention for existing messages via background task', async () => {
+        const createMessageResponse = await server
+            .post(`/users/${user}/mailboxes/${mailboxForPut}/messages`)
+            .send({
+                draft: true,
+                subject: 'mailbox retention backfill',
+                text: 'mailbox retention backfill'
+            })
+            .expect(200);
+
+        expect(createMessageResponse.body.success).to.be.true;
+
+        const mailboxObjectId = new ObjectId(mailboxForPut);
+        const taskQuery = {
+            task: 'mailbox-retention',
+            'data.user': new ObjectId(user),
+            'data.mailbox': mailboxObjectId
+        };
+
+        const originalMessage = await db.database.collection('messages').findOne(
+            {
+                mailbox: mailboxObjectId
+            },
+            {
+                sort: {
+                    uid: -1
+                }
+            }
+        );
+
+        expect(originalMessage).to.exist;
+        expect(originalMessage.retention).to.equal(0);
+        expect(originalMessage.exp).to.be.false;
+        expect(originalMessage.rdate).to.not.exist;
+
+        await db.database.collection('tasks').deleteMany(taskQuery);
+
+        const response = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 60000 }).expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const retentionTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(retentionTask).to.exist;
+
+        await new Promise((resolve, reject) => {
+            taskMailboxRetention(
+                {
+                    _id: retentionTask._id
+                },
+                retentionTask.data,
+                {},
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        let updatedMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(updatedMessage.retention).to.equal(60000);
+        expect(updatedMessage.exp).to.be.true;
+        expect(updatedMessage.rdate).to.equal(originalMessage._id.getTimestamp().getTime() + 60000);
+
+        await db.database.collection('tasks').deleteOne({
+            _id: retentionTask._id
+        });
+
+        const disableResponse = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 0 }).expect(200);
+
+        expect(disableResponse.body.success).to.be.true;
+
+        const disableTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(disableTask).to.exist;
+
+        await new Promise((resolve, reject) => {
+            taskMailboxRetention(
+                {
+                    _id: disableTask._id
+                },
+                disableTask.data,
+                {},
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        updatedMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(updatedMessage.retention).to.equal(0);
+        expect(updatedMessage.exp).to.be.false;
+        expect(updatedMessage.rdate).to.not.exist;
+
+        await db.database.collection('tasks').deleteOne({
+            _id: disableTask._id
+        });
     });
 
     it('should PUT /users/{user}/mailboxes/{mailbox} expect failure / incorrect params', async () => {
