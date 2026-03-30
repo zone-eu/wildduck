@@ -321,6 +321,17 @@ describe('Mailboxes tests', function () {
         expect(originalMessage.exp).to.be.false;
         expect(originalMessage.rdate).to.not.exist;
 
+        const mailboxBeforeUpdate = await db.database.collection('mailboxes').findOne(
+            {
+                _id: mailboxObjectId
+            },
+            {
+                projection: {
+                    retentionCounter: true
+                }
+            }
+        );
+
         await db.database.collection('tasks').deleteMany(taskQuery);
 
         const response = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 60000 }).expect(200);
@@ -330,6 +341,7 @@ describe('Mailboxes tests', function () {
         const retentionTask = await db.database.collection('tasks').findOne(taskQuery);
 
         expect(retentionTask).to.exist;
+        expect(retentionTask.data.retentionCounter).to.equal((mailboxBeforeUpdate.retentionCounter || 0) + 1);
 
         await new Promise((resolve, reject) => {
             taskMailboxRetention(
@@ -361,6 +373,7 @@ describe('Mailboxes tests', function () {
         const disableTask = await db.database.collection('tasks').findOne(taskQuery);
 
         expect(disableTask).to.exist;
+        expect(disableTask.data.retentionCounter).to.equal(retentionTask.data.retentionCounter + 1);
 
         await new Promise((resolve, reject) => {
             taskMailboxRetention(
@@ -383,6 +396,84 @@ describe('Mailboxes tests', function () {
 
         await db.database.collection('tasks').deleteOne({
             _id: disableTask._id
+        });
+    });
+
+    it('should keep only the latest mailbox retention task state for rapid updates', async () => {
+        const createMessageResponse = await server
+            .post(`/users/${user}/mailboxes/${mailboxForPut}/messages`)
+            .send({
+                draft: true,
+                subject: 'mailbox retention latest wins',
+                text: 'mailbox retention latest wins'
+            })
+            .expect(200);
+
+        expect(createMessageResponse.body.success).to.be.true;
+
+        const mailboxObjectId = new ObjectId(mailboxForPut);
+        const taskQuery = {
+            task: 'mailbox-retention',
+            'data.user': new ObjectId(user),
+            'data.mailbox': mailboxObjectId
+        };
+
+        await db.database.collection('tasks').deleteMany(taskQuery);
+
+        const originalMessage = await db.database.collection('messages').findOne(
+            {
+                mailbox: mailboxObjectId
+            },
+            {
+                sort: {
+                    uid: -1
+                }
+            }
+        );
+
+        expect(originalMessage).to.exist;
+
+        const firstResponse = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 120000 }).expect(200);
+
+        expect(firstResponse.body.success).to.be.true;
+
+        const firstTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(firstTask).to.exist;
+
+        const staleTaskData = Object.assign({}, firstTask.data);
+
+        const secondResponse = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 180000 }).expect(200);
+
+        expect(secondResponse.body.success).to.be.true;
+
+        const secondTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(secondTask).to.exist;
+        expect(secondTask._id.toString()).to.equal(firstTask._id.toString());
+        expect(secondTask.data.retentionCounter).to.equal(firstTask.data.retentionCounter + 1);
+
+        await new Promise((resolve, reject) => {
+            taskMailboxRetention(
+                {
+                    _id: secondTask._id
+                },
+                staleTaskData,
+                {},
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        const updatedMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(updatedMessage.retention).to.equal(180000);
+        expect(updatedMessage.exp).to.be.true;
+        expect(updatedMessage.rdate).to.equal(originalMessage._id.getTimestamp().getTime() + 180000);
+
+        await db.database.collection('tasks').deleteOne({
+            _id: secondTask._id
         });
     });
 
