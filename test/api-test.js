@@ -630,13 +630,12 @@ describe('API tests', function () {
                 .expect(200);
 
             expect(downloadResponse.headers['content-disposition']).to.match(/^inline\b/i);
-            expect(downloadResponse.headers['x-filename']).to.equal('inline-test.txt');
             expect(downloadResponse.text).to.equal('test');
         });
 
-        it('should GET /users/:user/mailboxes/:mailbox/messages/:message/attachments/:attachment expect utf8 filename header', async () => {
+        it('should GET /users/:user/mailboxes/:mailbox/messages/:message/attachments/:attachment expect utf8 filename in content disposition', async () => {
             const utf8Filename = 'täst-Ā.txt';
-            const expectedHeaderFilename = '=?UTF-8?Q?t=C3=A4st-=C4=80.txt?=';
+            const expectedHeaderFilename = "filename*0*=utf-8''t%C3%A4st-%C4%80.txt";
             const message = {
                 from: {
                     name: 'test tester',
@@ -668,7 +667,7 @@ describe('API tests', function () {
                 .expect(200);
 
             expect(downloadResponse.headers['content-disposition']).to.match(/^inline\b/i);
-            expect(downloadResponse.headers['x-filename']).to.equal(expectedHeaderFilename);
+            expect(downloadResponse.headers['content-disposition']).to.include(expectedHeaderFilename);
             expect(downloadResponse.text).to.equal('test');
         });
 
