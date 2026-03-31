@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.46.26](https://github.com/zone-eu/wildduck/compare/v1.46.25...v1.46.26) (2026-03-30)
+
+
+### Bug Fixes
+
+* Added `Content-Disposition` header to attachment download endpoint response headers ([#1032](https://github.com/zone-eu/wildduck/issues/1032)) ([2759a1b](https://github.com/zone-eu/wildduck/commit/2759a1b58241b7db7c7de897dfe8b397b70ad09b))
+* bump deps ([#1039](https://github.com/zone-eu/wildduck/issues/1039)) ([a3d1d2f](https://github.com/zone-eu/wildduck/commit/a3d1d2f0e5bebda918645ce2816324ad1c3f2635))
+* ZMS-28: filters, return full http forwarding target ([#1027](https://github.com/zone-eu/wildduck/issues/1027)) ([39e0155](https://github.com/zone-eu/wildduck/commit/39e01557e178cc14622dc492c1230b428288725a))
+* ZMS-31: Log updates stream if configured ([#1028](https://github.com/zone-eu/wildduck/issues/1028)) ([d90ae09](https://github.com/zone-eu/wildduck/commit/d90ae09cbe1eb77600a691475df2b66a7a44a561))
+* ZMS-40: marked.spam webhook add verificationResults to payload ([#1029](https://github.com/zone-eu/wildduck/issues/1029)) ([df2f69d](https://github.com/zone-eu/wildduck/commit/df2f69d042f6a9da7df8558770ad0ce504ab4094))
+* ZMS-44: Add require2faEnabled flag to user ([#1035](https://github.com/zone-eu/wildduck/issues/1035)) ([e30ba0c](https://github.com/zone-eu/wildduck/commit/e30ba0c6be795c981b93f5cb554ea3ed3899a0c6))
+
 ## [1.46.25](https://github.com/zone-eu/wildduck/compare/v1.46.24...v1.46.25) (2026-03-12)
 
 
