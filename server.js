@@ -47,7 +47,7 @@ log.level = config.log.level;
 // Detect whether RSA PKCS#1 v1.5 is available
 // OpenSSL 3.x may have it disabled by-default
 const crypto = require('crypto');
-const SMIMEEncryptor = require('./lib/smime');
+const SMIMEEncryptor = require('@zone-eu/smime-js');
 try {
     let { publicKey: probeKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
     let probeCt = crypto.publicEncrypt({ key: probeKey, padding: crypto.constants.RSA_PKCS1_PADDING }, Buffer.from('smime-probe'));

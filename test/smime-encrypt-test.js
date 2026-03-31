@@ -11,12 +11,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const MessageHandler = require('../lib/message-handler');
-const SMIMEEncryptor = require('../lib/smime');
+const SMIMEEncryptor = require('@zone-eu/smime-js');
 const tools = require('../lib/tools');
 const Indexer = require('../imap-core/lib/indexer/indexer');
 const openpgp = require('openpgp');
 
-const {validateCertKey} = SMIMEEncryptor;
 
 function smimeKey(certList, cipher, keyTransport) {
     return {type: 'smime', certs: certList, cipher: cipher || 'AES-GCM', keyTransport: keyTransport || 'OAEP'};
@@ -858,164 +857,6 @@ describe('S/MIME encryption', function () {
         expect(decrypted.length).to.be.greaterThan(2 * 1024 * 1024);
     });
 
-    // Certificate key validation tests
-    describe('Certificate key validation', function () {
-        it('should accept RSA 2048 certificate', function () {
-            expect(() => validateCertKey(certs[0])).to.not.throw();
-        });
-
-        it('should accept RSA 3072 certificate', function () {
-            expect(() => validateCertKey(rsaCerts[3072])).to.not.throw();
-        });
-
-        it('should accept RSA 4096 certificate', function () {
-            expect(() => validateCertKey(rsaCerts[4096])).to.not.throw();
-        });
-
-        it('should accept EC P-256 certificate', function () {
-            expect(() => validateCertKey(ecCerts['P-256'].pem)).to.not.throw();
-        });
-
-        it('should accept EC P-384 certificate', function () {
-            expect(() => validateCertKey(ecCerts['P-384'].pem)).to.not.throw();
-        });
-
-        it('should accept EC P-521 certificate', function () {
-            expect(() => validateCertKey(ecCerts['P-521'].pem)).to.not.throw();
-        });
-
-        it('should reject RSA 1024 certificate (too small)', function () {
-            let keyPath = path.join(tmpDir, 'rsa1024.key.pem');
-            let certPath = path.join(tmpDir, 'rsa1024.cert.pem');
-            execSync(`openssl req -x509 -newkey rsa:1024 -keyout ${keyPath} -out ${certPath} -days 1 -nodes -subj "/CN=rsa1024@naide.ee" 2>/dev/null`);
-            let certPem = fs.readFileSync(certPath, 'utf8').trim();
-
-            expect(() => validateCertKey(certPem)).to.throw('RSA key too small');
-        });
-
-        it('should reject RSA 4104 certificate (too big)', function () {
-            let keyPath = path.join(tmpDir, 'rsa4104.key.pem');
-            let certPath = path.join(tmpDir, 'rsa4104.cert.pem');
-            execSync(`openssl req -x509 -newkey rsa:4104 -keyout ${keyPath} -out ${certPath} -days 1 -nodes -subj "/CN=rsa4104@naide.ee" 2>/dev/null`);
-            let certPem = fs.readFileSync(certPath, 'utf8').trim();
-
-            expect(() => validateCertKey(certPem)).to.throw('RSA key too large');
-        });
-
-        it('should reject unsupported EC curve (secp256k1)', function () {
-            let keyPath = path.join(tmpDir, 'secp256k1.key.pem');
-            let certPath = path.join(tmpDir, 'secp256k1.cert.pem');
-            execSync(`openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp256k1 -keyout ${keyPath} -out ${certPath} -days 1 -nodes -subj "/CN=secp256k1@naide.ee" 2>/dev/null`);
-            let certPem = fs.readFileSync(certPath, 'utf8').trim();
-
-            expect(() => validateCertKey(certPem)).to.throw('unsupported EC curve');
-        });
-    });
-
-    describe('Key material zeroing', function () {
-        it('should zero the CEK after successful GCM encryption', async function () {
-            let capturedCek;
-            let origRandomBytes = crypto.randomBytes;
-            crypto.randomBytes = function (size) {
-                let buf = origRandomBytes.call(crypto, size);
-                if (size === 32 && !capturedCek) {
-                    capturedCek = buf;
-                }
-                return buf;
-            };
-            try {
-                let result = await SMIMEEncryptor.encryptGCM([certs[0]], Buffer.from('test'), {keyTransport: 'OAEP'});
-                expect(result).to.be.an.instanceOf(Buffer);
-                expect(capturedCek).to.exist;
-                expect(Buffer.alloc(32).equals(capturedCek)).to.be.true; // all zeros
-            } finally {
-                crypto.randomBytes = origRandomBytes;
-            }
-        });
-
-        it('should zero the ECDH shared secret after successful GCM encryption with EC cert', async function () {
-            let capturedSharedSecret;
-            let origDiffieHellman = crypto.diffieHellman;
-            crypto.diffieHellman = function (opts) {
-                let buf = origDiffieHellman.call(crypto, opts);
-                if (!capturedSharedSecret) {
-                    capturedSharedSecret = buf;
-                }
-                return buf;
-            };
-            try {
-                let ecCert = ecCerts['P-256'].pem;
-                let result = await SMIMEEncryptor.encryptGCM([ecCert], Buffer.from('test'), {keyTransport: 'OAEP'});
-                expect(result).to.be.an.instanceOf(Buffer);
-                expect(capturedSharedSecret).to.exist;
-                expect(capturedSharedSecret.every(b => b === 0)).to.be.true; // all zeros
-            } finally {
-                crypto.diffieHellman = origDiffieHellman;
-            }
-        });
-        it('should zero the CEK even when encryption throws', async function () {
-            let capturedCek;
-            let origRandomBytes = crypto.randomBytes;
-            let origCreateCipheriv = crypto.createCipheriv;
-            crypto.randomBytes = function (size) {
-                let buf = origRandomBytes.call(crypto, size);
-                if (size === 32 && !capturedCek) {
-                    capturedCek = buf;
-                }
-                return buf;
-            };
-            crypto.createCipheriv = function () {
-                throw new Error('injected cipher error');
-            };
-            try {
-                let threw = false;
-                try {
-                    await SMIMEEncryptor.encryptGCM([certs[0]], Buffer.from('test'), {keyTransport: 'OAEP'});
-                } catch (err) {
-                    threw = true;
-                    expect(err.message).to.equal('injected cipher error');
-                }
-                expect(threw).to.be.true;
-                expect(capturedCek).to.exist;
-                expect(Buffer.alloc(32).equals(capturedCek)).to.be.true; // zeroed despite error
-            } finally {
-                crypto.randomBytes = origRandomBytes;
-                crypto.createCipheriv = origCreateCipheriv;
-            }
-        });
-
-        it('should zero the ECDH shared secret even when key wrapping throws', async function () {
-            let capturedSharedSecret;
-            let origDiffieHellman = crypto.diffieHellman;
-            let origWrapKey = crypto.webcrypto.subtle.wrapKey;
-            crypto.diffieHellman = function (opts) {
-                let buf = origDiffieHellman.call(crypto, opts);
-                if (!capturedSharedSecret) {
-                    capturedSharedSecret = buf;
-                }
-                return buf;
-            };
-            crypto.webcrypto.subtle.wrapKey = async function () {
-                throw new Error('injected wrapKey error');
-            };
-            try {
-                let threw = false;
-                try {
-                    let ecCert = ecCerts['P-256'].pem;
-                    await SMIMEEncryptor.encryptGCM([ecCert], Buffer.from('test'), {keyTransport: 'OAEP'});
-                } catch (err) {
-                    threw = true;
-                    expect(err.message).to.equal('injected wrapKey error');
-                }
-                expect(threw).to.be.true;
-                expect(capturedSharedSecret).to.exist;
-                expect(capturedSharedSecret.every(b => b === 0)).to.be.true; // zeroed despite error
-            } finally {
-                crypto.diffieHellman = origDiffieHellman;
-                crypto.webcrypto.subtle.wrapKey = origWrapKey;
-            }
-        });
-    });
 
     // _getContentType folded header tests
     describe('_getContentType with folded headers', function () {
