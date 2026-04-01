@@ -477,6 +477,171 @@ describe('Mailboxes tests', function () {
         });
     });
 
+    it('should keep explicit per-message expires when mailbox retention backfill runs', async () => {
+        const createMessageResponse = await server
+            .post(`/users/${user}/mailboxes/${mailboxForPut}/messages`)
+            .send({
+                draft: true,
+                subject: 'mailbox retention custom expires',
+                text: 'mailbox retention custom expires'
+            })
+            .expect(200);
+
+        expect(createMessageResponse.body.success).to.be.true;
+
+        const mailboxObjectId = new ObjectId(mailboxForPut);
+        const taskQuery = {
+            task: 'mailbox-retention',
+            'data.user': new ObjectId(user),
+            'data.mailbox': mailboxObjectId
+        };
+
+        const originalMessage = await db.database.collection('messages').findOne(
+            {
+                mailbox: mailboxObjectId
+            },
+            {
+                sort: {
+                    uid: -1
+                }
+            }
+        );
+
+        expect(originalMessage).to.exist;
+
+        const customExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+        const updateMessageResponse = await server
+            .put(`/users/${user}/mailboxes/${mailboxForPut}/messages/${originalMessage.uid}`)
+            .send({
+                expires: customExpires.toISOString()
+            })
+            .expect(200);
+
+        expect(updateMessageResponse.body.success).to.be.true;
+
+        const overriddenMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(overriddenMessage.retention).to.not.exist;
+        expect(overriddenMessage.exp).to.be.true;
+        expect(overriddenMessage.rdate).to.equal(customExpires.getTime());
+
+        await db.database.collection('tasks').deleteMany(taskQuery);
+
+        const response = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 240000 }).expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const retentionTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(retentionTask).to.exist;
+
+        await new Promise((resolve, reject) => {
+            taskMailboxRetention(
+                {
+                    _id: retentionTask._id
+                },
+                retentionTask.data,
+                {},
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        const updatedMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(updatedMessage.retention).to.not.exist;
+        expect(updatedMessage.exp).to.be.true;
+        expect(updatedMessage.rdate).to.equal(customExpires.getTime());
+
+        await db.database.collection('tasks').deleteOne({
+            _id: retentionTask._id
+        });
+    });
+
+    it('should use stored mailbox arrival time for mailbox retention backfill', async () => {
+        const createMessageResponse = await server
+            .post(`/users/${user}/mailboxes/${mailboxForPut}/messages`)
+            .send({
+                draft: true,
+                subject: 'mailbox retention arrival time',
+                text: 'mailbox retention arrival time'
+            })
+            .expect(200);
+
+        expect(createMessageResponse.body.success).to.be.true;
+
+        const mailboxObjectId = new ObjectId(mailboxForPut);
+        const taskQuery = {
+            task: 'mailbox-retention',
+            'data.user': new ObjectId(user),
+            'data.mailbox': mailboxObjectId
+        };
+
+        const originalMessage = await db.database.collection('messages').findOne(
+            {
+                mailbox: mailboxObjectId
+            },
+            {
+                sort: {
+                    uid: -1
+                }
+            }
+        );
+
+        expect(originalMessage).to.exist;
+
+        const simulatedArrivalTime = Date.now() + 5 * 60 * 1000;
+
+        await db.database.collection('messages').updateOne(
+            {
+                _id: originalMessage._id
+            },
+            {
+                $set: {
+                    retentionTime: simulatedArrivalTime
+                }
+            }
+        );
+
+        await db.database.collection('tasks').deleteMany(taskQuery);
+
+        const response = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 120000 }).expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const retentionTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(retentionTask).to.exist;
+
+        await new Promise((resolve, reject) => {
+            taskMailboxRetention(
+                {
+                    _id: retentionTask._id
+                },
+                retentionTask.data,
+                {},
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        const updatedMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(updatedMessage.retentionTime).to.equal(simulatedArrivalTime);
+        expect(updatedMessage.retention).to.equal(120000);
+        expect(updatedMessage.exp).to.be.true;
+        expect(updatedMessage.rdate).to.equal(simulatedArrivalTime + 120000);
+
+        await db.database.collection('tasks').deleteOne({
+            _id: retentionTask._id
+        });
+    });
+
     it('should PUT /users/{user}/mailboxes/{mailbox} expect failure / incorrect params', async () => {
         const mailboxes = await server.get(`/users/${user}/mailboxes`).expect(200);
 
