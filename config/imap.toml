@@ -42,6 +42,10 @@ useProxy = false
 # an array of IP addresses to ignore (not logged)
 ignoredHosts = []
 
+# Publish a compatibility copy of notifier events to the legacy wd_events
+# channel during mixed old/new rolling deployments. Disabled by default.
+publishLegacyWdEvents = false
+
 #name="WildDuck IMAP"
 #version="1.0.0"
 #vendor="WildDuck"
