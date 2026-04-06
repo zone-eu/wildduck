@@ -477,7 +477,98 @@ describe('Mailboxes tests', function () {
         });
     });
 
-    it('should keep explicit per-message expires when mailbox retention backfill runs', async () => {
+    it('should continue mailbox retention processing when mailbox state is newer than the task state', async () => {
+        const mailboxObjectId = new ObjectId(mailboxForPut);
+        const userObjectId = new ObjectId(user);
+        const taskQuery = {
+            task: 'mailbox-retention',
+            'data.user': userObjectId,
+            'data.mailbox': mailboxObjectId
+        };
+
+        await db.database.collection('tasks').deleteMany(taskQuery);
+        await db.database.collection('mailboxes').updateOne(
+            {
+                _id: mailboxObjectId
+            },
+            {
+                $set: {
+                    retention: 0
+                }
+            }
+        );
+
+        const createMessageResponse = await server
+            .post(`/users/${user}/mailboxes/${mailboxForPut}/messages`)
+            .send({
+                draft: true,
+                subject: 'mailbox retention stale task',
+                text: 'mailbox retention stale task'
+            })
+            .expect(200);
+
+        expect(createMessageResponse.body.success).to.be.true;
+
+        const originalMessage = await db.database.collection('messages').findOne(
+            {
+                mailbox: mailboxObjectId
+            },
+            {
+                sort: {
+                    uid: -1
+                }
+            }
+        );
+
+        expect(originalMessage).to.exist;
+
+        const firstResponse = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ retention: 300000 }).expect(200);
+
+        expect(firstResponse.body.success).to.be.true;
+
+        const staleTask = await db.database.collection('tasks').findOne(taskQuery);
+
+        expect(staleTask).to.exist;
+
+        await db.database.collection('mailboxes').updateOne(
+            {
+                _id: mailboxObjectId
+            },
+            {
+                $set: {
+                    retention: 360000
+                },
+                $inc: {
+                    retentionCounter: 1
+                }
+            }
+        );
+
+        await new Promise((resolve, reject) => {
+            taskMailboxRetention(
+                {
+                    _id: staleTask._id
+                },
+                staleTask.data,
+                {},
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        const updatedMessage = await db.database.collection('messages').findOne({
+            _id: originalMessage._id
+        });
+
+        expect(updatedMessage.retention).to.equal(360000);
+        expect(updatedMessage.exp).to.be.true;
+        expect(updatedMessage.rdate).to.equal(originalMessage._id.getTimestamp().getTime() + 360000);
+
+        await db.database.collection('tasks').deleteOne({
+            _id: staleTask._id
+        });
+    });
+
+    it('should override explicit per-message expires when mailbox retention backfill runs', async () => {
         const createMessageResponse = await server
             .post(`/users/${user}/mailboxes/${mailboxForPut}/messages`)
             .send({
@@ -553,9 +644,9 @@ describe('Mailboxes tests', function () {
             _id: originalMessage._id
         });
 
-        expect(updatedMessage.retention).to.not.exist;
+        expect(updatedMessage.retention).to.equal(240000);
         expect(updatedMessage.exp).to.be.true;
-        expect(updatedMessage.rdate).to.equal(customExpires.getTime());
+        expect(updatedMessage.rdate).to.equal((originalMessage.retentionTime || originalMessage._id.getTimestamp().getTime()) + 240000);
 
         await db.database.collection('tasks').deleteOne({
             _id: retentionTask._id
