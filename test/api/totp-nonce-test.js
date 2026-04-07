@@ -14,9 +14,13 @@ const UserHandler = require('../../lib/user-handler');
 describe('TOTP Nonce Handling', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
-    it('should stop checkTotp before consuming the nonce if validateTotpNonce fails', async () => {
+    it('should stop checkTotp if validateTotpNonce fails', async () => {
         const calls = [];
         const handler = {
+            rateLimit: async () => {
+                calls.push('rateLimit');
+                return { success: true };
+            },
             validateTotpNonce: async () => {
                 calls.push('validate');
                 const err = new Error('Invalid or expired TOTP nonce');
@@ -40,7 +44,7 @@ describe('TOTP Nonce Handling', function () {
 
         expect(err).to.exist;
         expect(err.code).to.equal('InvalidTotpNonce');
-        expect(calls).to.deep.equal(['validate']);
+        expect(calls).to.deep.equal(['rateLimit', 'validate']);
     });
 
     it('should restore the nonce after a failed TOTP verification', async () => {
