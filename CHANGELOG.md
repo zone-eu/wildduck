@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.47.0](https://github.com/zone-eu/wildduck/compare/v1.46.26...v1.47.0) (2026-04-08)
+
+
+### Features
+
+* ZMS-8: optimize redis fanout strategy for notifications ([#992](https://github.com/zone-eu/wildduck/issues/992)) ([b069698](https://github.com/zone-eu/wildduck/commit/b06969802d9140baff5f908341afbdb03df36d1b))
+
+
+### Bug Fixes
+
+* ZMS-45: Implement totp nonce system for safer totp checks ([#1042](https://github.com/zone-eu/wildduck/issues/1042)) ([2eba521](https://github.com/zone-eu/wildduck/commit/2eba521338a8cf30e2d6efd768bf11a026f38789))
+* ZMS-8-2: add support for legacy wd_events channel parallel to new distributed fan-out strategy ([#1044](https://github.com/zone-eu/wildduck/issues/1044)) ([7bf6a9d](https://github.com/zone-eu/wildduck/commit/7bf6a9d0c244cca1378c5f10193f17e2dc487330))
+
 ## [1.46.26](https://github.com/zone-eu/wildduck/compare/v1.46.25...v1.46.26) (2026-03-30)
 
 
