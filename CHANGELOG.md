@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.47.1](https://github.com/zone-eu/wildduck/compare/v1.47.0...v1.47.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* ZMS-43: Changing mailbox retention applies to past messages ([#1038](https://github.com/zone-eu/wildduck/issues/1038)) ([8c11c3b](https://github.com/zone-eu/wildduck/commit/8c11c3befe07b78cc9f99db1e5e2ed49e2642784))
+
 ## [1.47.0](https://github.com/zone-eu/wildduck/compare/v1.46.26...v1.47.0) (2026-04-08)
 
 
