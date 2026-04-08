@@ -4,7 +4,8 @@
             "release-type": "node",
             "package-name": "@zone-eu/wildduck",
             "pull-request-title-pattern": "chore${scope}: release ${version} [skip-ci]",
-            "include-component-in-tag": false
+            "include-component-in-tag": false,
+            "draft": true
         }
     }
 }
