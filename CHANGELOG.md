@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.47.2](https://github.com/zone-eu/wildduck/compare/v1.47.1...v1.47.2) (2026-04-09)
+
+
+### Bug Fixes
+
+* bump deps and generate docs ([#1050](https://github.com/zone-eu/wildduck/issues/1050)) ([8bd42c1](https://github.com/zone-eu/wildduck/commit/8bd42c16f1b7a5a1191b210b8e4c86d4516770dd))
+* fix release workflow ([#1047](https://github.com/zone-eu/wildduck/issues/1047)) ([caad657](https://github.com/zone-eu/wildduck/commit/caad65749cf9c73bd503f5c575d46cc9a9d00314))
+
 ## [1.47.1](https://github.com/zone-eu/wildduck/compare/v1.47.0...v1.47.1) (2026-04-08)
 
 
