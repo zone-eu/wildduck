@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.48.0](https://github.com/zone-eu/wildduck/compare/v1.47.2...v1.48.0) (2026-04-09)
+
+
+### Features
+
+* S/MIME at-rest encryption support ([#1011](https://github.com/zone-eu/wildduck/issues/1011)) ([f4784d5](https://github.com/zone-eu/wildduck/commit/f4784d58bcc42c515dad1ed1000efaaf911f665b))
+
+
+### Bug Fixes
+
+* add timeout to workflows ([#1053](https://github.com/zone-eu/wildduck/issues/1053)) ([bb9c54c](https://github.com/zone-eu/wildduck/commit/bb9c54cc82117f81e4aa09cd47b53dc337d425b8))
+
 ## [1.47.2](https://github.com/zone-eu/wildduck/compare/v1.47.1...v1.47.2) (2026-04-09)
 
 
