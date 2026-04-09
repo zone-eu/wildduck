@@ -244,10 +244,13 @@ module.exports = done => {
         database: db.database
     });
 
+    let settingsHandler = new SettingsHandler({ db: db.database });
+
     // setup notification system for updates
     notifier = new ImapNotifier({
         database: db.database,
-        redis: db.redis
+        redis: db.redis,
+        settingsHandler
     });
 
     messageHandler = new MessageHandler({
@@ -256,6 +259,7 @@ module.exports = done => {
         redis: db.redis,
         gridfs: db.gridfs,
         attachments: config.attachments,
+        settingsHandler,
         loggelf: message => loggelf(message)
     });
 
@@ -271,10 +275,9 @@ module.exports = done => {
         users: db.users,
         redis: db.redis,
         notifier,
+        settingsHandler,
         loggelf: message => loggelf(message)
     });
-
-    let settingsHandler = new SettingsHandler({ db: db.database });
 
     let ifaceOptions = [
         {
