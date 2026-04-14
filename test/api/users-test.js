@@ -212,6 +212,34 @@ describe('API Users', function () {
         expect(response.body.id).to.equal(user);
     });
 
+    it('should PUT /users/:user expect success / using a token and ignore admin-only fields', async () => {
+        const name = 'John Smith Token';
+
+        const response = await server
+            .put(`/users/me?accessToken=${token}`)
+            .send({
+                name,
+                quota: 999999999999,
+                recipients: 999999,
+                require2faEnabled: false,
+                featureFlags: {
+                    indexing: true
+                }
+            })
+            .expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const getResponse = await server.get(`/users/me?accessToken=${token}`).expect(200);
+        expect(getResponse.body.success).to.be.true;
+        expect(getResponse.body.id).to.equal(user);
+        expect(getResponse.body.name).to.equal(name);
+        expect(getResponse.body.limits.quota.allowed).to.equal(1073741824);
+        expect(getResponse.body.limits.recipients.allowed).to.equal(2000);
+        expect(getResponse.body.require2faEnabled).to.equal(true);
+        expect(getResponse.body.featureFlags).to.deep.equal({});
+    });
+
     it('should GET /users/{user} expect failure / using a token and fail against other user', async () => {
         let response = await server.get(`/users/${user2}?accessToken=${token}`);
         expect(response.body.code).to.equal('MissingPrivileges');
