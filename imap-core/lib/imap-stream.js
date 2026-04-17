@@ -151,7 +151,14 @@ class IMAPStream extends Writable {
                 value: line,
                 final: true
             },
-            this._readValue.bind(this, regex, data, pos, done)
+            err => {
+                if (err) {
+                    this._expecting = 0;
+                    this._literal = false;
+                    this._literalReady = false;
+                }
+                setImmediate(this._readValue.bind(this, regex, data, pos, done));
+            }
         );
     }
 

@@ -390,6 +390,24 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should not crash on LIST patterns containing braces', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LIST "" "%{2}"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* LIST /m.test(resp)).to.be.false;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 
     describe('LSUB', function () {
@@ -446,6 +464,24 @@ describe('IMAP Protocol integration tests', function () {
                     resp = resp.toString();
                     expect(resp.match(/^\* LSUB /gm).length).to.equal(1);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not crash on LSUB patterns containing braces', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" "%{2}"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* LSUB /m.test(resp)).to.be.false;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     done();
                 }
