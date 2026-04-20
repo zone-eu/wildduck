@@ -4,6 +4,10 @@
 
 const supertest = require('supertest');
 const chai = require('chai');
+const { once } = require('events');
+const BSON = require('bson');
+const ObjectId = require('mongodb').ObjectId;
+const { ExportStream } = require('../../lib/export');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -12,6 +16,24 @@ const config = require('@zone-eu/wild-config');
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 const os = require('os');
+
+const createImportBuffer = async entries => {
+    const exporter = new ExportStream({
+        type: 'wildduck_data_export'
+    });
+
+    const chunks = [];
+    exporter.on('data', chunk => chunks.push(chunk));
+
+    for (let entry of entries) {
+        exporter.write(entry);
+    }
+
+    exporter.end();
+    await once(exporter, 'end');
+
+    return Buffer.concat(chunks);
+};
 
 describe('API Users', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -481,5 +503,51 @@ describe('API Users', function () {
             })
             .expect(403);
         expect(authResponseFail.body.error).to.exist;
+    });
+
+    it('should POST /data/import expect failure count / reject unsupported collections', async () => {
+        const importedFilterId = new ObjectId();
+        const importBuffer = await createImportBuffer([
+            {
+                client: 'database',
+                collection: 'filters',
+                entry: BSON.serialize({
+                    _id: importedFilterId,
+                    user: new ObjectId(user),
+                    query: {
+                        headers: {
+                            to: 'imported.filter@example.com'
+                        }
+                    },
+                    action: {
+                        seen: true
+                    },
+                    disabled: false,
+                    created: new Date()
+                })
+            },
+            {
+                client: 'database',
+                collection: 'settings',
+                entry: BSON.serialize({
+                    _id: `import-test-${Date.now()}`,
+                    value: 'rogue insert'
+                })
+            }
+        ]);
+
+        const response = await server
+            .post('/data/import')
+            .set('Content-Type', 'application/octet-stream')
+            .send(importBuffer)
+            .expect(200);
+
+        expect(response.body.success).to.be.true;
+        expect(response.body.entries).to.equal(2);
+        expect(response.body.imported).to.equal(1);
+        expect(response.body.failed).to.equal(1);
+
+        const filtersResponse = await server.get(`/users/${user}/filters`).expect(200);
+        expect(filtersResponse.body.results.some(entry => entry.id === importedFilterId.toString())).to.be.true;
     });
 });

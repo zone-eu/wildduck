@@ -397,4 +397,29 @@ describe('Messages tests', function () {
         // Move all messages to trash
         await server.put(`/users/${user}/mailboxes/${testMailbox}/messages`).send({ message: '1:*', moveTo: trashId });
     });
+
+    it('should DELETE /users/:user/mailboxes/:mailbox/messages expect failure / reject mailbox from another user', async () => {
+        const otherUserResponse = await server
+            .post('/users')
+            .send({
+                username: 'messagesotherusertests',
+                password: 'secretpassword',
+                address: 'messagesotherusertests@web.zone.test',
+                name: 'other messages user'
+            })
+            .expect(200);
+
+        const otherUser = otherUserResponse.body.id;
+
+        const otherMailboxResponse = await server
+            .post(`/users/${otherUser}/mailboxes`)
+            .send({ path: '/other-test-mailbox', hidden: false, retention: 10000 })
+            .expect(200);
+
+        const otherMailbox = otherMailboxResponse.body.id;
+
+        const response = await server.delete(`/users/${user}/mailboxes/${otherMailbox}/messages`).send({}).expect(404);
+
+        expect(response.body.code).to.equal('NoSuchMailbox');
+    });
 });
