@@ -15,7 +15,7 @@ jobs:
               uses: actions/checkout@v4
 
             - name: Install SSH key
-              uses: shimataro/ssh-key-action@v2
+              uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3
               with:
                   key: ${{ secrets.SSH_KEY }}
                   known_hosts: ${{ secrets.KNOWN_HOSTS }}
