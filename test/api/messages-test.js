@@ -216,6 +216,38 @@ describe('Messages tests', function () {
         await server.put(`/users/${user}/mailboxes/${testMailbox}`).send({ encryptMessages: false }).expect(200);
     });
 
+    it('should POST /users/:user/submit expect success / wildcard fromWhitelist must use suffix match', async () => {
+        await server.put(`/users/${user}`).send({ fromWhitelist: ['*@example.com'] }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    uploadOnly: true,
+                    from: {
+                        name: 'Spoof Attempt',
+                        address: 'anyone@example.com.evil.com'
+                    },
+                    to: [{ address: 'recipient@to.com' }],
+                    subject: 'wildcard whitelist suffix check',
+                    text: 'This message should be normalized to the account address'
+                })
+                .expect(200);
+
+            expect(submitResponse.body.success).to.be.true;
+
+            const messageResponse = await server
+                .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
+                .send({})
+                .expect(200);
+
+            expect(messageResponse.body.from.address).to.equal('messagestestsuser@web.zone.test');
+            expect(messageResponse.body.from.address).to.not.equal('anyone@example.com.evil.com');
+        } finally {
+            await server.put(`/users/${user}`).send({ fromWhitelist: [] }).expect(200);
+        }
+    });
+
     it('should POST /users/:user/search expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
         const orderSearch = 'desc';
         const from = 'messagestests'; // Partial match
