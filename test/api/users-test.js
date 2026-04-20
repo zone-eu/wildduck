@@ -6,7 +6,6 @@ const supertest = require('supertest');
 const chai = require('chai');
 const { once } = require('events');
 const BSON = require('bson');
-const ObjectId = require('mongodb').ObjectId;
 const { ExportStream } = require('../../lib/export');
 
 const expect = chai.expect;
@@ -506,14 +505,14 @@ describe('API Users', function () {
     });
 
     it('should POST /data/import expect failure count / reject unsupported collections', async () => {
-        const importedFilterId = new ObjectId();
+        const importedFilterId = new BSON.ObjectId();
         const importBuffer = await createImportBuffer([
             {
                 client: 'database',
                 collection: 'filters',
                 entry: BSON.serialize({
                     _id: importedFilterId,
-                    user: new ObjectId(user),
+                    user: new BSON.ObjectId(user),
                     query: {
                         headers: {
                             to: 'imported.filter@example.com'

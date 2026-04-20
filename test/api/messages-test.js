@@ -217,13 +217,16 @@ describe('Messages tests', function () {
     });
 
     it('should POST /users/:user/submit expect success / wildcard fromWhitelist must use suffix match', async () => {
-        await server.put(`/users/${user}`).send({ fromWhitelist: ['*@example.com'] }).expect(200);
+        await server
+            .put(`/users/${user}`)
+            .send({ fromWhitelist: ['*@example.com'] })
+            .expect(200);
 
+        let queueId;
         try {
             const submitResponse = await server
                 .post(`/users/${user}/submit`)
                 .send({
-                    uploadOnly: true,
                     from: {
                         name: 'Spoof Attempt',
                         address: 'anyone@example.com.evil.com'
@@ -235,6 +238,8 @@ describe('Messages tests', function () {
                 .expect(200);
 
             expect(submitResponse.body.success).to.be.true;
+            queueId = submitResponse.body.message.queueId;
+            expect(queueId).to.exist;
 
             const messageResponse = await server
                 .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
@@ -244,6 +249,9 @@ describe('Messages tests', function () {
             expect(messageResponse.body.from.address).to.equal('messagestestsuser@web.zone.test');
             expect(messageResponse.body.from.address).to.not.equal('anyone@example.com.evil.com');
         } finally {
+            if (queueId) {
+                await server.delete(`/users/${user}/outbound/${queueId}`).expect(200);
+            }
             await server.put(`/users/${user}`).send({ fromWhitelist: [] }).expect(200);
         }
     });
