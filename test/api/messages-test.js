@@ -256,6 +256,40 @@ describe('Messages tests', function () {
         }
     });
 
+    it('should POST /users/:user/submit expect success / preserve structured replyTo header', async () => {
+        const submitResponse = await server
+            .post(`/users/${user}/submit`)
+            .send({
+                uploadOnly: true,
+                from: {
+                    name: 'messages user',
+                    address: 'messagestestsuser@web.zone.test'
+                },
+                replyTo: {
+                    name: 'Reply Handler',
+                    address: 'reply-to@test.example'
+                },
+                to: [{ address: 'recipient@to.com' }],
+                subject: 'structured reply-to preservation',
+                text: 'This message should keep the Reply-To header'
+            })
+            .expect(200);
+
+        expect(submitResponse.body.success).to.be.true;
+
+        const messageResponse = await server
+            .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(messageResponse.body.replyTo).to.deep.equal([
+            {
+                name: 'Reply Handler',
+                address: 'reply-to@test.example'
+            }
+        ]);
+    });
+
     it('should POST /users/:user/search expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
         const orderSearch = 'desc';
         const from = 'messagestests'; // Partial match
