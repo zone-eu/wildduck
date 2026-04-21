@@ -272,6 +272,7 @@ describe('API Users', function () {
         const response = await server
             .put(`/users/me?accessToken=${token}`)
             .send({
+                existingPassword: 'secretvalue',
                 name,
                 quota: 999999999999,
                 recipients: 999999,
@@ -374,6 +375,7 @@ describe('API Users', function () {
         const response = await server
             .put(`/users/me?accessToken=${token1}`)
             .send({
+                existingPassword: 'secretvalue',
                 password: 'secretvalue'
             })
             .expect(200);
