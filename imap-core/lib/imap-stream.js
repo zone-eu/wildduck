@@ -4,6 +4,8 @@ const stream = require('stream');
 const Writable = stream.Writable;
 const PassThrough = stream.PassThrough;
 
+const DEFAULT_MAX_LINE_LENGTH = 8 * 1024;
+
 /**
  * Incoming IMAP stream parser. Detects and emits command payloads.
  * If literal values are encountered the command payload is split into parts
@@ -21,10 +23,13 @@ class IMAPStream extends Writable {
         this.options = options || {};
         Writable.call(this, this.options);
 
+        this.maxLineLength = Number.isFinite(this.options.maxLineLength) ? Math.max(this.options.maxLineLength, 0) : DEFAULT_MAX_LINE_LENGTH;
+
         // unprocessed chars from the last parsing iteration
         this._remainder = '';
         this._literal = false;
         this._literalReady = false;
+        this._discarding = false;
 
         // how many literal bytes to wait for
         this._expecting = 0;
@@ -41,6 +46,23 @@ class IMAPStream extends Writable {
     }
 
     // PRIVATE METHODS
+
+    _checkLineLength(lineLength) {
+        if (!this.maxLineLength || lineLength <= this.maxLineLength) {
+            return false;
+        }
+        return true;
+    }
+
+    _emitLineTooLong(regex, data, pos, done) {
+        this.oncommand(
+            {
+                lineTooLong: true,
+                final: true
+            },
+            () => setImmediate(this._readValue.bind(this, regex, data, pos, done))
+        );
+    }
 
     /**
      * Writable._write method.
@@ -99,13 +121,30 @@ class IMAPStream extends Writable {
             }
         }
 
+        if (this._discarding) {
+            if ((match = regex.exec(data))) {
+                this._discarding = false;
+                pos = match.index + match[0].length;
+                return this._emitLineTooLong(regex, data, pos, done);
+            }
+            return done();
+        }
+
         // search for the next newline
         // exec keeps count of the last match with lastIndex
         // so it knows from where to start with the next iteration
         if ((match = regex.exec(data))) {
+            if (this._checkLineLength(match.index - pos)) {
+                pos = match.index + match[0].length;
+                return this._emitLineTooLong(regex, data, pos, done);
+            }
             line = data.substr(pos, match.index - pos);
             pos += line.length + match[0].length;
         } else {
+            if (this._checkLineLength(data.length - pos)) {
+                this._discarding = true;
+                return done();
+            }
             this._remainder = pos < data.length ? data.substr(pos) : '';
             return done();
         }
@@ -167,6 +206,17 @@ class IMAPStream extends Writable {
      */
     _flushData() {
         let line;
+        if (this._discarding) {
+            this._discarding = false;
+            return this.oncommand(
+                {
+                    lineTooLong: true,
+                    final: true
+                },
+                () => false
+            );
+        }
+
         if (this._remainder) {
             line = this._remainder;
             this._remainder = '';
