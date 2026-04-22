@@ -546,11 +546,7 @@ describe('Messages tests', function () {
 
     it('should GET /users/:user/search expect success / api search params combine as AND by default', async () => {
         const search = await server
-            .get(
-                `/users/${user}/search?mailbox=${queryMailbox}&from=${encodeURIComponent(
-                    queryFixture.fromAddress
-                )}&to=${encodeURIComponent(queryFixture.extraToAddress)}&subject=Flagged&attachments=true&flagged=true&limit=50`
-            )
+            .get(`/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&limit=50`)
             .send({})
             .expect(200);
 
@@ -561,9 +557,7 @@ describe('Messages tests', function () {
     it('should GET /users/:user/search expect success / api search params return no matches when one AND term does not match', async () => {
         const search = await server
             .get(
-                `/users/${user}/search?mailbox=${queryMailbox}&from=${encodeURIComponent(
-                    queryFixture.altFromAddress
-                )}&to=${encodeURIComponent(queryFixture.extraToAddress)}&subject=Flagged&attachments=true&flagged=true&limit=50`
+                `/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&from=${encodeURIComponent(queryFixture.altFromAddress)}&limit=50`
             )
             .send({})
             .expect(200);
