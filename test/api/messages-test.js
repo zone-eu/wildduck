@@ -396,6 +396,13 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.not.include(queryFixture.subjectUnseen);
     });
 
+    it('should GET /users/:user/search expect success / q combines text and special terms as AND by default', async () => {
+        const q = `mailbox:${queryMailbox} subject:Flagged ${queryFixture.multiTerm1} attachments:true flagged:true`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.eql([queryFixture.subjectFlaggedSeenAttachment]);
+    });
+
     it('should GET /users/:user/search expect success / q searchable:true excludes trash mailbox matches', async () => {
         const q = `${queryFixture.body} searchable:true`;
         const search = await searchQ(q);
@@ -535,6 +542,34 @@ describe('Messages tests', function () {
         const search = await searchQ(q);
 
         expect(search.results).to.have.length(0);
+    });
+
+    it('should GET /users/:user/search expect success / api search params combine as AND by default', async () => {
+        const search = await server
+            .get(
+                `/users/${user}/search?mailbox=${queryMailbox}&from=${encodeURIComponent(
+                    queryFixture.fromAddress
+                )}&to=${encodeURIComponent(queryFixture.extraToAddress)}&subject=Flagged&attachments=true&flagged=true&limit=50`
+            )
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(getSubjects(search.body)).to.eql([queryFixture.subjectFlaggedSeenAttachment]);
+    });
+
+    it('should GET /users/:user/search expect success / api search params return no matches when one AND term does not match', async () => {
+        const search = await server
+            .get(
+                `/users/${user}/search?mailbox=${queryMailbox}&from=${encodeURIComponent(
+                    queryFixture.altFromAddress
+                )}&to=${encodeURIComponent(queryFixture.extraToAddress)}&subject=Flagged&attachments=true&flagged=true&limit=50`
+            )
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.results).to.have.length(0);
     });
 
     it('should GET /users/:user/search expect success / q supports negated mailbox and thread filters', async () => {
