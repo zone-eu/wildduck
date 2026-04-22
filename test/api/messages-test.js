@@ -386,6 +386,16 @@ describe('Messages tests', function () {
         expect(searchWithSearchable.body.results).to.deep.equal(search.results);
     });
 
+    it('should GET /users/:user/search expect success / q plain text terms default to AND semantics', async () => {
+        const q = `${queryFixture.body} ${queryFixture.multiTerm1} in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExcluded);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectUnseen);
+    });
+
     it('should GET /users/:user/search expect success / q searchable:true excludes trash mailbox matches', async () => {
         const q = `${queryFixture.body} searchable:true`;
         const search = await searchQ(q);
