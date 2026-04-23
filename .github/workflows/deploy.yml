@@ -27,8 +27,15 @@ jobs:
                   SERVICE_NAME: wildduck
               id: deploy
               run: |
-                  echo $GITHUB_SHA > commit.txt
+                  mkdir -p ~/.ssh
+                  chmod 700 ~/.ssh
+                  touch ~/.ssh/known_hosts
+                  chmod 600 ~/.ssh/known_hosts
+                  ssh-keygen -R "$TARGET_HOST_02" -f ~/.ssh/known_hosts || true
+                  ssh-keyscan -H "$TARGET_HOST_02" >> ~/.ssh/known_hosts
+
+                  echo "$GITHUB_SHA" > commit.txt
                   npm install --omit=dev
-                  tar czf /tmp/${SERVICE_NAME}.tar.gz --exclude .git .
-                  scp /tmp/${SERVICE_NAME}.tar.gz deploy@${TARGET_HOST_02}:
-                  ssh deploy@${TARGET_HOST_02} "/opt/deploy.sh ${SERVICE_NAME}"
+                  tar czf "/tmp/${SERVICE_NAME}.tar.gz" --exclude .git .
+                  scp "/tmp/${SERVICE_NAME}.tar.gz" "deploy@${TARGET_HOST_02}:"
+                  ssh "deploy@${TARGET_HOST_02}" "/opt/deploy.sh ${SERVICE_NAME}"
