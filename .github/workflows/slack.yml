@@ -26,21 +26,10 @@ jobs:
                   GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
                   GITHUB_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
               run: |
-                  data="$(
-                    python3 - <<'PY'
-                    import json
-                    import os
+                  text="*${GITHUB_ACTOR_NAME}* pushed <https://github.com/${GITHUB_REPOSITORY_NAME}/commit/${GITHUB_SHA_VALUE}|${GITHUB_SHA_VALUE}> to *${GITHUB_REF_NAME_VALUE}*"
+                  text="${text}"$'\n'" ${GITHUB_HEAD_COMMIT_MESSAGE}"
+                  data="$(jq -n --arg channel "wildduck-changelog" --arg text "$text" '{channel: $channel, text: $text}')"
 
-                    sha = os.environ["GITHUB_SHA_VALUE"]
-                    text = (
-                        f'*{os.environ["GITHUB_ACTOR_NAME"]}* pushed '
-                        f'<https://github.com/{os.environ["GITHUB_REPOSITORY_NAME"]}/commit/{sha}|{sha}> '
-                        f'to *{os.environ["GITHUB_REF_NAME_VALUE"]}*\n'
-                        f' {os.environ["GITHUB_HEAD_COMMIT_MESSAGE"]}'
-                    )
-                    print(json.dumps({"channel": "wildduck-changelog", "text": text}))
-                    PY
-                  )"
                   curl $curl_options \
                   -H "Content-Type: application/json" \
                   -H "User-Agent: GitHub-Action" \
