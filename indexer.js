@@ -12,6 +12,7 @@ const counters = require('./lib/counters');
 const { ObjectId } = require('mongodb');
 const libmime = require('libmime');
 const punycode = require('punycode.js');
+const tools = require('./lib/tools');
 const { getClient } = require('./lib/elasticsearch');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
@@ -284,14 +285,15 @@ function indexingJob(esclient) {
 
             const dateKeyTdy = new Date().toISOString().substring(0, 10).replace(/-/g, '');
             const dateKeyYdy = new Date(Date.now() - 24 * 3600 * 1000).toISOString().substring(0, 10).replace(/-/g, '');
-            const tombstoneTdy = `indexer:tomb:${dateKeyTdy}`;
-            const tombstoneYdy = `indexer:tomb:${dateKeyYdy}`;
+            const tombstoneTag = tools.redisHashTag(db.redis, 'indexer:tomb');
+            const tombstoneTdy = `${tombstoneTag}:${dateKeyTdy}`;
+            const tombstoneYdy = `${tombstoneTag}:${dateKeyYdy}`;
 
             switch (data.action) {
                 case 'new': {
                     // check tombstone for race conditions (might be already deleted)
 
-                    let [[err1, isDeleted1], [err2, isDeleted2]] = await db.redis
+                    const [[err1, isDeleted1], [err2, isDeleted2]] = await db.redis
                         .multi()
                         .sismember(tombstoneTdy, data.message)
                         .sismember(tombstoneYdy, data.message)
