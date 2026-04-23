@@ -130,6 +130,7 @@ describe('HIBP', function () {
         const response = await server
             .put(`/users/me?accessToken=${tokenResponse.body.token}`)
             .send({
+                existingPassword: currentPassword,
                 password: newPassword
             })
             .expect(200);

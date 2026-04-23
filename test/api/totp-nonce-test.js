@@ -9,6 +9,7 @@ const ObjectId = require('mongodb').ObjectId;
 const expect = chai.expect;
 chai.config.includeStack = true;
 
+const consts = require('../../lib/consts');
 const UserHandler = require('../../lib/user-handler');
 
 describe('TOTP Nonce Handling', function () {
@@ -49,8 +50,10 @@ describe('TOTP Nonce Handling', function () {
 
     it('should restore the nonce after a failed TOTP verification', async () => {
         const calls = [];
+        const rateLimitCalls = [];
         const accessTokenHash = crypto.randomBytes(32).toString('hex');
         const seed = 'JBSWY3DPEHPK3PXP';
+        const user = new ObjectId();
         const handler = {
             redis: {
                 exists: async () => 0,
@@ -76,7 +79,10 @@ describe('TOTP Nonce Handling', function () {
                     };
                 }
             },
-            rateLimit: async () => ({ success: true }),
+            rateLimit: async (...args) => {
+                rateLimitCalls.push(args);
+                return { success: true };
+            },
             rateLimitReleaseUser: async () => false,
             logAuthEvent: async () => false,
             validateTotpNonce: async () => {
@@ -94,15 +100,21 @@ describe('TOTP Nonce Handling', function () {
             }
         };
 
-        const result = await UserHandler.prototype.checkTotp.call(handler, new ObjectId(), {
+        const data = {
             token: '000000',
             totpNonce: crypto.randomBytes(20).toString('hex'),
             accessTokenHash
-        });
+        };
+
+        const result = await UserHandler.prototype.checkTotp.call(handler, user, data);
 
         expect(result).to.be.false;
         expect(calls[0]).to.equal('validate');
         expect(calls).to.include('restore:totpnonce:test');
+        expect(rateLimitCalls).to.deep.equal([
+            [`totp:${user}`, data, 0, consts.TOTP_FAILURES, consts.TOTP_WINDOW],
+            [`totp:${user}`, data, 1, consts.TOTP_FAILURES, consts.TOTP_WINDOW]
+        ]);
     });
 
     it('should validate and consume a nonce, then restore it with the remaining TTL', async () => {

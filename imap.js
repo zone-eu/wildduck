@@ -62,6 +62,8 @@ let mailboxHandler;
 let loggelf;
 
 let createInterface = (ifaceOptions, callback) => {
+    const maxLineLength = 'maxLineLength' in ifaceOptions ? ifaceOptions.maxLineLength : config.imap.maxLineLength;
+
     // Setup server
     const serverOptions = {
         secure: ifaceOptions.secure,
@@ -84,6 +86,7 @@ let createInterface = (ifaceOptions, callback) => {
         logger,
 
         maxMessage: config.imap.maxMB * 1024 * 1024,
+        maxLineLength,
         settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,

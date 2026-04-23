@@ -15,6 +15,8 @@ const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 describe('Messages tests', function () {
     this.timeout(20000); // eslint-disable-line no-invalid-this
 
+    const defaultRecipients = 10000;
+
     let user;
     let testMailbox;
     let trashId;
@@ -43,7 +45,7 @@ describe('Messages tests', function () {
                 password: 'secretpassword',
                 address: 'messagestestsuser@web.zone.test',
                 name: 'messages user',
-                recipients: 10000,
+                recipients: defaultRecipients,
                 pubKey: '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nxsBNBGmoM3UBCAC19FO8c9Wfgsr6hJll/JbM3q+bDQ/Bb+t9kLxHdfae6bRZ\nfAm0wgpI0yYNrI2OlAbq7Ax6T7y9ULzDl4KC0eVJUEfhwQAaxXUbdOhhZ/5G\n66c8JcBYouJcQLu1RZ9KV7/HcJ28vH0tEYw8/wB81l8RHMwsR1wFt0oz1qnI\nQo76f87EHv751MveG5Dt+s7GEJ569YIZQZYjE5ssBPJoZT7MzhxBj7tKyvv+\nOYC4DVy9lBn9yUE0fRc5HcxfrF98oJp9A9E67heUU9XBav9oryUOvMeRcm8Z\nyG6RvVG9vcvyOOC+xB5rtJWUxcKQJY5ehr5+gUBZy/aZ8afL3kNorUF5ABEB\nAAHNH1dpbGQgRHVjayA8dGVzdEB3aWxkZHVjay5lbWFpbD7CwIoEEAEIAD4F\ngmmoM3UECwkHCAmQJjX094XgEEUDFQgKBBYAAgECGQECmwMCHgEWIQTSj6BP\nf7Fss07AItAmNfT3heAQRQAABUIH/jw29K6Ed1eS9f9YcSQvrqMrwE2dE9O6\nGXYfXeEK3BTpTpYuz9/X1SNP9pIFrIbHCTsyv/oMfoIhjf4vz1DTzxfmvWQe\nLk+jwkT2oRMH9D6MBHNH35YkWCgSxbSoehLr9e4vAC1ePW6tPAOTr5yuJHql\njn+hMJ3ZLYkNcQjUqkhmvT+uUrsQkVeUBjHzrc7LomfPxgMnaRO6MGtw1iDq\n00lIq5weF4yO8zK796hWk1QXtzddX4QpEIwpKrGkyqlz66cQDBU/DJEanTuV\nxDiyma+uhrN2rOOxy8cuMJICwSWgXndEmToVpAyB5Fu2YmtPsUqXACFB+l7U\nWghE5tOgQAjOwE0EaagzdQEIAIqGzI69Sx+cWbAbwEf4x9J9H4T+Z5K6e/I1\nmNXMA5lTnXus81j7SMqFS7rF+RXnSC9QLyuctkqv0bCr/Uhzb2Dy6BF5SY09\njNwTg8snB5xLbWoG11o1UsVGyZ3invdRaym6qcdGEPpFwzy4CZDF8oAbaOfd\nBQTblTmxb9EyX0fYmONSrHfEPh8MY3mXr9Mg1aA3c2l4jXEPKA7gjbxt26hj\n4h0aCN5i9lXftMIfXeYATOeljyBESTO85CDFbLsylleB/5OtVjzOhukld5qM\nB13RdlKH93W6PYIPE8q3K6Kn1DanpqQhQljxwbmVDUrCvcpBnAbYFtpvFBV9\nLJAjeWUAEQEAAcLAdgQYAQgAKgWCaagzdQmQJjX094XgEEUCmwwWIQTSj6BP\nf7Fss07AItAmNfT3heAQRQAAoWgIAK/WgMe56uCRqJiOIX6XabAX3UyY/B0l\nBroO+sLATXsBpcuv4iRPIumHQaeeXVDK93+vRCnQi7ooOn1K1jE1+gwOJubt\nwN8mDWWzhe/CQh81eFYhD97A8qJbg79zUebmnS920yHRWsZs5hwSTS0zA3RL\nV6kDVw7py7ROYyQ66nTk45qgaYEDwyiGWuj+tlfHOKU71ZtMhWg+0rJjfn+c\nU8z+hIiZ5EtfHL8sSKX84YWX3rKXwl0vnpbUtADSwV3F9+foFuWHT3hSRhy5\ngPCEtZJSz1o6F2mqGab3n3qAw2+Ksp1RW3QJsy6kkOSQGmAdyMBlN1l8L5ct\nqidN19okZ6s=\n=XkH6\n-----END PGP PUBLIC KEY BLOCK-----',
                 encryptMessages: false
             })
@@ -125,6 +127,31 @@ describe('Messages tests', function () {
         queryThread = keywordMessageDetails.body.thread;
     });
 
+    it('should POST /users/:user/mailboxes/:mailbox/messages/:message/submit expect failure / recipient pre-check counts all recipients', async () => {
+        await server.put(`/users/${user}`).send({ recipients: 2 }).expect(200);
+
+        try {
+            const messageResponse = await server
+                .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
+                .send({
+                    draft: true,
+                    to: [{ address: 'limit1@to.com' }, { address: 'limit2@to.com' }, { address: 'limit3@to.com' }],
+                    from: { name: 'messagestestsuser@web.zone.test', address: 'messagestestsuser@web.zone.test' },
+                    subject: 'recipient limit pre-check',
+                    text: 'This message should be rejected before queueing'
+                })
+                .expect(200);
+
+            const message = messageResponse.body.message.id;
+
+            const submitResponse = await server.post(`/users/${user}/mailboxes/${testMailbox}/messages/${message}/submit`).send({}).expect(403);
+
+            expect(submitResponse.body.code).to.equal('RateLimitedError');
+        } finally {
+            await server.put(`/users/${user}`).send({ recipients: defaultRecipients }).expect(200);
+        }
+    });
+
     it('should POST /users/:user/mailboxes/:mailbox/messages/:message/submit expect success / normal submit', async () => {
         const messageResponse = await server
             .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
@@ -187,6 +214,80 @@ describe('Messages tests', function () {
         expect(messageData.body.attachments.length).to.be.eq(2);
 
         await server.put(`/users/${user}/mailboxes/${testMailbox}`).send({ encryptMessages: false }).expect(200);
+    });
+
+    it('should POST /users/:user/submit expect success / wildcard fromWhitelist must use suffix match', async () => {
+        await server
+            .put(`/users/${user}`)
+            .send({ fromWhitelist: ['*@example.com'] })
+            .expect(200);
+
+        let queueId;
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    from: {
+                        name: 'Spoof Attempt',
+                        address: 'anyone@example.com.evil.com'
+                    },
+                    to: [{ address: 'recipient@to.com' }],
+                    subject: 'wildcard whitelist suffix check',
+                    text: 'This message should be normalized to the account address'
+                })
+                .expect(200);
+
+            expect(submitResponse.body.success).to.be.true;
+            queueId = submitResponse.body.message.queueId;
+            expect(queueId).to.exist;
+
+            const messageResponse = await server
+                .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
+                .send({})
+                .expect(200);
+
+            expect(messageResponse.body.from.address).to.equal('messagestestsuser@web.zone.test');
+            expect(messageResponse.body.from.address).to.not.equal('anyone@example.com.evil.com');
+        } finally {
+            if (queueId) {
+                await server.delete(`/users/${user}/outbound/${queueId}`).expect(200);
+            }
+            await server.put(`/users/${user}`).send({ fromWhitelist: [] }).expect(200);
+        }
+    });
+
+    it('should POST /users/:user/submit expect success / preserve structured replyTo header', async () => {
+        const submitResponse = await server
+            .post(`/users/${user}/submit`)
+            .send({
+                uploadOnly: true,
+                from: {
+                    name: 'messages user',
+                    address: 'messagestestsuser@web.zone.test'
+                },
+                replyTo: {
+                    name: 'Reply Handler',
+                    address: 'reply-to@test.example'
+                },
+                to: [{ address: 'recipient@to.com' }],
+                subject: 'structured reply-to preservation',
+                text: 'This message should keep the Reply-To header'
+            })
+            .expect(200);
+
+        expect(submitResponse.body.success).to.be.true;
+
+        const messageResponse = await server
+            .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(messageResponse.body.replyTo).to.deep.equal([
+            {
+                name: 'Reply Handler',
+                address: 'reply-to@test.example'
+            }
+        ]);
     });
 
     it('should POST /users/:user/search expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
@@ -369,5 +470,30 @@ describe('Messages tests', function () {
 
         // Move all messages to trash
         await server.put(`/users/${user}/mailboxes/${testMailbox}/messages`).send({ message: '1:*', moveTo: trashId });
+    });
+
+    it('should DELETE /users/:user/mailboxes/:mailbox/messages expect failure / reject mailbox from another user', async () => {
+        const otherUserResponse = await server
+            .post('/users')
+            .send({
+                username: 'messagesotherusertests',
+                password: 'secretpassword',
+                address: 'messagesotherusertests@web.zone.test',
+                name: 'other messages user'
+            })
+            .expect(200);
+
+        const otherUser = otherUserResponse.body.id;
+
+        const otherMailboxResponse = await server
+            .post(`/users/${otherUser}/mailboxes`)
+            .send({ path: '/other-test-mailbox', hidden: false, retention: 10000 })
+            .expect(200);
+
+        const otherMailbox = otherMailboxResponse.body.id;
+
+        const response = await server.delete(`/users/${user}/mailboxes/${otherMailbox}/messages`).send({}).expect(404);
+
+        expect(response.body.code).to.equal('NoSuchMailbox');
     });
 });

@@ -20,9 +20,28 @@ jobs:
               env:
                   webhook_url: ${{ secrets.ZONE_WEBHOOK_URL }}
                   curl_options: '--fail -s'
-                  data: '{"channel":"wildduck-changelog", "text": "*${{ github.actor }}* pushed <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}> to *${{ github.ref_name }}*\n ${{ github.event.head_commit.message }}"}'
+                  GITHUB_ACTOR_NAME: ${{ github.actor }}
+                  GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+                  GITHUB_SHA_VALUE: ${{ github.sha }}
+                  GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+                  GITHUB_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
               run: |
+                  data="$(
+                    python3 - <<'PY'
+                    import json
+                    import os
+
+                    sha = os.environ["GITHUB_SHA_VALUE"]
+                    text = (
+                        f'*{os.environ["GITHUB_ACTOR_NAME"]}* pushed '
+                        f'<https://github.com/{os.environ["GITHUB_REPOSITORY_NAME"]}/commit/{sha}|{sha}> '
+                        f'to *{os.environ["GITHUB_REF_NAME_VALUE"]}*\n'
+                        f' {os.environ["GITHUB_HEAD_COMMIT_MESSAGE"]}'
+                    )
+                    print(json.dumps({"channel": "wildduck-changelog", "text": text}))
+                    PY
+                  )"
                   curl $curl_options \
                   -H "Content-Type: application/json" \
                   -H "User-Agent: GitHub-Action" \
-                  --data "$data" $webhook_url
+                  --data "$data" "$webhook_url"

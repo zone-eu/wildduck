@@ -10,6 +10,10 @@ secure = true
 # Max size for messages uploaded via APPEND
 maxMB = 25
 
+# Max length for a single IMAP command line in bytes, excluding literal payloads.
+# Set to 0 to disable the limit.
+maxLineLength = 16384
+
 # delete messages from \Trash and \Junk after retention days
 retention = 30
 
