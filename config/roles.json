@@ -306,7 +306,30 @@
 
         "users": {
             "read:own": ["*", "!tags", "!disabledScopes", "!internalData"],
-            "update:own": ["*", "!tags", "!disabledScopes", "!internalData"]
+            "update:own": [
+                "user",
+                "existingPassword",
+                "password",
+                "allowUnsafe",
+                "language",
+                "name",
+                "targets",
+                "mtaRelay",
+                "spamLevel",
+                "uploadSentMessages",
+                "metaData",
+                "pubKey",
+                "smimeCerts",
+                "smimeCipher",
+                "smimeKeyTransport",
+                "encryptMessages",
+                "encryptForwarded",
+                "retention",
+                "disable2fa",
+                "protocol",
+                "sess",
+                "ip"
+            ]
         },
 
         "asps": {

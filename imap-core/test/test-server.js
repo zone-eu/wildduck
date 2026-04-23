@@ -202,7 +202,7 @@ module.exports = function (options) {
             path: mailbox,
             uidValidity: Date.now(),
             uidNext: 1,
-            modifyIndex: 0,
+            modifyIndex: 1,
             messages: [],
             journal: []
         });

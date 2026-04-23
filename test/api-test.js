@@ -598,6 +598,79 @@ describe('API tests', function () {
             ]);
         });
 
+        it('should GET /users/:user/mailboxes/:mailbox/messages/:message/attachments/:attachment expect original content disposition', async () => {
+            const message = {
+                from: {
+                    name: 'test tester',
+                    address: 'testuser@example.com'
+                },
+                subject: 'attachment disposition',
+                text: 'Hello hello world!',
+                attachments: [
+                    {
+                        filename: 'inline-test.txt',
+                        contentType: 'text/csv',
+                        contentDisposition: 'inline',
+                        content: Buffer.from('test').toString('base64')
+                    }
+                ]
+            };
+
+            const response = await server.post(`/users/${userId}/mailboxes/${inbox}/messages`).send(message).expect(200);
+            expect(response.body.success).to.be.true;
+
+            const messageDataResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}`).expect(200);
+            const attachment = messageDataResponse.body.attachments[0];
+
+            expect(attachment).to.exist;
+            expect(attachment.disposition).to.equal('inline');
+
+            const downloadResponse = await server
+                .get(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}/attachments/${attachment.id}`)
+                .expect(200);
+
+            expect(downloadResponse.headers['content-disposition']).to.match(/^inline\b/i);
+            expect(downloadResponse.text).to.equal('test');
+        });
+
+        it('should GET /users/:user/mailboxes/:mailbox/messages/:message/attachments/:attachment expect utf8 filename in content disposition', async () => {
+            const utf8Filename = 'täst-Ā.txt';
+            const expectedHeaderFilename = "filename*0*=utf-8''t%C3%A4st-%C4%80.txt";
+            const message = {
+                from: {
+                    name: 'test tester',
+                    address: 'testuser@example.com'
+                },
+                subject: 'attachment disposition utf8',
+                text: 'Hello hello world!',
+                attachments: [
+                    {
+                        filename: utf8Filename,
+                        contentType: 'text/csv',
+                        contentDisposition: 'inline',
+                        content: Buffer.from('test').toString('base64')
+                    }
+                ]
+            };
+
+            const response = await server.post(`/users/${userId}/mailboxes/${inbox}/messages`).send(message).expect(200);
+            expect(response.body.success).to.be.true;
+
+            const messageDataResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}`).expect(200);
+            const attachment = messageDataResponse.body.attachments[0];
+
+            expect(attachment).to.exist;
+            expect(attachment.filename).to.equal(utf8Filename);
+
+            const downloadResponse = await server
+                .get(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}/attachments/${attachment.id}`)
+                .expect(200);
+
+            expect(downloadResponse.headers['content-disposition']).to.match(/^inline\b/i);
+            expect(downloadResponse.headers['content-disposition']).to.include(expectedHeaderFilename);
+            expect(downloadResponse.text).to.equal('test');
+        });
+
         it('should POST /users/{user}/mailboxes/{mailbox}/messages/{message}/submit expect success / should create a draft message and submit for delivery', async () => {
             const message = {
                 from: {

@@ -24,6 +24,7 @@ const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -492,6 +493,7 @@ module.exports = done => {
             };
         }
         message = message || {};
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
@@ -510,9 +512,12 @@ module.exports = done => {
         gelf.emit('gelf.log', message);
     };
 
+    settingsHandler = new SettingsHandler({ db: db.database });
+
     notifier = new ImapNotifier({
         database: db.database,
-        redis: db.redis
+        redis: db.redis,
+        settingsHandler
     });
 
     messageHandler = new MessageHandler({
@@ -521,6 +526,7 @@ module.exports = done => {
         redis: db.redis,
         gridfs: db.gridfs,
         attachments: config.attachments,
+        settingsHandler,
         loggelf: message => loggelf(message)
     });
 
@@ -544,6 +550,7 @@ module.exports = done => {
         users: db.users,
         redis: db.redis,
         notifier,
+        settingsHandler,
         loggelf: message => loggelf(message)
     });
 
@@ -554,8 +561,6 @@ module.exports = done => {
         bucket: 'audit',
         loggelf: message => loggelf(message)
     });
-
-    settingsHandler = new SettingsHandler({ db: db.database });
 
     server.loggelf = (message, requiredKeys = []) => loggelf(message, requiredKeys);
 

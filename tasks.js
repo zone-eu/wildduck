@@ -27,9 +27,11 @@ const taskAudit = require('./lib/tasks/audit');
 const taskAcme = require('./lib/tasks/acme');
 const taskAcmeUpdate = require('./lib/tasks/acme-update');
 const taskClearFolder = require('./lib/tasks/clear-folder');
+const taskMailboxRetention = require('./lib/tasks/mailbox-retention');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let messageHandler;
 let mailboxHandler;
@@ -65,6 +67,7 @@ module.exports.start = callback => {
         }
 
         message = message || {};
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
@@ -670,6 +673,14 @@ function processTask(task, data, callback) {
                     callback(null, true);
                 }
             );
+
+        case 'mailbox-retention':
+            return taskMailboxRetention(task, data, { loggelf }, err => {
+                if (err) {
+                    return callback(err);
+                }
+                callback(null, true);
+            });
 
         case 'search-apply':
             return taskSearchApply(

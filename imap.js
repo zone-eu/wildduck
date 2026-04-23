@@ -16,6 +16,7 @@ const certs = require('./lib/certs');
 const Gelf = require('gelf');
 const os = require('os');
 const Lock = require('ioredfour');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 const onFetch = require('./lib/handlers/on-fetch');
 const onAuth = require('./lib/handlers/on-auth');
@@ -61,6 +62,8 @@ let mailboxHandler;
 let loggelf;
 
 let createInterface = (ifaceOptions, callback) => {
+    const maxLineLength = 'maxLineLength' in ifaceOptions ? ifaceOptions.maxLineLength : config.imap.maxLineLength;
+
     // Setup server
     const serverOptions = {
         secure: ifaceOptions.secure,
@@ -83,6 +86,7 @@ let createInterface = (ifaceOptions, callback) => {
         logger,
 
         maxMessage: config.imap.maxMB * 1024 * 1024,
+        maxLineLength,
         settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,
@@ -217,6 +221,7 @@ module.exports = done => {
         }
 
         message = message || {};
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
@@ -242,10 +247,13 @@ module.exports = done => {
         database: db.database
     });
 
+    let settingsHandler = new SettingsHandler({ db: db.database });
+
     // setup notification system for updates
     notifier = new ImapNotifier({
         database: db.database,
-        redis: db.redis
+        redis: db.redis,
+        settingsHandler
     });
 
     messageHandler = new MessageHandler({
@@ -254,6 +262,7 @@ module.exports = done => {
         redis: db.redis,
         gridfs: db.gridfs,
         attachments: config.attachments,
+        settingsHandler,
         loggelf: message => loggelf(message)
     });
 
@@ -269,10 +278,9 @@ module.exports = done => {
         users: db.users,
         redis: db.redis,
         notifier,
+        settingsHandler,
         loggelf: message => loggelf(message)
     });
-
-    let settingsHandler = new SettingsHandler({ db: db.database });
 
     let ifaceOptions = [
         {

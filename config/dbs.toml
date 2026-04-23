@@ -26,6 +26,10 @@ sender = "zone-mta"
 
 #queued="mail"
 
+# Worker identifier prefix for distributing notifications.
+# Each process appends :PID automatically. Set to false to use os.hostname().
+workerId = false
+
 [redis]
 host = "127.0.0.1"
 port = 6379

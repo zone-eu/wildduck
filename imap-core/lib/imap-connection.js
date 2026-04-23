@@ -55,7 +55,9 @@ class IMAPConnection extends EventEmitter {
         this._upgrading = false;
 
         // Parser instance for the incoming stream
-        this._parser = new IMAPStream();
+        this._parser = new IMAPStream({
+            maxLineLength: this._server.options.maxLineLength
+        });
 
         // Set handler for incoming commands
         this._parser.oncommand = this._onCommand.bind(this);
@@ -476,7 +478,7 @@ class IMAPConnection extends EventEmitter {
             };
         }
 
-        errors.notifyConnection(this.this, err);
+        errors.notifyConnection(this, err);
 
         this.logger.error(
             {
@@ -525,7 +527,7 @@ class IMAPConnection extends EventEmitter {
     }
 
     /**
-     * Checks if a selected command is available and ivokes it
+     * Checks if a selected command is available and invokes it
      *
      * @param {Buffer} command Single line of data from the client
      * @param {Function} callback Callback to run once the command is processed
@@ -537,6 +539,13 @@ class IMAPConnection extends EventEmitter {
 
         if (this._upgrading) {
             // ignore any commands before TLS upgrade is finished
+            return callback();
+        }
+
+        if (command && command.lineTooLong) {
+            this._currentCommand = false;
+            this._nextHandler = false;
+            this.send('* BAD Command line too long');
             return callback();
         }
 

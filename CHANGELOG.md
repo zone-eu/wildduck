@@ -1,5 +1,89 @@
 # Changelog
 
+## [1.48.0](https://github.com/zone-eu/wildduck/compare/v1.47.2...v1.48.0) (2026-04-09)
+
+
+### Features
+
+* S/MIME at-rest encryption support ([#1011](https://github.com/zone-eu/wildduck/issues/1011)) ([f4784d5](https://github.com/zone-eu/wildduck/commit/f4784d58bcc42c515dad1ed1000efaaf911f665b))
+
+
+### Bug Fixes
+
+* add timeout to workflows ([#1053](https://github.com/zone-eu/wildduck/issues/1053)) ([bb9c54c](https://github.com/zone-eu/wildduck/commit/bb9c54cc82117f81e4aa09cd47b53dc337d425b8))
+
+## [1.47.2](https://github.com/zone-eu/wildduck/compare/v1.47.1...v1.47.2) (2026-04-09)
+
+
+### Bug Fixes
+
+* bump deps and generate docs ([#1050](https://github.com/zone-eu/wildduck/issues/1050)) ([8bd42c1](https://github.com/zone-eu/wildduck/commit/8bd42c16f1b7a5a1191b210b8e4c86d4516770dd))
+* fix release workflow ([#1047](https://github.com/zone-eu/wildduck/issues/1047)) ([caad657](https://github.com/zone-eu/wildduck/commit/caad65749cf9c73bd503f5c575d46cc9a9d00314))
+
+## [1.47.1](https://github.com/zone-eu/wildduck/compare/v1.47.0...v1.47.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* ZMS-43: Changing mailbox retention applies to past messages ([#1038](https://github.com/zone-eu/wildduck/issues/1038)) ([8c11c3b](https://github.com/zone-eu/wildduck/commit/8c11c3befe07b78cc9f99db1e5e2ed49e2642784))
+
+## [1.47.0](https://github.com/zone-eu/wildduck/compare/v1.46.26...v1.47.0) (2026-04-08)
+
+
+### Features
+
+* ZMS-8: optimize redis fanout strategy for notifications ([#992](https://github.com/zone-eu/wildduck/issues/992)) ([b069698](https://github.com/zone-eu/wildduck/commit/b06969802d9140baff5f908341afbdb03df36d1b))
+
+
+### Bug Fixes
+
+* ZMS-45: Implement totp nonce system for safer totp checks ([#1042](https://github.com/zone-eu/wildduck/issues/1042)) ([2eba521](https://github.com/zone-eu/wildduck/commit/2eba521338a8cf30e2d6efd768bf11a026f38789))
+* ZMS-8-2: add support for legacy wd_events channel parallel to new distributed fan-out strategy ([#1044](https://github.com/zone-eu/wildduck/issues/1044)) ([7bf6a9d](https://github.com/zone-eu/wildduck/commit/7bf6a9d0c244cca1378c5f10193f17e2dc487330))
+
+## [1.46.26](https://github.com/zone-eu/wildduck/compare/v1.46.25...v1.46.26) (2026-03-30)
+
+
+### Bug Fixes
+
+* Added `Content-Disposition` header to attachment download endpoint response headers ([#1032](https://github.com/zone-eu/wildduck/issues/1032)) ([2759a1b](https://github.com/zone-eu/wildduck/commit/2759a1b58241b7db7c7de897dfe8b397b70ad09b))
+* bump deps ([#1039](https://github.com/zone-eu/wildduck/issues/1039)) ([a3d1d2f](https://github.com/zone-eu/wildduck/commit/a3d1d2f0e5bebda918645ce2816324ad1c3f2635))
+* ZMS-28: filters, return full http forwarding target ([#1027](https://github.com/zone-eu/wildduck/issues/1027)) ([39e0155](https://github.com/zone-eu/wildduck/commit/39e01557e178cc14622dc492c1230b428288725a))
+* ZMS-31: Log updates stream if configured ([#1028](https://github.com/zone-eu/wildduck/issues/1028)) ([d90ae09](https://github.com/zone-eu/wildduck/commit/d90ae09cbe1eb77600a691475df2b66a7a44a561))
+* ZMS-40: marked.spam webhook add verificationResults to payload ([#1029](https://github.com/zone-eu/wildduck/issues/1029)) ([df2f69d](https://github.com/zone-eu/wildduck/commit/df2f69d042f6a9da7df8558770ad0ce504ab4094))
+* ZMS-44: Add require2faEnabled flag to user ([#1035](https://github.com/zone-eu/wildduck/issues/1035)) ([e30ba0c](https://github.com/zone-eu/wildduck/commit/e30ba0c6be795c981b93f5cb554ea3ed3899a0c6))
+
+## [1.46.25](https://github.com/zone-eu/wildduck/compare/v1.46.24...v1.46.25) (2026-03-12)
+
+
+### Bug Fixes
+
+* fix rfc-2231 regex (multi digit continuation), add tests ([#1020](https://github.com/zone-eu/wildduck/issues/1020)) ([420c1e2](https://github.com/zone-eu/wildduck/commit/420c1e21f92c20bafd63440dc3cd19d3f8d0a8d0))
+* variable typo fix ([a4dafca](https://github.com/zone-eu/wildduck/commit/a4dafca4cdf6b41a3f8d8787dcf0cf4caf94b6d8))
+* ZMS-16: implement message deduplication on MX receive ([#1000](https://github.com/zone-eu/wildduck/issues/1000)) ([6a836b8](https://github.com/zone-eu/wildduck/commit/6a836b825f3e3583b812e8d501a2e680682d5055))
+* ZMS-19: Improve gelf error logging ([#1009](https://github.com/zone-eu/wildduck/issues/1009)) ([bf916eb](https://github.com/zone-eu/wildduck/commit/bf916ebb4b77a680eb4b4821b4d6f186cf2c2d57))
+* ZMS-2: Make imapcommand error logs less critical and without stack trace ([#1024](https://github.com/zone-eu/wildduck/issues/1024)) ([82f9c1a](https://github.com/zone-eu/wildduck/commit/82f9c1af7a758e5c7219864ed9433aa814e111ae))
+* ZMS-26: On move fetch target mailbox's user only one ([#1022](https://github.com/zone-eu/wildduck/issues/1022)) ([c195fc4](https://github.com/zone-eu/wildduck/commit/c195fc4755a82ee56c3c254cdab7e57585b2cdfb))
+* ZMS-29: Various IMAP fixes ([#1023](https://github.com/zone-eu/wildduck/issues/1023)) ([dd3b927](https://github.com/zone-eu/wildduck/commit/dd3b92720621faf35b99d62723d18f87efac2cc6))
+* ZMS-30: Update verification results return schema ([#1025](https://github.com/zone-eu/wildduck/issues/1025)) ([a0c0636](https://github.com/zone-eu/wildduck/commit/a0c0636ad7361c4ae54df9ffe0c5b117adf8f6e1))
+
+## [1.46.24](https://github.com/zone-eu/wildduck/compare/v1.46.23...v1.46.24) (2026-03-06)
+
+
+### Bug Fixes
+
+* [#86](https://github.com/zone-eu/wildduck/issues/86)c89t0yc: Remove --platform=${BUILDPLATFORM} from Dockerfile ([#1004](https://github.com/zone-eu/wildduck/issues/1004)) ([ad1c444](https://github.com/zone-eu/wildduck/commit/ad1c444d73b5a1102bb2b2cb1389147aac5fe0fb))
+* ZMS-23: messageHandler delAsync add subject to archived log ([#1012](https://github.com/zone-eu/wildduck/issues/1012)) ([1634f49](https://github.com/zone-eu/wildduck/commit/1634f4911c522b9e9e442d49571c771cc17759b6))
+* ZMS-24: small messages search fixes ([#1014](https://github.com/zone-eu/wildduck/issues/1014)) ([4b91116](https://github.com/zone-eu/wildduck/commit/4b91116759648ebc714f718c3a1dc5514caf2565))
+* ZMS-27: when creating thread use $literal for subject ([#1017](https://github.com/zone-eu/wildduck/issues/1017)) ([6efc5a4](https://github.com/zone-eu/wildduck/commit/6efc5a4543527dbc3ff4856949a91260037f8255))
+
+## [1.46.23](https://github.com/zone-eu/wildduck/compare/v1.46.22...v1.46.23) (2026-02-25)
+
+
+### Bug Fixes
+
+* **RFC5987-filename:** ZMS-14: Allow RFC5987 encoded filenames (filename*=charset'language'text) ([#993](https://github.com/zone-eu/wildduck/issues/993)) ([53e220a](https://github.com/zone-eu/wildduck/commit/53e220a8e290c43262a4a1588d9bed4b757bd3cb))
+* ZMS-3: reduce race condition errors when uploading sub-chunk size attachments ([#997](https://github.com/zone-eu/wildduck/issues/997)) ([524529e](https://github.com/zone-eu/wildduck/commit/524529ec3e94def2d54bbb68bce8863ed6bd8535))
+
 ## [1.46.22](https://github.com/zone-eu/wildduck/compare/v1.46.21...v1.46.22) (2026-02-16)
 
 

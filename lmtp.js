@@ -14,6 +14,7 @@ const db = require('./lib/db');
 const certs = require('./lib/certs');
 const Gelf = require('gelf');
 const os = require('os');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let messageHandler;
 let userHandler;
@@ -75,6 +76,9 @@ const serverOptions = {
                 encryptMessages: true,
                 encryptForwarded: true,
                 pubKey: true,
+                smimeCerts: true,
+                smimeCipher: true,
+                smimeKeyTransport: true,
                 spamLevel: true
             },
             (err, userData) => {
@@ -217,6 +221,7 @@ module.exports = done => {
             };
         }
         message = message || {};
+        normalizeLoggelfMessage(message);
 
         if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
             message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');

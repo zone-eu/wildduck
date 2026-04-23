@@ -390,6 +390,24 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should not crash on LIST patterns containing braces', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LIST "" "%{2}"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* LIST /m.test(resp)).to.be.false;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 
     describe('LSUB', function () {
@@ -451,6 +469,24 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should not crash on LSUB patterns containing braces', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" "%{2}"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* LSUB /m.test(resp)).to.be.false;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 
     describe('CREATE', function () {
@@ -471,6 +507,27 @@ describe('IMAP Protocol integration tests', function () {
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\Noselect \\HasChildren) "/" "parent"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "parent/child"\r\n') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should default HIGHESTMODSEQ to 1 for a new mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE modseqtest', 'T3 SELECT modseqtest', 'T4 STATUS modseqtest (HIGHESTMODSEQ)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    expect(/^\* OK \[HIGHESTMODSEQ 1\]/m.test(resp)).to.be.true;
+                    expect(/^T3 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
+                    expect(/^\* STATUS modseqtest \(HIGHESTMODSEQ 1\)$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
                     done();
                 }
             );
@@ -1072,6 +1129,54 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should return MODIFIED when conditional STORE also targets expunged messages', function (done) {
+            let mailbox = 'condstore-race';
+            let message = Buffer.from('From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: HELLO!\r\n\r\nWORLD!');
+
+            let setupCmds = ['S1 LOGIN testuser pass', 'S2 CREATE ' + mailbox];
+            for (let i = 0; i < 7; i++) {
+                setupCmds.push('S' + (i + 3) + ' APPEND ' + mailbox + ' {' + message.length + '}\r\n' + message.toString('binary'));
+            }
+            setupCmds.push('S10 SELECT ' + mailbox);
+            setupCmds.push('S11 STORE 2 +FLAGS (MyFlag1)');
+            setupCmds.push('S12 LOGOUT');
+
+            let primaryCmds = ['A1 LOGIN testuser pass', 'A2 SELECT ' + mailbox, 'SLEEP', 'B001 STORE 1:7 (UNCHANGEDSINCE 7) +FLAGS (\\Seen)', 'A4 LOGOUT'];
+            let expungeCmds = ['C1 LOGIN testuser pass', 'C2 SELECT ' + mailbox, 'C3 STORE 4:7 +FLAGS.SILENT (\\Deleted)', 'C4 EXPUNGE', 'C5 LOGOUT'];
+
+            let runClient = commands =>
+                new Promise(resolve => {
+                    testClient(
+                        {
+                            commands,
+                            secure: true,
+                            port
+                        },
+                        resp => resolve(resp.toString())
+                    );
+                });
+
+            runClient(setupCmds)
+                .then(setupResp => {
+                    expect(/^S11 OK/m.test(setupResp)).to.be.true;
+
+                    let primaryRun = runClient(primaryCmds);
+                    let expungeRun = new Promise(resolve => setTimeout(resolve, 1000)).then(() => runClient(expungeCmds));
+
+                    return Promise.all([primaryRun, expungeRun]);
+                })
+                .then(([primaryResp, expungeResp]) => {
+                    expect(/^C4 OK/m.test(expungeResp)).to.be.true;
+                    expect(primaryResp.match(/^\* \d+ FETCH \(FLAGS \(\\Seen\) MODSEQ \(\d+\)\)$/gm)).to.have.length(2);
+                    expect(/^\* 1 FETCH \(FLAGS \(\\Seen\) MODSEQ \(\d+\)\)$/m.test(primaryResp)).to.be.true;
+                    expect(/^\* 3 FETCH \(FLAGS \(\\Seen\) MODSEQ \(\d+\)\)$/m.test(primaryResp)).to.be.true;
+                    expect(/^\* \d+ EXPUNGE$/m.test(primaryResp)).to.be.false;
+                    expect(/^B001 NO \[MODIFIED 2\] Some of the messages no longer exist$/m.test(primaryResp)).to.be.true;
+                    done();
+                })
+                .catch(done);
+        });
     });
 
     describe('UID STORE', function () {
@@ -1312,13 +1417,32 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.slice(/\n/).indexOf('* 3 FETCH (FLAGS (\\Seen) UID 103 MODSEQ (3))') >= 0).to.be.true; // UID FETCH FLAGS
-                    expect(resp.slice(/\n/).indexOf('* 3 FETCH (FLAGS (\\Seen) MODSEQ (3))') >= 0).to.be.true; // FETCH FLAGS
+                    expect(/^\* 3 FETCH \(FLAGS \(\\Seen\) UID 103 MODSEQ \(4\)\)$/m.test(resp)).to.be.true; // UID FETCH FLAGS
+                    expect(/^\* 3 FETCH \(FLAGS \(\\Seen\) MODSEQ \(4\)\)$/m.test(resp)).to.be.true; // FETCH FLAGS
                     expect(resp.match(/^\* \d+ FETCH/gm).length).to.equal(2);
                     expect(/^T3 OK/m.test(resp)).to.be.true;
                     expect(/^T4 OK/m.test(resp)).to.be.true;
                     expect(/^T5 OK/m.test(resp)).to.be.true;
                     expect(/^T6 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should enable CONDSTORE after FETCH MODSEQ', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 FETCH 1 (MODSEQ)', 'T4 STORE 1 +FLAGS (MyFlag1)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* 1 FETCH \(MODSEQ \(\d+\)\)$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(MyFlag1\) MODSEQ \(\d+\)\)$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
                     done();
                 }
             );

@@ -2,7 +2,7 @@
 'use strict';
 
 const { expect } = require('chai');
-const { extractQuotedPhrases, parseFilterQueryText, filterQueryTermMatches } = require('../lib/tools');
+const { extractQuotedPhrases, parseFilterQueryText, filterQueryTermMatches, getRelayData } = require('../lib/tools');
 
 describe('Email Filtering helper functions', () => {
     describe('extractQuotedPhrases', () => {
@@ -369,6 +369,97 @@ describe('Email Filtering helper functions', () => {
 
             expect(parsed.andTerms).to.deep.equal(['__PHRASE_0__', '__PHRASE_1__', 'regular']);
             expect(parsed.exactPhrases).to.deep.equal(['first phrase', 'second phrase']);
+        });
+    });
+
+    describe('getRelayData', () => {
+        [
+            {
+                title: 'should return expected structure for a hostname relay without auth',
+                input: 'smtp://mx.example.com',
+                expected: {
+                    mx: [
+                        {
+                            priority: 0,
+                            mx: true,
+                            exchange: 'mx.example.com',
+                            A: [],
+                            AAAA: []
+                        }
+                    ],
+                    mxPort: 25,
+                    mxAuth: false,
+                    mxSecure: false,
+                    url: 'smtp://mx.example.com'
+                }
+            },
+            {
+                title: 'should return expected structure for a hostname relay with auth and port',
+                input: 'smtp://user:pass@mx.example.com:2525',
+                expected: {
+                    mx: [
+                        {
+                            priority: 0,
+                            mx: true,
+                            exchange: 'mx.example.com',
+                            A: [],
+                            AAAA: []
+                        }
+                    ],
+                    mxPort: '2525',
+                    mxAuth: {
+                        user: 'user',
+                        pass: 'pass'
+                    },
+                    mxSecure: false,
+                    url: 'smtp://user:pass@mx.example.com:2525'
+                }
+            },
+            {
+                title: 'should return expected structure for an IPv4 relay',
+                input: 'smtp://192.0.2.15:25',
+                expected: {
+                    mx: [
+                        {
+                            priority: 0,
+                            mx: true,
+                            exchange: '192.0.2.15',
+                            A: ['192.0.2.15'],
+                            AAAA: []
+                        }
+                    ],
+                    mxPort: '25',
+                    mxAuth: false,
+                    mxSecure: false,
+                    url: 'smtp://192.0.2.15:25'
+                }
+            },
+            {
+                title: 'should return expected structure for an IPv6 relay',
+                input: 'smtps://user:p%40ss@[2001:db8::1]:465',
+                expected: {
+                    mx: [
+                        {
+                            priority: 0,
+                            mx: true,
+                            exchange: '2001:db8::1',
+                            A: [],
+                            AAAA: ['2001:db8::1']
+                        }
+                    ],
+                    mxPort: '465',
+                    mxAuth: {
+                        user: 'user',
+                        pass: 'p@ss'
+                    },
+                    mxSecure: true,
+                    url: 'smtps://user:p%40ss@[2001:db8::1]:465'
+                }
+            }
+        ].forEach(testCase => {
+            it(testCase.title, () => {
+                expect(getRelayData(testCase.input)).to.deep.equal(testCase.expected);
+            });
         });
     });
 });
