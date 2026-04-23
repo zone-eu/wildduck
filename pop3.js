@@ -132,7 +132,7 @@ const serverOptions = {
                 }
 
                 session.user.mailbox = mailbox._id;
-                let messageIndexKey = `pxm:{${session.user.id.toString()}}`;
+                let messageIndexKey = `pxm:${tools.redisHashTag(db.redis, session.user.id.toString())}`;
 
                 db.redis.hget(messageIndexKey, mailbox._id.toString(), (err, messageIndex) => {
                     let lastIndex = !err && messageIndex;
@@ -226,7 +226,7 @@ const serverOptions = {
                 return callback(err);
             }
 
-            let counterKey = `pdw:{${session.user.id.toString()}}`;
+            let counterKey = `pdw:${tools.redisHashTag(db.redis, session.user.id.toString())}`;
 
             messageHandler.counters.ttlcounter(counterKey, 0, limit, false, (err, res) => {
                 if (err) {
