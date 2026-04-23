@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.48.1](https://github.com/zone-eu/wildduck/compare/v1.48.0...v1.48.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* fix slack and deploy workflows ([#1059](https://github.com/zone-eu/wildduck/issues/1059)) ([ebd5b61](https://github.com/zone-eu/wildduck/commit/ebd5b61685c83adceabfc48a496b203747c3a1d8))
+* ZMS-49: Various security and QoL fixes ([#1056](https://github.com/zone-eu/wildduck/issues/1056)) ([2bfaa31](https://github.com/zone-eu/wildduck/commit/2bfaa31e0ca7543ce597e2df13127e870b72a38e))
+
 ## [1.48.0](https://github.com/zone-eu/wildduck/compare/v1.47.2...v1.48.0) (2026-04-09)
 
 
