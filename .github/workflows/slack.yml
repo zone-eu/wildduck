@@ -20,9 +20,17 @@ jobs:
               env:
                   webhook_url: ${{ secrets.ZONE_WEBHOOK_URL }}
                   curl_options: '--fail -s'
-                  data: '{"channel":"wildduck-changelog", "text": "*${{ github.actor }}* pushed <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}> to *${{ github.ref_name }}*\n ${{ github.event.head_commit.message }}"}'
+                  GITHUB_ACTOR_NAME: ${{ github.actor }}
+                  GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+                  GITHUB_SHA_VALUE: ${{ github.sha }}
+                  GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+                  GITHUB_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
               run: |
+                  text="*${GITHUB_ACTOR_NAME}* pushed <https://github.com/${GITHUB_REPOSITORY_NAME}/commit/${GITHUB_SHA_VALUE}|${GITHUB_SHA_VALUE}> to *${GITHUB_REF_NAME_VALUE}*"
+                  text="${text}"$'\n'" ${GITHUB_HEAD_COMMIT_MESSAGE}"
+                  data="$(jq -n --arg channel "wildduck-changelog" --arg text "$text" '{channel: $channel, text: $text}')"
+
                   curl $curl_options \
                   -H "Content-Type: application/json" \
                   -H "User-Agent: GitHub-Action" \
-                  --data "$data" $webhook_url
+                  --data "$data" "$webhook_url"

@@ -2,8 +2,13 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const supertest = require('supertest');
 const chai = require('chai');
+const { once } = require('events');
+const BSON = require('bson');
+const { ExportStream } = require('../../lib/export');
+const db = require('../../lib/db');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -12,6 +17,55 @@ const config = require('@zone-eu/wild-config');
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 const os = require('os');
+
+const createImportBuffer = async entries => {
+    const exporter = new ExportStream({
+        type: 'wildduck_data_export'
+    });
+
+    const chunks = [];
+    exporter.on('data', chunk => chunks.push(chunk));
+
+    for (let entry of entries) {
+        exporter.write(entry);
+    }
+
+    exporter.end();
+    await once(exporter, 'end');
+
+    return Buffer.concat(chunks);
+};
+
+const createRoleToken = async role => {
+    await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+
+    const accessToken = crypto.randomBytes(20).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+    const tokenData = {
+        user: 'root',
+        role,
+        ttl: 3600,
+        created: Date.now().toString()
+    };
+
+    tokenData.s = crypto
+        .createHmac('sha256', config.api.accessControl.secret)
+        .update(
+            JSON.stringify({
+                token: accessToken,
+                user: tokenData.user,
+                role: tokenData.role
+            })
+        )
+        .digest('hex');
+
+    await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
+
+    return {
+        accessToken,
+        tokenHash
+    };
+};
 
 describe('API Users', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -212,6 +266,35 @@ describe('API Users', function () {
         expect(response.body.id).to.equal(user);
     });
 
+    it('should PUT /users/:user expect success / using a token and ignore admin-only fields', async () => {
+        const name = 'John Smith Token';
+
+        const response = await server
+            .put(`/users/me?accessToken=${token}`)
+            .send({
+                existingPassword: 'secretvalue',
+                name,
+                quota: 999999999999,
+                recipients: 999999,
+                require2faEnabled: false,
+                featureFlags: {
+                    indexing: true
+                }
+            })
+            .expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const getResponse = await server.get(`/users/me?accessToken=${token}`).expect(200);
+        expect(getResponse.body.success).to.be.true;
+        expect(getResponse.body.id).to.equal(user);
+        expect(getResponse.body.name).to.equal(name);
+        expect(getResponse.body.limits.quota.allowed).to.equal(1073741824);
+        expect(getResponse.body.limits.recipients.allowed).to.equal(2000);
+        expect(getResponse.body.require2faEnabled).to.equal(true);
+        expect(getResponse.body.featureFlags).to.deep.equal({});
+    });
+
     it('should GET /users/{user} expect failure / using a token and fail against other user', async () => {
         let response = await server.get(`/users/${user2}?accessToken=${token}`);
         expect(response.body.code).to.equal('MissingPrivileges');
@@ -292,6 +375,7 @@ describe('API Users', function () {
         const response = await server
             .put(`/users/me?accessToken=${token1}`)
             .send({
+                existingPassword: 'secretvalue',
                 password: 'secretvalue'
             })
             .expect(200);
@@ -453,5 +537,56 @@ describe('API Users', function () {
             })
             .expect(403);
         expect(authResponseFail.body.error).to.exist;
+    });
+
+    it('should POST /data/import expect failure count / reject unsupported collections', async () => {
+        const { accessToken, tokenHash } = await createRoleToken('export');
+        try {
+            const importedFilterId = new BSON.ObjectId();
+            const importBuffer = await createImportBuffer([
+                {
+                    client: 'database',
+                    collection: 'filters',
+                    entry: BSON.serialize({
+                        _id: importedFilterId,
+                        user: new BSON.ObjectId(user),
+                        query: {
+                            headers: {
+                                to: 'imported.filter@example.com'
+                            }
+                        },
+                        action: {
+                            seen: true
+                        },
+                        disabled: false,
+                        created: new Date()
+                    })
+                },
+                {
+                    client: 'database',
+                    collection: 'settings',
+                    entry: BSON.serialize({
+                        _id: `import-test-${Date.now()}`,
+                        value: 'rogue insert'
+                    })
+                }
+            ]);
+
+            const response = await server
+                .post(`/data/import?accessToken=${accessToken}`)
+                .set('Content-Type', 'application/octet-stream')
+                .send(importBuffer)
+                .expect(200);
+
+            expect(response.body.result.entries).to.equal(2);
+            expect(response.body.result.imported).to.equal(1);
+            expect(response.body.result.failed).to.equal(1);
+            expect(response.body.result.existing).to.equal(0);
+
+            const filtersResponse = await server.get(`/users/${user}/filters`).expect(200);
+            expect(filtersResponse.body.results.some(entry => entry.id === importedFilterId.toString())).to.be.true;
+        } finally {
+            await db.redis.del(`tn:token:${tokenHash}`);
+        }
     });
 });

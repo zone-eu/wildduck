@@ -224,7 +224,7 @@ describe('IMAP onConnect Handler Tests', () => {
                     sessionData = session;
                     return callback();
                 },
-                onClose: (session) => {
+                onClose: session => {
                     onCloseCalled = true;
                     expect(session).to.be.an('object');
                     expect(session.id).to.be.a('string');
@@ -305,7 +305,7 @@ describe('IMAP onConnect Handler Tests', () => {
             let finished = false;
 
             server = new IMAPServer({
-                onClose: (session) => {
+                onClose: session => {
                     onCloseCalled = true;
                     expect(session).to.be.an('object');
                     expect(session.id).to.be.a('string');
@@ -369,4 +369,3 @@ describe('IMAP onConnect Handler Tests', () => {
         });
     });
 });
-

@@ -134,7 +134,7 @@ class IMAPCommand {
 
         if (command.literal) {
             // check if the literal size is in acceptable bounds
-            if (isNaN(command.expecting) || isNaN(command.expecting) < 0 || command.expecting > Number.MAX_SAFE_INTEGER) {
+            if (isNaN(command.expecting) || command.expecting < 0 || command.expecting > Number.MAX_SAFE_INTEGER) {
                 let err = new Error('Invalid literal size');
                 err.responseCode = 400;
                 err.code = 'InvalidLiteralSize';

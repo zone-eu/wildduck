@@ -340,13 +340,18 @@ module.exports.filterFolders = function (folders, query) {
         .replace(/\*\*+/g, '*')
         .replace(/%%+/g, '%')
         // escape special characters
-        .replace(/([\\^$+?!.():=[\]|,-])/g, '\\$1')
+        .replace(/[\\^$+?!.():=[\]{}|,-]/g, '\\$&')
         // setup *
         .replace(/[*]/g, '.*')
         // setup %
         .replace(/[%]/g, '[^/]*');
 
-    let regex = new RegExp('^' + query + '$', '');
+    let regex;
+    try {
+        regex = new RegExp('^' + query + '$', '');
+    } catch (err) {
+        return [];
+    }
 
     return folders.filter(folder => !!regex.test(folder.path));
 };
