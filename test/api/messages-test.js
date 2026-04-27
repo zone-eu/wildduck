@@ -396,6 +396,21 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.not.include(queryFixture.subjectUnseen);
     });
 
+    it('should GET /users/:user/search expect success / q supports legacy fulltext OR semantics', async () => {
+        const q = `${queryFixture.body} ${queryFixture.multiTerm1} in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&useAndSearch=false&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectExcluded);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectUnseen);
+    });
+
     it('should GET /users/:user/search expect success / q combines text and special terms as AND by default', async () => {
         const q = `mailbox:${queryMailbox} subject:Flagged ${queryFixture.multiTerm1} attachments:true flagged:true`;
         const search = await searchQ(q);
@@ -552,6 +567,21 @@ describe('Messages tests', function () {
 
         expect(search.body.success).to.be.true;
         expect(getSubjects(search.body)).to.eql([queryFixture.subjectFlaggedSeenAttachment]);
+    });
+
+    it('should GET /users/:user/search expect success / query supports legacy fulltext OR semantics', async () => {
+        const search = await server
+            .get(
+                `/users/${user}/search?mailbox=${queryMailbox}&query=${queryFixture.body}%20${queryFixture.multiTerm1}&useAndSearch=false&limit=50`
+            )
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectExcluded);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectUnseen);
     });
 
     it('should GET /users/:user/search expect success / api search params return no matches when one AND term does not match', async () => {
