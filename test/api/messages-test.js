@@ -28,6 +28,7 @@ describe('Messages tests', function () {
     let queryAttachmentMessageId;
     let queryFlaggedSeenAttachmentMessageId;
     let queryAltMailboxMessageId;
+    let testAddress;
 
     const queryFixture = {
         subjectKeyword: 'Search Query Keyword Phrase',
@@ -73,7 +74,8 @@ describe('Messages tests', function () {
     before(async () => {
         const testUserTag = Date.now().toString(36);
         const testUsername = `messagestestsuser-${testUserTag}`;
-        const testAddress = `${testUsername}@web.zone.test`;
+        testAddress = `${testUsername}@web.zone.test`;
+        queryFixture.fromAddress = testAddress;
 
         // ensure that we have an existing user account
         const userCreationResponse = await server
@@ -179,7 +181,9 @@ describe('Messages tests', function () {
                 to: [{ address: queryFixture.toAddress }, { address: queryFixture.extraToAddress }],
                 cc: [{ address: queryFixture.ccAddress }],
                 subject: queryFixture.subjectFlaggedSeenAttachment,
-                text: `flagged seen attachment marker ${queryFixture.body} ${queryFixture.multiTerm1} ${queryFixture.multiTerm2} ${queryFixture.largeBody}`.repeat(6),
+                text: `flagged seen attachment marker ${queryFixture.body} ${queryFixture.multiTerm1} ${queryFixture.multiTerm2} ${queryFixture.largeBody}`.repeat(
+                    6
+                ),
                 attachments: [{ content: 'dGVzdA==', contentType: 'text/plain' }]
             })
             .expect(200);
@@ -259,7 +263,7 @@ describe('Messages tests', function () {
                 .send({
                     draft: true,
                     to: [{ address: 'limit1@to.com' }, { address: 'limit2@to.com' }, { address: 'limit3@to.com' }],
-                    from: { name: 'messagestestsuser@web.zone.test', address: 'messagestestsuser@web.zone.test' },
+                    from: { name: testAddress, address: testAddress },
                     subject: 'recipient limit pre-check',
                     text: 'This message should be rejected before queueing'
                 })
@@ -289,7 +293,7 @@ describe('Messages tests', function () {
                         contentType: 'text/plain'
                     }
                 ],
-                from: { name: 'messagestestsuser@web.zone.test', address: 'messagestestsuser@web.zone.test' },
+                from: { name: testAddress, address: testAddress },
                 subject: 'test message',
                 text: 'This is a test message with attachment'
             })
@@ -321,7 +325,7 @@ describe('Messages tests', function () {
                         contentType: 'text/plain'
                     }
                 ],
-                from: { name: 'messagestestsuser@web.zone.test', address: 'messagestestsuser@web.zone.test' },
+                from: { name: testAddress, address: testAddress },
                 subject: 'Encrypted test message',
                 text: 'This is an encrypted test message'
             })
@@ -369,7 +373,7 @@ describe('Messages tests', function () {
                 .send({})
                 .expect(200);
 
-            expect(messageResponse.body.from.address).to.equal('messagestestsuser@web.zone.test');
+            expect(messageResponse.body.from.address).to.equal(testAddress);
             expect(messageResponse.body.from.address).to.not.equal('anyone@example.com.evil.com');
         } finally {
             if (queueId) {
@@ -386,7 +390,7 @@ describe('Messages tests', function () {
                 uploadOnly: true,
                 from: {
                     name: 'messages user',
-                    address: 'messagestestsuser@web.zone.test'
+                    address: testAddress
                 },
                 replyTo: {
                     name: 'Reply Handler',
@@ -661,10 +665,7 @@ describe('Messages tests', function () {
     });
 
     it('should GET /users/:user/search expect success / api search params combine as AND by default', async () => {
-        const search = await server
-            .get(`/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&limit=50`)
-            .send({})
-            .expect(200);
+        const search = await server.get(`/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&limit=50`).send({}).expect(200);
 
         expect(search.body.success).to.be.true;
         expect(getSubjects(search.body)).to.eql([queryFixture.subjectFlaggedSeenAttachment]);
@@ -672,9 +673,7 @@ describe('Messages tests', function () {
 
     it('should GET /users/:user/search expect success / query supports legacy fulltext OR semantics', async () => {
         const search = await server
-            .get(
-                `/users/${user}/search?mailbox=${queryMailbox}&query=${queryFixture.body}%20${queryFixture.multiTerm1}&useAndSearch=false&limit=50`
-            )
+            .get(`/users/${user}/search?mailbox=${queryMailbox}&query=${queryFixture.body}%20${queryFixture.multiTerm1}&useAndSearch=false&limit=50`)
             .send({})
             .expect(200);
 
@@ -687,9 +686,7 @@ describe('Messages tests', function () {
 
     it('should GET /users/:user/search expect success / api search params return no matches when one AND term does not match', async () => {
         const search = await server
-            .get(
-                `/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&from=${encodeURIComponent(queryFixture.altFromAddress)}&limit=50`
-            )
+            .get(`/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&from=${encodeURIComponent(queryFixture.altFromAddress)}&limit=50`)
             .send({})
             .expect(200);
 
