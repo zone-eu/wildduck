@@ -33,6 +33,9 @@ describe('Messages tests', function () {
     const queryFixture = {
         subjectKeyword: 'Search Query Keyword Phrase',
         subjectExcluded: 'Search Query Excluded Phrase',
+        subjectExactPhrase: 'Search Query Exact Phrase Marker',
+        subjectExactPhraseSplit: 'Search Query Exact Phrase Split Marker',
+        subjectWhitespacePhrase: 'Search Query Whitespace Phrase Marker',
         subjectAttachment: 'Search Query Attachment Marker',
         subjectFlaggedSeenAttachment: 'Search Query Flagged Seen Attachment Marker',
         subjectUnseen: 'Search Query Unseen Marker',
@@ -40,6 +43,9 @@ describe('Messages tests', function () {
         subjectAltMailbox: 'Search Query Alt Mailbox Marker',
         subjectTrash: 'Search Query Trash Marker',
         body: 'searchquerybodytoken',
+        exactPhraseContext: 'searchqueryexactcontexttoken',
+        exactPhraseTerm1: 'searchqueryexactfirsttoken',
+        exactPhraseTerm2: 'searchqueryexactsecondtoken',
         attachmentBody: 'searchqueryattachmenttoken',
         multiTerm1: 'searchquerymultiterm1token',
         multiTerm2: 'searchquerymultiterm2token',
@@ -157,6 +163,42 @@ describe('Messages tests', function () {
             })
             .expect(200);
         queryExcludedMessageId = excludedMessage.body.message.id;
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T11:00:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: queryFixture.subjectExactPhrase,
+                text: `${queryFixture.exactPhraseContext} ${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:00:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: queryFixture.subjectExactPhraseSplit,
+                text: `${queryFixture.exactPhraseContext} ${queryFixture.exactPhraseTerm1} separated ${queryFixture.exactPhraseTerm2}`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T13:00:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: queryFixture.subjectWhitespacePhrase,
+                text: 'phrase here'
+            })
+            .expect(200);
 
         const attachmentMessage = await server
             .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
@@ -473,6 +515,38 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.include(queryFixture.subjectExcluded);
+    });
+
+    it('should GET /users/:user/search expect success / q supports exact fulltext phrases', async () => {
+        const q = `"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}" in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectExactPhrase);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhraseSplit);
+    });
+
+    it('should GET /users/:user/search expect success / q combines exact phrases with plain fulltext terms', async () => {
+        const q = `"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}" ${queryFixture.exactPhraseContext} in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectExactPhrase);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhraseSplit);
+    });
+
+    it('should GET /users/:user/search expect success / q supports negated exact fulltext phrases', async () => {
+        const q = `${queryFixture.exactPhraseContext} -"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}" in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectExactPhraseSplit);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhrase);
+    });
+
+    it('should GET /users/:user/search expect success / q treats exact phrase whitespace as significant', async () => {
+        const leadingSpaceSearch = await searchQ(`" phrase here" in:${queryMailbox}`);
+        const exactSearch = await searchQ(`"phrase here" in:${queryMailbox}`);
+
+        expect(getSubjects(leadingSpaceSearch)).to.not.include(queryFixture.subjectWhitespacePhrase);
+        expect(getSubjects(exactSearch)).to.include(queryFixture.subjectWhitespacePhrase);
     });
 
     it('should GET /users/:user/search expect success / q with two terms and searchable=1', async () => {
