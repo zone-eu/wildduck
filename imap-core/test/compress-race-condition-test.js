@@ -8,6 +8,7 @@ const expect = chai.expect;
 const { IMAPConnection } = require('../lib/imap-connection');
 const zlib = require('zlib');
 const EventEmitter = require('events');
+const PassThrough = require('stream').PassThrough;
 
 chai.config.includeStack = true;
 
@@ -286,6 +287,62 @@ describe('COMPRESS command race condition tests', function () {
                 expect(connection._inflate).to.exist;
                 done();
             }, 100);
+        });
+    });
+
+    it('should close compressed connection when inflated input exceeds configured limit', function (done) {
+        const mockServer = {
+            logger: {
+                debug: () => {},
+                info: () => {},
+                error: () => {}
+            },
+            options: {
+                maxCompressionInflateBytes: 64,
+                socketTimeout: 30000
+            },
+            connections: new Set(),
+            notifier: {}
+        };
+
+        const mockSocket = new PassThrough();
+        mockSocket.remoteAddress = '127.0.0.1';
+        mockSocket.readyState = 'open';
+        mockSocket.setTimeout = () => {};
+
+        const connection = new IMAPConnection(mockServer, mockSocket, {});
+        const compress = require('../lib/commands/compress');
+        const command = {
+            attributes: [{ value: 'DEFLATE' }]
+        };
+
+        let timeout;
+        let closed = false;
+        connection.close = () => {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            clearTimeout(timeout);
+            mockSocket.destroy();
+            done();
+        };
+
+        compress.handler.call(connection, command, (err, response) => {
+            expect(err).to.not.exist;
+            expect(response.response).to.equal('OK');
+
+            setImmediate(() => {
+                expect(connection._inflateLimit).to.exist;
+
+                mockSocket.write(zlib.deflateRawSync(Buffer.alloc(128, 0x41)));
+
+                timeout = setTimeout(() => {
+                    if (!closed) {
+                        done(new Error('Expected compressed connection to close after inflate limit'));
+                    }
+                }, 100);
+            });
         });
     });
 });
