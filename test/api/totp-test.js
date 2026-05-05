@@ -5,6 +5,7 @@
 const supertest = require('supertest');
 const chai = require('chai');
 const speakeasy = require('speakeasy');
+const crypto = require('crypto');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -141,7 +142,22 @@ describe('API TOTP', function () {
         expect(response.body.code).to.equal('InvalidTotpNonce');
     });
 
-    it('should POST /authenticate expect success / custom 2FA does not return auth token', async () => {
+    it('should POST /users/{user}/2fa/totp/check expect failure / reject master context without pending 2FA nonce', async () => {
+        const response = await server
+            .post(`/users/${user}/2fa/totp/check`)
+            .send({
+                token: speakeasy.totp({
+                    secret: seed,
+                    encoding: 'base32'
+                }),
+                totpNonce: crypto.randomBytes(20).toString('hex')
+            })
+            .expect(403);
+
+        expect(response.body.code).to.equal('InvalidTotpNonce');
+    });
+
+    it('should POST /authenticate expect success / custom 2FA returns auth token', async () => {
         const createResponse = await server
             .post('/users')
             .send({
@@ -169,6 +185,8 @@ describe('API TOTP', function () {
 
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body.require2fa).to.deep.equal(['custom']);
-        expect(authResponse.body.token).to.not.exist;
+        expect(authResponse.body.token).to.match(/^[0-9a-f]{40}$/);
+        expect(authResponse.body.twoFactorNonce).to.not.exist;
+        expect(authResponse.body.totpNonce).to.not.exist;
     });
 });

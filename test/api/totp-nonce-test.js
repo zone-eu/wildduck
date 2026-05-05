@@ -9,117 +9,13 @@ const ObjectId = require('mongodb').ObjectId;
 const expect = chai.expect;
 chai.config.includeStack = true;
 
-const consts = require('../../lib/consts');
 const UserHandler = require('../../lib/user-handler');
 
-describe('TOTP Nonce Handling', function () {
+describe('Pending 2FA Nonce Handling', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
-
-    it('should stop checkTotp if validateTotpNonce fails', async () => {
-        const calls = [];
-        const handler = {
-            rateLimit: async () => {
-                calls.push('rateLimit');
-                return { success: true };
-            },
-            validateTotpNonce: async () => {
-                calls.push('validate');
-                const err = new Error('Invalid or expired TOTP nonce');
-                err.response = 'NO';
-                err.responseCode = 403;
-                err.code = 'InvalidTotpNonce';
-                throw err;
-            }
-        };
-
-        let err;
-        try {
-            await UserHandler.prototype.checkTotp.call(handler, new ObjectId(), {
-                token: '000000',
-                totpNonce: crypto.randomBytes(20).toString('hex'),
-                accessTokenHash: crypto.randomBytes(32).toString('hex')
-            });
-        } catch (E) {
-            err = E;
-        }
-
-        expect(err).to.exist;
-        expect(err.code).to.equal('InvalidTotpNonce');
-        expect(calls).to.deep.equal(['rateLimit', 'validate']);
-    });
-
-    it('should restore the nonce after a failed TOTP verification', async () => {
-        const calls = [];
-        const rateLimitCalls = [];
-        const accessTokenHash = crypto.randomBytes(32).toString('hex');
-        const seed = 'JBSWY3DPEHPK3PXP';
-        const user = new ObjectId();
-        const handler = {
-            redis: {
-                exists: async () => 0,
-                multi() {
-                    return {
-                        set() {
-                            return this;
-                        },
-                        expire() {
-                            return this;
-                        },
-                        exec: async () => []
-                    };
-                }
-            },
-            users: {
-                collection() {
-                    return {
-                        findOne: async () => ({
-                            enabled2fa: ['totp'],
-                            seed
-                        })
-                    };
-                }
-            },
-            rateLimit: async (...args) => {
-                rateLimitCalls.push(args);
-                return { success: true };
-            },
-            rateLimitReleaseUser: async () => false,
-            logAuthEvent: async () => false,
-            validateTotpNonce: async () => {
-                calls.push('validate');
-                return {
-                    user: new ObjectId(),
-                    key: 'totpnonce:test',
-                    accessTokenHash,
-                    expires: Date.now() + 5 * 60 * 1000
-                };
-            },
-            restoreTotpNonce: async consumedTotpNonce => {
-                calls.push(`restore:${consumedTotpNonce.key}`);
-                return true;
-            }
-        };
-
-        const data = {
-            token: '000000',
-            totpNonce: crypto.randomBytes(20).toString('hex'),
-            accessTokenHash
-        };
-
-        const result = await UserHandler.prototype.checkTotp.call(handler, user, data);
-
-        expect(result).to.be.false;
-        expect(calls[0]).to.equal('validate');
-        expect(calls).to.include('restore:totpnonce:test');
-        expect(rateLimitCalls).to.deep.equal([
-            [`totp:${user}`, data, 0, consts.TOTP_FAILURES, consts.TOTP_WINDOW],
-            [`totp:${user}`, data, 1, consts.TOTP_FAILURES, consts.TOTP_WINDOW]
-        ]);
-    });
 
     it('should restore the pending 2FA nonce after a failed TOTP verification', async () => {
         const calls = [];
-        const accessTokenHash = crypto.randomBytes(32).toString('hex');
         const seed = 'JBSWY3DPEHPK3PXP';
         const user = new ObjectId();
         const handler = {
@@ -160,7 +56,6 @@ describe('TOTP Nonce Handling', function () {
                         methods: '["totp"]',
                         tokenRequested: 'true'
                     },
-                    accessTokenHash,
                     expires: Date.now() + 5 * 60 * 1000
                 };
             },
@@ -172,38 +67,11 @@ describe('TOTP Nonce Handling', function () {
 
         const result = await UserHandler.prototype.checkTotp.call(handler, user, {
             token: '000000',
-            totpNonce: crypto.randomBytes(20).toString('hex'),
-            pending2fa: true
+            totpNonce: crypto.randomBytes(20).toString('hex')
         });
 
         expect(result).to.be.false;
         expect(calls).to.deep.equal(['consumePending', 'restore:pending2fa:test']);
-    });
-
-    it('should validate and consume a nonce, then restore it with the remaining TTL', async () => {
-        const user = new ObjectId();
-        const totpNonce = crypto.randomBytes(20).toString('hex');
-        const accessTokenHash = crypto.randomBytes(32).toString('hex');
-        let restoredArgs;
-
-        const handler = {
-            redis: {
-                eval: async () => [1, 5 * 60 * 1000],
-                set: async (...args) => {
-                    restoredArgs = args;
-                }
-            }
-        };
-
-        const consumedTotpNonce = await UserHandler.prototype.validateTotpNonce.call(handler, user, totpNonce, accessTokenHash);
-        const restored = await UserHandler.prototype.restoreTotpNonce.call(handler, consumedTotpNonce);
-
-        expect(restored).to.be.true;
-        expect(restoredArgs[0]).to.equal(consumedTotpNonce.key);
-        expect(restoredArgs[1]).to.equal(accessTokenHash);
-        expect(restoredArgs[2]).to.equal('PX');
-        expect(restoredArgs[3]).to.be.above(0);
-        expect(restoredArgs[3]).to.be.at.most(5 * 60 * 1000);
     });
 
     it('should validate and consume a pending 2FA nonce, then restore it with the remaining TTL', async () => {
@@ -219,8 +87,6 @@ describe('TOTP Nonce Handling', function () {
                     5 * 60 * 1000,
                     'user',
                     user.toString(),
-                    'scope',
-                    'master',
                     'methods',
                     '["totp"]',
                     'tokenRequested',
@@ -257,5 +123,52 @@ describe('TOTP Nonce Handling', function () {
         expect(restoredPexpireArgs[0]).to.equal(consumedPending2faAuth.key);
         expect(restoredPexpireArgs[1]).to.be.above(0);
         expect(restoredPexpireArgs[1]).to.be.at.most(5 * 60 * 1000);
+    });
+
+    it('should reject a WebAuthn assertion nonce that was not bound to the challenge', async () => {
+        const user = new ObjectId();
+        const challenge = crypto.randomBytes(32).toString('hex');
+        const handler = {
+            redis: {
+                multi() {
+                    return {
+                        hgetall() {
+                            return this;
+                        },
+                        del() {
+                            return this;
+                        },
+                        exec: async () => [
+                            [
+                                null,
+                                {
+                                    challenge,
+                                    user: user.toString(),
+                                    origin: 'https://example.com'
+                                }
+                            ],
+                            [null, 1]
+                        ]
+                    };
+                }
+            }
+        };
+
+        let err;
+        try {
+            await UserHandler.prototype.webauthnAssertAuthentication.call(handler, user, {
+                challenge,
+                rawId: '00',
+                clientDataJSON: '00',
+                authenticatorData: '00',
+                signature: '00',
+                twoFactorNonce: crypto.randomBytes(20).toString('hex')
+            });
+        } catch (E) {
+            err = E;
+        }
+
+        expect(err).to.exist;
+        expect(err.code).to.equal('Invalid2faNonce');
     });
 });
