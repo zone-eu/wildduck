@@ -117,6 +117,69 @@ describe('TOTP Nonce Handling', function () {
         ]);
     });
 
+    it('should restore the pending 2FA nonce after a failed TOTP verification', async () => {
+        const calls = [];
+        const accessTokenHash = crypto.randomBytes(32).toString('hex');
+        const seed = 'JBSWY3DPEHPK3PXP';
+        const user = new ObjectId();
+        const handler = {
+            redis: {
+                exists: async () => 0,
+                multi() {
+                    return {
+                        set() {
+                            return this;
+                        },
+                        expire() {
+                            return this;
+                        },
+                        exec: async () => []
+                    };
+                }
+            },
+            users: {
+                collection() {
+                    return {
+                        findOne: async () => ({
+                            enabled2fa: ['totp'],
+                            seed
+                        })
+                    };
+                }
+            },
+            rateLimit: async () => ({ success: true }),
+            rateLimitReleaseUser: async () => false,
+            logAuthEvent: async () => false,
+            consumePending2faAuth: async () => {
+                calls.push('consumePending');
+                return {
+                    user,
+                    key: 'pending2fa:test',
+                    data: {
+                        user: user.toString(),
+                        methods: '["totp"]',
+                        tokenRequested: 'true'
+                    },
+                    accessTokenHash,
+                    expires: Date.now() + 5 * 60 * 1000
+                };
+            },
+            restorePending2faAuth: async consumedPending2faAuth => {
+                calls.push(`restore:${consumedPending2faAuth.key}`);
+                return true;
+            }
+        };
+
+        const result = await UserHandler.prototype.checkTotp.call(handler, user, {
+            token: '000000',
+            totpNonce: crypto.randomBytes(20).toString('hex'),
+            pending2fa: true
+        });
+
+        expect(result).to.be.false;
+        expect(calls).to.deep.equal(['consumePending', 'restore:pending2fa:test']);
+    });
+
     it('should validate and consume a nonce, then restore it with the remaining TTL', async () => {
         const user = new ObjectId();
         const totpNonce = crypto.randomBytes(20).toString('hex');
@@ -141,5 +204,58 @@ describe('TOTP Nonce Handling', function () {
         expect(restoredArgs[2]).to.equal('PX');
         expect(restoredArgs[3]).to.be.above(0);
         expect(restoredArgs[3]).to.be.at.most(5 * 60 * 1000);
+    });
+
+    it('should validate and consume a pending 2FA nonce, then restore it with the remaining TTL', async () => {
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        let restoredHmsetArgs;
+        let restoredPexpireArgs;
+
+        const handler = {
+            redis: {
+                eval: async () => [
+                    1,
+                    5 * 60 * 1000,
+                    'user',
+                    user.toString(),
+                    'scope',
+                    'master',
+                    'methods',
+                    '["totp"]',
+                    'tokenRequested',
+                    'true',
+                    'created',
+                    Date.now().toString()
+                ],
+                multi() {
+                    return {
+                        hmset(...args) {
+                            restoredHmsetArgs = args;
+                            return this;
+                        },
+                        pexpire(...args) {
+                            restoredPexpireArgs = args;
+                            return this;
+                        },
+                        exec: async () => []
+                    };
+                }
+            }
+        };
+
+        const consumedPending2faAuth = await UserHandler.prototype.consumePending2faAuth.call(handler, user, twoFactorNonce, 'totp', {
+            code: 'InvalidTotpNonce'
+        });
+        const restored = await UserHandler.prototype.restorePending2faAuth.call(handler, consumedPending2faAuth);
+
+        expect(consumedPending2faAuth.tokenRequested).to.be.true;
+        expect(consumedPending2faAuth.methods).to.deep.equal(['totp']);
+        expect(restored).to.be.true;
+        expect(restoredHmsetArgs[0]).to.equal(consumedPending2faAuth.key);
+        expect(restoredHmsetArgs[1].user).to.equal(user.toString());
+        expect(restoredPexpireArgs[0]).to.equal(consumedPending2faAuth.key);
+        expect(restoredPexpireArgs[1]).to.be.above(0);
+        expect(restoredPexpireArgs[1]).to.be.at.most(5 * 60 * 1000);
     });
 });

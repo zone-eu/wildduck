@@ -63,7 +63,7 @@ describe('API TOTP', function () {
         expect(response.body.success).to.be.true;
     });
 
-    it('should POST /authenticate expect success / return auth token and totpNonce', async () => {
+    it('should POST /authenticate expect success / return totpNonce without auth token', async () => {
         const response = await server
             .post('/authenticate')
             .send({
@@ -76,16 +76,35 @@ describe('API TOTP', function () {
         expect(response.body.success).to.be.true;
         expect(response.body.id).to.equal(user);
         expect(response.body.require2fa).to.deep.equal(['totp']);
-        expect(response.body.token).to.match(/^[0-9a-f]{40}$/);
+        expect(response.body.token).to.not.exist;
+        expect(response.body.twoFactorNonce).to.match(/^[0-9a-f]{40}$/);
         expect(response.body.totpNonce).to.match(/^[0-9a-f]{40}$/);
+        expect(response.body.totpNonce).to.equal(response.body.twoFactorNonce);
 
-        accessToken = response.body.token;
         totpNonce = response.body.totpNonce;
+    });
+
+    it('should POST /users/{user}/2fa/totp/check expect failure / keep nonce after invalid TOTP', async () => {
+        const validToken = speakeasy.totp({
+            secret: seed,
+            encoding: 'base32'
+        });
+        const invalidToken = validToken === '000000' ? '000001' : '000000';
+
+        const response = await server
+            .post(`/users/${user}/2fa/totp/check`)
+            .send({
+                token: invalidToken,
+                totpNonce
+            })
+            .expect(403);
+
+        expect(response.body.code).to.equal('InvalidToken');
     });
 
     it('should POST /users/{user}/2fa/totp/check expect success', async () => {
         const response = await server
-            .post(`/users/${user}/2fa/totp/check?accessToken=${accessToken}`)
+            .post(`/users/${user}/2fa/totp/check`)
             .send({
                 token: speakeasy.totp({
                     secret: seed,
@@ -96,11 +115,20 @@ describe('API TOTP', function () {
             .expect(200);
 
         expect(response.body.success).to.be.true;
+        expect(response.body.token).to.match(/^[0-9a-f]{40}$/);
+        accessToken = response.body.token;
+    });
+
+    it('should GET /users/{user} expect success / use post-TOTP auth token', async () => {
+        const response = await server.get(`/users/me?accessToken=${accessToken}`).expect(200);
+
+        expect(response.body.success).to.be.true;
+        expect(response.body.id).to.equal(user);
     });
 
     it('should POST /users/{user}/2fa/totp/check expect failure / reject reused totpNonce', async () => {
         const response = await server
-            .post(`/users/${user}/2fa/totp/check?accessToken=${accessToken}`)
+            .post(`/users/${user}/2fa/totp/check`)
             .send({
                 token: speakeasy.totp({
                     secret: seed,
@@ -111,5 +139,36 @@ describe('API TOTP', function () {
             .expect(403);
 
         expect(response.body.code).to.equal('InvalidTotpNonce');
+    });
+
+    it('should POST /authenticate expect success / custom 2FA does not return auth token', async () => {
+        const createResponse = await server
+            .post('/users')
+            .send({
+                username: 'custom2fauser',
+                name: 'Custom 2FA User',
+                address: 'custom2fa@example.com',
+                password: 'custom2fasecret'
+            })
+            .expect(200);
+
+        expect(createResponse.body.success).to.be.true;
+
+        const userId = createResponse.body.id;
+        const enableResponse = await server.put(`/users/${userId}/2fa/custom`).send({}).expect(200);
+        expect(enableResponse.body.success).to.be.true;
+
+        const authResponse = await server
+            .post('/authenticate')
+            .send({
+                username: 'custom2fauser',
+                password: 'custom2fasecret',
+                token: true
+            })
+            .expect(200);
+
+        expect(authResponse.body.success).to.be.true;
+        expect(authResponse.body.require2fa).to.deep.equal(['custom']);
+        expect(authResponse.body.token).to.not.exist;
     });
 });
