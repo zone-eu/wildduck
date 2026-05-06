@@ -9,8 +9,22 @@ const chai = require('chai');
 const expect = chai.expect;
 chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
+const { parseSearchQuery } = require('../../lib/search-query');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+describe('Search query parser tests', function () {
+    it('should parse quoted multi-word text as an exact phrase only when quoted', () => {
+        const unquoted = parseSearchQuery('phrase here');
+        const quoted = parseSearchQuery('"phrase here"');
+
+        expect(unquoted.map(entry => entry.text)).to.deep.equal([
+            { value: 'phrase', negated: false, exactPhrase: false },
+            { value: 'here', negated: false, exactPhrase: false }
+        ]);
+        expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase here', negated: false, exactPhrase: true }]);
+    });
+});
 
 describe('Messages tests', function () {
     this.timeout(20000); // eslint-disable-line no-invalid-this
@@ -76,6 +90,24 @@ describe('Messages tests', function () {
 
     const getSubjects = body => body.results.map(entry => entry.subject);
     const getIds = body => body.results.map(entry => entry.id);
+    const ensureMoreThanSearchableMailboxThreshold = async () => {
+        const mailboxes = await server.get(`/users/${user}/mailboxes?specialUse=true`).send({}).expect(200);
+        const nonJunkAndTrashCount = mailboxes.body.results.filter(entry => !['\\Junk', '\\Trash'].includes(entry.specialUse)).length;
+        const createCount = Math.max(0, 201 - nonJunkAndTrashCount);
+        const batchSize = 25;
+        const prefix = Date.now().toString(36);
+
+        for (let i = 0; i < createCount; i += batchSize) {
+            await Promise.all(
+                Array.from({ length: Math.min(batchSize, createCount - i) }, (entry, batchIndex) =>
+                    server
+                        .post(`/users/${user}/mailboxes`)
+                        .send({ path: `/search-query-threshold-${prefix}-${i + batchIndex}`, hidden: false, retention: 10000 })
+                        .expect(200)
+                )
+            );
+        }
+    };
 
     before(async () => {
         const testUserTag = Date.now().toString(36);
@@ -525,6 +557,14 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhraseSplit);
     });
 
+    it('should GET /users/:user/search expect success / q supports exact fulltext phrases without mailbox scope', async () => {
+        const q = `"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}"`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectExactPhrase);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhraseSplit);
+    });
+
     it('should GET /users/:user/search expect success / q combines exact phrases with plain fulltext terms', async () => {
         const q = `"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}" ${queryFixture.exactPhraseContext} in:${queryMailbox}`;
         const search = await searchQ(q);
@@ -590,6 +630,22 @@ describe('Messages tests', function () {
         expect(getSubjects(search.body)).to.not.include(queryFixture.subjectUnseen);
     });
 
+    it('should GET /users/:user/search expect success / q preserves OR groups with fulltext AND semantics', async () => {
+        const q = `(${queryFixture.body} OR ${queryFixture.attachmentBody}) ${queryFixture.multiTerm1} in:${queryMailbox}`;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&useAndSearch=true&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectAttachment);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectExcluded);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectUnseen);
+    });
+
     it('should GET /users/:user/search expect success / q combines text and special terms as AND by default', async () => {
         const q = `mailbox:${queryMailbox} subject:Flagged ${queryFixture.multiTerm1} attachments:true flagged:true`;
         const search = await searchQ(q);
@@ -604,6 +660,28 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectTrash);
         expect(search.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q searchable:true excludes trash with more than 200 mailboxes', async function () {
+        this.timeout(60000); // eslint-disable-line no-invalid-this
+
+        await ensureMoreThanSearchableMailboxThreshold();
+
+        const q = `${queryFixture.body} searchable:true`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectTrash);
+        expect(search.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q supports negated searchable:true', async () => {
+        const q = `${queryFixture.body} -searchable:true`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectTrash);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectKeyword);
+        expect(search.results.every(entry => entry.mailbox === trashId)).to.be.true;
     });
 
     it('should GET /users/:user/search expect success / q supports OR groups', async () => {
