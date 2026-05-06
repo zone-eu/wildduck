@@ -3,6 +3,9 @@
 const Transform = require('stream').Transform;
 
 const DEFAULT_MAX_INFLATED_BYTES = 100 * 1024 * 1024; // 100MB
+const ERROR_MESSAGE = 'Compressed input exceeds maximum inflated command size';
+const ERROR_CODE = 'CompressedInputTooLarge';
+const RESPONSE_CODE = 400;
 
 class InflateLimitStream extends Transform {
     constructor(options) {
@@ -11,9 +14,6 @@ class InflateLimitStream extends Transform {
 
         this.maxInflatedBytes = Number.isFinite(options.maxInflatedBytes) ? Math.max(options.maxInflatedBytes, 0) : DEFAULT_MAX_INFLATED_BYTES;
         this.inflatedBytes = 0;
-        this.errorMessage = options.errorMessage || 'Compressed input exceeds maximum inflated command size';
-        this.errorCode = options.errorCode || 'CompressedInputTooLarge';
-        this.responseCode = Number.isFinite(options.responseCode) ? options.responseCode : 400;
     }
 
     resetInflatedBytes() {
@@ -29,12 +29,17 @@ class InflateLimitStream extends Transform {
             chunk = Buffer.from(chunk, encoding);
         }
 
+        if (!this.maxInflatedBytes) {
+            this.push(chunk);
+            return callback();
+        }
+
         this.inflatedBytes += chunk.length;
 
-        if (this.maxInflatedBytes && this.inflatedBytes > this.maxInflatedBytes) {
-            let err = new Error(this.errorMessage);
-            err.code = this.errorCode;
-            err.responseCode = this.responseCode;
+        if (this.inflatedBytes > this.maxInflatedBytes) {
+            let err = new Error(ERROR_MESSAGE);
+            err.code = ERROR_CODE;
+            err.responseCode = RESPONSE_CODE;
             return callback(err);
         }
 

@@ -3,6 +3,17 @@
 const zlib = require('zlib');
 const InflateLimitStream = require('../inflate-limit-stream');
 
+function createInflateLimitStream(connection) {
+    let maxInflatedBytes = Number(connection._server.options.maxCompressionInflateBytes);
+    if (Number.isFinite(maxInflatedBytes) && maxInflatedBytes <= 0) {
+        return false;
+    }
+
+    return new InflateLimitStream({
+        maxInflatedBytes
+    });
+}
+
 // tag COMPRESS DEFLATE
 module.exports = {
     state: ['Authenticated', 'Selected'],
@@ -43,9 +54,7 @@ module.exports = {
                 windowBits: 15
             });
             this._inflate = zlib.createInflateRaw();
-            this._inflateLimit = new InflateLimitStream({
-                maxInflatedBytes: Number(this._server.options.maxCompressionInflateBytes)
-            });
+            this._inflateLimit = createInflateLimitStream(this);
 
             let onCompressionError = (err, tnx) => {
                 this._server.logger.debug(
@@ -70,9 +79,11 @@ module.exports = {
                 onCompressionError(err, 'inflate');
             });
 
-            this._inflateLimit.once('error', err => {
-                onCompressionError(err, 'inflate-limit');
-            });
+            if (this._inflateLimit) {
+                this._inflateLimit.once('error', err => {
+                    onCompressionError(err, 'inflate-limit');
+                });
+            }
 
             this.writeStream.unpipe(this._socket);
             this._deflate.pipe(this._socket);
@@ -101,7 +112,11 @@ module.exports = {
             });
 
             this._socket.unpipe(this._parser);
-            this._socket.pipe(this._inflate).pipe(this._inflateLimit).pipe(this._parser);
+            if (this._inflateLimit) {
+                this._socket.pipe(this._inflate).pipe(this._inflateLimit).pipe(this._parser);
+            } else {
+                this._socket.pipe(this._inflate).pipe(this._parser);
+            }
         });
 
         callback(null, {
