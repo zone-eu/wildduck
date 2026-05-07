@@ -37,6 +37,10 @@ disableSTARTTLS = false
 # If true, then advertises COMPRESS=DEFLATE capability
 enableCompression = false
 
+# Max inflated bytes accepted for one IMAP command while COMPRESS=DEFLATE is active.
+# Defaults to 100MB. Set to 0 to disable.
+# maxCompressionInflateBytes = 0
+
 # If true, then expect HAProxy PROXY header as the first line of data
 useProxy = false
 # useProxy=true # expect PROXY from all connections

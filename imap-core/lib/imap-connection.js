@@ -37,6 +37,7 @@ class IMAPConnection extends EventEmitter {
         this.compression = false;
         this._deflate = false;
         this._inflate = false;
+        this._inflateLimit = false;
 
         this._server = server;
         this._socket = socket;
@@ -378,6 +379,10 @@ class IMAPConnection extends EventEmitter {
             this._inflate = null;
         }
 
+        if (this._inflateLimit) {
+            this._inflateLimit = null;
+        }
+
         this.clearNotificationListener();
 
         this._server.connections.delete(this);
@@ -534,6 +539,11 @@ class IMAPConnection extends EventEmitter {
      */
     _onCommand(command, callback) {
         let currentCommand = this._currentCommand;
+        const resetCompressedInput = () => {
+            if (this._inflateLimit && typeof this._inflateLimit.resetInflatedBytes === 'function') {
+                this._inflateLimit.resetInflatedBytes();
+            }
+        };
 
         callback = callback || (() => false);
 
@@ -545,6 +555,7 @@ class IMAPConnection extends EventEmitter {
         if (command && command.lineTooLong) {
             this._currentCommand = false;
             this._nextHandler = false;
+            resetCompressedInput();
             this.send('* BAD Command line too long');
             return callback();
         }
@@ -558,12 +569,16 @@ class IMAPConnection extends EventEmitter {
                 if (err) {
                     // cancel pending command
                     this._currentCommand = false;
+                    resetCompressedInput();
                 }
                 callback(err, ...args);
             });
         } else {
             this._currentCommand = false;
-            currentCommand.end(command, callback);
+            currentCommand.end(command, (err, ...args) => {
+                resetCompressedInput();
+                callback(err, ...args);
+            });
         }
     }
 
