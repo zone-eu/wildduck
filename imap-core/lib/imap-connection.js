@@ -539,7 +539,7 @@ class IMAPConnection extends EventEmitter {
      */
     _onCommand(command, callback) {
         let currentCommand = this._currentCommand;
-        let resetCompressedInput = () => {
+        const resetCompressedInput = () => {
             if (this._inflateLimit && typeof this._inflateLimit.resetInflatedBytes === 'function') {
                 this._inflateLimit.resetInflatedBytes();
             }
