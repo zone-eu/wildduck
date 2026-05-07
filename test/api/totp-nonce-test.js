@@ -5,6 +5,7 @@
 const chai = require('chai');
 const crypto = require('crypto');
 const ObjectId = require('mongodb').ObjectId;
+const { Fido2Lib } = require('fido2-lib');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -170,5 +171,98 @@ describe('Pending 2FA Nonce Handling', function () {
 
         expect(err).to.exist;
         expect(err.code).to.equal('Invalid2faNonce');
+    });
+
+    it('should not update WebAuthn counter when pending 2FA nonce consumption fails', async () => {
+        const user = new ObjectId();
+        const challenge = crypto.randomBytes(32).toString('hex');
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        const calls = [];
+        const originalAssertionResult = Fido2Lib.prototype.assertionResult;
+
+        Fido2Lib.prototype.assertionResult = async () => {
+            calls.push('assertionResult');
+            return {
+                authnrData: new Map([['counter', 2]])
+            };
+        };
+
+        const handler = {
+            redis: {
+                multi() {
+                    return {
+                        hgetall() {
+                            return this;
+                        },
+                        del() {
+                            return this;
+                        },
+                        exec: async () => [
+                            [
+                                null,
+                                {
+                                    challenge,
+                                    user: user.toString(),
+                                    origin: 'https://example.com',
+                                    twoFactorNonce
+                                }
+                            ],
+                            [null, 1]
+                        ]
+                    };
+                }
+            },
+            users: {
+                collection() {
+                    return {
+                        findOne: async () => ({
+                            enabled2fa: ['webauthn'],
+                            webauthn: {
+                                credentials: [
+                                    {
+                                        _id: new ObjectId(),
+                                        rawId: Buffer.from('00', 'hex'),
+                                        publicKey: Buffer.from('public-key'),
+                                        counter: 1,
+                                        type: 'public-key'
+                                    }
+                                ]
+                            }
+                        }),
+                        updateOne: async () => {
+                            calls.push('updateCounter');
+                        }
+                    };
+                }
+            },
+            consumePending2faAuth: async () => {
+                calls.push('consumePending');
+                const err = new Error('Invalid or expired 2FA nonce');
+                err.response = 'NO';
+                err.responseCode = 403;
+                err.code = 'Invalid2faNonce';
+                throw err;
+            }
+        };
+
+        let err;
+        try {
+            await UserHandler.prototype.webauthnAssertAuthentication.call(handler, user, {
+                challenge,
+                rawId: '00',
+                clientDataJSON: '00',
+                authenticatorData: '00',
+                signature: '00',
+                twoFactorNonce
+            });
+        } catch (E) {
+            err = E;
+        } finally {
+            Fido2Lib.prototype.assertionResult = originalAssertionResult;
+        }
+
+        expect(err).to.exist;
+        expect(err.code).to.equal('Invalid2faNonce');
+        expect(calls).to.deep.equal(['assertionResult', 'consumePending']);
     });
 });
