@@ -149,7 +149,7 @@ class IMAPStream extends Writable {
             return done();
         }
 
-        if ((match = /\{(\d+)\}$/.exec(line))) {
+        if ((match = /\{(-?\d+)\}$/.exec(line))) {
             this._expecting = Number(match[1]);
             if (!isNaN(match[1])) {
                 this._literal = new PassThrough();
