@@ -214,6 +214,16 @@ class IMAPCommand {
             // Accept literal input
             this.connection.send('+ Go ahead');
 
+            if (Number(command.expecting) === 0) {
+                this.payload += '\r\n';
+
+                if (typeof command.readyCallback === 'function') {
+                    command.readyCallback();
+                }
+
+                return callback();
+            }
+
             // currently the stream is buffered into a large string and thats it.
             // in the future we might consider some kind of actual stream usage
             command.literal.on('data', chunk => {

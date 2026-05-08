@@ -755,6 +755,54 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should reject appending an empty literal message', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 STATUS INBOX (MESSAGES)', 'T3 APPEND INBOX {0}', [''], 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+
+                    let statusResponses = resp.match(/^\* STATUS INBOX \(MESSAGES \d+\)$/gm) || [];
+                    expect(statusResponses).to.have.length(2);
+                    expect(/^\+ Go ahead$/m.test(resp)).to.be.true;
+                    expect(/^T3 NO Can't save a zero byte message\.$/m.test(resp)).to.be.true;
+                    expect(statusResponses[0]).to.equal('* STATUS INBOX (MESSAGES 6)');
+                    expect(statusResponses[1]).to.equal('* STATUS INBOX (MESSAGES 6)');
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should reject appending with a negative literal size', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 STATUS INBOX (MESSAGES)', 'T3 APPEND INBOX {-1}', 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+
+                    let statusResponses = resp.match(/^\* STATUS INBOX \(MESSAGES \d+\)$/gm) || [];
+                    expect(statusResponses).to.have.length(2);
+                    expect(/^\+ Go ahead$/m.test(resp)).to.be.false;
+                    expect(/^T3 BAD Invalid literal size$/m.test(resp)).to.be.true;
+                    expect(statusResponses[0]).to.equal('* STATUS INBOX (MESSAGES 6)');
+                    expect(statusResponses[1]).to.equal('* STATUS INBOX (MESSAGES 6)');
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should append to mailbox with optional arguments', function (done) {
             let message = Buffer.from('From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: HELLO!\r\n\r\nWORLD!');
             let cmds = [
