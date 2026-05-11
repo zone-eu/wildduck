@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.48.1](https://github.com/zone-eu/wildduck/compare/v1.48.0...v1.48.1) (2026-05-11)
+
+
+### Bug Fixes
+
+* build(deps-dev): bump fast-uri from 3.1.0 to 3.1.2 ([#1066](https://github.com/zone-eu/wildduck/issues/1066)) ([d1c065a](https://github.com/zone-eu/wildduck/commit/d1c065a13a32405e98d4874c87ea91c185a249ef))
+* build(deps): bump follow-redirects from 1.15.11 to 1.16.0 ([#1055](https://github.com/zone-eu/wildduck/issues/1055)) ([0156abf](https://github.com/zone-eu/wildduck/commit/0156abff0aa7556dd27d4075197f90488ee27241))
+* bump deps ([#1067](https://github.com/zone-eu/wildduck/issues/1067)) ([e76c480](https://github.com/zone-eu/wildduck/commit/e76c480d98454a571a393c6c1977bb133d4d0ad1))
+* fix slack and deploy workflows ([#1059](https://github.com/zone-eu/wildduck/issues/1059)) ([ebd5b61](https://github.com/zone-eu/wildduck/commit/ebd5b61685c83adceabfc48a496b203747c3a1d8))
+* ZMS-49-3: Parse negative literal size, fix literal handling, fix 0 byte literal handling, add tests ([#1065](https://github.com/zone-eu/wildduck/issues/1065)) ([54f42f3](https://github.com/zone-eu/wildduck/commit/54f42f3363f623a6d538381ba6e8bfc7ecee8599))
+* ZMS-49: Various security and QoL fixes ([#1056](https://github.com/zone-eu/wildduck/issues/1056)) ([2bfaa31](https://github.com/zone-eu/wildduck/commit/2bfaa31e0ca7543ce597e2df13127e870b72a38e))
+* ZMS-50: bump deps and fix utf-8 address parsing ([#1061](https://github.com/zone-eu/wildduck/issues/1061)) ([715ad37](https://github.com/zone-eu/wildduck/commit/715ad37e57d5972267c2e7bebc7043c392793ecb))
+* ZMS-55: Add safeguards against deflate output zip bomb ([#1062](https://github.com/zone-eu/wildduck/issues/1062)) ([c223f42](https://github.com/zone-eu/wildduck/commit/c223f42948bb9ac4967852b762dbc0d09412cc5a))
+* ZMS-59: Fix bug: Audit not picking archived messages ([#1064](https://github.com/zone-eu/wildduck/issues/1064)) ([b844849](https://github.com/zone-eu/wildduck/commit/b84484983fc7d1472e9dd3f9e583bd3223dad82c))
+
 ## [1.48.0](https://github.com/zone-eu/wildduck/compare/v1.47.2...v1.48.0) (2026-04-09)
 
 
