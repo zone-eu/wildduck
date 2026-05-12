@@ -161,6 +161,8 @@ describe('FilterHandler recipient spam overrides', () => {
         };
     };
 
+    const getSpamResult = result => result.response.filterResults.find(entry => 'spam' in entry);
+
     it('should force ham to INBOX even when spamLevel would mark the message as spam', async () => {
         const { addOptions, result } = await runCase({
             overrideFlags: ['ham'],
@@ -170,6 +172,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.path).to.equal('INBOX');
         expect(addOptions.specialUse).to.not.exist;
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(false);
+        expect(getSpamResult(result)).to.deep.equal({ spam: false, originalSpam: true });
     });
 
     it('should not let ham override an earlier spam filter action', async () => {
@@ -193,6 +196,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.specialUse).to.equal('\\Junk');
         expect(addOptions.path).to.not.exist;
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(true);
+        expect(getSpamResult(result)).to.deep.equal({ spam: true });
     });
 
     it('should not let spam override an earlier ham filter action', async () => {
@@ -216,6 +220,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.path).to.equal('INBOX');
         expect(addOptions.specialUse).to.not.exist;
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(false);
+        expect(getSpamResult(result)).to.not.exist;
     });
 
     it('should prefer ham when mixed with spam-like override flags', async () => {
@@ -236,6 +241,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.specialUse).to.equal('\\Junk');
         expect(addOptions.path).to.not.exist;
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(true);
+        expect(getSpamResult(result)).to.deep.equal({ spam: true, originalSpam: false });
     });
 
     it('should let ham override domainaccess block action', async () => {
@@ -253,6 +259,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.path).to.equal('INBOX');
         expect(addOptions.specialUse).to.not.exist;
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(false);
+        expect(getSpamResult(result)).to.deep.equal({ spam: false, originalSpam: true });
     });
 
     it('should let spam override domainaccess allow action', async () => {
@@ -270,6 +277,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.specialUse).to.equal('\\Junk');
         expect(addOptions.path).to.not.exist;
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(true);
+        expect(getSpamResult(result)).to.deep.equal({ spam: true, originalSpam: false });
     });
 
     it('should force softlist to Junk', async () => {
