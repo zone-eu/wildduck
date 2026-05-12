@@ -10,16 +10,20 @@ describe('FilterHandler recipient spam overrides', () => {
         id: new ObjectId(),
         mimeTree: {
             header: ['From: Alice Example <alice@example.com>'],
-            parsedHeader: {}
+            parsedHeader: {
+                from: [{ name: 'Alice Example', address: 'alice@example.com' }]
+            }
         },
-        parsedHeader: {},
+        parsedHeader: {
+            from: [{ name: 'Alice Example', address: 'alice@example.com' }]
+        },
         headers: [{ key: 'from', value: 'Alice Example <alice@example.com>' }],
         size: 1024,
         msgid: false,
         hdate: false
     });
 
-    const createHandler = ({ filters = [] } = {}) => {
+    const createHandler = ({ filters = [], domainaccessData = false } = {}) => {
         let addOptions;
 
         const handler = new FilterHandler({
@@ -51,6 +55,13 @@ describe('FilterHandler recipient spam overrides', () => {
                                 return {
                                     async findOne() {
                                         return false;
+                                    }
+                                };
+
+                            case 'domainaccess':
+                                return {
+                                    async findOne() {
+                                        return domainaccessData;
                                     }
                                 };
 
@@ -119,15 +130,15 @@ describe('FilterHandler recipient spam overrides', () => {
         };
     };
 
-    const runCase = async ({ overrideFlags, spamLevel = 50, spamAction = 'no action', filters = [] }) => {
-        const { handler, getAddOptions } = createHandler({ filters });
+    const runCase = async ({ overrideFlags, spamLevel = 50, spamAction = 'no action', filters = [], domainaccessData = false, tagsview = [] }) => {
+        const { handler, getAddOptions } = createHandler({ filters, domainaccessData });
         const userData = {
             _id: new ObjectId(),
             address: 'recipient@example.com',
             spamLevel,
             encryptMessages: false,
             autoreply: false,
-            tagsview: []
+            tagsview
         };
 
         const result = await handler.storeMessage(userData, {
@@ -161,7 +172,7 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(false);
     });
 
-    it('should let ham override an earlier spam filter action', async () => {
+    it('should not let ham override an earlier spam filter action', async () => {
         const { addOptions, result } = await runCase({
             overrideFlags: ['ham'],
             filters: [
@@ -174,6 +185,29 @@ describe('FilterHandler recipient spam overrides', () => {
                     },
                     action: {
                         spam: true
+                    }
+                }
+            ]
+        });
+
+        expect(addOptions.specialUse).to.equal('\\Junk');
+        expect(addOptions.path).to.not.exist;
+        expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(true);
+    });
+
+    it('should not let spam override an earlier ham filter action', async () => {
+        const { addOptions, result } = await runCase({
+            overrideFlags: ['spam'],
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    query: {
+                        headers: {
+                            from: 'alice@example.com'
+                        }
+                    },
+                    action: {
+                        spam: false
                     }
                 }
             ]
@@ -197,6 +231,40 @@ describe('FilterHandler recipient spam overrides', () => {
         const { addOptions, result } = await runCase({
             overrideFlags: ['spam'],
             spamLevel: 100
+        });
+
+        expect(addOptions.specialUse).to.equal('\\Junk');
+        expect(addOptions.path).to.not.exist;
+        expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(true);
+    });
+
+    it('should let ham override domainaccess block action', async () => {
+        const { addOptions, result } = await runCase({
+            overrideFlags: ['ham'],
+            tagsview: ['tenant-a'],
+            domainaccessData: {
+                _id: new ObjectId(),
+                tag: 'tenant-a',
+                domain: 'example.com',
+                action: 'block'
+            }
+        });
+
+        expect(addOptions.path).to.equal('INBOX');
+        expect(addOptions.specialUse).to.not.exist;
+        expect(result.response.filterResults.some(entry => entry.spam === true)).to.equal(false);
+    });
+
+    it('should let spam override domainaccess allow action', async () => {
+        const { addOptions, result } = await runCase({
+            overrideFlags: ['spam'],
+            tagsview: ['tenant-a'],
+            domainaccessData: {
+                _id: new ObjectId(),
+                tag: 'tenant-a',
+                domain: 'example.com',
+                action: 'allow'
+            }
         });
 
         expect(addOptions.specialUse).to.equal('\\Junk');
