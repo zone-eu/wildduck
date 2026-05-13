@@ -3,7 +3,7 @@
 const imapHandler = require('../handler/imap-handler');
 const imapTools = require('../imap-tools');
 
-// IMAP number is an unsigned 32-bit value; nz-number uses the same upper bound.
+// Max IMAP number is an unsigned 32-bit value
 const MAX_IMAP_NUMBER = 0xffffffff;
 
 module.exports = {
