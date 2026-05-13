@@ -34,3 +34,21 @@ describe('#filterFolders', function() {
         ).to.deep.equal(['test{2}', 'other{2}']);
     });
 });
+
+describe('#sendCapabilityResponse', function() {
+    it('should advertise WITHIN', function() {
+        let responses = [];
+
+        imapTools.sendCapabilityResponse({
+            secure: true,
+            state: 'Authenticated',
+            _server: {
+                options: {}
+            },
+            send: response => responses.push(response)
+        });
+
+        expect(responses).to.have.length(1);
+        expect(responses[0]).to.match(/^\* CAPABILITY .* WITHIN( |$)/);
+    });
+});

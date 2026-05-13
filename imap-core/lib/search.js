@@ -22,6 +22,8 @@ const queryHandlers = {
         switch (query.operator) {
             case '<':
                 return callback(null, getShortDate(message.idate) < getShortDate(query.value));
+            case '<=':
+                return callback(null, getShortDate(message.idate) <= getShortDate(query.value));
             case '=':
                 return callback(null, getShortDate(message.idate) === getShortDate(query.value));
             case '>=':
