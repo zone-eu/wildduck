@@ -32,6 +32,7 @@ const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const { MESSAGE_INDEXING_QUEUE } = require('./lib/indexing-queue');
 
 let messageHandler;
 let mailboxHandler;
@@ -133,7 +134,7 @@ module.exports.start = callback => {
         loggelf: message => loggelf(message)
     });
 
-    backlogIndexingQueue = new Queue('backlog_indexing', db.queueConf);
+    backlogIndexingQueue = new Queue(MESSAGE_INDEXING_QUEUE, db.queueConf);
 
     let start = () => {
         // setup ready
