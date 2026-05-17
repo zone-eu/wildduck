@@ -5,53 +5,18 @@
 const chai = require('chai');
 const crypto = require('crypto');
 const ObjectId = require('mongodb').ObjectId;
+const { Fido2Lib } = require('fido2-lib');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
 
-const consts = require('../../lib/consts');
 const UserHandler = require('../../lib/user-handler');
 
-describe('TOTP Nonce Handling', function () {
+describe('Pending 2FA Nonce Handling', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
-    it('should stop checkTotp if validateTotpNonce fails', async () => {
+    it('should restore the pending 2FA nonce after a failed TOTP verification', async () => {
         const calls = [];
-        const handler = {
-            rateLimit: async () => {
-                calls.push('rateLimit');
-                return { success: true };
-            },
-            validateTotpNonce: async () => {
-                calls.push('validate');
-                const err = new Error('Invalid or expired TOTP nonce');
-                err.response = 'NO';
-                err.responseCode = 403;
-                err.code = 'InvalidTotpNonce';
-                throw err;
-            }
-        };
-
-        let err;
-        try {
-            await UserHandler.prototype.checkTotp.call(handler, new ObjectId(), {
-                token: '000000',
-                totpNonce: crypto.randomBytes(20).toString('hex'),
-                accessTokenHash: crypto.randomBytes(32).toString('hex')
-            });
-        } catch (E) {
-            err = E;
-        }
-
-        expect(err).to.exist;
-        expect(err.code).to.equal('InvalidTotpNonce');
-        expect(calls).to.deep.equal(['rateLimit', 'validate']);
-    });
-
-    it('should restore the nonce after a failed TOTP verification', async () => {
-        const calls = [];
-        const rateLimitCalls = [];
-        const accessTokenHash = crypto.randomBytes(32).toString('hex');
         const seed = 'JBSWY3DPEHPK3PXP';
         const user = new ObjectId();
         const handler = {
@@ -79,67 +44,225 @@ describe('TOTP Nonce Handling', function () {
                     };
                 }
             },
-            rateLimit: async (...args) => {
-                rateLimitCalls.push(args);
-                return { success: true };
-            },
+            rateLimit: async () => ({ success: true }),
             rateLimitReleaseUser: async () => false,
             logAuthEvent: async () => false,
-            validateTotpNonce: async () => {
-                calls.push('validate');
+            consumePending2faAuth: async () => {
+                calls.push('consumePending');
                 return {
-                    user: new ObjectId(),
-                    key: 'totpnonce:test',
-                    accessTokenHash,
+                    user,
+                    key: 'pending2fa:test',
+                    data: {
+                        user: user.toString(),
+                        methods: '["totp"]',
+                        tokenRequested: 'true'
+                    },
                     expires: Date.now() + 5 * 60 * 1000
                 };
             },
-            restoreTotpNonce: async consumedTotpNonce => {
-                calls.push(`restore:${consumedTotpNonce.key}`);
+            restorePending2faAuth: async consumedPending2faAuth => {
+                calls.push(`restore:${consumedPending2faAuth.key}`);
                 return true;
             }
         };
 
-        const data = {
+        const result = await UserHandler.prototype.checkTotp.call(handler, user, {
             token: '000000',
-            totpNonce: crypto.randomBytes(20).toString('hex'),
-            accessTokenHash
-        };
-
-        const result = await UserHandler.prototype.checkTotp.call(handler, user, data);
+            totpNonce: crypto.randomBytes(20).toString('hex')
+        });
 
         expect(result).to.be.false;
-        expect(calls[0]).to.equal('validate');
-        expect(calls).to.include('restore:totpnonce:test');
-        expect(rateLimitCalls).to.deep.equal([
-            [`totp:${user}`, data, 0, consts.TOTP_FAILURES, consts.TOTP_WINDOW],
-            [`totp:${user}`, data, 1, consts.TOTP_FAILURES, consts.TOTP_WINDOW]
-        ]);
+        expect(calls).to.deep.equal(['consumePending', 'restore:pending2fa:test']);
     });
 
-    it('should validate and consume a nonce, then restore it with the remaining TTL', async () => {
+    it('should validate and consume a pending 2FA nonce, then restore it with the remaining TTL', async () => {
         const user = new ObjectId();
-        const totpNonce = crypto.randomBytes(20).toString('hex');
-        const accessTokenHash = crypto.randomBytes(32).toString('hex');
-        let restoredArgs;
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        let restoredHmsetArgs;
+        let restoredPexpireArgs;
 
         const handler = {
             redis: {
-                eval: async () => [1, 5 * 60 * 1000],
-                set: async (...args) => {
-                    restoredArgs = args;
+                eval: async () => [
+                    1,
+                    5 * 60 * 1000,
+                    'user',
+                    user.toString(),
+                    'methods',
+                    '["totp"]',
+                    'tokenRequested',
+                    'true',
+                    'created',
+                    Date.now().toString()
+                ],
+                multi() {
+                    return {
+                        hmset(...args) {
+                            restoredHmsetArgs = args;
+                            return this;
+                        },
+                        pexpire(...args) {
+                            restoredPexpireArgs = args;
+                            return this;
+                        },
+                        exec: async () => []
+                    };
                 }
             }
         };
 
-        const consumedTotpNonce = await UserHandler.prototype.validateTotpNonce.call(handler, user, totpNonce, accessTokenHash);
-        const restored = await UserHandler.prototype.restoreTotpNonce.call(handler, consumedTotpNonce);
+        const consumedPending2faAuth = await UserHandler.prototype.consumePending2faAuth.call(handler, user, twoFactorNonce, 'totp', {
+            code: 'InvalidTotpNonce'
+        });
+        const restored = await UserHandler.prototype.restorePending2faAuth.call(handler, consumedPending2faAuth);
 
+        expect(consumedPending2faAuth.tokenRequested).to.be.true;
+        expect(consumedPending2faAuth.methods).to.deep.equal(['totp']);
         expect(restored).to.be.true;
-        expect(restoredArgs[0]).to.equal(consumedTotpNonce.key);
-        expect(restoredArgs[1]).to.equal(accessTokenHash);
-        expect(restoredArgs[2]).to.equal('PX');
-        expect(restoredArgs[3]).to.be.above(0);
-        expect(restoredArgs[3]).to.be.at.most(5 * 60 * 1000);
+        expect(restoredHmsetArgs[0]).to.equal(consumedPending2faAuth.key);
+        expect(restoredHmsetArgs[1].user).to.equal(user.toString());
+        expect(restoredPexpireArgs[0]).to.equal(consumedPending2faAuth.key);
+        expect(restoredPexpireArgs[1]).to.be.above(0);
+        expect(restoredPexpireArgs[1]).to.be.at.most(5 * 60 * 1000);
+    });
+
+    it('should reject a WebAuthn assertion nonce that was not bound to the challenge', async () => {
+        const user = new ObjectId();
+        const challenge = crypto.randomBytes(32).toString('hex');
+        const handler = {
+            redis: {
+                multi() {
+                    return {
+                        hgetall() {
+                            return this;
+                        },
+                        del() {
+                            return this;
+                        },
+                        exec: async () => [
+                            [
+                                null,
+                                {
+                                    challenge,
+                                    user: user.toString(),
+                                    origin: 'https://example.com'
+                                }
+                            ],
+                            [null, 1]
+                        ]
+                    };
+                }
+            }
+        };
+
+        let err;
+        try {
+            await UserHandler.prototype.webauthnAssertAuthentication.call(handler, user, {
+                challenge,
+                rawId: '00',
+                clientDataJSON: '00',
+                authenticatorData: '00',
+                signature: '00',
+                twoFactorNonce: crypto.randomBytes(20).toString('hex')
+            });
+        } catch (E) {
+            err = E;
+        }
+
+        expect(err).to.exist;
+        expect(err.code).to.equal('Invalid2faNonce');
+    });
+
+    it('should not update WebAuthn counter when pending 2FA nonce consumption fails', async () => {
+        const user = new ObjectId();
+        const challenge = crypto.randomBytes(32).toString('hex');
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        const calls = [];
+        const originalAssertionResult = Fido2Lib.prototype.assertionResult;
+
+        Fido2Lib.prototype.assertionResult = async () => {
+            calls.push('assertionResult');
+            return {
+                authnrData: new Map([['counter', 2]])
+            };
+        };
+
+        const handler = {
+            redis: {
+                multi() {
+                    return {
+                        hgetall() {
+                            return this;
+                        },
+                        del() {
+                            return this;
+                        },
+                        exec: async () => [
+                            [
+                                null,
+                                {
+                                    challenge,
+                                    user: user.toString(),
+                                    origin: 'https://example.com',
+                                    twoFactorNonce
+                                }
+                            ],
+                            [null, 1]
+                        ]
+                    };
+                }
+            },
+            users: {
+                collection() {
+                    return {
+                        findOne: async () => ({
+                            enabled2fa: ['webauthn'],
+                            webauthn: {
+                                credentials: [
+                                    {
+                                        _id: new ObjectId(),
+                                        rawId: Buffer.from('00', 'hex'),
+                                        publicKey: Buffer.from('public-key'),
+                                        counter: 1,
+                                        type: 'public-key'
+                                    }
+                                ]
+                            }
+                        }),
+                        updateOne: async () => {
+                            calls.push('updateCounter');
+                        }
+                    };
+                }
+            },
+            consumePending2faAuth: async () => {
+                calls.push('consumePending');
+                const err = new Error('Invalid or expired 2FA nonce');
+                err.response = 'NO';
+                err.responseCode = 403;
+                err.code = 'Invalid2faNonce';
+                throw err;
+            }
+        };
+
+        let err;
+        try {
+            await UserHandler.prototype.webauthnAssertAuthentication.call(handler, user, {
+                challenge,
+                rawId: '00',
+                clientDataJSON: '00',
+                authenticatorData: '00',
+                signature: '00',
+                twoFactorNonce
+            });
+        } catch (E) {
+            err = E;
+        } finally {
+            Fido2Lib.prototype.assertionResult = originalAssertionResult;
+        }
+
+        expect(err).to.exist;
+        expect(err.code).to.equal('Invalid2faNonce');
+        expect(calls).to.deep.equal(['assertionResult', 'consumePending']);
     });
 });
