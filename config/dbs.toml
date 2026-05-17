@@ -49,3 +49,25 @@ db = 3
 # [[redis.sentinels]]
 #   host="54.36.85.115"
 #   port=26379
+
+## Connect to Redis Cluster instead of a single master
+# [redis]
+# cluster = true
+# password = ""               # global/fallback password
+# [[redis.nodes]]
+#   host="54.36.85.113"
+#   port=26379
+#   password="" # per node password
+# [[redis.nodes]]
+#   host = "127.0.0.1"
+#   port = 7000
+# [[redis.nodes]]
+#   host = "127.0.0.1"
+#   port = 7001
+# [[redis.nodes]]
+#   host = "127.0.0.1"
+#   port = 7002
+# [[redis.nodes]]
+#   host="54.36.85.115"
+#   port=26379
+#   password=""

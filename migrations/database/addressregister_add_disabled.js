@@ -3,7 +3,7 @@
 // MongoDB Migration Script: addressregister add disabled field to all current addressregister entries in DB
 const config = require('@zone-eu/wild-config');
 
-const ENABLED = process.env.NODE_ENV === 'test' ? false : !!config?.migrations?.database?.addressregisterAddDisabled?.enabled;
+const ENABLED = /^test/.test(process.env.NODE_ENV || '') ? false : !!config?.migrations?.database?.addressregisterAddDisabled?.enabled;
 const BATCH_SIZE = 1000;
 
 async function addDisabledToAddressregister() {
