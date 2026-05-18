@@ -55,6 +55,7 @@ module.exports.searchSchema = {
     new: true,
     not: ['expression'],
     old: true,
+    older: ['number'],
     on: ['date'],
     or: ['expression', 'expression'],
     recent: true,
@@ -73,7 +74,8 @@ module.exports.searchSchema = {
     undraft: true,
     unflagged: true,
     unkeyword: ['string'],
-    unseen: true
+    unseen: true,
+    younger: ['number']
 };
 
 module.exports.searchMapping = {
@@ -795,6 +797,7 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('UIDPLUS');
         capabilities.push('CONDSTORE');
         capabilities.push('UTF8=ACCEPT');
+        capabilities.push('WITHIN');
 
         capabilities.push('MOVE');
 
@@ -815,6 +818,7 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('ENABLE');
         capabilities.push('CONDSTORE');
         capabilities.push('UTF8=ACCEPT');
+        capabilities.push('WITHIN');
 
         capabilities.push('MOVE');
 

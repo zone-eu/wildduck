@@ -3,6 +3,9 @@
 const imapHandler = require('../handler/imap-handler');
 const imapTools = require('../imap-tools');
 
+// Max IMAP number is an unsigned 32-bit value
+const MAX_IMAP_NUMBER = 0xffffffff;
+
 module.exports = {
     state: 'Selected',
 
@@ -151,6 +154,10 @@ function isFixedRange(value) {
     return value.indexOf(':') >= 0 && value.indexOf(',') < 0;
 }
 
+function getWithinTargetDate(interval) {
+    return new Date(Math.floor(Date.now() / 1000) * 1000 - interval * 1000);
+}
+
 function parseQueryTerms(terms, uidList) {
     terms = [].concat(terms || []);
 
@@ -279,6 +286,24 @@ function parseQueryTerms(terms, uidList) {
                     throw new Error('Invalid MODSEQ argument');
                 }
                 response.value = Number(curTerm[curTerm.length - 1]) || 0;
+                break;
+
+            case 'older':
+            case 'younger':
+                {
+                    let interval = (curTerm[1] || '').toString();
+                    if (!/^[1-9]\d*$/.test(interval)) {
+                        throw new Error('Invalid interval argument for ' + term.toUpperCase());
+                    }
+                    interval = Number(interval);
+                    if (!Number.isSafeInteger(interval) || interval > MAX_IMAP_NUMBER) {
+                        throw new Error('Invalid interval argument for ' + term.toUpperCase());
+                    }
+
+                    response.key = 'internaldate';
+                    response.operator = curTerm[0] === 'older' ? '<=' : '>=';
+                    response.value = getWithinTargetDate(interval);
+                }
                 break;
 
             default:

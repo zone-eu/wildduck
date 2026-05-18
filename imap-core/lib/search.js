@@ -19,13 +19,18 @@ const queryHandlers = {
 
     // matches message receive date
     internaldate(message, query, callback) {
+        const messageDate = query.value instanceof Date ? new Date(message.idate).getTime() : getShortDate(message.idate);
+        const queryDate = query.value instanceof Date ? query.value.getTime() : getShortDate(query.value);
+
         switch (query.operator) {
             case '<':
-                return callback(null, getShortDate(message.idate) < getShortDate(query.value));
+                return callback(null, messageDate < queryDate);
+            case '<=':
+                return callback(null, messageDate <= queryDate);
             case '=':
-                return callback(null, getShortDate(message.idate) === getShortDate(query.value));
+                return callback(null, messageDate === queryDate);
             case '>=':
-                return callback(null, getShortDate(message.idate) >= getShortDate(query.value));
+                return callback(null, messageDate >= queryDate);
         }
         return callback(null, false);
     },
