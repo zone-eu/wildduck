@@ -1153,6 +1153,39 @@ describe('Search term match tests', function () {
                 }
             );
         });
+
+        it('should match Date thresholds by full timestamp', function (done) {
+            matchSearchQuery(
+                {
+                    idate: new Date('1999-01-01T11:00:00.000Z')
+                },
+                {
+                    key: 'internaldate',
+                    value: new Date('1999-01-01T12:00:00.000Z'),
+                    operator: '>='
+                },
+                (err, match) => {
+                    expect(err).to.not.exist;
+                    expect(match).to.be.false;
+
+                    matchSearchQuery(
+                        {
+                            idate: new Date('1999-01-01T13:00:00.000Z')
+                        },
+                        {
+                            key: 'internaldate',
+                            value: new Date('1999-01-01T12:00:00.000Z'),
+                            operator: '<='
+                        },
+                        (err, match) => {
+                            expect(err).to.not.exist;
+                            expect(match).to.be.false;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
     });
 
     describe('DATE', function () {
