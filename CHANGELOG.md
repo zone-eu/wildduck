@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.48.2](https://github.com/zone-eu/wildduck/compare/v1.48.1...v1.48.2) (2026-05-18)
+
+
+### Bug Fixes
+
+* put user remove existingPassword check ([#1074](https://github.com/zone-eu/wildduck/issues/1074)) ([076dd38](https://github.com/zone-eu/wildduck/commit/076dd3835e49133758bf9019bc69225f38c8c8f6))
+* ZMS-53: Make search based on q param equal to general search ([#1057](https://github.com/zone-eu/wildduck/issues/1057)) ([fbe678a](https://github.com/zone-eu/wildduck/commit/fbe678ab373d2abcd3e63431a775daaddec50aac))
+* ZMS-62: Add support for spam level overrides in Filter handler ([#1072](https://github.com/zone-eu/wildduck/issues/1072)) ([173a733](https://github.com/zone-eu/wildduck/commit/173a7332e81ccae44c100f278d6412a45258b19f))
+
 ## [1.48.1](https://github.com/zone-eu/wildduck/compare/v1.48.0...v1.48.1) (2026-05-11)
 
 
