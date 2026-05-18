@@ -36,19 +36,54 @@ describe('#filterFolders', function() {
 });
 
 describe('#sendCapabilityResponse', function() {
-    it('should advertise WITHIN', function() {
+    function getCapabilities(connection) {
         let responses = [];
 
         imapTools.sendCapabilityResponse({
             secure: true,
             state: 'Authenticated',
-            _server: {
-                options: {}
-            },
+            _server: { options: {} },
+            ...connection,
             send: response => responses.push(response)
         });
 
         expect(responses).to.have.length(1);
-        expect(responses[0]).to.match(/^\* CAPABILITY .* WITHIN( |$)/);
+        expect(responses[0]).to.match(/^\* CAPABILITY /);
+
+        return responses[0].replace(/^\* CAPABILITY /, '').split(' ');
+    }
+
+    it('should advertise WITHIN before authentication', function() {
+        expect(getCapabilities({ state: 'Not Authenticated' })).to.include('WITHIN');
+    });
+
+    it('should advertise WITHIN after authentication', function() {
+        expect(getCapabilities({ state: 'Authenticated' })).to.include('WITHIN');
+    });
+
+    it('should advertise WITHIN together with STARTTLS capabilities', function() {
+        let capabilities = getCapabilities({
+            secure: false,
+            state: 'Not Authenticated',
+            _server: { options: {} }
+        });
+
+        expect(capabilities).to.include('WITHIN');
+        expect(capabilities).to.include('STARTTLS');
+        expect(capabilities).to.include('LOGINDISABLED');
+    });
+
+    it('should advertise WITHIN only once', function() {
+        let capabilities = getCapabilities({
+            state: 'Authenticated',
+            _server: {
+                options: {
+                    enableCompression: true,
+                    maxMessage: 1024
+                }
+            }
+        });
+
+        expect(capabilities.filter(capability => capability === 'WITHIN')).to.have.length(1);
     });
 });
