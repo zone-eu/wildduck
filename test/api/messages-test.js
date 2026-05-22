@@ -607,6 +607,14 @@ describe('Messages tests', function () {
         expect(search.results.map(entry => entry.mailbox)).to.eql([queryMailbox]);
     });
 
+    it('should GET /users/:user/search expect success / q supports standalone quoted subject keyword', async () => {
+        const q = `subject:"${queryFixture.subjectKeyword}"`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExcluded);
+    });
+
     it('should GET /users/:user/search expect success / q to: matches Cc recipients', async () => {
         const q = `to:${queryFixture.toAddress} in:${queryMailbox}`;
         const search = await searchQ(q);
@@ -811,6 +819,42 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.include(queryFixture.subjectAttachment);
+    });
+
+    it('should GET /users/:user/search expect success / q supports OR between quoted from and to keywords', async () => {
+        const orAddress = `search.query.or-${Date.now().toString(36)}@to.com`;
+        const fromSubject = 'Search Query Quoted From OR Marker';
+        const toSubject = 'Search Query Quoted To OR Marker';
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-09T10:00:00.000Z'),
+                from: { address: orAddress },
+                to: [{ address: queryFixture.otherAddress }],
+                subject: fromSubject,
+                text: 'quoted from side'
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-09T11:00:00.000Z'),
+                from: { address: queryFixture.otherAddress },
+                to: [{ address: orAddress }],
+                subject: toSubject,
+                text: 'quoted to side'
+            })
+            .expect(200);
+
+        const q = `from:"${orAddress}" OR to:"${orAddress}"`;
+        const search = await searchQ(q);
+        const subjects = getSubjects(search);
+
+        expect(subjects).to.include(fromSubject);
+        expect(subjects).to.include(toSubject);
+        expect(subjects).to.not.include('Test message 0');
     });
 
     it('should GET /users/:user/search expect success / q supports focused OR groups with subject keywords', async () => {
