@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.48.2](https://github.com/zone-eu/wildduck/compare/v1.48.1...v1.48.2) (2026-05-25)
+
+
+### Bug Fixes
+
+* bump deps ([#1077](https://github.com/zone-eu/wildduck/issues/1077)) ([8c48b79](https://github.com/zone-eu/wildduck/commit/8c48b79c0eb0964f5e1268859f965f59bfe92ddb))
+* put user remove existingPassword check ([#1074](https://github.com/zone-eu/wildduck/issues/1074)) ([076dd38](https://github.com/zone-eu/wildduck/commit/076dd3835e49133758bf9019bc69225f38c8c8f6))
+* ZMS-53: Make search based on q param equal to general search ([#1057](https://github.com/zone-eu/wildduck/issues/1057)) ([fbe678a](https://github.com/zone-eu/wildduck/commit/fbe678ab373d2abcd3e63431a775daaddec50aac))
+* ZMS-62: Add support for spam level overrides in Filter handler ([#1072](https://github.com/zone-eu/wildduck/issues/1072)) ([173a733](https://github.com/zone-eu/wildduck/commit/173a7332e81ccae44c100f278d6412a45258b19f))
+* ZMS-64: Improve q param search ([#1076](https://github.com/zone-eu/wildduck/issues/1076)) ([f697d44](https://github.com/zone-eu/wildduck/commit/f697d44cf56a7644f36455f060f765be555a7868))
+* ZMS-65: Remove unnecessary stack logs from authfail gelf logs ([#1075](https://github.com/zone-eu/wildduck/issues/1075)) ([2ea3093](https://github.com/zone-eu/wildduck/commit/2ea3093e34d6059e1a548286e5e0d90043d55c15))
+
 ## [1.48.1](https://github.com/zone-eu/wildduck/compare/v1.48.0...v1.48.1) (2026-05-11)
 
 
