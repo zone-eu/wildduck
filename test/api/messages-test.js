@@ -1072,6 +1072,37 @@ describe('Messages tests', function () {
         expect(search.results).to.have.length(0);
     });
 
+    it('should GET /users/:user/search expect success / q returns no matches for conflicting boolean and keyword filters', async () => {
+        const queries = [
+            `mailbox:${queryMailbox} seen:true unseen:true`,
+            `mailbox:${queryMailbox} is:read is:unread`,
+            `mailbox:${queryMailbox} attachments:true -has:attachment`,
+            `mailbox:${queryMailbox} flagged:true -is:starred`,
+            `mailbox:${queryMailbox} subject:"${queryFixture.subjectKeyword}" -subject:"${queryFixture.subjectKeyword}"`
+        ];
+
+        for (let q of queries) {
+            const search = await searchQ(q);
+            expect(search.results, q).to.have.length(0);
+        }
+    });
+
+    it('should GET /users/:user/search expect success / q returns no matches for conflicting scope and range filters', async () => {
+        const queries = [
+            `mailbox:${queryMailbox} mailbox:${queryAltMailbox}`,
+            `mailbox:${queryMailbox} in:${queryAltMailbox}`,
+            `mailbox:${queryMailbox} thread:${queryThread} -thread:${queryThread}`,
+            `mailbox:${queryMailbox} id:${queryKeywordMessageId} -id:${queryKeywordMessageId}`,
+            `mailbox:${queryMailbox} datestart:2022-01-01 dateend:2021-01-01`,
+            `mailbox:${queryMailbox} minSize:1000000 maxSize:1`
+        ];
+
+        for (let q of queries) {
+            const search = await searchQ(q);
+            expect(search.results, q).to.have.length(0);
+        }
+    });
+
     it('should GET /users/:user/search expect success / api search params combine as AND by default', async () => {
         const search = await server.get(`/users/${user}/search?mailbox=${queryMailbox}&attachments=true&flagged=true&limit=50`).send({}).expect(200);
 
@@ -1172,6 +1203,28 @@ describe('Messages tests', function () {
         const search = await searchQ(q);
 
         expect(getIds(search)).to.eql([queryFlaggedSeenAttachmentMessageId]);
+    });
+
+    it('should GET /users/:user/search expect success / q handles uppercase keys and truthy boolean aliases', async () => {
+        const q = `MAILBOX:${queryMailbox} ATTACHMENTS:yes IS:starred`;
+        const search = await searchQ(q);
+
+        expect(getIds(search)).to.eql([queryFlaggedSeenAttachmentMessageId]);
+        expect(search.results.every(entry => entry.attachments && entry.flagged)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q trims quoted keyword values', async () => {
+        const q = `mailbox:${queryMailbox} subject:"  ${queryFixture.subjectKeyword}  "`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.eql([queryFixture.subjectKeyword]);
+    });
+
+    it('should GET /users/:user/search expect success / q OR groups ignore impossible sibling branches', async () => {
+        const q = `mailbox:${queryMailbox} (subject:"${queryFixture.subjectKeyword}" OR (attachments:true -attachments:true))`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.eql([queryFixture.subjectKeyword]);
     });
 
     it('should GET /users/:user/search expect success / q ignores invalid mailbox, thread and id values', async () => {
