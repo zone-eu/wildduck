@@ -104,6 +104,35 @@ describe('Search query parser tests', function () {
             });
         }
     });
+
+    it('should parse quoted from display names in MongoDB query', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+        const query = await getMongoDBQuery(db, user, 'from:"name surname"');
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [
+                {
+                    headers: {
+                        $elemMatch: {
+                            key: 'from',
+                            value: {
+                                $regex: 'name surname',
+                                $options: 'i'
+                            }
+                        }
+                    }
+                }
+            ]
+        });
+    });
 });
 
 describe('Messages tests', function () {
@@ -613,6 +642,26 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectExcluded);
+    });
+
+    it('should GET /users/:user/search expect success / q supports quoted from display name keyword', async () => {
+        const subject = 'Search Query Quoted From Display Name Marker';
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-09T09:00:00.000Z'),
+                from: { name: 'Name Surname', address: `search.query.name-${Date.now().toString(36)}@web.zone.test` },
+                to: [{ address: queryFixture.otherAddress }],
+                subject,
+                text: 'quoted from display name marker'
+            })
+            .expect(200);
+
+        const search = await searchQ('from:"name surname"');
+
+        expect(getSubjects(search)).to.include(subject);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectKeyword);
     });
 
     it('should GET /users/:user/search expect success / q to: matches Cc recipients', async () => {
