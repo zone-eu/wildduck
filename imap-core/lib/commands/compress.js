@@ -1,6 +1,18 @@
 'use strict';
 
 const zlib = require('zlib');
+const InflateLimitStream = require('../inflate-limit-stream');
+
+function createInflateLimitStream(connection) {
+    let maxInflatedBytes = Number(connection._server.options.maxCompressionInflateBytes);
+    if (Number.isFinite(maxInflatedBytes) && maxInflatedBytes <= 0) {
+        return false;
+    }
+
+    return new InflateLimitStream({
+        maxInflatedBytes
+    });
+}
 
 // tag COMPRESS DEFLATE
 module.exports = {
@@ -14,10 +26,7 @@ module.exports = {
     ],
 
     handler(command, callback) {
-        let mechanism = ((command.attributes[0] && command.attributes[0].value) || '')
-            .toString()
-            .toUpperCase()
-            .trim();
+        let mechanism = ((command.attributes[0] && command.attributes[0].value) || '').toString().toUpperCase().trim();
 
         if (!mechanism) {
             return callback(null, {
@@ -45,34 +54,36 @@ module.exports = {
                 windowBits: 15
             });
             this._inflate = zlib.createInflateRaw();
+            this._inflateLimit = createInflateLimitStream(this);
 
-            this._deflate.once('error', err => {
+            let onCompressionError = (err, tnx) => {
                 this._server.logger.debug(
                     {
                         err,
-                        tnx: 'deflate',
+                        tnx,
                         cid: this.id
                     },
-                    '[%s] Deflate error %s',
+                    '[%s] %s error %s',
                     this.id,
+                    tnx,
                     err.message
                 );
                 this.close();
+            };
+
+            this._deflate.once('error', err => {
+                onCompressionError(err, 'deflate');
             });
 
             this._inflate.once('error', err => {
-                this._server.logger.debug(
-                    {
-                        err,
-                        tnx: 'inflate',
-                        cid: this.id
-                    },
-                    '[%s] Inflate error %s',
-                    this.id,
-                    err.message
-                );
-                this.close();
+                onCompressionError(err, 'inflate');
             });
+
+            if (this._inflateLimit) {
+                this._inflateLimit.once('error', err => {
+                    onCompressionError(err, 'inflate-limit');
+                });
+            }
 
             this.writeStream.unpipe(this._socket);
             this._deflate.pipe(this._socket);
@@ -101,7 +112,11 @@ module.exports = {
             });
 
             this._socket.unpipe(this._parser);
-            this._socket.pipe(this._inflate).pipe(this._parser);
+            if (this._inflateLimit) {
+                this._socket.pipe(this._inflate).pipe(this._inflateLimit).pipe(this._parser);
+            } else {
+                this._socket.pipe(this._inflate).pipe(this._parser);
+            }
         });
 
         callback(null, {

@@ -43,4 +43,28 @@ describe('IMAP stream pipelining', function () {
             done();
         });
     });
+
+    it('should surface negative literal sizes to the command handler', function (done) {
+        const parser = new IMAPStream();
+        let seen = false;
+
+        parser.oncommand = (command, callback) => {
+            seen = true;
+            expect(command.final).to.be.false;
+            expect(command.value).to.equal('A1 APPEND INBOX {-1}');
+            expect(command.expecting).to.equal(-1);
+            expect(command.literal).to.exist;
+            expect(command.readyCallback).to.be.a('function');
+            callback();
+        };
+
+        parser.write(Buffer.from('A1 APPEND INBOX {-1}\r\n', 'binary'), err => {
+            if (err) {
+                return done(err);
+            }
+
+            expect(seen).to.be.true;
+            done();
+        });
+    });
 });

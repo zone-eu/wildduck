@@ -128,6 +128,13 @@ module.exports = {
             raw = Buffer.from(typeof message.value === 'string' ? message.value : (message.value || '').toString(), 'binary');
         }
 
+        if (!raw.length) {
+            return callback(null, {
+                response: 'NO',
+                message: "Can't save a zero byte message."
+            });
+        }
+
         let logdata = {
             short_message: '[APPEND]',
             _mail_action: 'append',
