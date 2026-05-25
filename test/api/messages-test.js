@@ -9,7 +9,8 @@ const chai = require('chai');
 const expect = chai.expect;
 chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
-const { parseSearchQuery } = require('../../lib/search-query');
+const { ObjectId } = require('mongodb');
+const { parseSearchQuery, getMongoDBQuery } = require('../../lib/search-query');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -23,6 +24,114 @@ describe('Search query parser tests', function () {
             { value: 'here', negated: false, exactPhrase: false }
         ]);
         expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase here', negated: false, exactPhrase: true }]);
+    });
+
+    it('should normalize q parameter aliases in MongoDB query', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+
+        for (let q of ['attachments:true', 'has:attachment', 'has:attachments']) {
+            const query = await getMongoDBQuery(db, user, q);
+
+            expect(query).to.deep.equal({
+                user,
+                $and: [{ ha: true }]
+            });
+        }
+
+        const negated = await getMongoDBQuery(db, user, '-has:attachments');
+        expect(negated).to.deep.equal({
+            user,
+            $and: [{ ha: { $ne: true } }]
+        });
+
+        const aliases = [
+            { q: 'flagged:true', expected: { flagged: true } },
+            { q: 'is:starred', expected: { flagged: true } },
+            { q: '-is:starred', expected: { flagged: { $ne: true } } },
+            { q: 'seen:true', expected: { unseen: false, searchable: true } },
+            { q: 'is:read', expected: { unseen: false, searchable: true } },
+            { q: '-is:read', expected: { unseen: { $ne: false } } },
+            { q: 'unseen:true', expected: { unseen: true, searchable: true } },
+            { q: 'is:unread', expected: { unseen: true, searchable: true } },
+            { q: '-is:unread', expected: { unseen: { $ne: true } } }
+        ];
+
+        for (let { q, expected } of aliases) {
+            const query = await getMongoDBQuery(db, user, q);
+
+            expect(query).to.deep.equal({
+                user,
+                $and: [expected]
+            });
+        }
+    });
+
+    it('should parse cc and bcc as separate recipient filters in MongoDB query', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+
+        for (let keyword of ['cc', 'bcc']) {
+            const query = await getMongoDBQuery(db, user, `${keyword}:recipient@example.com`);
+
+            expect(query).to.deep.equal({
+                user,
+                $and: [
+                    {
+                        headers: {
+                            $elemMatch: {
+                                key: keyword,
+                                value: {
+                                    $regex: 'recipient@example\\.com',
+                                    $options: 'i'
+                                }
+                            }
+                        }
+                    }
+                ]
+            });
+        }
+    });
+
+    it('should parse quoted from display names in MongoDB query', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+        const query = await getMongoDBQuery(db, user, 'from:"name surname"');
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [
+                {
+                    headers: {
+                        $elemMatch: {
+                            key: 'from',
+                            value: {
+                                $regex: 'name surname',
+                                $options: 'i'
+                            }
+                        }
+                    }
+                }
+            ]
+        });
     });
 });
 
@@ -71,6 +180,7 @@ describe('Messages tests', function () {
         toAddress: 'search.query.to@to.com',
         extraToAddress: 'search.query.extra@to.com',
         ccAddress: 'search.query.cc@to.com',
+        bccAddress: 'search.query.bcc@to.com',
         otherAddress: 'search.query.other@to.com',
         fromAddress: 'messagestestsuser@web.zone.test',
         altFromAddress: 'search.query.alt-from@web.zone.test'
@@ -176,7 +286,7 @@ describe('Messages tests', function () {
                 from: { address: queryFixture.fromAddress },
                 to: [{ address: queryFixture.toAddress }, { address: queryFixture.ccAddress }],
                 cc: [{ address: queryFixture.ccAddress }],
-                bcc: [{ address: queryFixture.ccAddress }],
+                bcc: [{ address: queryFixture.bccAddress }],
                 subject: queryFixture.subjectKeyword,
                 text: `${queryFixture.body} keyword marker ${queryFixture.multiTerm1} ${queryFixture.multiTerm2}`
             })
@@ -526,11 +636,58 @@ describe('Messages tests', function () {
         expect(search.results.map(entry => entry.mailbox)).to.eql([queryMailbox]);
     });
 
+    it('should GET /users/:user/search expect success / q supports standalone quoted subject keyword', async () => {
+        const q = `subject:"${queryFixture.subjectKeyword}"`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectExcluded);
+    });
+
+    it('should GET /users/:user/search expect success / q supports quoted from display name keyword', async () => {
+        const subject = 'Search Query Quoted From Display Name Marker';
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-09T09:00:00.000Z'),
+                from: { name: 'Name Surname', address: `search.query.name-${Date.now().toString(36)}@web.zone.test` },
+                to: [{ address: queryFixture.otherAddress }],
+                subject,
+                text: 'quoted from display name marker'
+            })
+            .expect(200);
+
+        const search = await searchQ('from:"name surname"');
+
+        expect(getSubjects(search)).to.include(subject);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectKeyword);
+    });
+
     it('should GET /users/:user/search expect success / q to: matches Cc recipients', async () => {
         const q = `to:${queryFixture.toAddress} in:${queryMailbox}`;
         const search = await searchQ(q);
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
+    });
+
+    it('should GET /users/:user/search expect success / q supports cc and bcc recipient keywords', async () => {
+        const ccSearch = await searchQ(`cc:${queryFixture.ccAddress} in:${queryMailbox}`);
+        const bccSearch = await searchQ(`bcc:${queryFixture.bccAddress} in:${queryMailbox}`);
+        const ccOnlyMiss = await searchQ(`cc:${queryFixture.bccAddress} in:${queryMailbox}`);
+        const bccOnlyMiss = await searchQ(`bcc:${queryFixture.ccAddress} in:${queryMailbox}`);
+        const negatedCcSearch = await searchQ(`-cc:${queryFixture.ccAddress} in:${queryMailbox}`);
+        const negatedBccSearch = await searchQ(`-bcc:${queryFixture.bccAddress} in:${queryMailbox}`);
+
+        expect(getSubjects(ccSearch)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(ccSearch)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(bccSearch)).to.eql([queryFixture.subjectKeyword]);
+        expect(getSubjects(ccOnlyMiss)).to.not.include(queryFixture.subjectKeyword);
+        expect(getSubjects(bccOnlyMiss)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(negatedCcSearch)).to.not.include(queryFixture.subjectKeyword);
+        expect(getSubjects(negatedCcSearch)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(negatedBccSearch)).to.not.include(queryFixture.subjectKeyword);
+        expect(getSubjects(negatedBccSearch)).to.include(queryFixture.subjectFlaggedSeenAttachment);
     });
 
     it('should GET /users/:user/search expect success / q has:attachment matches attachment messages', async () => {
@@ -539,6 +696,27 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectAttachment);
         expect(search.results.every(entry => entry.attachments)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q has:attachments matches attachment messages', async () => {
+        const q = `has:attachments in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectAttachment);
+        expect(getSubjects(search)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(search.results.every(entry => entry.attachments)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q supports negated has:attachment aliases', async () => {
+        const attachmentSearch = await searchQ(`-has:attachment in:${queryMailbox}`);
+        const attachmentsSearch = await searchQ(`-has:attachments in:${queryMailbox}`);
+
+        expect(getSubjects(attachmentSearch)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(attachmentSearch)).to.not.include(queryFixture.subjectAttachment);
+        expect(getSubjects(attachmentSearch)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getIds(attachmentsSearch)).to.deep.equal(getIds(attachmentSearch));
+        expect(attachmentSearch.results.every(entry => !entry.attachments)).to.be.true;
+        expect(attachmentsSearch.results.every(entry => !entry.attachments)).to.be.true;
     });
 
     it('should GET /users/:user/search expect success / q supports fulltext terms', async () => {
@@ -692,6 +870,42 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectAttachment);
     });
 
+    it('should GET /users/:user/search expect success / q supports OR between quoted from and to keywords', async () => {
+        const orAddress = `search.query.or-${Date.now().toString(36)}@to.com`;
+        const fromSubject = 'Search Query Quoted From OR Marker';
+        const toSubject = 'Search Query Quoted To OR Marker';
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-09T10:00:00.000Z'),
+                from: { address: orAddress },
+                to: [{ address: queryFixture.otherAddress }],
+                subject: fromSubject,
+                text: 'quoted from side'
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-09T11:00:00.000Z'),
+                from: { address: queryFixture.otherAddress },
+                to: [{ address: orAddress }],
+                subject: toSubject,
+                text: 'quoted to side'
+            })
+            .expect(200);
+
+        const q = `from:"${orAddress}" OR to:"${orAddress}"`;
+        const search = await searchQ(q);
+        const subjects = getSubjects(search);
+
+        expect(subjects).to.include(fromSubject);
+        expect(subjects).to.include(toSubject);
+        expect(subjects).to.not.include('Test message 0');
+    });
+
     it('should GET /users/:user/search expect success / q supports focused OR groups with subject keywords', async () => {
         const q = `(subject:Keyword OR subject:Attachment) in:${queryMailbox}`;
         const search = await searchQ(q);
@@ -782,6 +996,23 @@ describe('Messages tests', function () {
         expect(search.results.every(entry => entry.attachments && entry.flagged)).to.be.true;
     });
 
+    it('should GET /users/:user/search expect success / q supports is:starred alias', async () => {
+        const q = `mailbox:${queryMailbox} is:starred`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.eql([queryFixture.subjectFlaggedSeenAttachment]);
+        expect(search.results.every(entry => entry.flagged)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q supports negated is:starred alias', async () => {
+        const q = `mailbox:${queryMailbox} -is:starred`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(search.results.every(entry => !entry.flagged)).to.be.true;
+    });
+
     it('should GET /users/:user/search expect success / q supports seen and unseen field filters', async () => {
         const seenSearch = await searchQ(`mailbox:${queryMailbox} seen:true`);
         const unseenSearch = await searchQ(`mailbox:${queryMailbox} unseen:true`);
@@ -792,6 +1023,31 @@ describe('Messages tests', function () {
         expect(getSubjects(unseenSearch)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
         expect(seenSearch.results.every(entry => entry.seen)).to.be.true;
         expect(unseenSearch.results.every(entry => !entry.seen)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q supports is:read and is:unread aliases', async () => {
+        const readSearch = await searchQ(`mailbox:${queryMailbox} is:read`);
+        const unreadSearch = await searchQ(`mailbox:${queryMailbox} is:unread`);
+
+        expect(getSubjects(readSearch)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(readSearch)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(unreadSearch)).to.include(queryFixture.subjectUnseen);
+        expect(getSubjects(unreadSearch)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(readSearch.results.every(entry => entry.seen)).to.be.true;
+        expect(unreadSearch.results.every(entry => !entry.seen)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q supports negated is:read and is:unread aliases', async () => {
+        const notReadSearch = await searchQ(`mailbox:${queryMailbox} -is:read`);
+        const notUnreadSearch = await searchQ(`mailbox:${queryMailbox} -is:unread`);
+
+        expect(getSubjects(notReadSearch)).to.include(queryFixture.subjectUnseen);
+        expect(getSubjects(notReadSearch)).to.not.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(notUnreadSearch)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(notUnreadSearch)).to.include(queryFixture.subjectFlaggedSeenAttachment);
+        expect(getSubjects(notUnreadSearch)).to.not.include(queryFixture.subjectUnseen);
+        expect(notReadSearch.results.every(entry => !entry.seen)).to.be.true;
+        expect(notUnreadSearch.results.every(entry => entry.seen)).to.be.true;
     });
 
     it('should GET /users/:user/search expect success / q supports repeated from and to fields with same values', async () => {
@@ -814,6 +1070,37 @@ describe('Messages tests', function () {
         const search = await searchQ(q);
 
         expect(search.results).to.have.length(0);
+    });
+
+    it('should GET /users/:user/search expect success / q returns no matches for conflicting boolean and keyword filters', async () => {
+        const queries = [
+            `mailbox:${queryMailbox} seen:true unseen:true`,
+            `mailbox:${queryMailbox} is:read is:unread`,
+            `mailbox:${queryMailbox} attachments:true -has:attachment`,
+            `mailbox:${queryMailbox} flagged:true -is:starred`,
+            `mailbox:${queryMailbox} subject:"${queryFixture.subjectKeyword}" -subject:"${queryFixture.subjectKeyword}"`
+        ];
+
+        for (let q of queries) {
+            const search = await searchQ(q);
+            expect(search.results, q).to.have.length(0);
+        }
+    });
+
+    it('should GET /users/:user/search expect success / q returns no matches for conflicting scope and range filters', async () => {
+        const queries = [
+            `mailbox:${queryMailbox} mailbox:${queryAltMailbox}`,
+            `mailbox:${queryMailbox} in:${queryAltMailbox}`,
+            `mailbox:${queryMailbox} thread:${queryThread} -thread:${queryThread}`,
+            `mailbox:${queryMailbox} id:${queryKeywordMessageId} -id:${queryKeywordMessageId}`,
+            `mailbox:${queryMailbox} datestart:2022-01-01 dateend:2021-01-01`,
+            `mailbox:${queryMailbox} minSize:1000000 maxSize:1`
+        ];
+
+        for (let q of queries) {
+            const search = await searchQ(q);
+            expect(search.results, q).to.have.length(0);
+        }
     });
 
     it('should GET /users/:user/search expect success / api search params combine as AND by default', async () => {
@@ -916,6 +1203,28 @@ describe('Messages tests', function () {
         const search = await searchQ(q);
 
         expect(getIds(search)).to.eql([queryFlaggedSeenAttachmentMessageId]);
+    });
+
+    it('should GET /users/:user/search expect success / q handles uppercase keys and truthy boolean aliases', async () => {
+        const q = `MAILBOX:${queryMailbox} ATTACHMENTS:yes IS:starred`;
+        const search = await searchQ(q);
+
+        expect(getIds(search)).to.eql([queryFlaggedSeenAttachmentMessageId]);
+        expect(search.results.every(entry => entry.attachments && entry.flagged)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q trims quoted keyword values', async () => {
+        const q = `mailbox:${queryMailbox} subject:"  ${queryFixture.subjectKeyword}  "`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.eql([queryFixture.subjectKeyword]);
+    });
+
+    it('should GET /users/:user/search expect success / q OR groups ignore impossible sibling branches', async () => {
+        const q = `mailbox:${queryMailbox} (subject:"${queryFixture.subjectKeyword}" OR (attachments:true -attachments:true))`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.eql([queryFixture.subjectKeyword]);
     });
 
     it('should GET /users/:user/search expect success / q ignores invalid mailbox, thread and id values', async () => {
