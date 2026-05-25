@@ -26,6 +26,28 @@ describe('Search query parser tests', function () {
         expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase here', negated: false, exactPhrase: true }]);
     });
 
+    it('should parse quoted in keyword values as mailbox filters', () => {
+        for (let mailboxPath of ['Sub (dub)', 'INBOX/(dub)', 'INBOX/Sub (dub)', '(dub)']) {
+            const parsed = parseSearchQuery(`in:"${mailboxPath}"`);
+
+            expect(parsed).to.deep.equal([
+                {
+                    text: null,
+                    keywords: {
+                        in: {
+                            value: mailboxPath,
+                            negated: false
+                        }
+                    },
+                    value: `in:"${mailboxPath}"`
+                }
+            ]);
+        }
+
+        const negated = parseSearchQuery('-in:"Sub (dub)"');
+        expect(negated[0].keywords.in).to.deep.equal({ value: 'Sub (dub)', negated: true });
+    });
+
     it('should normalize q parameter aliases in MongoDB query', async () => {
         const db = {
             database: {
@@ -634,6 +656,31 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(search.results.map(entry => entry.mailbox)).to.eql([queryMailbox]);
+    });
+
+    it('should GET /users/:user/search expect success / q supports quoted in mailbox paths', async () => {
+        for (let mailboxPath of ['Sub (dub)', 'INBOX/(dub)', 'INBOX/Sub (dub)', '(dub)']) {
+            const mailboxResponse = await server.post(`/users/${user}/mailboxes`).send({ path: mailboxPath, hidden: false, retention: 10000 }).expect(200);
+            const mailbox = mailboxResponse.body.id;
+            const subject = `Search Query Quoted Mailbox ${mailboxPath}`;
+
+            await server
+                .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+                .send({
+                    date: new Date('2021-01-09T12:00:00.000Z'),
+                    draft: true,
+                    from: { address: queryFixture.fromAddress },
+                    to: [{ address: queryFixture.toAddress }],
+                    subject,
+                    text: `quoted mailbox path marker ${mailboxPath}`
+                })
+                .expect(200);
+
+            const search = await searchQ(`in:"${mailboxPath}"`);
+
+            expect(getSubjects(search)).to.eql([subject]);
+            expect(search.results.map(entry => entry.mailbox)).to.eql([mailbox]);
+        }
     });
 
     it('should GET /users/:user/search expect success / q supports standalone quoted subject keyword', async () => {
