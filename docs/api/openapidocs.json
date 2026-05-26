@@ -6077,7 +6077,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SuccessResponse"
+                                    "$ref": "#/components/schemas/ValidateTOTPTokenResponse"
                                 }
                             }
                         }
@@ -6539,6 +6539,10 @@
                                         "type": "string",
                                         "description": "Relaying party ID. Domain"
                                     },
+                                    "twoFactorNonce": {
+                                        "type": "string",
+                                        "description": "Short-lived nonce returned by /authenticate"
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -6618,6 +6622,10 @@
                                     "rpId": {
                                         "type": "string",
                                         "description": "Relaying party ID. Domain"
+                                    },
+                                    "twoFactorNonce": {
+                                        "type": "string",
+                                        "description": "Short-lived nonce returned by /authenticate"
                                     },
                                     "token": {
                                         "type": "boolean",
@@ -12942,6 +12950,23 @@
                     "qrcode"
                 ]
             },
+            "ValidateTOTPTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "User auth token returned when this check completes a pending 2FA login"
+                    }
+                },
+                "required": [
+                    "success"
+                ]
+            },
             "GetWebAuthNResponse": {
                 "type": "object",
                 "properties": {
@@ -13364,7 +13389,11 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If access token was requested then this is the value to use as access token when making API requests on behalf of logged in user."
+                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required then this is the value to use as access token when making API requests on behalf of logged in user."
+                    },
+                    "twoFactorNonce": {
+                        "type": "string",
+                        "description": "Short-lived nonce for completing 2FA authentication"
                     },
                     "totpNonce": {
                         "type": "string",
