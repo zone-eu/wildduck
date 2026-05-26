@@ -7,6 +7,11 @@
 # process title
 ident = "wildduck"
 
+# If true, /authenticate returns a short-lived 2FA nonce instead of a user token
+# when WildDuck-verifiable 2FA is enabled for the user. Set to false to keep the
+# legacy behavior where /authenticate returns the user token immediately.
+strict2fa = true
+
 # how many processes to start
 # either a number for specific process count or "cpus" for machine thread count
 processes = 1

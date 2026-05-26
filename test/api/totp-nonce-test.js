@@ -6,11 +6,193 @@ const chai = require('chai');
 const crypto = require('crypto');
 const ObjectId = require('mongodb').ObjectId;
 const { Fido2Lib } = require('fido2-lib');
+const speakeasy = require('speakeasy');
+const config = require('@zone-eu/wild-config');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
 
+const authRoutes = require('../../lib/api/auth');
 const UserHandler = require('../../lib/user-handler');
+
+function getAuthenticateRoute(userHandler) {
+    const routes = [];
+    const server = {
+        post(spec, handler) {
+            routes.push({ spec, handler });
+        },
+        del() {},
+        get() {}
+    };
+
+    authRoutes({}, server, userHandler);
+    return routes.find(route => route.spec.path === '/authenticate' && route.spec.name === 'authenticate');
+}
+
+function getResponse() {
+    return {
+        statusCode: 200,
+        body: false,
+        charSet() {
+            return this;
+        },
+        status(statusCode) {
+            this.statusCode = statusCode;
+            return this;
+        },
+        json(body) {
+            this.body = body;
+            return body;
+        }
+    };
+}
+
+function assertGranted(permission) {
+    if (!permission.granted) {
+        throw new Error('Missing privileges');
+    }
+}
+
+describe('Authenticate Strict 2FA Handling', function () {
+    this.timeout(10000); // eslint-disable-line no-invalid-this
+
+    let originalStrict2fa;
+
+    beforeEach(() => {
+        originalStrict2fa = config.strict2fa;
+    });
+
+    afterEach(() => {
+        config.strict2fa = originalStrict2fa;
+    });
+
+    it('should return a pending 2FA nonce instead of a token when strict2fa is enabled', async () => {
+        config.strict2fa = true;
+
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        const calls = [];
+
+        const route = getAuthenticateRoute({
+            asyncAuthenticate: async () => [
+                {
+                    user,
+                    username: 'totpuser',
+                    address: 'totpuser@example.com',
+                    scope: 'master',
+                    require2fa: ['totp'],
+                    require2faEnabled: true,
+                    requirePasswordChange: false
+                },
+                user
+            ],
+            generatePending2faNonce: async (authUser, data) => {
+                calls.push(['pending', authUser.toString(), data]);
+                return twoFactorNonce;
+            },
+            generateAuthToken: async () => {
+                throw new Error('generateAuthToken should not be called');
+            }
+        });
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: '/authenticate',
+                route: { spec: route.spec },
+                params: {
+                    username: 'totpuser',
+                    password: 'totpsecret',
+                    token: true
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.not.exist;
+        expect(res.body.twoFactorNonce).to.equal(twoFactorNonce);
+        expect(res.body.totpNonce).to.equal(twoFactorNonce);
+        expect(calls).to.deep.equal([
+            [
+                'pending',
+                user.toString(),
+                {
+                    methods: ['totp'],
+                    tokenRequested: true
+                }
+            ]
+        ]);
+    });
+
+    it('should return a token and standalone TOTP nonce when strict2fa is disabled', async () => {
+        config.strict2fa = false;
+
+        const user = new ObjectId();
+        const accessToken = crypto.randomBytes(20).toString('hex');
+        const totpNonce = crypto.randomBytes(20).toString('hex');
+        const calls = [];
+
+        const route = getAuthenticateRoute({
+            asyncAuthenticate: async () => [
+                {
+                    user,
+                    username: 'legacytotpuser',
+                    address: 'legacytotpuser@example.com',
+                    scope: 'master',
+                    require2fa: ['totp'],
+                    require2faEnabled: true,
+                    requirePasswordChange: false
+                },
+                user
+            ],
+            generateAuthToken: async authUser => {
+                calls.push(['token', authUser.toString()]);
+                return accessToken;
+            },
+            generatePending2faNonce: async (authUser, data) => {
+                calls.push(['pending', authUser.toString(), data]);
+                return totpNonce;
+            }
+        });
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: '/authenticate',
+                route: { spec: route.spec },
+                params: {
+                    username: 'legacytotpuser',
+                    password: 'totpsecret',
+                    token: true
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.equal(accessToken);
+        expect(res.body.twoFactorNonce).to.not.exist;
+        expect(res.body.totpNonce).to.equal(totpNonce);
+        expect(calls).to.deep.equal([
+            ['token', user.toString()],
+            [
+                'pending',
+                user.toString(),
+                {
+                    methods: ['totp'],
+                    tokenRequested: false
+                }
+            ]
+        ]);
+    });
+});
 
 describe('Pending 2FA Nonce Handling', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -19,6 +201,11 @@ describe('Pending 2FA Nonce Handling', function () {
         const calls = [];
         const seed = 'JBSWY3DPEHPK3PXP';
         const user = new ObjectId();
+        const validToken = speakeasy.totp({
+            secret: seed,
+            encoding: 'base32'
+        });
+        const invalidToken = validToken === '000000' ? '000001' : '000000';
         const handler = {
             redis: {
                 exists: async () => 0,
@@ -67,12 +254,84 @@ describe('Pending 2FA Nonce Handling', function () {
         };
 
         const result = await UserHandler.prototype.checkTotp.call(handler, user, {
-            token: '000000',
+            token: invalidToken,
             totpNonce: crypto.randomBytes(20).toString('hex')
         });
 
         expect(result).to.be.false;
         expect(calls).to.deep.equal(['consumePending', 'restore:pending2fa:test']);
+    });
+
+    it('should restore the standalone TOTP nonce after a failed TOTP verification when strict2fa is disabled', async () => {
+        const originalStrict2fa = config.strict2fa;
+        config.strict2fa = false;
+
+        try {
+            const calls = [];
+            const seed = 'JBSWY3DPEHPK3PXP';
+            const user = new ObjectId();
+            const validToken = speakeasy.totp({
+                secret: seed,
+                encoding: 'base32'
+            });
+            const invalidToken = validToken === '000000' ? '000001' : '000000';
+            const handler = {
+                redis: {
+                    exists: async () => 0,
+                    multi() {
+                        return {
+                            set() {
+                                return this;
+                            },
+                            expire() {
+                                return this;
+                            },
+                            exec: async () => []
+                        };
+                    }
+                },
+                users: {
+                    collection() {
+                        return {
+                            findOne: async () => ({
+                                enabled2fa: ['totp'],
+                                seed
+                            })
+                        };
+                    }
+                },
+                rateLimit: async () => ({ success: true }),
+                rateLimitReleaseUser: async () => false,
+                logAuthEvent: async () => false,
+                consumePending2faAuth: async () => {
+                    calls.push('consumePending');
+                    return {
+                        user,
+                        key: 'pending2fa:test',
+                        data: {
+                            user: user.toString(),
+                            methods: '["totp"]',
+                            tokenRequested: 'false'
+                        },
+                        expires: Date.now() + 5 * 60 * 1000
+                    };
+                },
+                restorePending2faAuth: async consumedPending2faAuth => {
+                    calls.push(`restore:${consumedPending2faAuth.key}`);
+                    return true;
+                }
+            };
+
+            const result = await UserHandler.prototype.checkTotp.call(handler, user, {
+                token: invalidToken,
+                totpNonce: crypto.randomBytes(20).toString('hex')
+            });
+
+            expect(result).to.be.false;
+            expect(calls).to.deep.equal(['consumePending', 'restore:pending2fa:test']);
+        } finally {
+            config.strict2fa = originalStrict2fa;
+        }
     });
 
     it('should validate and consume a pending 2FA nonce, then restore it with the remaining TTL', async () => {
