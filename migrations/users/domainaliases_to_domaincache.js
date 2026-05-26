@@ -2,7 +2,7 @@
 /* global db, log */
 const config = require('@zone-eu/wild-config');
 
-const ENABLED = process.env.NODE_ENV === 'test' ? false : !!config?.migrations?.users?.domainaliasesToDomaincache?.enabled;
+const ENABLED = /^test/.test(process.env.NODE_ENV || '') ? false : !!config?.migrations?.users?.domainaliasesToDomaincache?.enabled;
 
 async function migrateDomainAliasesToCache() {
     const sourceCollection = db.collection('domainaliases');

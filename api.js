@@ -593,7 +593,7 @@ module.exports = done => {
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
 
-    if (process.env.NODE_ENV === 'test') {
+    if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test-cluster') {
         server.get(
             { name: 'api-methods', path: '/api-methods' },
             tools.responseWrapper(async (req, res) => {
