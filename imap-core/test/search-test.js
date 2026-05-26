@@ -54,6 +54,21 @@ function buildWeirdSequenceSet() {
 describe('#parseQueryTerms', function () {
     let uidList = [39, 40, 44, 52, 53, 54, 59, 72];
 
+    function expectWithinTerm(term, operator, interval, before, after) {
+        let minTime = Math.floor(before / 1000) * 1000 - interval * 1000;
+        let maxTime = Math.floor(after / 1000) * 1000 - interval * 1000;
+
+        expect(term.key).to.equal('internaldate');
+        expect(term.operator).to.equal(operator);
+        expect(term.value).to.be.instanceof(Date);
+        expect(term.value.getTime()).to.be.at.least(minTime);
+        expect(term.value.getTime()).to.be.at.most(maxTime);
+    }
+
+    function expectInvalidWithinTerm(query) {
+        expect(parseQueryTerms.bind(null, query.split(' '), uidList)).to.throw(Error, /^Invalid interval argument for (OLDER|YOUNGER)$/);
+    }
+
     describe('<sequence set>', function () {
         it('should detect sequence as first argument', function () {
             expect(parseQueryTerms('1,2,4:6'.split(' '), uidList).query).to.deep.equal([
@@ -283,6 +298,28 @@ describe('#parseQueryTerms', function () {
         ]);
     });
 
+    it('should handle OLDER', function () {
+        let before = Date.now();
+        let parsed = parseQueryTerms('OLDER 60'.split(' '), uidList);
+        let after = Date.now();
+
+        expectWithinTerm(parsed.query[0], '<=', 60, before, after);
+    });
+
+    it('should handle OLDER with boundary interval values', function () {
+        let before = Date.now();
+        let parsed = parseQueryTerms('OLDER 1'.split(' '), uidList);
+        let after = Date.now();
+
+        expectWithinTerm(parsed.query[0], '<=', 1, before, after);
+
+        before = Date.now();
+        parsed = parseQueryTerms('OLDER 4294967295'.split(' '), uidList);
+        after = Date.now();
+
+        expectWithinTerm(parsed.query[0], '<=', 4294967295, before, after);
+    });
+
     it('should handle ON', function () {
         expect(parseQueryTerms('ON 1-Feb-1994'.split(' '), uidList).query).to.deep.equal([
             {
@@ -483,6 +520,51 @@ describe('#parseQueryTerms', function () {
                 exists: false
             }
         ]);
+    });
+
+    it('should handle YOUNGER', function () {
+        let before = Date.now();
+        let parsed = parseQueryTerms('YOUNGER 3600'.split(' '), uidList);
+        let after = Date.now();
+
+        expectWithinTerm(parsed.query[0], '>=', 3600, before, after);
+    });
+
+    it('should handle YOUNGER with boundary interval values', function () {
+        let before = Date.now();
+        let parsed = parseQueryTerms('YOUNGER 1'.split(' '), uidList);
+        let after = Date.now();
+
+        expectWithinTerm(parsed.query[0], '>=', 1, before, after);
+
+        before = Date.now();
+        parsed = parseQueryTerms('YOUNGER 4294967295'.split(' '), uidList);
+        after = Date.now();
+
+        expectWithinTerm(parsed.query[0], '>=', 4294967295, before, after);
+    });
+
+    it('should handle WITHIN terms in nested expressions', function () {
+        let before = Date.now();
+        let parsed = parseQueryTerms('OR OLDER 60 YOUNGER 3600'.split(' '), uidList);
+        let after = Date.now();
+
+        expect(parsed.query[0].key).to.equal('or');
+        expectWithinTerm(parsed.query[0].value[0], '<=', 60, before, after);
+        expectWithinTerm(parsed.query[0].value[1], '>=', 3600, before, after);
+        expect(parsed.terms).to.deep.equal(['older', 'or', 'younger']);
+    });
+
+    it('should require nz-number arguments for WITHIN terms', function () {
+        ['OLDER 0', 'YOUNGER 0', 'OLDER -1', 'YOUNGER -60', 'OLDER 1.5', 'YOUNGER 1.5', 'OLDER 001', 'YOUNGER 01'].forEach(expectInvalidWithinTerm);
+    });
+
+    it('should reject non-number arguments for WITHIN terms', function () {
+        ['OLDER test', 'YOUNGER nope', 'OLDER 1s', 'YOUNGER 60seconds'].forEach(expectInvalidWithinTerm);
+    });
+
+    it('should reject missing and extra-large WITHIN intervals', function () {
+        ['OLDER', 'YOUNGER', 'OLDER 4294967296', 'YOUNGER 9007199254740992'].forEach(expectInvalidWithinTerm);
     });
 
     it('should handle complex query', function () {
@@ -1035,6 +1117,72 @@ describe('Search term match tests', function () {
                     expect(err).to.not.exist;
                     expect(match).to.be.false;
                     done();
+                }
+            );
+        });
+
+        it('should match <=', function (done) {
+            matchSearchQuery(
+                {
+                    idate: new Date('1999-01-01')
+                },
+                {
+                    key: 'internaldate',
+                    value: new Date('1999-01-01'),
+                    operator: '<='
+                },
+                (err, match) => {
+                    expect(err).to.not.exist;
+                    expect(match).to.be.true;
+
+                    matchSearchQuery(
+                        {
+                            idate: new Date('1999-01-02')
+                        },
+                        {
+                            key: 'internaldate',
+                            value: new Date('1999-01-01'),
+                            operator: '<='
+                        },
+                        (err, match) => {
+                            expect(err).to.not.exist;
+                            expect(match).to.be.false;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should match Date thresholds by full timestamp', function (done) {
+            matchSearchQuery(
+                {
+                    idate: new Date('1999-01-01T11:00:00.000Z')
+                },
+                {
+                    key: 'internaldate',
+                    value: new Date('1999-01-01T12:00:00.000Z'),
+                    operator: '>='
+                },
+                (err, match) => {
+                    expect(err).to.not.exist;
+                    expect(match).to.be.false;
+
+                    matchSearchQuery(
+                        {
+                            idate: new Date('1999-01-01T13:00:00.000Z')
+                        },
+                        {
+                            key: 'internaldate',
+                            value: new Date('1999-01-01T12:00:00.000Z'),
+                            operator: '<='
+                        },
+                        (err, match) => {
+                            expect(err).to.not.exist;
+                            expect(match).to.be.false;
+                            done();
+                        }
+                    );
                 }
             );
         });
