@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.47.1"
+        "version": "1.48.1"
     },
     "servers": [
         {
@@ -390,6 +390,31 @@
                                         "type": "string",
                                         "description": "Public PGP key for the User that is used for encryption. Use empty string to remove the key"
                                     },
+                                    "smimeCerts": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "S/MIME recipient certificates (PEM). Messages are encrypted for all listed certificates. Mutually exclusive with PGP (pubKey)."
+                                    },
+                                    "smimeCipher": {
+                                        "type": "string",
+                                        "description": "S/MIME content encryption cipher.",
+                                        "enum": [
+                                            "AES-CBC",
+                                            "AES-GCM"
+                                        ],
+                                        "default": "AES-CBC"
+                                    },
+                                    "smimeKeyTransport": {
+                                        "type": "string",
+                                        "description": "S/MIME RSA key transport algorithm.",
+                                        "enum": [
+                                            "PKCS#1 v1.5",
+                                            "OAEP"
+                                        ],
+                                        "default": "PKCS#1 v1.5"
+                                    },
                                     "encryptMessages": {
                                         "type": "boolean",
                                         "description": "If true then received messages are encrypted",
@@ -556,7 +581,7 @@
                                 "properties": {
                                     "existingPassword": {
                                         "type": "string",
-                                        "description": "If provided then validates against account password before applying any changes"
+                                        "description": "Validates against account password before applying any changes."
                                     },
                                     "password": {
                                         "type": "string",
@@ -624,6 +649,29 @@
                                     "pubKey": {
                                         "type": "string",
                                         "description": "Public PGP key for the User that is used for encryption. Use empty string to remove the key"
+                                    },
+                                    "smimeCerts": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "S/MIME recipient certificates (PEM). Messages are encrypted for all listed certificates. Mutually exclusive with PGP (pubKey). Use empty array to remove."
+                                    },
+                                    "smimeCipher": {
+                                        "type": "string",
+                                        "description": "S/MIME content encryption cipher",
+                                        "enum": [
+                                            "AES-CBC",
+                                            "AES-GCM"
+                                        ]
+                                    },
+                                    "smimeKeyTransport": {
+                                        "type": "string",
+                                        "description": "S/MIME RSA key transport algorithm",
+                                        "enum": [
+                                            "PKCS#1 v1.5",
+                                            "OAEP"
+                                        ]
                                     },
                                     "encryptMessages": {
                                         "type": "boolean",
@@ -2684,6 +2732,117 @@
                 }
             }
         },
+        "/users/{user}/keyword-counters/{keyword}": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get keyword counter",
+                "description": "Returns total and unseen counters for a custom keyword",
+                "operationId": "getKeywordCounters",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "keyword",
+                        "in": "path",
+                        "description": "Keyword to count",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/KeywordCounterResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/flagged-counter": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get flagged counter",
+                "description": "Returns total and unseen counters for flagged messages",
+                "operationId": "getFlaggedCounter",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FlaggedCounterResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/mailboxes/{mailbox}/messages": {
             "get": {
                 "tags": [
@@ -2892,6 +3051,27 @@
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
                                     },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the message. Replaces all existing custom keywords. System flags are not affected."
+                                    },
+                                    "addKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to add to the message without affecting existing keywords."
+                                    },
+                                    "removeKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to remove from the message without affecting other keywords."
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -3051,6 +3231,13 @@
                                         "type": "boolean",
                                         "description": "Is the message a draft or not",
                                         "default": false
+                                    },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the uploaded message"
                                     },
                                     "raw": {
                                         "type": "string",
@@ -3365,6 +3552,25 @@
                         }
                     },
                     {
+                        "name": "keyword",
+                        "in": "query",
+                        "description": "If set, then matches only messages that have this custom keyword set",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "useAndSearch",
+                        "in": "query",
+                        "description": "If true, then fulltext search terms are combined with AND semantics",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "includeHeaders",
                         "in": "query",
                         "description": "Comma separated list of header keys to include in the response",
@@ -3583,6 +3789,15 @@
                                         "type": "boolean",
                                         "description": "If true, then matches only messages with \\Seen flags"
                                     },
+                                    "keyword": {
+                                        "type": "string",
+                                        "description": "If set, then matches only messages that have this custom keyword set"
+                                    },
+                                    "useAndSearch": {
+                                        "type": "boolean",
+                                        "description": "If true, then fulltext search terms are combined with AND semantics",
+                                        "default": false
+                                    },
                                     "includeHeaders": {
                                         "type": "string",
                                         "description": "Comma separated list of header keys to include in the response",
@@ -3625,6 +3840,27 @@
                                                 "type": "boolean",
                                                 "description": "If true then delete all found messages",
                                                 "default": false
+                                            },
+                                            "keywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to set on matched messages. Replaces all existing custom keywords."
+                                            },
+                                            "addKeywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to add to matched messages without affecting existing keywords."
+                                            },
+                                            "removeKeywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to remove from matched messages without affecting other keywords."
                                             }
                                         }
                                     }
@@ -3800,6 +4036,27 @@
                                         "type": "object",
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
+                                    },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the message, overrides any existing keywords"
+                                    },
+                                    "addKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to add to the message without affecting existing keywords, can not be used together with `keywords`"
+                                    },
+                                    "removeKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to remove from the message without affecting other keywords, can not be used together with `keywords`"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -9157,6 +9414,28 @@
                     "fingerprint"
                 ]
             },
+            "SmimeCertInfoItem": {
+                "type": "object",
+                "properties": {
+                    "subject": {
+                        "type": "string",
+                        "description": "Certificate subject CN"
+                    },
+                    "serial": {
+                        "type": "string",
+                        "description": "Certificate serial number"
+                    },
+                    "fingerprint": {
+                        "type": "string",
+                        "description": "SHA-256 fingerprint of the certificate"
+                    }
+                },
+                "required": [
+                    "subject",
+                    "serial",
+                    "fingerprint"
+                ]
+            },
             "Recipients": {
                 "type": "object",
                 "description": "Sending quota",
@@ -9436,6 +9715,36 @@
                     },
                     "keyInfo": {
                         "$ref": "#/components/schemas/KeyInfo"
+                    },
+                    "smimeCerts": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "S/MIME recipient certificates (PEM)"
+                    },
+                    "smimeCipher": {
+                        "type": "string",
+                        "description": "S/MIME content encryption cipher",
+                        "enum": [
+                            "AES-CBC",
+                            "AES-GCM"
+                        ]
+                    },
+                    "smimeKeyTransport": {
+                        "type": "string",
+                        "description": "S/MIME RSA key transport algorithm",
+                        "enum": [
+                            "PKCS#1 v1.5",
+                            "OAEP"
+                        ]
+                    },
+                    "smimeCertInfo": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SmimeCertInfoItem"
+                        },
+                        "description": "Information about S/MIME certificates or empty array if not available"
                     },
                     "metaData": {
                         "type": "object",
@@ -10601,6 +10910,53 @@
                     "unseen"
                 ]
             },
+            "KeywordCounterResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Keyword name"
+                    },
+                    "total": {
+                        "type": "number",
+                        "description": "Total number of messages with this keyword"
+                    },
+                    "unseen": {
+                        "type": "number",
+                        "description": "Unseen number of messages with this keyword"
+                    }
+                },
+                "required": [
+                    "success",
+                    "keyword",
+                    "total",
+                    "unseen"
+                ]
+            },
+            "FlaggedCounterResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "total": {
+                        "type": "number",
+                        "description": "Total number of flagged messages"
+                    },
+                    "unseen": {
+                        "type": "number",
+                        "description": "Unseen number of flagged messages"
+                    }
+                },
+                "required": [
+                    "success",
+                    "total",
+                    "unseen"
+                ]
+            },
             "Address": {
                 "type": "object",
                 "properties": {
@@ -10788,6 +11144,13 @@
                     "forwarded": {
                         "type": "boolean",
                         "description": "Does this message have a $Forwarded flag"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Custom keywords set on this message"
                     },
                     "references": {
                         "type": "array",
@@ -11747,6 +12110,13 @@
                         ],
                         "description": "Custom metadata object set for this message"
                     },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Custom keywords set on this message"
+                    },
                     "references": {
                         "type": "array",
                         "items": {
@@ -12190,6 +12560,13 @@
                             "type": "string"
                         },
                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "An array of keywords to apply to matching messages"
                     }
                 }
             },
