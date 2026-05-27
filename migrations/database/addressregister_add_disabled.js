@@ -3,8 +3,19 @@
 // MongoDB Migration Script: addressregister add disabled field to all current addressregister entries in DB
 const config = require('@zone-eu/wild-config');
 
-const ENABLED = process.env.NODE_ENV === 'test' ? false : !!config?.migrations?.database?.addressregisterAddDisabled?.enabled;
-const BATCH_SIZE = 1000;
+const migrationConfig = config?.migrations?.database?.addressregisterAddDisabled || {};
+const ENABLED = process.env.NODE_ENV === 'test' ? false : !!migrationConfig.enabled;
+const BATCH_SIZE = getNonNegativeInteger(migrationConfig.batchSize, 1000);
+const THROTTLE_MS = getNonNegativeInteger(migrationConfig.throttleMs, 100);
+
+function getNonNegativeInteger(value, defaultValue) {
+    const numericValue = Number(value);
+    return Number.isSafeInteger(numericValue) && numericValue >= 0 ? numericValue : defaultValue;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 async function addDisabledToAddressregister() {
     log('Starting migration: Adding disabled field to addressregister collection');
@@ -30,7 +41,7 @@ async function addDisabledToAddressregister() {
         return;
     }
 
-    log(`Migrating ${totalToMigrate} documents (up to _id: ${maxIdAtStart}) in batches of ${BATCH_SIZE}...`);
+    log(`Migrating ${totalToMigrate} documents (up to _id: ${maxIdAtStart}) in batches of ${BATCH_SIZE} with ${THROTTLE_MS}ms throttle...`);
 
     let processedCount = 0;
     let batchNumber = 0;
@@ -54,7 +65,7 @@ async function addDisabledToAddressregister() {
                 projection: { _id: true }
             })
             .sort({ _id: 1 })
-            .limit(BATCH_SIZE)
+            .limit(BATCH_SIZE || 1)
             .toArray();
 
         if (batch.length === 0) {
@@ -75,9 +86,13 @@ async function addDisabledToAddressregister() {
         if (totalToMigrate < 50000 || batchNumber % 10 === 0) {
             log(`Progress: Batch ${batchNumber} - ${processedCount}/${totalToMigrate} (${((processedCount / totalToMigrate) * 100).toFixed(1)}%)`);
         }
+
+        if (THROTTLE_MS > 0 && batch.length === BATCH_SIZE) {
+            await sleep(THROTTLE_MS);
+        }
     }
 
-    log(`✅ Migration complete! Updated ${processedCount} documents`);
+    log(`Migration complete! Updated ${processedCount} documents`);
 }
 
 if (ENABLED) {
