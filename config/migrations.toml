@@ -3,6 +3,10 @@
 
 [database.addressregisterAddDisabled]
 enabled = true
+# documents updated per batch
+batchSize = 1000
+# delay between batches in milliseconds. Set to 0 to disable throttling
+throttleMs = 100
 
 [users]
 # global users db migrations settings

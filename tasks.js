@@ -719,7 +719,7 @@ function processTask(task, data, callback) {
                 }
             );
         case 'run-migrations':
-            return taskRunMigrations(task, data, { db }, err => {
+            return taskRunMigrations(task, data, { db, loggelf }, err => {
                 if (err) {
                     return callback(err);
                 }
