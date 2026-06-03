@@ -147,7 +147,7 @@ module.exports.start = callback => {
             taskTimeout.unref();
         });
 
-        taskHandler.add('run-migrations', {});
+        taskHandler.ensure('run-migrations', {});
 
         return callback();
     };
@@ -543,7 +543,7 @@ async function runTasks() {
 }
 
 function processTask(task, data, callback) {
-    if (!data.silent) {
+    if (data && !data.silent) {
         log.verbose('Tasks', 'type=%s id=%s data=%s', task.type, task._id, JSON.stringify(data));
     }
 
