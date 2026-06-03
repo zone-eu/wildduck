@@ -189,6 +189,13 @@ describe('API Users', function () {
         token = authResponse.body.token;
     });
 
+    it('should GET /authenticated expect success / using a token', async () => {
+        const response = await server.get(`/authenticated?accessToken=${token}`).expect(200);
+        expect(response.body).to.deep.equal({
+            success: true
+        });
+    });
+
     it('should POST /users expect success / with hashed password', async () => {
         const response = await server
             .post('/users')
@@ -308,6 +315,11 @@ describe('API Users', function () {
     it('should DELETE /authenticate expect failure / with false', async () => {
         // token is not valid anymore
         await server.delete(`/authenticate?accessToken=${token}`).expect(403);
+    });
+
+    it('should GET /authenticated expect failure / with invalid token', async () => {
+        // token is not valid anymore
+        await server.get(`/authenticated?accessToken=${token}`).expect(403);
     });
 
     it('should PUT /users/{user} expect success', async () => {
