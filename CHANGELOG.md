@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.1](https://github.com/zone-eu/wildduck/compare/v1.49.0...v1.49.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* ZMS-73: Fix webauth flow handling of twofactornonce ([#1096](https://github.com/zone-eu/wildduck/issues/1096)) ([03507ab](https://github.com/zone-eu/wildduck/commit/03507ab2ce91ef9cbd8686c1d25642c0b17d3010))
+
 ## [1.49.0](https://github.com/zone-eu/wildduck/compare/v1.48.2...v1.49.0) (2026-06-04)
 
 
