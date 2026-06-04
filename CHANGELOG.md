@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.49.0](https://github.com/zone-eu/wildduck/compare/v1.48.2...v1.49.0) (2026-06-04)
+
+
+### Features
+
+* ZMS-54: Require 2fa to be verified (if enabled) to retrieve user session ([#1082](https://github.com/zone-eu/wildduck/issues/1082)) ([21f9616](https://github.com/zone-eu/wildduck/commit/21f961685cf9a8094221064ae63f652a83368db5))
+
+
+### Bug Fixes
+
+* Collapse large non-contiguous uid sets into ranged queries ([#1089](https://github.com/zone-eu/wildduck/issues/1089)) ([9450d1b](https://github.com/zone-eu/wildduck/commit/9450d1bfe53eb3b9df23024589b4293581ddb77f))
+* Duplicate References and In-Reply-To onto encrypted envelope for thread visibility ([#1087](https://github.com/zone-eu/wildduck/issues/1087)) ([8ace1b3](https://github.com/zone-eu/wildduck/commit/8ace1b3858e1f8429974f29f7b07df877eee963a))
+* Expose isMessageEncrypted/isEncryptedContentType as static helpers and use them for encryption-state detection ([#1086](https://github.com/zone-eu/wildduck/issues/1086)) ([ac21021](https://github.com/zone-eu/wildduck/commit/ac210210e74b5a67ebceac92b9c58cf4d05f809c))
+* Improve encrypted message logging ([#1085](https://github.com/zone-eu/wildduck/issues/1085)) ([fea6dad](https://github.com/zone-eu/wildduck/commit/fea6dad4aa65b72c4ed78c9bd1d41688e4a3518f))
+* update docs ([#1081](https://github.com/zone-eu/wildduck/issues/1081)) ([a752f74](https://github.com/zone-eu/wildduck/commit/a752f744c5f01a3da7b974cc8d257ca7696c281c))
+* ZMS-35: Add WITHIN capability support ([#1073](https://github.com/zone-eu/wildduck/issues/1073)) ([0ac2cfa](https://github.com/zone-eu/wildduck/commit/0ac2cfab4599ac83fb5315ceda049916620bd308))
+* ZMS-54-2: Add strict2fa setting ([#1083](https://github.com/zone-eu/wildduck/issues/1083)) ([67bbe8e](https://github.com/zone-eu/wildduck/commit/67bbe8ede432de046c1316164066a8c74976fb86))
+* ZMS-54: Require 2fa to be verified (if enabled) to retrieve user session ([#1063](https://github.com/zone-eu/wildduck/issues/1063)) ([c90bdb7](https://github.com/zone-eu/wildduck/commit/c90bdb7d7f5682e08caa541ff256a92a800089ef))
+* ZMS-64: Add support for phrase search for mailboxes in q param search ([#1079](https://github.com/zone-eu/wildduck/issues/1079)) ([e40ba06](https://github.com/zone-eu/wildduck/commit/e40ba0646aa19db03783c148ee1cb4110528bf1b))
+* ZMS-66: fix migrations task ([#1092](https://github.com/zone-eu/wildduck/issues/1092)) ([c4710a5](https://github.com/zone-eu/wildduck/commit/c4710a55e703df1a3d100e8106404cf45dc9cad7))
+* ZMS-66: Migrations runner improvements ([#1084](https://github.com/zone-eu/wildduck/issues/1084)) ([af6db2c](https://github.com/zone-eu/wildduck/commit/af6db2cdf2f79a0ae905e4d1abf9f269efde20cf))
+* ZMS-68: Fix notifications, fix encrypted message accounting, improve encryption-on-copy IMAP behaviour, fix IMAP UID behaviour in edge cases, fix plaintext footer not being removed on encryption ([#1088](https://github.com/zone-eu/wildduck/issues/1088)) ([4be3347](https://github.com/zone-eu/wildduck/commit/4be3347526c089cd8aca2f3750735d9238b2ef12))
+* ZMS-72: Added authenticated endpoint ([#1091](https://github.com/zone-eu/wildduck/issues/1091)) ([dedf6e6](https://github.com/zone-eu/wildduck/commit/dedf6e625ce6aed397fa9e0f640c238580cdad6e))
+
 ## [1.48.2](https://github.com/zone-eu/wildduck/compare/v1.48.1...v1.48.2) (2026-05-25)
 
 
