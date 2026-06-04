@@ -12,6 +12,7 @@ const axios = require('axios');
 const packageData = require('./package.json');
 const { MARKED_SPAM, MARKED_HAM } = require('./lib/events');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const metrics = require('./lib/metrics');
 
 let loggelf;
 let queueWorkers = {};
@@ -26,6 +27,7 @@ async function postWebhook(webhook, data) {
             }
         });
     } catch (err) {
+        metrics.recordWebhookPost(data && data.ev, 'error', 0);
         loggelf({
             short_message: '[WH] ' + data.ev,
             _mail_action: 'webhook',
@@ -40,8 +42,11 @@ async function postWebhook(webhook, data) {
     }
 
     if (!res) {
+        metrics.recordWebhookPost(data && data.ev, 'error', 0);
         throw new Error(`Failed to POST request to ${webhook.url}`);
     }
+
+    metrics.recordWebhookPost(data && data.ev, res.status >= 200 && res.status < 300 ? 'success' : 'fail', res.status);
 
     loggelf({
         short_message: '[WH] ' + data.ev,
@@ -77,6 +82,7 @@ async function postWebhook(webhook, data) {
 
 module.exports.start = callback => {
     if (!(config.webhooks && config.webhooks.enabled)) {
+        metrics.setServiceUp('webhooks', false);
         return setImmediate(() => callback(null, false));
     }
 
@@ -120,7 +126,10 @@ module.exports.start = callback => {
         }
     };
 
+    const webhooksQueue = new Queue('webhooks', db.queueConf);
     const webhooksPostQueue = new Queue('webhooks_post', db.queueConf);
+    metrics.registerBullQueue('webhooks', webhooksQueue);
+    metrics.registerBullQueue('webhooks_post', webhooksPostQueue);
 
     queueWorkers.webhooks = new Worker(
         'webhooks',
@@ -275,6 +284,7 @@ module.exports.start = callback => {
             db.queueConf
         )
     );
+    metrics.trackBullWorker('webhooks', queueWorkers.webhooks);
 
     queueWorkers.webhooksPost = new Worker(
         'webhooks_post',
@@ -292,6 +302,8 @@ module.exports.start = callback => {
             db.queueConf
         )
     );
+    metrics.trackBullWorker('webhooks_post', queueWorkers.webhooksPost);
 
+    metrics.setServiceUp('webhooks', true);
     callback();
 };

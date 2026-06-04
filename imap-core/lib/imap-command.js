@@ -1,6 +1,7 @@
 'use strict';
 
 const errors = require('../../lib/errors.js');
+const metrics = require('../../lib/metrics');
 const imapHandler = require('./handler/imap-handler');
 const MAX_MESSAGE_SIZE = 1 * 1024 * 1024;
 const MAX_BAD_COMMANDS = 50;
@@ -243,6 +244,16 @@ class IMAPCommand {
 
     end(command, callback) {
         let callbackSent = false;
+        let metricRecorded = false;
+        let metricStart = process.hrtime();
+        let recordMetric = result => {
+            if (metricRecorded) {
+                return;
+            }
+            metricRecorded = true;
+            let diff = process.hrtime(metricStart);
+            metrics.recordImapCommand(this.command || 'unknown', result, diff[0] + diff[1] / 1e9);
+        };
         let next = err => {
             if (!callbackSent) {
                 callbackSent = true;
@@ -266,6 +277,7 @@ class IMAPCommand {
                     // stop processing
                     return;
                 }
+                recordMetric((err && (err.response || err.code)) || 'error');
                 return next(err);
             }
 
@@ -309,6 +321,7 @@ class IMAPCommand {
                     // stop processing
                     return;
                 }
+                recordMetric('bad');
                 return next();
             }
 
@@ -354,6 +367,7 @@ class IMAPCommand {
                         // stop processing
                         return;
                     }
+                    recordMetric(err.response || err.code || 'bad');
                     return next(err);
                 }
 
@@ -379,6 +393,7 @@ class IMAPCommand {
                                         return;
                                     }
                                 }
+                                recordMetric(err.response || err.code || 'error');
                                 return next(err);
                             }
 
@@ -408,6 +423,7 @@ class IMAPCommand {
                                         })
                                 });
 
+                                recordMetric(response.response || 'ok');
                                 next();
                             });
                         },
@@ -415,6 +431,7 @@ class IMAPCommand {
                     );
                 } else {
                     this.connection.send(this.tag + ' NO Not implemented: ' + this.command);
+                    recordMetric('no');
                     return next();
                 }
             });
