@@ -4,6 +4,7 @@
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const FilterHandler = require('../lib/filter-handler');
+const plugins = require('../lib/plugins');
 
 describe('FilterHandler recipient spam overrides', () => {
     const buildPrepared = () => ({
@@ -25,6 +26,7 @@ describe('FilterHandler recipient spam overrides', () => {
 
     const createHandler = ({ filters = [], domainaccessData = false } = {}) => {
         let addOptions;
+        let encryptionOptions;
 
         const handler = new FilterHandler({
             db: {
@@ -98,8 +100,30 @@ describe('FilterHandler recipient spam overrides', () => {
                         };
                     }
                 },
-                async prepareMessageAsync() {
-                    return buildPrepared();
+                async prepareMessageAsync(options = {}) {
+                    let prepared = buildPrepared();
+                    if (options.mimeTree) {
+                        prepared.mimeTree = options.mimeTree;
+                    }
+                    return prepared;
+                },
+                generateIndexedHeaders(headers) {
+                    return (headers || []).map(line => {
+                        let pos = line.indexOf(':');
+                        return {
+                            key: line.substr(0, pos).toLowerCase(),
+                            value: line.substr(pos + 1).trim()
+                        };
+                    });
+                },
+                async encryptMessageAsync(encryptionKey, raw) {
+                    encryptionOptions = {
+                        encryptionKey,
+                        raw
+                    };
+                    return {
+                        raw: Buffer.from('Subject: Encrypted\r\n\r\nEncrypted body\r\n')
+                    };
                 },
                 async addAsync(options) {
                     addOptions = options;
@@ -126,6 +150,9 @@ describe('FilterHandler recipient spam overrides', () => {
             handler,
             getAddOptions() {
                 return addOptions;
+            },
+            getEncryptionOptions() {
+                return encryptionOptions;
             }
         };
     };
@@ -296,5 +323,180 @@ describe('FilterHandler recipient spam overrides', () => {
 
         expect(addOptions.specialUse).to.equal('\\Junk');
         expect(addOptions.path).to.not.exist;
+    });
+
+    it('should return a reusable mimeTree without per-recipient headers', async () => {
+        const { handler, getAddOptions } = createHandler();
+        const sender = 'alice@example.com';
+        const userData = {
+            _id: new ObjectId(),
+            address: 'recipient@example.com',
+            spamLevel: 50,
+            encryptMessages: false,
+            autoreply: false,
+            tagsview: []
+        };
+
+        const firstResult = await handler.storeMessage(userData, {
+            recipient: userData.address,
+            sender,
+            raw: Buffer.from('Subject: Reuse test\r\n\r\nHello world\r\n'),
+            meta: {}
+        });
+
+        expect(getAddOptions().prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['Delivered-To: recipient@example.com', 'Return-Path: <alice@example.com>']);
+        expect(firstResult.prepared.mimeTree.header).to.deep.equal(['From: Alice Example <alice@example.com>']);
+
+        const reusableMimeTree = firstResult.prepared.mimeTree;
+
+        await handler.storeMessage(Object.assign({}, userData, { _id: new ObjectId(), address: 'second@example.com' }), {
+            recipient: 'second@example.com',
+            sender,
+            mimeTree: reusableMimeTree,
+            maildata: firstResult.prepared.maildata,
+            meta: {}
+        });
+
+        expect(reusableMimeTree.header).to.deep.equal(['From: Alice Example <alice@example.com>']);
+        expect(getAddOptions().prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['Delivered-To: second@example.com', 'Return-Path: <alice@example.com>']);
+    });
+
+    it('should pass message:wd_headers header mutations into encryption input', async () => {
+        const originalHandler = plugins.handler;
+        const { handler, getEncryptionOptions } = createHandler();
+
+        plugins.handler = {
+            async runHooks(name, args) {
+                if (name === 'message:wd_headers') {
+                    let fromHeader = args[0].findIndex(line => /^From:/i.test(line));
+                    if (fromHeader >= 0) {
+                        args[0].splice(fromHeader, 1);
+                    }
+                    delete args[1].from;
+
+                    args[0].push('X-WD-Test: encrypted');
+                    args[1]['x-wd-test'] = 'encrypted';
+                }
+            }
+        };
+
+        try {
+            await handler.storeMessage(
+                {
+                    _id: new ObjectId(),
+                    address: 'recipient@example.com',
+                    spamLevel: 50,
+                    encryptMessages: true,
+                    pubKey: 'test-key',
+                    autoreply: false,
+                    tagsview: []
+                },
+                {
+                    recipient: 'recipient@example.com',
+                    sender: 'alice@example.com',
+                    raw: Buffer.from('Subject: Encrypt test\r\n\r\nHello world\r\n'),
+                    meta: {}
+                }
+            );
+
+            const encryptionRaw = getEncryptionOptions().raw.toString();
+
+            expect(encryptionRaw).to.include('X-WD-Test: encrypted');
+            expect(encryptionRaw).to.not.include('From: Alice Example <alice@example.com>');
+            expect(encryptionRaw).to.not.include('Subject: Encrypt test');
+        } finally {
+            plugins.handler = originalHandler;
+        }
+    });
+
+    it('should pass message:wd_headers added headers into encryption input', async () => {
+        const originalHandler = plugins.handler;
+        const { handler, getEncryptionOptions } = createHandler();
+
+        plugins.handler = {
+            async runHooks(name, args) {
+                if (name === 'message:wd_headers') {
+                    args[0].push('X-WD-Added: one');
+                    args[0].push('X-WD-Second: two');
+                    args[1]['x-wd-added'] = 'one';
+                    args[1]['x-wd-second'] = 'two';
+                }
+            }
+        };
+
+        try {
+            await handler.storeMessage(
+                {
+                    _id: new ObjectId(),
+                    address: 'recipient@example.com',
+                    spamLevel: 50,
+                    encryptMessages: true,
+                    pubKey: 'test-key',
+                    autoreply: false,
+                    tagsview: []
+                },
+                {
+                    recipient: 'recipient@example.com',
+                    sender: 'alice@example.com',
+                    raw: Buffer.from('Subject: Add test\r\n\r\nHello world\r\n'),
+                    meta: {}
+                }
+            );
+
+            const encryptionRaw = getEncryptionOptions().raw.toString();
+            const headerBlock = encryptionRaw.split('\r\n\r\n')[0];
+
+            expect(headerBlock).to.include('X-WD-Added: one');
+            expect(headerBlock).to.include('X-WD-Second: two');
+            expect(encryptionRaw).to.include('\r\n\r\nHello world\r\n');
+        } finally {
+            plugins.handler = originalHandler;
+        }
+    });
+
+    it('should preserve message:wd_headers header reordering in encryption input', async () => {
+        const originalHandler = plugins.handler;
+        const { handler, getEncryptionOptions } = createHandler();
+
+        plugins.handler = {
+            async runHooks(name, args) {
+                if (name === 'message:wd_headers') {
+                    let fromHeader = args[0].findIndex(line => /^From:/i.test(line));
+                    if (fromHeader >= 0) {
+                        args[0].unshift(args[0].splice(fromHeader, 1)[0]);
+                    }
+                }
+            }
+        };
+
+        try {
+            await handler.storeMessage(
+                {
+                    _id: new ObjectId(),
+                    address: 'recipient@example.com',
+                    spamLevel: 50,
+                    encryptMessages: true,
+                    pubKey: 'test-key',
+                    autoreply: false,
+                    tagsview: []
+                },
+                {
+                    recipient: 'recipient@example.com',
+                    sender: 'alice@example.com',
+                    raw: Buffer.from('Subject: Move test\r\n\r\nHello world\r\n'),
+                    meta: {}
+                }
+            );
+
+            const headerLines = getEncryptionOptions().raw.toString().split('\r\n\r\n')[0].split('\r\n');
+
+            expect(headerLines.slice(0, 3)).to.deep.equal([
+                'From: Alice Example <alice@example.com>',
+                'Delivered-To: recipient@example.com',
+                'Return-Path: <alice@example.com>'
+            ]);
+        } finally {
+            plugins.handler = originalHandler;
+        }
     });
 });
