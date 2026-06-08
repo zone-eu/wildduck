@@ -4,6 +4,8 @@
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const FilterHandler = require('../lib/filter-handler');
+const MessageHandler = require('../lib/message-handler');
+const Indexer = require('../imap-core/lib/indexer/indexer');
 const plugins = require('../lib/plugins');
 
 describe('FilterHandler recipient spam overrides', () => {
@@ -148,6 +150,143 @@ describe('FilterHandler recipient spam overrides', () => {
 
         return {
             handler,
+            getAddOptions() {
+                return addOptions;
+            },
+            getEncryptionOptions() {
+                return encryptionOptions;
+            }
+        };
+    };
+
+    const readRebuild = async outputStream =>
+        await new Promise((resolve, reject) => {
+            let chunks = [];
+            let chunklen = 0;
+
+            outputStream.value
+                .on('data', chunk => {
+                    chunks.push(chunk);
+                    chunklen += chunk.length;
+                })
+                .on('end', () => resolve(Buffer.concat(chunks, chunklen)))
+                .on('error', reject);
+        });
+
+    const createRealIndexerHandler = () => {
+        let addOptions;
+        let encryptionOptions;
+        const indexer = new Indexer();
+        const mailboxId = new ObjectId();
+
+        const messageHandler = {
+            counters: {
+                ttlcounter(key, ttl, count, callback) {
+                    callback(null, false);
+                }
+            },
+            indexer,
+            async prepareMessageAsync(options = {}) {
+                return await MessageHandler.prototype.prepareMessageAsync.call(this, options);
+            },
+            generateIndexedHeaders(headers) {
+                return MessageHandler.prototype.generateIndexedHeaders.call(this, headers);
+            },
+            normalizeSubject(subject, options) {
+                return MessageHandler.prototype.normalizeSubject.call(this, subject, options);
+            },
+            async getMailboxAsync(options) {
+                return {
+                    _id: mailboxId,
+                    user: options.user,
+                    path: 'INBOX',
+                    uidValidity: 1
+                };
+            },
+            async encryptMessageAsync(encryptionKey, raw) {
+                encryptionOptions = {
+                    encryptionKey,
+                    raw
+                };
+                return {
+                    raw: Buffer.from('Subject: Encrypted\r\n\r\nEncrypted body\r\n')
+                };
+            },
+            async addAsync(options) {
+                addOptions = options;
+                return {
+                    data: {
+                        mailbox: mailboxId,
+                        mailboxPath: options.specialUse === '\\Junk' ? 'Junk' : 'INBOX',
+                        uid: 1,
+                        id: new ObjectId(),
+                        size: options.prepared.size
+                    }
+                };
+            }
+        };
+
+        const handler = new FilterHandler({
+            db: {
+                senderDb: {
+                    collection() {
+                        return {};
+                    }
+                },
+                database: {
+                    collection(name) {
+                        switch (name) {
+                            case 'filters':
+                                return {
+                                    find() {
+                                        return {
+                                            sort() {
+                                                return {
+                                                    async toArray() {
+                                                        return [];
+                                                    }
+                                                };
+                                            }
+                                        };
+                                    }
+                                };
+
+                            case 'messages':
+                                return {
+                                    async findOne() {
+                                        return false;
+                                    }
+                                };
+
+                            default:
+                                return {
+                                    async findOne() {
+                                        return false;
+                                    },
+                                    find() {
+                                        return {
+                                            async toArray() {
+                                                return [];
+                                            }
+                                        };
+                                    }
+                                };
+                        }
+                    }
+                }
+            },
+            messageHandler,
+            sender: {
+                collection: 'maildrop'
+            },
+            loggelf() {
+                return false;
+            }
+        });
+
+        return {
+            handler,
+            indexer,
             getAddOptions() {
                 return addOptions;
             },
@@ -359,6 +498,160 @@ describe('FilterHandler recipient spam overrides', () => {
 
         expect(reusableMimeTree.header).to.deep.equal(['From: Alice Example <alice@example.com>']);
         expect(getAddOptions().prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['Delivered-To: second@example.com', 'Return-Path: <alice@example.com>']);
+    });
+
+    it('should preserve real indexer maildata and rebuilt body for mimeTree reuse without maildata', async () => {
+        const { handler, indexer, getAddOptions } = createRealIndexerHandler();
+        const bodyText = 'This is the body text that we want to extract.';
+        const raw = Buffer.from(
+            [
+                'From: Alice Example <alice@example.com>',
+                'To: Recipient <recipient@example.com>',
+                'Subject: Real reuse',
+                'Message-ID: <real-reuse@example.com>',
+                'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                '',
+                bodyText,
+                ''
+            ].join('\r\n')
+        );
+        const reusableMimeTree = indexer.parseMimeTree(raw);
+
+        const result = await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: reusableMimeTree,
+                meta: {}
+            }
+        );
+
+        const addOptions = getAddOptions();
+        const rebuilt = await readRebuild(indexer.rebuild(addOptions.prepared.mimeTree));
+
+        expect(Buffer.isBuffer(reusableMimeTree.body)).to.equal(true);
+        expect(Buffer.isBuffer(addOptions.prepared.mimeTree.body)).to.equal(true);
+        expect(addOptions.maildata.text).to.equal(bodyText);
+        expect(result.prepared.maildata.text).to.equal(bodyText);
+        expect(rebuilt.toString()).to.include(bodyText);
+        expect(result.prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['From: Alice Example <alice@example.com>', 'To: Recipient <recipient@example.com>']);
+    });
+
+    it('should rebuild encryption input for mimeTree reuse without raw chunks', async () => {
+        const { handler, indexer, getEncryptionOptions } = createRealIndexerHandler();
+        const bodyText = 'This body must be present before encryption.';
+        const raw = Buffer.from(
+            [
+                'From: Alice Example <alice@example.com>',
+                'To: Recipient <recipient@example.com>',
+                'Subject: Encrypt reused tree',
+                'Message-ID: <encrypt-reuse@example.com>',
+                'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                '',
+                bodyText,
+                ''
+            ].join('\r\n')
+        );
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: true,
+                pubKey: 'test-key',
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: indexer.parseMimeTree(raw),
+                meta: {}
+            }
+        );
+
+        const encryptionRaw = getEncryptionOptions().raw.toString();
+
+        expect(encryptionRaw).to.include('Delivered-To: recipient@example.com');
+        expect(encryptionRaw).to.include('Return-Path: <alice@example.com>');
+        expect(encryptionRaw).to.include('Subject: Encrypt reused tree');
+        expect(encryptionRaw).to.include(bodyText);
+    });
+
+    it('should refresh derived prepared fields after message:wd_headers rewrites header lines', async () => {
+        const originalHandler = plugins.handler;
+        const { handler, getAddOptions } = createRealIndexerHandler();
+
+        plugins.handler = {
+            async runHooks(name, args) {
+                if (name !== 'message:wd_headers') {
+                    return;
+                }
+
+                const replaceHeader = (key, value) => {
+                    let pos = args[0].findIndex(line => line.toLowerCase().startsWith(key.toLowerCase() + ':'));
+                    if (pos >= 0) {
+                        args[0][pos] = key + ': ' + value;
+                    }
+                };
+
+                replaceHeader('Subject', 'Hooked subject');
+                replaceHeader('Message-ID', '<hooked@example.com>');
+                replaceHeader('Date', 'Sat, 06 Jun 2026 10:20:30 +0000');
+                replaceHeader('From', 'Bob Example <bob@example.com>');
+            }
+        };
+
+        try {
+            await handler.storeMessage(
+                {
+                    _id: new ObjectId(),
+                    address: 'recipient@example.com',
+                    spamLevel: 50,
+                    encryptMessages: false,
+                    autoreply: false,
+                    tagsview: []
+                },
+                {
+                    recipient: 'recipient@example.com',
+                    sender: 'alice@example.com',
+                    raw: Buffer.from(
+                        [
+                            'From: Alice Example <alice@example.com>',
+                            'To: Recipient <recipient@example.com>',
+                            'Subject: Original subject',
+                            'Message-ID: <original@example.com>',
+                            'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                            '',
+                            'Hello world',
+                            ''
+                        ].join('\r\n')
+                    ),
+                    meta: {}
+                }
+            );
+
+            const prepared = getAddOptions().prepared;
+
+            expect(prepared.subject).to.equal('Hooked subject');
+            expect(prepared.msgid).to.equal('<hooked@example.com>');
+            expect(prepared.hdate.toISOString()).to.equal('2026-06-06T10:20:30.000Z');
+            expect(prepared.envelope[1].toString()).to.equal('Hooked subject');
+            expect(prepared.envelope[9]).to.equal('<hooked@example.com>');
+            expect(prepared.mimeTree.parsedHeader.from[0].address).to.equal('bob@example.com');
+            expect(prepared.headers.find(header => header.key === 'subject')).to.deep.equal({ key: 'subject', value: 'hooked subject' });
+        } finally {
+            plugins.handler = originalHandler;
+        }
     });
 
     it('should pass message:wd_headers header mutations into encryption input', async () => {
