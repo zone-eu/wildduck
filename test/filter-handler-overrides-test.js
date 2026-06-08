@@ -653,9 +653,6 @@ describe('FilterHandler recipient spam overrides', () => {
                     [
                         'From: Alice Example <alice@example.com>',
                         'To: Recipient <recipient@example.com>',
-                        'Subject: Original subject',
-                        'Message-ID: <original@example.com>',
-                        'Date: Fri, 05 Jun 2026 12:00:00 +0000',
                         '',
                         'Hello world',
                         ''

@@ -12,7 +12,7 @@ const punycode = require('punycode.js');
  * @return {Object} ENVELOPE compatible object
  */
 module.exports = function (header) {
-    let subject = Array.isArray(header.subject) ? header.subject.reverse().filter(line => line.trim()) : header.subject;
+    let subject = Array.isArray(header.subject) ? header.subject.slice().reverse().filter(line => line.trim()).shift() : header.subject;
     subject = Buffer.from(subject || '', 'binary').toString();
 
     try {
