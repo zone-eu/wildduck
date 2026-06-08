@@ -694,6 +694,137 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(prepared.headers.find(header => header.key === 'message-id' && header.value === '<override@example.com>')).to.exist;
     });
 
+    it('should apply positional insert change and delete header overrides', async () => {
+        const { handler, getAddOptions } = createRealIndexerHandler();
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                raw: Buffer.from(
+                    [
+                        'From: Alice Example <alice@example.com>',
+                        'To: Recipient <recipient@example.com>',
+                        'X-Test: one',
+                        'X-Test: two',
+                        'Subject: Positional overrides',
+                        '',
+                        'Hello world',
+                        ''
+                    ].join('\r\n')
+                ),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'insert',
+                                name: 'X-Inserted',
+                                value: 'first',
+                                pos: 0
+                            },
+                            {
+                                action: 'change',
+                                name: 'X-Test',
+                                value: 'changed second',
+                                pos: 2
+                            },
+                            {
+                                action: 'delete',
+                                name: 'X-Test',
+                                pos: 1
+                            },
+                            {
+                                action: 'change',
+                                name: 'X-Fallback',
+                                value: 'added by change',
+                                pos: 0
+                            },
+                            {
+                                action: 'insert',
+                                name: 'X-Tail',
+                                value: 'appended',
+                                pos: 999
+                            },
+                            {
+                                action: 'delete',
+                                name: 'Subject',
+                                pos: 0
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const headers = getAddOptions().prepared.mimeTree.header;
+
+        expect(headers[0]).to.equal('X-Inserted: first');
+        expect(headers).to.not.include('X-Test: one');
+        expect(headers).to.include('X-Test: changed second');
+        expect(headers).to.include('X-Fallback: added by change');
+        expect(headers[headers.length - 1]).to.equal('X-Tail: appended');
+        expect(headers.some(header => /^Subject:/i.test(header))).to.equal(false);
+    });
+
+    it('should remove previously added visible override headers when delete matches them', async () => {
+        const { handler, indexer, getAddOptions, getEncryptionOptions } = createRealIndexerHandler();
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 100,
+                encryptMessages: true,
+                pubKey: 'test-key',
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: indexer.parseMimeTree(Buffer.from('Subject: Delete visible\r\n\r\nHello world\r\n')),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'X-Transient',
+                                value: 'gone'
+                            },
+                            {
+                                action: 'delete',
+                                name: 'X-Transient',
+                                pos: 1
+                            },
+                            {
+                                action: 'insert',
+                                name: 'X-Visible',
+                                value: 'kept',
+                                pos: 999
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const encryptionRaw = getEncryptionOptions().raw.toString();
+        const encryptedOuterHeaders = getAddOptions().prepared.mimeTree.header;
+
+        expect(encryptionRaw).to.not.include('X-Transient: gone');
+        expect(encryptedOuterHeaders).to.not.include('X-Transient: gone');
+        expect(encryptionRaw).to.include('X-Visible: kept');
+        expect(encryptedOuterHeaders).to.include('X-Visible: kept');
+    });
+
     it('should add WD classification headers for non-overridden spam decisions', async () => {
         const { addOptions } = await runCase({
             spamLevel: 100
