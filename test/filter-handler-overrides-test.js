@@ -6,7 +6,6 @@ const { ObjectId } = require('mongodb');
 const FilterHandler = require('../lib/filter-handler');
 const MessageHandler = require('../lib/message-handler');
 const Indexer = require('../imap-core/lib/indexer/indexer');
-const plugins = require('../lib/plugins');
 
 describe('FilterHandler recipient spam overrides', () => {
     const buildPrepared = () => ({
@@ -587,209 +586,185 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(encryptionRaw).to.include(bodyText);
     });
 
-    it('should refresh derived prepared fields after message:wd_headers rewrites header lines', async () => {
-        const originalHandler = plugins.handler;
+    it('should apply override header additions before filtering', async () => {
+        const { handler, getAddOptions } = createHandler({
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    query: {
+                        headers: {
+                            subject: 'override subject'
+                        }
+                    },
+                    action: {
+                        flag: true
+                    }
+                }
+            ]
+        });
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                raw: Buffer.from('Subject: Original\r\n\r\nHello world\r\n'),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'Subject',
+                                value: 'Override subject'
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        expect(getAddOptions().flags).to.deep.equal(['\\Flagged']);
+        expect(getAddOptions().prepared.mimeTree.header).to.include('Subject: Override subject');
+    });
+
+    it('should refresh derived prepared fields after override header additions', async () => {
         const { handler, getAddOptions } = createRealIndexerHandler();
 
-        plugins.handler = {
-            async runHooks(name, args) {
-                if (name !== 'message:wd_headers') {
-                    return;
-                }
-
-                const replaceHeader = (key, value) => {
-                    let pos = args[0].findIndex(line => line.toLowerCase().startsWith(key.toLowerCase() + ':'));
-                    if (pos >= 0) {
-                        args[0][pos] = key + ': ' + value;
-                    }
-                };
-
-                replaceHeader('Subject', 'Hooked subject');
-                replaceHeader('Message-ID', '<hooked@example.com>');
-                replaceHeader('Date', 'Sat, 06 Jun 2026 10:20:30 +0000');
-                replaceHeader('From', 'Bob Example <bob@example.com>');
-            }
-        };
-
-        try {
-            await handler.storeMessage(
-                {
-                    _id: new ObjectId(),
-                    address: 'recipient@example.com',
-                    spamLevel: 50,
-                    encryptMessages: false,
-                    autoreply: false,
-                    tagsview: []
-                },
-                {
-                    recipient: 'recipient@example.com',
-                    sender: 'alice@example.com',
-                    raw: Buffer.from(
-                        [
-                            'From: Alice Example <alice@example.com>',
-                            'To: Recipient <recipient@example.com>',
-                            'Subject: Original subject',
-                            'Message-ID: <original@example.com>',
-                            'Date: Fri, 05 Jun 2026 12:00:00 +0000',
-                            '',
-                            'Hello world',
-                            ''
-                        ].join('\r\n')
-                    ),
-                    meta: {}
-                }
-            );
-
-            const prepared = getAddOptions().prepared;
-
-            expect(prepared.subject).to.equal('Hooked subject');
-            expect(prepared.msgid).to.equal('<hooked@example.com>');
-            expect(prepared.hdate.toISOString()).to.equal('2026-06-06T10:20:30.000Z');
-            expect(prepared.envelope[1].toString()).to.equal('Hooked subject');
-            expect(prepared.envelope[9]).to.equal('<hooked@example.com>');
-            expect(prepared.mimeTree.parsedHeader.from[0].address).to.equal('bob@example.com');
-            expect(prepared.headers.find(header => header.key === 'subject')).to.deep.equal({ key: 'subject', value: 'hooked subject' });
-        } finally {
-            plugins.handler = originalHandler;
-        }
-    });
-
-    it('should pass message:wd_headers header mutations into encryption input', async () => {
-        const originalHandler = plugins.handler;
-        const { handler, getEncryptionOptions } = createHandler();
-
-        plugins.handler = {
-            async runHooks(name, args) {
-                if (name === 'message:wd_headers') {
-                    let fromHeader = args[0].findIndex(line => /^From:/i.test(line));
-                    if (fromHeader >= 0) {
-                        args[0].splice(fromHeader, 1);
-                    }
-                    delete args[1].from;
-
-                    args[0].push('X-WD-Test: encrypted');
-                    args[1]['x-wd-test'] = 'encrypted';
-                }
-            }
-        };
-
-        try {
-            await handler.storeMessage(
-                {
-                    _id: new ObjectId(),
-                    address: 'recipient@example.com',
-                    spamLevel: 50,
-                    encryptMessages: true,
-                    pubKey: 'test-key',
-                    autoreply: false,
-                    tagsview: []
-                },
-                {
-                    recipient: 'recipient@example.com',
-                    sender: 'alice@example.com',
-                    raw: Buffer.from('Subject: Encrypt test\r\n\r\nHello world\r\n'),
-                    meta: {}
-                }
-            );
-
-            const encryptionRaw = getEncryptionOptions().raw.toString();
-
-            expect(encryptionRaw).to.include('X-WD-Test: encrypted');
-            expect(encryptionRaw).to.not.include('From: Alice Example <alice@example.com>');
-            expect(encryptionRaw).to.not.include('Subject: Encrypt test');
-        } finally {
-            plugins.handler = originalHandler;
-        }
-    });
-
-    it('should pass message:wd_headers added headers into encryption input', async () => {
-        const originalHandler = plugins.handler;
-        const { handler, getEncryptionOptions } = createHandler();
-
-        plugins.handler = {
-            async runHooks(name, args) {
-                if (name === 'message:wd_headers') {
-                    args[0].push('X-WD-Added: one');
-                    args[0].push('X-WD-Second: two');
-                    args[1]['x-wd-added'] = 'one';
-                    args[1]['x-wd-second'] = 'two';
-                }
-            }
-        };
-
-        try {
-            await handler.storeMessage(
-                {
-                    _id: new ObjectId(),
-                    address: 'recipient@example.com',
-                    spamLevel: 50,
-                    encryptMessages: true,
-                    pubKey: 'test-key',
-                    autoreply: false,
-                    tagsview: []
-                },
-                {
-                    recipient: 'recipient@example.com',
-                    sender: 'alice@example.com',
-                    raw: Buffer.from('Subject: Add test\r\n\r\nHello world\r\n'),
-                    meta: {}
-                }
-            );
-
-            const encryptionRaw = getEncryptionOptions().raw.toString();
-            const headerBlock = encryptionRaw.split('\r\n\r\n')[0];
-
-            expect(headerBlock).to.include('X-WD-Added: one');
-            expect(headerBlock).to.include('X-WD-Second: two');
-            expect(encryptionRaw).to.include('\r\n\r\nHello world\r\n');
-        } finally {
-            plugins.handler = originalHandler;
-        }
-    });
-
-    it('should preserve message:wd_headers header reordering in encryption input', async () => {
-        const originalHandler = plugins.handler;
-        const { handler, getEncryptionOptions } = createHandler();
-
-        plugins.handler = {
-            async runHooks(name, args) {
-                if (name === 'message:wd_headers') {
-                    let fromHeader = args[0].findIndex(line => /^From:/i.test(line));
-                    if (fromHeader >= 0) {
-                        args[0].unshift(args[0].splice(fromHeader, 1)[0]);
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                raw: Buffer.from(
+                    [
+                        'From: Alice Example <alice@example.com>',
+                        'To: Recipient <recipient@example.com>',
+                        'Subject: Original subject',
+                        'Message-ID: <original@example.com>',
+                        'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                        '',
+                        'Hello world',
+                        ''
+                    ].join('\r\n')
+                ),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'Subject',
+                                value: 'Override subject'
+                            },
+                            {
+                                action: 'add',
+                                name: 'Message-ID',
+                                value: '<override@example.com>'
+                            },
+                            {
+                                action: 'add',
+                                name: 'Date',
+                                value: 'Sat, 06 Jun 2026 10:20:30 +0000'
+                            }
+                        ]
                     }
                 }
             }
-        };
+        );
 
-        try {
-            await handler.storeMessage(
-                {
-                    _id: new ObjectId(),
-                    address: 'recipient@example.com',
-                    spamLevel: 50,
-                    encryptMessages: true,
-                    pubKey: 'test-key',
-                    autoreply: false,
-                    tagsview: []
-                },
-                {
-                    recipient: 'recipient@example.com',
-                    sender: 'alice@example.com',
-                    raw: Buffer.from('Subject: Move test\r\n\r\nHello world\r\n'),
-                    meta: {}
-                }
-            );
+        const prepared = getAddOptions().prepared;
 
-            const headerLines = getEncryptionOptions().raw.toString().split('\r\n\r\n')[0].split('\r\n');
+        expect(prepared.subject).to.equal('Override subject');
+        expect(prepared.envelope[1].toString()).to.equal('Override subject');
+        expect(prepared.msgid).to.equal('<override@example.com>');
+        expect(prepared.hdate.toISOString()).to.equal('2026-06-06T10:20:30.000Z');
+        expect(prepared.headers.find(header => header.key === 'message-id' && header.value === '<override@example.com>')).to.exist;
+    });
 
-            expect(headerLines.slice(0, 3)).to.deep.equal([
+    it('should add WD classification headers for non-overridden spam decisions', async () => {
+        const { addOptions } = await runCase({
+            spamLevel: 100
+        });
+
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: not-junk');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: spamLevel');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Info: TBD');
+    });
+
+    it('should not add WD classification headers when spam override is applied', async () => {
+        const { addOptions } = await runCase({
+            overrideFlags: ['spam'],
+            spamLevel: 100
+        });
+
+        expect(addOptions.prepared.mimeTree.header.some(header => /^WD-Mail-Classification:/i.test(header))).to.equal(false);
+    });
+
+    it('should pass override and classification headers into encryption input and encrypted outer headers', async () => {
+        const { handler, indexer, getAddOptions, getEncryptionOptions } = createRealIndexerHandler();
+        const bodyText = 'Encrypted override body.';
+        const raw = Buffer.from(
+            [
                 'From: Alice Example <alice@example.com>',
-                'Delivered-To: recipient@example.com',
-                'Return-Path: <alice@example.com>'
-            ]);
-        } finally {
-            plugins.handler = originalHandler;
-        }
+                'To: Recipient <recipient@example.com>',
+                'Subject: Encrypt override',
+                'Message-ID: <encrypt-override@example.com>',
+                'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                '',
+                bodyText,
+                ''
+            ].join('\r\n')
+        );
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 100,
+                encryptMessages: true,
+                pubKey: 'test-key',
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: indexer.parseMimeTree(raw),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'X-WD-Override',
+                                value: 'yes'
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const encryptionRaw = getEncryptionOptions().raw.toString();
+        const encryptedOuterHeaders = getAddOptions().prepared.mimeTree.header;
+
+        expect(encryptionRaw).to.include('X-WD-Override: yes');
+        expect(encryptionRaw).to.include('WD-Mail-Classification: not-junk');
+        expect(encryptionRaw).to.include(bodyText);
+        expect(encryptedOuterHeaders).to.include('X-WD-Override: yes');
+        expect(encryptedOuterHeaders).to.include('WD-Mail-Classification: not-junk');
+        expect(encryptedOuterHeaders).to.include('WD-Mail-Classification-Source: spamLevel');
     });
 });
