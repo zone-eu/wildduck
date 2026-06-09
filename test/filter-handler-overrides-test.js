@@ -828,8 +828,53 @@ describe('FilterHandler recipient spam overrides', () => {
         });
 
         expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: not-junk');
-        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: spamLevel');
-        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Info: TBD');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: user-spamlevel');
+        expect(addOptions.prepared.mimeTree.header).to.include(
+            'WD-Mail-Classification-Info: This message was marked as not junk by spam protection rules. If this is spam, move it to Junk.'
+        );
+    });
+
+    it('should add WD classification info for domainaccess decisions', async () => {
+        const { addOptions } = await runCase({
+            tagsview: ['tenant-a'],
+            domainaccessData: {
+                _id: new ObjectId(),
+                tag: 'tenant-a',
+                domain: 'example.com',
+                action: 'block'
+            }
+        });
+
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: junk');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: user-domainaccess');
+        expect(addOptions.prepared.mimeTree.header).to.include(
+            'WD-Mail-Classification-Info: This message was moved to Junk because messages from the sender domain example.com are blocked for your account. If this is not spam, mark it as Not Junk.'
+        );
+    });
+
+    it('should add WD classification info for user filter decisions', async () => {
+        const { addOptions } = await runCase({
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    created: new Date('2026-01-01T12:00:00.000Z'),
+                    query: {
+                        headers: {
+                            from: 'alice@example.com'
+                        }
+                    },
+                    action: {
+                        spam: true
+                    }
+                }
+            ]
+        });
+
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: junk');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: user-filter');
+        expect(addOptions.prepared.mimeTree.header).to.include(
+            'WD-Mail-Classification-Info: This message was moved to Junk by your mail filter added on 2026-01-01. If this is not spam, update your filter settings in Webmail.'
+        );
     });
 
     it('should not add WD classification headers when spam override is applied', async () => {
@@ -893,6 +938,6 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(encryptionRaw).to.include(bodyText);
         expect(encryptedOuterHeaders).to.include('X-WD-Override: yes');
         expect(encryptedOuterHeaders).to.include('WD-Mail-Classification: not-junk');
-        expect(encryptedOuterHeaders).to.include('WD-Mail-Classification-Source: spamLevel');
+        expect(encryptedOuterHeaders).to.include('WD-Mail-Classification-Source: user-spamlevel');
     });
 });
