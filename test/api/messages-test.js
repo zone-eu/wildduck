@@ -623,6 +623,102 @@ describe('Messages tests', function () {
         ]);
     });
 
+    it('should POST /users/:user/submit expect success / isDraft stores unencrypted draft without queueing', async () => {
+        await server.put(`/users/${user}`).send({ encryptMessages: true }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    isDraft: true,
+                    from: {
+                        name: 'messages user',
+                        address: testAddress
+                    },
+                    to: [{ address: 'draft-recipient@to.com' }],
+                    bcc: [{ address: 'hidden-draft-recipient@to.com' }],
+                    subject: 'direct submit draft storage',
+                    text: 'Draft body should remain readable'
+                })
+                .expect(200);
+
+            expect(submitResponse.body.success).to.be.true;
+            expect(submitResponse.body.message.queueId).to.equal(false);
+
+            const messageResponse = await server
+                .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
+                .send({})
+                .expect(200);
+
+            expect(messageResponse.body.draft).to.be.true;
+            expect(messageResponse.body.encrypted).to.not.equal(true);
+            expect(messageResponse.body.text).to.equal('Draft body should remain readable');
+            expect(messageResponse.body.bcc.map(entry => entry.address)).to.include('hidden-draft-recipient@to.com');
+        } finally {
+            await server.put(`/users/${user}`).send({ encryptMessages: false }).expect(200);
+        }
+    });
+
+    it('should POST /users/:user/submit expect failure / recipient cap counts all recipients', async () => {
+        const settingResponse = await server.get('/settings/const:max:rcpt_to').send({}).expect(200);
+        const previousMaxRecipients = settingResponse.body.value;
+
+        await server.post('/settings/const:max:rcpt_to').send({ value: 2 }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    from: {
+                        name: 'messages user',
+                        address: testAddress
+                    },
+                    to: [{ address: 'limit1@to.com' }, { address: 'limit2@to.com' }, { address: 'limit3@to.com' }],
+                    subject: 'direct submit recipient cap',
+                    text: 'This message should be rejected before queueing'
+                })
+                .expect(403);
+
+            expect(submitResponse.body.code).to.equal('TooMany');
+        } finally {
+            await server.post('/settings/const:max:rcpt_to').send({ value: previousMaxRecipients }).expect(200);
+        }
+    });
+
+    it('should POST /users/:user/submit expect success / uploadOnly reference does not mark answered', async () => {
+        const referenceResponse = await server
+            .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
+            .send({
+                from: { address: 'external-reference@from.com' },
+                to: [{ address: testAddress }],
+                subject: 'direct submit upload only reference',
+                text: 'Original message'
+            })
+            .expect(200);
+
+        const referenceMessage = referenceResponse.body.message.id;
+
+        await server
+            .post(`/users/${user}/submit`)
+            .send({
+                uploadOnly: true,
+                reference: {
+                    action: 'reply',
+                    mailbox: testMailbox,
+                    id: referenceMessage
+                },
+                from: {
+                    name: 'messages user',
+                    address: testAddress
+                },
+                text: 'This is only stored, not sent'
+            })
+            .expect(200);
+
+        const referenceData = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages/${referenceMessage}`).send({}).expect(200);
+        expect(referenceData.body.answered).to.not.equal(true);
+    });
+
     it('should POST /users/:user/search expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
         const orderSearch = 'desc';
         const from = 'messagestests'; // Partial match
