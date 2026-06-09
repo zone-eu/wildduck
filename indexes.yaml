@@ -724,6 +724,21 @@ indexes:
               type: 1
               url: 1
 
+    - collection: pushsubscriptions
+      index:
+          name: pushsub_user_token
+          unique: true
+          key:
+              user: 1
+              deviceToken: 1
+
+    - collection: pushsubscriptions
+      index:
+          name: pushsub_user_mailboxes
+          key:
+              user: 1
+              mailboxIds: 1
+
     - collection: webhooks
       index:
           name: by_type
