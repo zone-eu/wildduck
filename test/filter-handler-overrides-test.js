@@ -105,6 +105,8 @@ describe('FilterHandler recipient spam overrides', () => {
                     let prepared = buildPrepared();
                     if (options.mimeTree) {
                         prepared.mimeTree = options.mimeTree;
+                        prepared.headers = this.generateIndexedHeaders(options.mimeTree.header);
+                        prepared.size = this.indexer.getSize(options.mimeTree);
                     }
                     return prepared;
                 },
