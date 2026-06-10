@@ -297,7 +297,7 @@ describe('FilterHandler recipient spam overrides', () => {
         };
     };
 
-    const runCase = async ({ overrideFlags, spamLevel = 50, spamAction = 'no action', filters = [], domainaccessData = false, tagsview = [] }) => {
+    const runCase = async ({ overrideFlags, spamLevel = 50, spamAction = 'no action', filters = [], domainaccessData = false, tagsview = [], raw }) => {
         const { handler, getAddOptions } = createHandler({ filters, domainaccessData });
         const userData = {
             _id: new ObjectId(),
@@ -311,7 +311,7 @@ describe('FilterHandler recipient spam overrides', () => {
         const result = await handler.storeMessage(userData, {
             recipient: userData.address,
             sender: 'alice@example.com',
-            raw: Buffer.from('Subject: Override test\r\n\r\nHello world\r\n'),
+            raw: raw || Buffer.from('Subject: Override test\r\n\r\nHello world\r\n'),
             meta: {
                 spamAction,
                 overrides: overrideFlags
@@ -834,6 +834,37 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(addOptions.prepared.mimeTree.header).to.include(
             'WD-Mail-Classification-Info: This message was marked as not junk by spam protection rules. If this is spam, move it to Junk.'
         );
+    });
+
+    it('should replace existing WD classification headers', async () => {
+        const { addOptions } = await runCase({
+            spamLevel: 100,
+            raw: Buffer.from(
+                [
+                    'Subject: Existing classification',
+                    'WD-Mail-Classification: junk',
+                    'wd-mail-classification: old',
+                    'WD-Mail-Classification-Source: old-source',
+                    'WD-Mail-Classification-Info: Old info',
+                    '',
+                    'Hello world',
+                    ''
+                ].join('\r\n')
+            )
+        });
+
+        const headers = addOptions.prepared.mimeTree.header;
+        const classificationHeaders = headers.filter(header => /^WD-Mail-Classification:/i.test(header));
+        const classificationSourceHeaders = headers.filter(header => /^WD-Mail-Classification-Source:/i.test(header));
+        const classificationInfoHeaders = headers.filter(header => /^WD-Mail-Classification-Info:/i.test(header));
+
+        expect(classificationHeaders).to.deep.equal(['WD-Mail-Classification: not-junk']);
+        expect(classificationSourceHeaders).to.deep.equal(['WD-Mail-Classification-Source: user-spamlevel']);
+        expect(classificationInfoHeaders).to.deep.equal([
+            'WD-Mail-Classification-Info: This message was marked as not junk by spam protection rules. If this is spam, move it to Junk.'
+        ]);
+        expect(addOptions.prepared.mimeTree.parsedHeader['wd-mail-classification']).to.equal('not-junk');
+        expect(addOptions.prepared.mimeTree.parsedHeader['wd-mail-classification-source']).to.equal('user-spamlevel');
     });
 
     it('should add WD classification info for domainaccess decisions', async () => {
