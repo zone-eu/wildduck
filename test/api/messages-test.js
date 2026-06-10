@@ -719,6 +719,55 @@ describe('Messages tests', function () {
         expect(referenceData.body.answered).to.not.equal(true);
     });
 
+    it('should POST /users/:user/submit expect success / over quota queued reply marks answered', async () => {
+        const referenceResponse = await server
+            .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
+            .send({
+                from: { address: 'over-quota-reference@from.com' },
+                to: [{ address: testAddress }],
+                subject: 'direct submit over quota reference',
+                text: 'Original message'
+            })
+            .expect(200);
+
+        const referenceMessage = referenceResponse.body.message.id;
+        let queueId;
+
+        await server.put(`/users/${user}`).send({ quota: 1 }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    reference: {
+                        action: 'reply',
+                        mailbox: testMailbox,
+                        id: referenceMessage
+                    },
+                    from: {
+                        name: 'messages user',
+                        address: testAddress
+                    },
+                    to: [{ address: 'over-quota-reply@to.com' }],
+                    text: 'This reply should queue even when Sent storage is skipped'
+                })
+                .expect(200);
+
+            expect(submitResponse.body.success).to.be.true;
+            expect(submitResponse.body.message.overQuota).to.be.true;
+            queueId = submitResponse.body.message.queueId;
+            expect(queueId).to.exist;
+
+            const referenceData = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages/${referenceMessage}`).send({}).expect(200);
+            expect(referenceData.body.answered).to.be.true;
+        } finally {
+            await server.put(`/users/${user}`).send({ quota: 0 }).expect(200);
+            if (queueId) {
+                await server.delete(`/users/${user}/outbound/${queueId}`).expect(200);
+            }
+        }
+    });
+
     it('should POST /users/:user/search expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
         const orderSearch = 'desc';
         const from = 'messagestests'; // Partial match
