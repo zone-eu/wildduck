@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.49.2](https://github.com/zone-eu/wildduck/compare/v1.49.1...v1.49.2) (2026-06-10)
+
+
+### Bug Fixes
+
+* ZMS-67: Filter handler add header rewrite logic and classification ([#1095](https://github.com/zone-eu/wildduck/issues/1095)) ([ac1989d](https://github.com/zone-eu/wildduck/commit/ac1989d239142ade7f1a0056ebb64c83e8fadf4d))
+* ZMS-75: fix submit endpoint ([#1100](https://github.com/zone-eu/wildduck/issues/1100)) ([27d3078](https://github.com/zone-eu/wildduck/commit/27d307869b8978a42c12b8888b4a759ed6c5671f))
+
 ## [1.49.1](https://github.com/zone-eu/wildduck/compare/v1.49.0...v1.49.1) (2026-06-04)
 
 
