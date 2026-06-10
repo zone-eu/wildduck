@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.3](https://github.com/zone-eu/wildduck/compare/v1.49.2...v1.49.3) (2026-06-10)
+
+
+### Bug Fixes
+
+* ZMS-67: Fix classification header addition in filter-handler ([#1102](https://github.com/zone-eu/wildduck/issues/1102)) ([f12e66d](https://github.com/zone-eu/wildduck/commit/f12e66d3bece3e76cddb1770b5ece77b44c3924a))
+
 ## [1.49.2](https://github.com/zone-eu/wildduck/compare/v1.49.1...v1.49.2) (2026-06-10)
 
 
