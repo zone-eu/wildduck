@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.4](https://github.com/zone-eu/wildduck/compare/v1.49.3...v1.49.4) (2026-06-11)
+
+
+### Bug Fixes
+
+* ZMS-76: Harden release and docker workflows ([#1105](https://github.com/zone-eu/wildduck/issues/1105)) ([2b66e59](https://github.com/zone-eu/wildduck/commit/2b66e5911a663d8963bc5893f47d9e42f83603e3))
+
 ## [1.49.3](https://github.com/zone-eu/wildduck/compare/v1.49.2...v1.49.3) (2026-06-10)
 
 
