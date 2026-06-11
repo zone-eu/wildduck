@@ -13,6 +13,7 @@ const MailboxHandler = require('./lib/mailbox-handler');
 const CertHandler = require('./lib/cert-handler');
 const AuditHandler = require('./lib/audit-handler');
 const TaskHandler = require('./lib/task-handler');
+const metrics = require('./lib/metrics');
 
 const { getCertificate, acquireCert } = require('./lib/acme/certs');
 
@@ -46,6 +47,7 @@ let loggelf;
 
 module.exports.start = callback => {
     if (!config.tasks.enabled) {
+        metrics.setServiceUp('tasks', false);
         return setImmediate(() => callback(null, false));
     }
 
@@ -122,6 +124,7 @@ module.exports.start = callback => {
     taskHandler = new TaskHandler({
         database: db.database
     });
+    metrics.registerTaskDatabase(db.database);
 
     certHandler = new CertHandler({
         cipher: config.certs && config.certs.cipher,
@@ -134,9 +137,11 @@ module.exports.start = callback => {
     });
 
     backlogIndexingQueue = new Queue('backlog_indexing', db.queueConf);
+    metrics.registerBullQueue('backlog_indexing', backlogIndexingQueue);
 
     let start = () => {
         // setup ready
+        metrics.setServiceUp('tasks', true);
 
         setImmediate(() => {
             gcTimeout = setTimeout(clearExpiredMessages, consts.GC_INTERVAL);
@@ -491,6 +496,7 @@ async function runTasks() {
             }
 
             // and run recurring ACME checks
+            let acmeUpdateMetric = metrics.startTask('acme-update');
             try {
                 await new Promise((resolve, reject) => {
                     // run pseudo task
@@ -502,7 +508,9 @@ async function runTasks() {
                         }
                     });
                 });
+                acmeUpdateMetric('success');
             } catch (err) {
+                acmeUpdateMetric('error');
                 log.error('Tasks', 'Failed running recurring ACME checks. error=%s', err.message);
                 await timer(consts.TASK_IDLE_INTERVAL);
             }
@@ -517,6 +525,7 @@ async function runTasks() {
                 continue;
             }
 
+            let endMetric = metrics.startTask(task.type);
             try {
                 await new Promise((resolve, reject) => {
                     processTask(task, data, err => {
@@ -527,8 +536,10 @@ async function runTasks() {
                         }
                     });
                 });
+                endMetric('success');
                 await taskHandler.release(task, true);
             } catch (err) {
+                endMetric('error');
                 await taskHandler.release(task, false);
             }
         } catch (err) {

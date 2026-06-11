@@ -25,6 +25,7 @@ const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const metrics = require('./lib/metrics');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -239,11 +240,42 @@ server.get(
     })
 );
 
+server.get({ name: 'metrics', path: '/metrics', excludeRoute: true }, async (req, res) => {
+    res.charSet('utf-8');
+    res.setHeader('Content-Type', metrics.contentType);
+
+    try {
+        return res.send(await metrics.getMetrics());
+    } catch (err) {
+        log.error('API', 'Failed to collect metrics: %s', err.message);
+        res.status(500);
+        return res.send('error: ' + err.message);
+    }
+});
+
 // Disable GZIP as it does not work with stream.pipe(res)
 //server.use(restify.plugins.gzipResponse());
 
 server.use(async (req, res) => {
-    if (['public_get', 'public_post', 'acmeToken'].includes(req.route.name)) {
+    let start = process.hrtime();
+    if (res && typeof res.once === 'function') {
+        res.once('finish', () => {
+            let route = (req.route && req.route.path) || 'unknown';
+            if (route === '/metrics') {
+                return;
+            }
+            let diff = process.hrtime(start);
+            metrics.recordApiRequest(req.method, route, res.statusCode, diff[0] + diff[1] / 1e9);
+        });
+    }
+});
+
+server.use(async (req, res) => {
+    if (!res) {
+        return;
+    }
+
+    if (['public_get', 'public_post', 'acmeToken', 'metrics'].includes(req.route.name)) {
         // skip token check for public pages
         return;
     }
@@ -471,6 +503,7 @@ server.use(
 
 module.exports = done => {
     if (!config.api.enabled) {
+        metrics.setServiceUp('api', false);
         return setImmediate(() => done(null, false));
     }
 
@@ -638,6 +671,7 @@ module.exports = done => {
             return server.close();
         }
         started = true;
+        metrics.setServiceUp('api', true);
         log.info('API', 'Server listening on %s:%s', config.api.host || '0.0.0.0', config.api.port);
         done(null, server);
     });

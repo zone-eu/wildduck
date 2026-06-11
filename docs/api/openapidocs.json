@@ -7060,6 +7060,47 @@
                 }
             }
         },
+        "/authenticated": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Validates the user authentication status",
+                "operationId": "isUserAuthenticated",
+                "parameters": [
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetIsUserAuthenticatedResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/autoreply": {
             "put": {
                 "tags": [
@@ -13389,7 +13430,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required then this is the value to use as access token when making API requests on behalf of logged in user."
+                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the value to use as access token when making API requests on behalf of logged in user."
                     },
                     "twoFactorNonce": {
                         "type": "string",
@@ -13699,6 +13740,27 @@
                     "last",
                     "events",
                     "expires"
+                ]
+            },
+            "GetIsUserAuthenticatedResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "sess": {
+                        "type": "string",
+                        "description": "Session identifier for the logs"
+                    },
+                    "ip": {
+                        "type": "string",
+                        "description": "IP address for the logs "
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "UpdateAutoreplyResponse": {
