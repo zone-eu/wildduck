@@ -81,6 +81,7 @@ module.exports = {
             }
 
             logdata._rmailbox = mailbox && mailbox.toString();
+            logdata._mailbox_path = path;
             logdata._response = success;
             this._server.loggelf(logdata);
 
