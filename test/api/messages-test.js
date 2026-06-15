@@ -1507,7 +1507,7 @@ describe('Messages tests', function () {
             .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
             .send({
                 date: new Date('2022-01-02T00:00:00.000Z'),
-                draft: true,
+                draft: false,
                 to: [{ address: 'collapse.thread@example.com' }],
                 subject: 'Collapse Thread B',
                 text: 'Single message B'
@@ -1547,6 +1547,8 @@ describe('Messages tests', function () {
         expect(descPage1.body.total).to.equal(3);
         expect(descPage1.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id, threadReply.body.message.id]);
         expect(descPage1.body.results[1].threadMessageCount).to.equal(2);
+        expect(descPage1.body.results[0].hasDrafts).to.be.true;
+        expect(descPage1.body.results[1].hasDrafts).to.be.true;
         expect(descPage1.body.nextCursor).to.be.a('string');
         expect(descPage1.body.previousCursor).to.be.false;
 
@@ -1562,6 +1564,7 @@ describe('Messages tests', function () {
         expect(descPage2.body.page).to.equal(2);
         expect(descPage2.body.results.map(entry => entry.id)).to.deep.equal([singleB.body.message.id]);
         expect(descPage2.body.results.map(entry => entry.thread)).to.not.include(descPage1.body.results[1].thread);
+        expect(descPage2.body.results[0].hasDrafts).to.be.false;
         expect(descPage2.body.previousCursor).to.be.a('string');
         expect(descPage2.body.nextCursor).to.be.false;
 
@@ -1584,6 +1587,7 @@ describe('Messages tests', function () {
         expect(asc.body.total).to.equal(3);
         expect(asc.body.results.map(entry => entry.id)).to.deep.equal([threadRoot.body.message.id, singleB.body.message.id, singleC.body.message.id]);
         expect(asc.body.results[0]).to.not.have.property('threadMessageCount');
+        expect(asc.body.results[0]).to.not.have.property('hasDrafts');
     });
 
     it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / move lots of messages to trash, should not timeout', async () => {
