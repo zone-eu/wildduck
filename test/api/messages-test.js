@@ -1189,6 +1189,22 @@ describe('Messages tests', function () {
         expect(search.results.every(entry => entry.mailbox !== trashId)).to.be.true;
     });
 
+    it('should GET /users/:user/search expect success / q searchable:true with searchable=1 excludes trash mailbox matches', async () => {
+        const q = `${queryFixture.body} searchable:true`;
+        const qOnlySearch = await searchQ(q);
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectTrash);
+        expect(search.body.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+        expect(search.body.results).to.deep.equal(qOnlySearch.results);
+    });
+
     it('should GET /users/:user/search expect success / q searchable:true excludes trash with more than 200 mailboxes', async function () {
         this.timeout(60000); // eslint-disable-line no-invalid-this
 
