@@ -1495,7 +1495,7 @@ describe('Messages tests', function () {
         const threadRoot = await server
             .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
             .send({
-                date: new Date('2022-01-01T00:00:00.000Z'),
+                date: new Date('2026-01-01T00:00:00.000Z'),
                 draft: true,
                 to: [{ address: 'collapse.thread@example.com' }],
                 subject: 'Collapse Thread A',
@@ -1506,7 +1506,7 @@ describe('Messages tests', function () {
         const singleB = await server
             .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
             .send({
-                date: new Date('2022-01-02T00:00:00.000Z'),
+                date: new Date('2026-01-02T00:00:00.000Z'),
                 draft: false,
                 to: [{ address: 'collapse.thread@example.com' }],
                 subject: 'Collapse Thread B',
@@ -1517,7 +1517,7 @@ describe('Messages tests', function () {
         const threadReply = await server
             .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
             .send({
-                date: new Date('2022-01-03T00:00:00.000Z'),
+                date: new Date('2026-01-03T00:00:00.000Z'),
                 to: [{ address: 'collapse.thread@example.com' }],
                 text: 'Reply message',
                 reference: {
@@ -1531,7 +1531,7 @@ describe('Messages tests', function () {
         const singleC = await server
             .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
             .send({
-                date: new Date('2022-01-04T00:00:00.000Z'),
+                date: new Date('2026-01-04T00:00:00.000Z'),
                 draft: true,
                 to: [{ address: 'collapse.thread@example.com' }],
                 subject: 'Collapse Thread C',
