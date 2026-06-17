@@ -32,6 +32,7 @@ module.exports = {
             short_message: '[EXPUNGE]',
             _mail_action: 'expunge',
             _mailbox: this.selected.mailbox,
+            _mailbox_path: this.selected.path,
             _user: this.session.user.id.toString(),
             _sess: this.id
         };

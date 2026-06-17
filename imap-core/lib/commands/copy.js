@@ -47,6 +47,7 @@ module.exports = {
             _destination: path,
             _user: this.session.user.id.toString(),
             _mailbox: this.selected.mailbox,
+            _mailbox_path: this.selected.path,
             _sess: this.id,
             _message_count: messages.length
         };
