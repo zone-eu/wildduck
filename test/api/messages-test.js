@@ -26,6 +26,12 @@ describe('Search query parser tests', function () {
         expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase here', negated: false, exactPhrase: true }]);
     });
 
+    it('should recover unclosed quoted phrases', () => {
+        const quoted = parseSearchQuery('"phrase search here');
+
+        expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase search here', negated: false, exactPhrase: true }]);
+    });
+
     it('should parse quoted in keyword values as mailbox filters', () => {
         for (let mailboxPath of ['Sub (dub)', 'INBOX/(dub)', 'INBOX/Sub (dub)', '(dub)']) {
             const parsed = parseSearchQuery(`in:"${mailboxPath}"`);
@@ -155,6 +161,86 @@ describe('Search query parser tests', function () {
             ]
         });
     });
+
+    it('should not build empty MongoDB logical arrays for ignored q filters', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+
+        expect(await getMongoDBQuery(db, user, 'has:')).to.deep.equal({ user: false });
+        expect(await getMongoDBQuery(db, user, 'unknown:')).to.deep.equal({ user: false });
+        expect(await getMongoDBQuery(db, user, 'foo OR has:')).to.deep.equal({
+            user,
+            $and: [
+                {
+                    $text: {
+                        $search: 'foo'
+                    }
+                }
+            ],
+            searchable: true
+        });
+    });
+
+    it('should build searchable mailbox filter for q searchable option', async () => {
+        const mailboxIds = [new ObjectId(), new ObjectId()];
+        const user = new ObjectId();
+        const db = {
+            database: {
+                collection(name) {
+                    expect(name).to.equal('mailboxes');
+                    return {
+                        countDocuments(query) {
+                            expect(query).to.deep.equal({
+                                user,
+                                specialUse: { $nin: ['\\Junk', '\\Trash'] }
+                            });
+                            return Promise.resolve(mailboxIds.length);
+                        },
+                        find(query) {
+                            expect(query).to.deep.equal({
+                                user,
+                                specialUse: { $nin: ['\\Junk', '\\Trash'] }
+                            });
+                            return {
+                                project(projection) {
+                                    expect(projection).to.deep.equal({ _id: true });
+                                    return {
+                                        toArray() {
+                                            return Promise.resolve(mailboxIds.map(_id => ({ _id })));
+                                        }
+                                    };
+                                }
+                            };
+                        }
+                    };
+                }
+            }
+        };
+        const query = await getMongoDBQuery(db, user, 'phrase', { searchable: true });
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [
+                {
+                    $text: {
+                        $search: 'phrase'
+                    }
+                },
+                {
+                    mailbox: {
+                        $in: mailboxIds
+                    }
+                }
+            ],
+            searchable: true
+        });
+    });
 });
 
 describe('Messages tests', function () {
@@ -180,6 +266,9 @@ describe('Messages tests', function () {
         subjectExcluded: 'Search Query Excluded Phrase',
         subjectExactPhrase: 'Search Query Exact Phrase Marker',
         subjectExactPhraseSplit: 'Search Query Exact Phrase Split Marker',
+        subjectFulltextOnly: 'Search Query Subject Fulltext Only Marker',
+        subjectPhraseOnly: 'Search Query Subject Exact Phrase Only Marker',
+        subjectPhraseSplit: 'Search Query Subject Exact Phrase Split Marker',
         subjectWhitespacePhrase: 'Search Query Whitespace Phrase Marker',
         subjectAttachment: 'Search Query Attachment Marker',
         subjectFlaggedSeenAttachment: 'Search Query Flagged Seen Attachment Marker',
@@ -191,6 +280,9 @@ describe('Messages tests', function () {
         exactPhraseContext: 'searchqueryexactcontexttoken',
         exactPhraseTerm1: 'searchqueryexactfirsttoken',
         exactPhraseTerm2: 'searchqueryexactsecondtoken',
+        subjectFulltextTerm: 'searchquerysubjectfulltexttoken',
+        subjectPhraseTerm1: 'searchquerysubjectfirsttoken',
+        subjectPhraseTerm2: 'searchquerysubjectsecondtoken',
         attachmentBody: 'searchqueryattachmenttoken',
         multiTerm1: 'searchquerymultiterm1token',
         multiTerm2: 'searchquerymultiterm2token',
@@ -349,6 +441,42 @@ describe('Messages tests', function () {
                 to: [{ address: queryFixture.toAddress }],
                 subject: queryFixture.subjectExactPhraseSplit,
                 text: `${queryFixture.exactPhraseContext} ${queryFixture.exactPhraseTerm1} separated ${queryFixture.exactPhraseTerm2}`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:10:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: `${queryFixture.subjectFulltextOnly} ${queryFixture.subjectFulltextTerm}`,
+                text: 'subject fulltext marker is not in the body'
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:20:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: `${queryFixture.subjectPhraseOnly} ${queryFixture.subjectPhraseTerm1} ${queryFixture.subjectPhraseTerm2}`,
+                text: `${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:30:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: `${queryFixture.subjectPhraseSplit} ${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`,
+                text: `${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`
             })
             .expect(200);
 
@@ -919,12 +1047,27 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectExcluded);
     });
 
+    it('should GET /users/:user/search expect success / q supports subject fulltext terms', async () => {
+        const q = `${queryFixture.subjectFulltextTerm} in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(`${queryFixture.subjectFulltextOnly} ${queryFixture.subjectFulltextTerm}`);
+    });
+
     it('should GET /users/:user/search expect success / q supports exact fulltext phrases', async () => {
         const q = `"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}" in:${queryMailbox}`;
         const search = await searchQ(q);
 
         expect(getSubjects(search)).to.include(queryFixture.subjectExactPhrase);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhraseSplit);
+    });
+
+    it('should GET /users/:user/search expect success / q supports exact phrases in subject', async () => {
+        const q = `"${queryFixture.subjectPhraseTerm1} ${queryFixture.subjectPhraseTerm2}" in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(`${queryFixture.subjectPhraseOnly} ${queryFixture.subjectPhraseTerm1} ${queryFixture.subjectPhraseTerm2}`);
+        expect(getSubjects(search)).to.not.include(`${queryFixture.subjectPhraseSplit} ${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`);
     });
 
     it('should GET /users/:user/search expect success / q supports exact fulltext phrases without mailbox scope', async () => {
@@ -973,6 +1116,20 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(searchWithSearchable.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
         expect(searchWithSearchable.body.results).to.deep.equal(search.results);
+    });
+
+    it('should GET /users/:user/search expect success / q searchable=1 excludes trash mailbox matches', async () => {
+        const q = queryFixture.body;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectTrash);
+        expect(search.body.results.every(entry => entry.mailbox !== trashId)).to.be.true;
     });
 
     it('should GET /users/:user/search expect success / q plain text terms default to OR semantics', async () => {
@@ -1030,6 +1187,22 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectTrash);
         expect(search.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q searchable:true with searchable=1 excludes trash mailbox matches', async () => {
+        const q = `${queryFixture.body} searchable:true`;
+        const qOnlySearch = await searchQ(q);
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectTrash);
+        expect(search.body.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+        expect(search.body.results).to.deep.equal(qOnlySearch.results);
     });
 
     it('should GET /users/:user/search expect success / q searchable:true excludes trash with more than 200 mailboxes', async function () {
