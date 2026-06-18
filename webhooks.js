@@ -126,9 +126,7 @@ module.exports.start = callback => {
         }
     };
 
-    const webhooksQueue = new Queue('webhooks', db.queueConf);
     const webhooksPostQueue = new Queue('webhooks_post', db.queueConf);
-    metrics.registerBullQueue('webhooks', webhooksQueue);
     metrics.registerBullQueue('webhooks_post', webhooksPostQueue);
 
     queueWorkers.webhooks = new Worker(
