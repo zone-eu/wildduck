@@ -14,7 +14,7 @@ WildDuck exposes Prometheus metrics from the API service:
 curl http://127.0.0.1:8080/metrics
 ```
 
-The endpoint is public, like ZoneMTA's metrics endpoint. In production, protect it with the API bind address, firewall rules, or a reverse proxy ACL.
+The endpoint is public. In production, protect it with the API bind address, firewall rules, or a reverse proxy ACL.
 
 Example Prometheus target:
 
@@ -23,6 +23,7 @@ scrape_configs:
   - job_name: wildduck
     static_configs:
       - targets: ['127.0.0.1:8080']
+    metrics_path: "/metrics"
 ```
 
 WildDuck exports the default Node.js process metrics from `prom-client` and operational WildDuck metrics for API requests, authentication results, IMAP/POP3/LMTP connections and commands, message operations, notification journal activity, task processing, webhook queues, and indexing queues. Metric labels intentionally avoid user IDs, mailbox IDs, message IDs, email addresses, and IP addresses.

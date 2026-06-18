@@ -71,7 +71,7 @@ class Indexer {
 
         if (!entry.user) {
             // nothing to do here
-            metrics.recordIndexerChange(entry && entry.command, 'ignored');
+            metrics.recordSearchIndexerChange(entry && entry.command, 'ignored');
             return;
         }
 
@@ -115,7 +115,7 @@ class Indexer {
 
             if (!hasFeatureFlag) {
                 log.silly('Indexer', `Feature flag not set, skipping user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
-                metrics.recordIndexerChange(entry.command, 'skipped');
+                metrics.recordSearchIndexerChange(entry.command, 'skipped');
                 return;
             } else {
                 log.verbose('Indexer', `Feature flag set, processing user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
@@ -131,13 +131,13 @@ class Indexer {
                         delay: 2000
                     }
                 });
-                metrics.recordIndexerChange(entry.command, 'queued');
+                metrics.recordSearchIndexerChange(entry.command, 'queued');
             } catch (err) {
-                metrics.recordIndexerChange(entry.command, 'error');
+                metrics.recordSearchIndexerChange(entry.command, 'error');
                 throw err;
             }
         } else {
-            metrics.recordIndexerChange(entry.command, 'ignored');
+            metrics.recordSearchIndexerChange(entry.command, 'ignored');
         }
     }
 
@@ -232,7 +232,7 @@ async function renewLock() {
         log.error('Indexer', 'Failed to get lock process=%s err=%s', processId, err.message);
         isCurrentWorker = false;
     }
-    metrics.setIndexerLockOwner(isCurrentWorker);
+    metrics.setSearchIndexerLockOwner(isCurrentWorker);
 
     if (!isCurrentWorker) {
         await indexer.stop();
@@ -552,19 +552,19 @@ function indexingJob(esclient) {
             }
 
             // loggelf({ _msg: 'hello world' });
-            metrics.recordIndexerChange(data.action, 'success');
+            metrics.recordSearchIndexerChange(data.action, 'success');
         } catch (err) {
             if (err.meta && err.meta.body && err.meta.body.result === 'not_found') {
                 // missing document, ignore
                 log.error('Indexing', 'Failed to process indexing request, document not found message=%s', err.meta.body._id);
-                metrics.recordIndexerChange(job && job.data && job.data.action, 'missing');
+                metrics.recordSearchIndexerChange(job && job.data && job.data.action, 'missing');
                 return;
             }
 
             log.error('Indexing', err);
 
             const data = job.data;
-            metrics.recordIndexerChange(data && data.action, 'error');
+            metrics.recordSearchIndexerChange(data && data.action, 'error');
             loggelf({
                 short_message: '[INDEXER]',
                 _mail_action: `indexer_${data.action}`,
@@ -584,7 +584,7 @@ function indexingJob(esclient) {
 
 module.exports.start = callback => {
     if (!config.elasticsearch || !config.elasticsearch.indexer || !config.elasticsearch.indexer.enabled) {
-        metrics.setServiceUp('indexer', false);
+        metrics.setServiceUp('search_indexer', false);
         return setImmediate(() => callback(null, false));
     }
 
@@ -672,7 +672,7 @@ module.exports.start = callback => {
         metrics.registerBullQueue('backlog_indexing', new Queue('backlog_indexing', db.queueConf));
         metrics.trackBullWorker('backlog_indexing', queueWorkers.backlogIndexing);
 
-        metrics.setServiceUp('indexer', true);
+        metrics.setServiceUp('search_indexer', true);
         callback();
     });
 };
