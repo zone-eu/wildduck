@@ -10,6 +10,7 @@ const shared = require('nodemailer/lib/shared');
 const punycode = require('punycode.js');
 const base32 = require('base32.js');
 const errors = require('../../lib/errors.js');
+const metrics = require('../../lib/metrics');
 
 const CLOSE_TIMEOUT = 1 * 1000; // how much to wait until pending connections are terminated
 
@@ -93,6 +94,8 @@ class IMAPServer extends EventEmitter {
         let connection = new IMAPConnection(this, socket, socketOptions);
         connection.loggelf = message => this.loggelf(message);
         this.connections.add(connection);
+        metrics.connectionStarted('imap', connection.secure);
+        connection.once('close', () => metrics.connectionClosed('imap'));
         connection.on('error', this._onError.bind(this));
 
         // Call onConnect handler if provided
