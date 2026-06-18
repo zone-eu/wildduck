@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.49.5](https://github.com/zone-eu/wildduck/compare/v1.49.4...v1.49.5) (2026-06-18)
+
+
+### Bug Fixes
+
+* ZMS-77: Emit marked.ham webhook when starring or explicitly marking ham a message ([#1111](https://github.com/zone-eu/wildduck/issues/1111)) ([084d540](https://github.com/zone-eu/wildduck/commit/084d5406f8d9d5acd2065030b80adb1964e6a3af))
+* ZMS-78: Improve logging  ([#1108](https://github.com/zone-eu/wildduck/issues/1108)) ([c87f46b](https://github.com/zone-eu/wildduck/commit/c87f46b82f19737d603ad710dd2ca462d19d2037))
+* ZMS-79: q param search fixes ([#1109](https://github.com/zone-eu/wildduck/issues/1109)) ([cadf456](https://github.com/zone-eu/wildduck/commit/cadf456266c490f0d479554d2d91a46bc2ec02bd))
+
 ## [1.49.4](https://github.com/zone-eu/wildduck/compare/v1.49.3...v1.49.4) (2026-06-11)
 
 
