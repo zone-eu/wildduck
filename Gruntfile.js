@@ -26,6 +26,7 @@ module.exports = function (grunt) {
                     'imap-core/test/compress-race-condition-test.js',
                     'imap-core/test/imap-compile-stream-test.js',
                     'imap-core/test/imap-compiler-test.js',
+                    'imap-core/test/imap-id-command-test.js',
                     'imap-core/test/imap-indexer-test.js',
                     'imap-core/test/imap-parser-test.js',
                     'imap-core/test/onconnect-test.js',

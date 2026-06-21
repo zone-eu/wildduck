@@ -12,6 +12,7 @@ const UserHandler = require('./lib/user-handler');
 const FilterHandler = require('./lib/filter-handler');
 const db = require('./lib/db');
 const certs = require('./lib/certs');
+const ApnClient = require('./lib/apn-client');
 const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
@@ -245,6 +246,7 @@ module.exports = done => {
         redis: db.redis,
         gridfs: db.gridfs,
         attachments: config.attachments,
+        apn: ApnClient.get({ config: config.imap && config.imap.aps, database: db.database, loggelf: message => loggelf(message) }),
         loggelf: message => loggelf(message)
     });
 
