@@ -14,7 +14,16 @@ WildDuck exposes Prometheus metrics from the API service:
 curl http://127.0.0.1:8080/metrics
 ```
 
-> **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Each scrape also collects task counts from MongoDB and job counts from Redis-backed BullMQ queues. In production, restrict access with the API bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
+> **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Refreshing task and job counts queries MongoDB and Redis-backed BullMQ queues. In production, restrict access with the API bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
+
+The endpoint is enabled by default. Disable it in the API configuration when it is not needed:
+
+```toml
+[metrics]
+enabled = false
+```
+
+MongoDB task counts and Redis-backed BullMQ job counts are cached for 10 seconds per worker. This limits repeated backend queries from frequent or concurrent scrapes.
 
 Example Prometheus target:
 

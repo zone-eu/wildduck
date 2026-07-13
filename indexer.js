@@ -669,7 +669,6 @@ module.exports.start = callback => {
                 db.queueConf
             )
         );
-        metrics.registerBullQueue('backlog_indexing', new Queue('backlog_indexing', db.queueConf));
         metrics.trackBullWorker('backlog_indexing', queueWorkers.backlogIndexing);
 
         metrics.setServiceUp('search_indexer', true);

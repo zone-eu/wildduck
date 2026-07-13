@@ -10,6 +10,12 @@ secure = false
 # http://localhost:8080/users?accessToken=somesecretvalue
 # accessToken = "somesecretvalue"
 
+[metrics]
+# Expose the unauthenticated Prometheus endpoint at /metrics
+enabled = false
+# Cache MongoDB/Redis collector results per worker for this many milliseconds; set to 0 to disable caching
+collectCacheTtl = 10000
+
 [accessControl]
 # If true then require a valid access token to perform API calls
 # If a client provides a token then it is validated even if using a token is not required

@@ -274,6 +274,7 @@ class IMAPCommand {
                     this.payload || ''
                 );
                 if (!this.countBadResponses()) {
+                    recordMetric((err && (err.response || err.code)) || 'error');
                     // stop processing
                     return;
                 }
@@ -292,7 +293,10 @@ class IMAPCommand {
                     this.connection.id,
                     (this.payload && this.payload.length) || 0
                 );
-                return this.connection._nextHandler(this.payload, next);
+                return this.connection._nextHandler(this.payload, err => {
+                    recordMetric((err && (err.response || err.code)) || 'ok');
+                    next(err);
+                });
             }
 
             try {
@@ -318,6 +322,7 @@ class IMAPCommand {
                 );
                 this.connection.send(this.tag + ' BAD ' + E.message);
                 if (!this.countBadResponses()) {
+                    recordMetric('bad');
                     // stop processing
                     return;
                 }
@@ -364,6 +369,7 @@ class IMAPCommand {
                     }
                     this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
                     if (!this.countBadResponses()) {
+                        recordMetric(err.response || err.code || 'bad');
                         // stop processing
                         return;
                     }
@@ -389,6 +395,7 @@ class IMAPCommand {
                                 this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
                                 if (!err.response || err.response === 'BAD') {
                                     if (!this.countBadResponses()) {
+                                        recordMetric(err.response || err.code || 'error');
                                         // stop processing
                                         return;
                                     }

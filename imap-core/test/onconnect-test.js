@@ -6,10 +6,17 @@ const chai = require('chai');
 const expect = chai.expect;
 const IMAPServer = require('../index.js').IMAPServer;
 const net = require('net');
+const metrics = require('../../lib/metrics');
 
 chai.config.includeStack = true;
 
 const TEST_PORT = 0; // Use port 0 to let OS assign available port
+
+const getActiveImapConnections = async () => {
+    const output = await metrics.getMetrics();
+    const match = /^wildduck_connections\{service="imap"\} (\d+)$/m.exec(output);
+    return match ? Number(match[1]) : 0;
+};
 
 describe('IMAP onConnect Handler Tests', () => {
     let port;
@@ -300,6 +307,41 @@ describe('IMAP onConnect Handler Tests', () => {
     });
 
     describe('onClose Handler', () => {
+        it('should decrement the active connection metric when a connection closes', async () => {
+            const baseline = await getActiveImapConnections();
+            server = new IMAPServer({});
+
+            await new Promise((resolve, reject) => {
+                server.listen(TEST_PORT, '127.0.0.1', () => {
+                    port = server.server.address().port;
+                    let client = net.connect(port, '127.0.0.1');
+
+                    client.once('data', async () => {
+                        try {
+                            expect(await getActiveImapConnections()).to.equal(baseline + 1);
+                            client.end();
+                        } catch (err) {
+                            client.destroy();
+                            reject(err);
+                        }
+                    });
+
+                    client.once('close', () => {
+                        setImmediate(async () => {
+                            try {
+                                expect(await getActiveImapConnections()).to.equal(baseline);
+                                resolve();
+                            } catch (err) {
+                                reject(err);
+                            }
+                        });
+                    });
+
+                    client.once('error', reject);
+                });
+            });
+        });
+
         it('should call onClose handler when connection is closed', done => {
             let onCloseCalled = false;
             let finished = false;

@@ -240,18 +240,22 @@ server.get(
     })
 );
 
-server.get({ name: 'metrics', path: '/metrics', excludeRoute: true }, async (req, res) => {
-    res.charSet('utf-8');
-    res.setHeader('Content-Type', metrics.contentType);
+const metricsEnabled = !config.api.metrics || config.api.metrics.enabled !== false;
 
-    try {
-        return res.send(await metrics.getMetrics());
-    } catch (err) {
-        log.error('API', 'Failed to collect metrics: %s', err.message);
-        res.status(500);
-        return res.send('error: ' + err.message);
-    }
-});
+if (metricsEnabled) {
+    server.get({ name: 'metrics', path: '/metrics', excludeRoute: true }, async (req, res) => {
+        res.charSet('utf-8');
+        res.setHeader('Content-Type', metrics.contentType);
+
+        try {
+            return res.send(await metrics.getMetrics());
+        } catch (err) {
+            log.error('API', 'Failed to collect metrics: %s', err.message);
+            res.status(500);
+            return res.send('error: ' + err.message);
+        }
+    });
+}
 
 // Disable GZIP as it does not work with stream.pipe(res)
 //server.use(restify.plugins.gzipResponse());
@@ -261,7 +265,7 @@ server.use(async (req, res) => {
     if (res && typeof res.once === 'function') {
         res.once('finish', () => {
             let route = (req.route && req.route.path) || 'unknown';
-            if (route === '/metrics') {
+            if (metricsEnabled && route === '/metrics') {
                 return;
             }
             let diff = process.hrtime(start);
