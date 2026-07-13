@@ -833,6 +833,7 @@ describe('Messages tests', function () {
             .send({
                 draft: false,
                 to: [{ address: 'search-collapse@example.com' }],
+                headers: [{ key: 'X-Search-Collapse', value: 'single-message' }],
                 subject: 'Search Collapse Thread B',
                 text: 'Single message'
             })
@@ -875,6 +876,16 @@ describe('Messages tests', function () {
         expect(collapsedPage1.body.total).to.equal(2);
         expect(collapsedPage1.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id]);
         expect(collapsedPage1.body.nextCursor).to.be.a('string');
+
+        const allHeaders = await server
+            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&includeHeaders=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(allHeaders.body.results[0].headers['x-search-collapse']).to.equal('single-message');
+
+        await server.get(`/users/${user}/search?mailbox=${mailbox}&includeHeaders=List-ID,X-Foo&limit=1`).send({}).expect(400);
+        await server.get(`/users/${user}/archived/messages?includeHeaders=List-ID,X-Foo&limit=1`).send({}).expect(400);
 
         const collapsedPage2 = await server
             .get(
@@ -1664,6 +1675,11 @@ describe('Messages tests', function () {
         expect(headersAndMetaData.body.results[0].metaData).to.deep.equal({
             marker: 'collapse-single-c'
         });
+
+        await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?includeHeaders=List-ID,X-Foo&limit=1&order=desc`)
+            .send({})
+            .expect(400);
 
         const unseen = await server
             .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&unseen=true&limit=10&order=desc`)
