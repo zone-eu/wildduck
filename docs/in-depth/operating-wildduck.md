@@ -14,7 +14,7 @@ WildDuck exposes Prometheus metrics from the API service:
 curl http://127.0.0.1:8080/metrics
 ```
 
-The endpoint is public. In production, protect it with the API bind address, firewall rules, or a reverse proxy ACL.
+> **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Each scrape also collects task counts from MongoDB and job counts from Redis-backed BullMQ queues. In production, restrict access with the API bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
 
 Example Prometheus target:
 
