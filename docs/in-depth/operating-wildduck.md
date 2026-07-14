@@ -16,14 +16,15 @@ curl http://127.0.0.1:8080/metrics
 
 > **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Refreshing task and job counts queries MongoDB and Redis-backed BullMQ queues. In production, restrict access with the API bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
 
-The endpoint is enabled by default. Disable it in the API configuration when it is not needed:
+The endpoint is disabled by default. Enable it and configure the expensive collector cache in the API configuration:
 
 ```toml
 [metrics]
 enabled = false
+collectCacheTtl = 10000
 ```
 
-MongoDB task counts and Redis-backed BullMQ job counts are cached for 10 seconds per worker. This limits repeated backend queries from frequent or concurrent scrapes.
+`collectCacheTtl` is specified in milliseconds and defaults to 10 seconds. Set it to `0` to query MongoDB task counts and Redis-backed BullMQ job counts on every scrape. The cache is maintained per worker and limits repeated backend queries from frequent or concurrent scrapes.
 
 Example Prometheus target:
 
