@@ -23,9 +23,11 @@ describe('Authentication rate limits', function () {
     const address = `${username}@example.com`;
     const masterPassword = 'qrstuvwxyzabcdef';
     const appPassword = 'abcdefghijklmnop';
+    const scopeMismatchedPassword = 'ponmlkjihgfedcba';
 
     let userId;
     let rateLimitKey;
+    let scopeMismatchedAspId;
 
     before(async () => {
         await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
@@ -48,6 +50,26 @@ describe('Authentication rate limits', function () {
                 description: 'rate limit test',
                 scopes: ['imap'],
                 password: appPassword
+            })
+            .expect(200);
+
+        const scopeMismatchedResponse = await server
+            .post(`/users/${userId}/asps`)
+            .send({
+                description: 'scope mismatch test',
+                scopes: ['smtp'],
+                password: scopeMismatchedPassword
+            })
+            .expect(200);
+
+        scopeMismatchedAspId = scopeMismatchedResponse.body.id;
+
+        await server
+            .post(`/users/${userId}/asps`)
+            .send({
+                description: 'master password overlap test',
+                scopes: ['smtp'],
+                password: masterPassword
             })
             .expect(200);
 
@@ -99,10 +121,38 @@ describe('Authentication rate limits', function () {
             .send({
                 username: address,
                 password: masterPassword,
-                scope: 'imap'
+                scope: 'imap',
+                protocol: 'master-overlap-test'
             })
             .expect(200);
 
         expect(response.body.success).to.be.true;
+
+        const authlogResponse = await server.get(`/users/${userId}/authlog`).expect(200);
+        const masterAuthlogEntry = authlogResponse.body.results.find(entry => entry.source === 'master' && entry.result === 'success');
+
+        expect(masterAuthlogEntry).to.exist;
+        expect(masterAuthlogEntry.asp).to.not.exist;
+    });
+
+    it('should preserve ASP metadata when authentication fails because of its scope', async () => {
+        const response = await server
+            .post('/authenticate')
+            .send({
+                username: address,
+                password: scopeMismatchedPassword,
+                scope: 'imap'
+            })
+            .expect(403);
+
+        expect(response.body.code).to.equal('InvalidAuthScope');
+
+        const authlogResponse = await server.get(`/users/${userId}/authlog`).expect(200);
+        const authlogEntry = authlogResponse.body.results.find(entry => entry.asp === scopeMismatchedAspId);
+
+        expect(authlogEntry).to.exist;
+        expect(authlogEntry.source).to.equal('asp');
+        expect(authlogEntry.aname).to.equal('scope mismatch test');
+        expect(authlogEntry.result).to.equal('fail');
     });
 });
