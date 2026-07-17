@@ -202,7 +202,7 @@ describe.only('API WebAuthn', function () {
         expect(attestationResponse.body.response.authenticatorAttachment).to.equal('cross-platform');
     });
 
-    it('should GET /users/{user}/2fa/webauthn/credentials expect registered credential', async () => {
+    it('should GET /users/{user}/2fa/webauthn/credentials expect success / expect registered credential', async () => {
         const response = await server.get(`/users/${user}/2fa/webauthn/credentials`).expect(200);
 
         expect(response.body.success).to.be.true;
@@ -253,7 +253,7 @@ describe.only('API WebAuthn', function () {
         authenticationChallenge = response.body.authenticationOptions.challenge;
     });
 
-    it('should POST /users/{user}/2fa/webauthn/authentication-assertion expect token', async () => {
+    it('should POST /users/{user}/2fa/webauthn/authentication-assertion expect success / expect token', async () => {
         const assertionResponse = authenticator.createAssertionResponse(authenticationChallenge, ORIGIN);
         const response = await server
             .post(`/users/${user}/2fa/webauthn/authentication-assertion`)

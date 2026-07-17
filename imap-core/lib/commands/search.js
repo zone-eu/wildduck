@@ -51,6 +51,7 @@ module.exports = {
             _mail_action: 'search',
             _user: this.session.user.id.toString(),
             _mailbox: this.selected.mailbox,
+            _mailbox_path: this.selected.path,
             _sess: this.id,
             _query: JSON.stringify(parsed.query),
             _terms: JSON.stringify(parsed.terms)
