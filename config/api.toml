@@ -1,4 +1,4 @@
-enabled = true
+enabled = false
 port = 8080
 # by default bind to localhost only
 host = "127.0.0.1"
@@ -13,7 +13,7 @@ secure = false
 [metrics]
 # Expose the unauthenticated Prometheus endpoint at /metrics
 enabled = false
-# Cache MongoDB/Redis collector results per worker for this many milliseconds; set to 0 to disable caching
+# Cache MongoDB/Redis collector results for this many milliseconds; set to 0 to disable caching
 collectCacheTtl = 10000
 
 [accessControl]

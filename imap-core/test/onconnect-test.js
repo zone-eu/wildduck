@@ -318,7 +318,7 @@ describe('IMAP onConnect Handler Tests', () => {
 
                     client.once('data', async () => {
                         try {
-                            expect(await getActiveImapConnections()).to.equal(baseline + 1);
+                            expect(await getActiveImapConnections()).to.equal(baseline + (metrics.enabled ? 1 : 0));
                             client.end();
                         } catch (err) {
                             client.destroy();
