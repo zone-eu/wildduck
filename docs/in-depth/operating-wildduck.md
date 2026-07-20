@@ -20,11 +20,11 @@ The endpoint is disabled by default. Enable it and configure the expensive colle
 
 ```toml
 [metrics]
-enabled = false
+enabled = true
 collectCacheTtl = 10000
 ```
 
-`collectCacheTtl` is specified in milliseconds and defaults to 10 seconds. Set it to `0` to query MongoDB task counts and Redis-backed BullMQ job counts on every scrape. The cache is maintained per worker and limits repeated backend queries from frequent or concurrent scrapes.
+`collectCacheTtl` is specified in milliseconds and defaults to 10 seconds. Set it to `0` to query MongoDB task counts and Redis-backed BullMQ job counts on every scrape. In cluster mode, one elected worker runs these backend collectors, and the cache limits repeated queries from frequent or concurrent scrapes.
 
 Example Prometheus target:
 

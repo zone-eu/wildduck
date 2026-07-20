@@ -27,7 +27,8 @@ async function postWebhook(webhook, data) {
             }
         });
     } catch (err) {
-        metrics.recordWebhookPost(data && data.ev, 'error', 0);
+        let statusCode = err && err.response && err.response.status;
+        metrics.recordWebhookPost(data && data.ev, statusCode ? 'fail' : 'error', statusCode || 0);
         loggelf({
             short_message: '[WH] ' + data.ev,
             _mail_action: 'webhook',

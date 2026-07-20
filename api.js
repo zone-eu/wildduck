@@ -240,7 +240,7 @@ server.get(
     })
 );
 
-const metricsEnabled = !config.api.metrics || config.api.metrics.enabled !== false;
+const metricsEnabled = metrics.enabled;
 
 if (metricsEnabled) {
     server.get({ name: 'metrics', path: '/metrics', excludeRoute: true }, async (req, res) => {
@@ -252,7 +252,7 @@ if (metricsEnabled) {
         } catch (err) {
             log.error('API', 'Failed to collect metrics: %s', err.message);
             res.status(500);
-            return res.send('error: ' + err.message);
+            return res.send('error: metrics collection failed');
         }
     });
 }
@@ -260,19 +260,21 @@ if (metricsEnabled) {
 // Disable GZIP as it does not work with stream.pipe(res)
 //server.use(restify.plugins.gzipResponse());
 
-server.use(async (req, res) => {
-    let start = process.hrtime();
-    if (res && typeof res.once === 'function') {
-        res.once('finish', () => {
-            let route = (req.route && req.route.path) || 'unknown';
-            if (metricsEnabled && route === '/metrics') {
-                return;
-            }
-            let diff = process.hrtime(start);
-            metrics.recordApiRequest(req.method, route, res.statusCode, diff[0] + diff[1] / 1e9);
-        });
-    }
-});
+if (metricsEnabled) {
+    server.use(async (req, res) => {
+        let start = process.hrtime();
+        if (res && typeof res.once === 'function') {
+            res.once('finish', () => {
+                let route = (req.route && req.route.path) || 'unknown';
+                if (route === '/metrics') {
+                    return;
+                }
+                let diff = process.hrtime(start);
+                metrics.recordApiRequest(req.method, route, res.statusCode, diff[0] + diff[1] / 1e9);
+            });
+        }
+    });
+}
 
 server.use(async (req, res) => {
     if (!res) {

@@ -293,10 +293,7 @@ class IMAPCommand {
                     this.connection.id,
                     (this.payload && this.payload.length) || 0
                 );
-                return this.connection._nextHandler(this.payload, err => {
-                    recordMetric((err && (err.response || err.code)) || 'ok');
-                    next(err);
-                });
+                return this.connection._nextHandler(this.payload, next);
             }
 
             try {
@@ -436,6 +433,9 @@ class IMAPCommand {
                         },
                         next
                     );
+                    if (this.command === 'LOGOUT') {
+                        recordMetric('ok');
+                    }
                 } else {
                     this.connection.send(this.tag + ' NO Not implemented: ' + this.command);
                     recordMetric('no');

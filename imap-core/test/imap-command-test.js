@@ -232,7 +232,7 @@ describe('IMAPCommand', function () {
         );
     });
 
-    it('should record continuation input metrics', function (done) {
+    it('should not record continuation input as a command', function (done) {
         const { connection } = createConnection();
         const records = [];
         connection._nextHandler = (payload, callback) => callback();
@@ -241,7 +241,24 @@ describe('IMAPCommand', function () {
         const command = new IMAPCommand(connection);
         command.end({ value: 'DONE' }, err => {
             expect(err).to.not.exist;
-            expect(records).to.deep.equal([{ command: 'unknown', result: 'ok' }]);
+            expect(records).to.deep.equal([]);
+            done();
+        });
+    });
+
+    it('should record terminal LOGOUT commands', function (done) {
+        const { connection, responses } = createConnection();
+        const records = [];
+        metrics.recordImapCommand = (command, result) => records.push({ command, result });
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 LOGOUT\r\n' }, () => {
+            done(new Error('LOGOUT must not resume command parsing'));
+        });
+
+        setImmediate(() => {
+            expect(responses).to.include('* BYE Logout requested');
+            expect(records).to.deep.equal([{ command: 'LOGOUT', result: 'ok' }]);
             done();
         });
     });
