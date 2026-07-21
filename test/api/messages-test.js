@@ -923,7 +923,7 @@ describe('Messages tests', function () {
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 
-    it('should GET /users/:user/search expect success / collapseThreads returns one message per thread and scopes hasDrafts for expanded results', async () => {
+    it('should GET /users/:user/search expect success / collapseThreads returns one message per thread and hasDrafts covers the entire thread', async () => {
         const mailboxResponse = await server
             .post(`/users/${user}/mailboxes`)
             .send({ path: `/search-collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
@@ -978,7 +978,7 @@ describe('Messages tests', function () {
         expect(expandedPage.body.total).to.equal(2);
         expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
         expect(expandedPage.body.results[0].threadMessageCount).to.equal(2);
-        expect(expandedPage.body.results[0].hasDrafts).to.be.false;
+        expect(expandedPage.body.results[0].hasDrafts).to.be.true;
 
         const expandedThread = await server
             .get(`/users/${user}/search?thread=${thread}&threadCounters=true&limit=2`)
@@ -994,7 +994,7 @@ describe('Messages tests', function () {
             .expect(200);
 
         expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id, reply.body.message.id]);
-        expect(expandedMailboxPage.body.results.every(entry => !entry.hasDrafts)).to.be.true;
+        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
 
         const collapsedPage1 = await server
             .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1`)
