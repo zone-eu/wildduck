@@ -923,6 +923,114 @@ describe('Messages tests', function () {
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 
+    it('should GET /users/:user/search expect success / collapseThreads returns one message per thread and hasDrafts covers the entire thread', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/search-collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const mailbox = mailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: true,
+                to: [{ address: 'search-collapse@example.com' }],
+                subject: 'Search Collapse Thread A',
+                text: 'Draft root'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: false,
+                to: [{ address: 'search-collapse@example.com' }],
+                text: 'Non-draft reply',
+                reference: {
+                    mailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        const single = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: false,
+                to: [{ address: 'search-collapse@example.com' }],
+                headers: [{ key: 'X-Search-Collapse', value: 'single-message' }],
+                subject: 'Search Collapse Thread B',
+                text: 'Single message'
+            })
+            .expect(200);
+
+        const rootData = await server.get(`/users/${user}/mailboxes/${mailbox}/messages/${root.body.message.id}`).send({}).expect(200);
+        const thread = rootData.body.thread;
+
+        const expandedPage = await server
+            .get(`/users/${user}/search?thread=${thread}&threadCounters=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(expandedPage.body.total).to.equal(2);
+        expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
+        expect(expandedPage.body.results[0].threadMessageCount).to.equal(2);
+        expect(expandedPage.body.results[0].hasDrafts).to.be.true;
+
+        const expandedThread = await server
+            .get(`/users/${user}/search?thread=${thread}&threadCounters=true&limit=2`)
+            .send({})
+            .expect(200);
+
+        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id, root.body.message.id]);
+        expect(expandedThread.body.results.every(entry => entry.hasDrafts)).to.be.true;
+
+        const expandedMailboxPage = await server
+            .get(`/users/${user}/mailboxes/${mailbox}/messages?threadCounters=true&limit=2&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id, reply.body.message.id]);
+        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
+
+        const collapsedPage1 = await server
+            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(collapsedPage1.body.total).to.equal(2);
+        expect(collapsedPage1.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id]);
+        expect(collapsedPage1.body.nextCursor).to.be.a('string');
+
+        const allHeaders = await server
+            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&includeHeaders=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(allHeaders.body.results[0].headers['x-search-collapse']).to.equal('single-message');
+
+        await server.get(`/users/${user}/search?mailbox=${mailbox}&includeHeaders=List-ID,X-Foo&limit=1`).send({}).expect(400);
+        await server.get(`/users/${user}/archived/messages?includeHeaders=List-ID,X-Foo&limit=1`).send({}).expect(400);
+
+        const collapsedPage2 = await server
+            .get(
+                `/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1&next=${encodeURIComponent(
+                    collapsedPage1.body.nextCursor
+                )}`
+            )
+            .send({})
+            .expect(200);
+
+        expect(collapsedPage2.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
+        expect(collapsedPage2.body.results[0].threadMessageCount).to.equal(2);
+        expect(collapsedPage2.body.results[0].hasDrafts).to.be.true;
+        expect(collapsedPage2.body.previousCursor).to.be.a('string');
+        expect(collapsedPage2.body.nextCursor).to.be.false;
+    });
+
     it('should GET /users/:user/search expect success / q supports subject and in keywords', async () => {
         const q = `subject:"${queryFixture.subjectKeyword}" in:${queryMailbox}`;
         const search = await searchQ(q);
@@ -1655,6 +1763,223 @@ describe('Messages tests', function () {
 
         const res5 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?previous=${res4.body.previousCursor}&page=100?order=${order}`).send({}); // page 2 -> page 1
         expect(res5.body.results).to.deep.eq(res.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
+    });
+
+    it('should GET /users/:user/mailboxes/:mailbox/messages expect success / collapseThreads returns one message per thread', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+
+        const collapseMailbox = mailboxResponse.body.id;
+
+        const threadRoot = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-01T00:00:00.000Z'),
+                draft: true,
+                to: [{ address: 'collapse.thread@example.com' }],
+                subject: 'Collapse Thread A',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const singleB = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-02T00:00:00.000Z'),
+                draft: false,
+                to: [{ address: 'collapse.thread@example.com' }],
+                subject: 'Collapse Thread B',
+                text: 'Single message B'
+            })
+            .expect(200);
+
+        const threadReply = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-03T00:00:00.000Z'),
+                to: [{ address: 'collapse.thread@example.com' }],
+                text: 'Reply message',
+                reference: {
+                    mailbox: collapseMailbox,
+                    id: threadRoot.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const singleC = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-04T00:00:00.000Z'),
+                draft: true,
+                unseen: true,
+                to: [{ address: 'collapse.thread@example.com' }],
+                headers: [{ key: 'X-Collapse-Test', value: 'single-c' }],
+                subject: 'Collapse Thread C',
+                text: 'Single message C',
+                metaData: {
+                    marker: 'collapse-single-c'
+                }
+            })
+            .expect(200);
+
+        const descPage1 = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(descPage1.body.total).to.equal(3);
+        expect(descPage1.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id, threadReply.body.message.id]);
+        expect(descPage1.body.results[1].threadMessageCount).to.equal(2);
+        expect(descPage1.body.results[0].hasDrafts).to.be.true;
+        expect(descPage1.body.results[1].hasDrafts).to.be.true;
+        expect(descPage1.body.nextCursor).to.be.a('string');
+        expect(descPage1.body.previousCursor).to.be.false;
+
+        const headersAndMetaData = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&includeHeaders=true&metaData=true&limit=1&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(headersAndMetaData.body.results[0].id).to.equal(singleC.body.message.id);
+        expect(headersAndMetaData.body.results[0].headers['x-collapse-test']).to.equal('single-c');
+        expect(headersAndMetaData.body.results[0].metaData).to.deep.equal({
+            marker: 'collapse-single-c'
+        });
+
+        await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?includeHeaders=List-ID,X-Foo&limit=1&order=desc`)
+            .send({})
+            .expect(400);
+
+        const unseen = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&unseen=true&limit=10&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(unseen.body.total).to.equal(1);
+        expect(unseen.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id]);
+        expect(unseen.body.results.every(entry => !entry.seen)).to.be.true;
+
+        const exactLimit = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&limit=3&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(exactLimit.body.total).to.equal(3);
+        expect(exactLimit.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id, threadReply.body.message.id, singleB.body.message.id]);
+        expect(exactLimit.body.nextCursor).to.be.false;
+        expect(exactLimit.body.previousCursor).to.be.false;
+
+        const invalidCollapseCursor = Buffer.from(JSON.stringify([JSON.stringify({ invalid: true }), 2])).toString('base64url');
+        const invalidCursor = await server
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&limit=2&order=desc&next=${encodeURIComponent(
+                    invalidCollapseCursor
+                )}`
+            )
+            .send({})
+            .expect(500);
+
+        expect(invalidCursor.body.error).to.contain('Invalid paging cursor');
+
+        const descPage2 = await server
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc&next=${encodeURIComponent(
+                    descPage1.body.nextCursor
+                )}`
+            )
+            .send({})
+            .expect(200);
+
+        expect(descPage2.body.page).to.equal(2);
+        expect(descPage2.body.results.map(entry => entry.id)).to.deep.equal([singleB.body.message.id]);
+        expect(descPage2.body.results.map(entry => entry.thread)).to.not.include(descPage1.body.results[1].thread);
+        expect(descPage2.body.results[0].hasDrafts).to.be.false;
+        expect(descPage2.body.previousCursor).to.be.a('string');
+        expect(descPage2.body.nextCursor).to.be.false;
+
+        const descPage1Again = await server
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc&previous=${encodeURIComponent(
+                    descPage2.body.previousCursor
+                )}`
+            )
+            .send({})
+            .expect(200);
+
+        expect(descPage1Again.body.results).to.deep.equal(descPage1.body.results);
+
+        const asc = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&limit=10&order=asc`)
+            .send({})
+            .expect(200);
+
+        expect(asc.body.total).to.equal(3);
+        expect(asc.body.results.map(entry => entry.id)).to.deep.equal([threadRoot.body.message.id, singleB.body.message.id, singleC.body.message.id]);
+        expect(asc.body.results[0]).to.not.have.property('threadMessageCount');
+        expect(asc.body.results[0]).to.not.have.property('hasDrafts');
+    });
+
+    it('should GET /users/:user/mailboxes/:mailbox/messages expect success / collapseThreads handles empty mailbox and a single thread', async () => {
+        const emptyMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/collapse-empty-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+
+        const empty = await server
+            .get(`/users/${user}/mailboxes/${emptyMailboxResponse.body.id}/messages?collapseThreads=true&limit=2&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(empty.body.total).to.equal(0);
+        expect(empty.body.results).to.deep.equal([]);
+        expect(empty.body.nextCursor).to.be.false;
+        expect(empty.body.previousCursor).to.be.false;
+
+        const singleThreadMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/collapse-single-thread-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+
+        const singleThreadMailbox = singleThreadMailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${singleThreadMailbox}/messages`)
+            .send({
+                date: new Date('2026-02-01T00:00:00.000Z'),
+                to: [{ address: 'collapse.single@example.com' }],
+                subject: 'Collapse Single Thread Root',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${singleThreadMailbox}/messages`)
+            .send({
+                date: new Date('2026-02-02T00:00:00.000Z'),
+                to: [{ address: 'collapse.single@example.com' }],
+                text: 'Reply message',
+                reference: {
+                    mailbox: singleThreadMailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const singleThread = await server
+            .get(`/users/${user}/mailboxes/${singleThreadMailbox}/messages?collapseThreads=true&threadCounters=true&limit=1&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(singleThread.body.total).to.equal(1);
+        expect(singleThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
+        expect(singleThread.body.results[0].threadMessageCount).to.equal(2);
+        expect(singleThread.body.nextCursor).to.be.false;
+        expect(singleThread.body.previousCursor).to.be.false;
     });
 
     it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / move lots of messages to trash, should not timeout', async () => {
