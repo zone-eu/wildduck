@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.49.5](https://github.com/zone-eu/wildduck/compare/v1.49.4...v1.49.5) (2026-07-22)
+
+
+### Bug Fixes
+
+* bump deps ([#1120](https://github.com/zone-eu/wildduck/issues/1120)) ([f5c2e77](https://github.com/zone-eu/wildduck/commit/f5c2e77738b137b2f28373aa7f8d5d12f09b4d4b))
+* ZMS-70: Change auth ratelimit order ([#1122](https://github.com/zone-eu/wildduck/issues/1122)) ([59c7b7b](https://github.com/zone-eu/wildduck/commit/59c7b7b7b0402e8a4d96331b6f270ad50957f26e))
+* ZMS-71: Fix possible user negative quota ([#1121](https://github.com/zone-eu/wildduck/issues/1121)) ([e28eff2](https://github.com/zone-eu/wildduck/commit/e28eff250b99f256e8dfd2d5dc558733e8c93a14))
+* ZMS-77: Emit marked.ham webhook when starring or explicitly marking ham a message ([#1111](https://github.com/zone-eu/wildduck/issues/1111)) ([084d540](https://github.com/zone-eu/wildduck/commit/084d5406f8d9d5acd2065030b80adb1964e6a3af))
+* ZMS-78: Improve logging  ([#1108](https://github.com/zone-eu/wildduck/issues/1108)) ([c87f46b](https://github.com/zone-eu/wildduck/commit/c87f46b82f19737d603ad710dd2ca462d19d2037))
+* ZMS-79: q param search fixes ([#1109](https://github.com/zone-eu/wildduck/issues/1109)) ([cadf456](https://github.com/zone-eu/wildduck/commit/cadf456266c490f0d479554d2d91a46bc2ec02bd))
+* ZMS-80: Add collapseThreads options to list messages in a mailbox ([#1110](https://github.com/zone-eu/wildduck/issues/1110)) ([e60aaeb](https://github.com/zone-eu/wildduck/commit/e60aaeba7196b50cb81fbc09c8ddca157dbc886e))
+* ZMS-84: tools.normalizeDomain, convert punycode to utf8 even if punycode in the middle of domain, add test ([#1123](https://github.com/zone-eu/wildduck/issues/1123)) ([a7f3e17](https://github.com/zone-eu/wildduck/commit/a7f3e172fd93cf42b62979ca6e6e68b9433152a7))
+
 ## [1.49.4](https://github.com/zone-eu/wildduck/compare/v1.49.3...v1.49.4) (2026-06-11)
 
 
