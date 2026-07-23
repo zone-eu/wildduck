@@ -472,6 +472,22 @@ describe('ApnClient', function () {
                 done();
             }, 3500);
         });
+
+        it('should still flush within the max window under continuous traffic', function (done) {
+            let { client, flushCalls } = recordingClient();
+
+            // notify faster than the base debounce window so the per-event timer keeps resetting;
+            // with only a resetting timer the flush would be postponed forever while traffic lasts
+            let interval = setInterval(() => client.notify('user-1', 'INBOX'), 500);
+
+            // past the 10s max coalescing window the cap must have forced exactly one flush,
+            // even though traffic is still ongoing when we check
+            setTimeout(() => {
+                clearInterval(interval);
+                expect(flushCalls.length).to.be.at.least(1);
+                done();
+            }, 11000);
+        });
     });
 
     describe('reconnect cooldown', function () {

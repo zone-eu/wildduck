@@ -7,7 +7,11 @@
 // tag XAPPLEPUSHSERVICE aps-version 2 aps-account-id 0715A26B-CA09-4730-A419-793000CA982E aps-device-token 2918390218931890821908309283098109381029309829018310983092892829 aps-subtopic com.apple.mobilemail mailboxes (INBOX Notes)
 //
 
+const imapTools = require('../imap-tools');
+
 const requiredKeys = ['aps-version', 'aps-account-id', 'aps-device-token', 'aps-subtopic', 'mailboxes'];
+
+const isTextNode = node => !!node && !Array.isArray(node) && ['ATOM', 'STRING'].includes(node.type);
 
 module.exports = {
     state: ['Authenticated', 'Selected'],
@@ -61,12 +65,14 @@ module.exports = {
         //   ]
         // }
 
+        const normalizeMailbox = value => imapTools.normalizeMailbox(Buffer.from(value || '', 'binary').toString(), !this.acceptUTF8Enabled);
+
         let data = {};
         let keyName;
         for (let i = 0, len = (command.attributes || []).length; i < len; i++) {
             let isKey = i % 2 === 0;
             let attr = command.attributes[i];
-            if (isKey && !['ATOM', 'STRING'].includes(attr.type)) {
+            if (isKey && !isTextNode(attr)) {
                 return callback(null, {
                     response: 'BAD',
                     message: `Invalid argument for ${command.command}`
@@ -81,13 +87,13 @@ module.exports = {
                 continue;
             }
 
-            if (['ATOM', 'STRING'].includes(attr.type)) {
+            if (isTextNode(attr)) {
                 data[keyName] = (attr.value || '').toString();
             } else if (Array.isArray(attr) && keyName === 'mailboxes') {
                 data[keyName] = attr
                     .map(entry => {
-                        if (['ATOM', 'STRING'].includes(entry.type)) {
-                            return (entry.value || '').toString();
+                        if (isTextNode(entry)) {
+                            return normalizeMailbox((entry.value || '').toString());
                         }
                         return false;
                     })

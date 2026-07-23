@@ -32,7 +32,8 @@ module.exports = function (grunt) {
                     'imap-core/test/onconnect-test.js',
                     'imap-core/test/parse-mime-tree-test.js',
                     'imap-core/test/search-test.js',
-                    'imap-core/test/tools-test.js'
+                    'imap-core/test/tools-test.js',
+                    'imap-core/test/xapplepushservice-command-test.js'
                 ]
             },
             pop3: {
