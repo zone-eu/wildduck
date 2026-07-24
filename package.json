@@ -57,7 +57,7 @@
         "@zone-eu/smime-js": "0.1.0",
         "@zone-eu/wild-config": "1.7.5",
         "@zone-eu/wild-plugins": "1.0.9",
-        "@zone-eu/zone-mta": "3.10.17",
+        "@zone-eu/zone-mta": "3.10.18",
         "accesscontrol": "2.2.1",
         "axios": "1.18.1",
         "base32.js": "0.1.0",
