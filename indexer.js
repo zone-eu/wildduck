@@ -14,6 +14,14 @@ const libmime = require('libmime');
 const punycode = require('punycode.js');
 const { getClient } = require('./lib/elasticsearch');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const {
+    MESSAGE_INDEXING_QUEUE,
+    LIVE_INDEXING_PRIORITY,
+    createSyncToken,
+    createSyncJobData,
+    enqueueMessageSync,
+    getSyncStateKey
+} = require('./lib/indexing-queue');
 
 let loggelf;
 let processlock;
@@ -25,9 +33,16 @@ const LOCK_RENEW_TTL = 2;
 let FORCE_DISABLE = false;
 const processId = crypto.randomBytes(8).toString('hex');
 let isCurrentWorker = false;
-let liveIndexingQueue;
+let messageIndexingQueue;
 
 const FORCE_DISABLED_MESSAGE = 'Can not set up change streams. Not a replica set. Changes are not indexed to ElasticSearch.';
+const MAX_SYNC_PASSES = 5;
+const CLEAR_SYNC_STATE_SCRIPT = `
+    if redis.call('GET', KEYS[1]) == ARGV[1] then
+        return redis.call('DEL', KEYS[1])
+    end
+    return 0
+`;
 
 class Indexer {
     constructor() {
@@ -66,68 +81,37 @@ class Indexer {
     }
 
     async processJobEntry(entry) {
-        let payload;
-
         if (!entry.user) {
             // nothing to do here
             return;
         }
 
-        switch (entry.command) {
-            case 'EXISTS':
-                payload = {
-                    action: 'new',
-                    message: entry.message.toString(),
-                    mailbox: entry.mailbox.toString(),
-                    uid: entry.uid,
-                    modseq: entry.modseq,
-                    user: entry.user.toString()
-                };
-                break;
-            case 'EXPUNGE':
-                payload = {
-                    action: 'delete',
-                    message: entry.message.toString(),
-                    mailbox: entry.mailbox.toString(),
-                    uid: entry.uid,
-                    modseq: entry.modseq,
-                    user: entry.user.toString()
-                };
-                break;
-            case 'FETCH':
-                payload = {
-                    action: 'update',
-                    message: entry.message.toString(),
-                    mailbox: entry.mailbox.toString(),
-                    uid: entry.uid,
-                    flags: entry.flags,
-                    modseq: entry.modseq,
-                    user: entry.user.toString()
-                };
-                break;
+        if (!['EXISTS', 'EXPUNGE', 'FETCH'].includes(entry.command) || !entry.message) {
+            return;
         }
 
-        if (payload) {
-            let hasFeatureFlag =
-                (config.enabledFeatureFlags && config.enabledFeatureFlags.indexer) || (await db.redis.sismember(`feature:indexing`, entry.user.toString()));
+        let hasFeatureFlag =
+            (config.enabledFeatureFlags && config.enabledFeatureFlags.indexer) || (await db.redis.sismember(`feature:indexing`, entry.user.toString()));
 
-            if (!hasFeatureFlag) {
-                log.silly('Indexer', `Feature flag not set, skipping user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
-                return;
-            } else {
-                log.verbose('Indexer', `Feature flag set, processing user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
-            }
-
-            await liveIndexingQueue.add('journal', payload, {
-                removeOnComplete: 100,
-                removeOnFail: 100,
-                attempts: 5,
-                backoff: {
-                    type: 'exponential',
-                    delay: 2000
-                }
-            });
+        if (!hasFeatureFlag) {
+            log.silly('Indexer', `Feature flag not set, skipping user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
+            return;
+        } else {
+            log.verbose('Indexer', `Feature flag set, processing user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
         }
+
+        await enqueueMessageSync(
+            messageIndexingQueue,
+            db.redis,
+            {
+                message: entry.message,
+                mailbox: entry.mailbox,
+                uid: entry.uid,
+                modseq: entry.modseq,
+                user: entry.user
+            },
+            LIVE_INDEXING_PRIORITY
+        );
     }
 
     async monitorChanges() {
@@ -274,285 +258,253 @@ function formatAddresses(addresses) {
     return result;
 }
 
+function normalizeJobData(data) {
+    if (!data || !data.message) {
+        return false;
+    }
+
+    if (!data.action || data.action === 'sync') {
+        return createSyncJobData(data);
+    }
+
+    if (['new', 'update', 'delete'].includes(data.action)) {
+        return createSyncJobData(data);
+    }
+
+    return false;
+}
+
+function buildMessageObject(messageData) {
+    const now = messageData._id.getTimestamp();
+
+    return removeEmptyKeys({
+        user: messageData.user.toString(),
+        mailbox: messageData.mailbox.toString(),
+
+        thread: messageData.thread ? messageData.thread.toString() : null,
+        uid: messageData.uid,
+        answered: messageData.flags ? messageData.flags.includes('\\Answered') : null,
+
+        ha: (messageData.attachments && messageData.attachments.length > 0) || false,
+
+        attachments:
+            (messageData.attachments &&
+                messageData.attachments.map(attachment =>
+                    removeEmptyKeys({
+                        cid: attachment.cid || null,
+                        contentType: attachment.contentType || null,
+                        size: attachment.size,
+                        filename: attachment.filename,
+                        id: attachment.id,
+                        disposition: attachment.disposition
+                    })
+                )) ||
+            null,
+
+        bcc: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.bcc),
+        cc: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.cc),
+
+        // Time when stored
+        created: now.toISOString(),
+
+        // Internal Date
+        idate: (messageData.idate && messageData.idate.toISOString()) || now.toISOString(),
+
+        // Header Date
+        hdate: (messageData.hdate && messageData.hdate.toISOString()) || now.toISOString(),
+
+        draft: messageData.flags ? messageData.flags.includes('\\Draft') : null,
+
+        flagged: messageData.flags ? messageData.flags.includes('\\Flagged') : null,
+
+        flags: messageData.flags || [],
+
+        from: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.from),
+
+        // do not index authentication and transport headers
+        headers: messageData.headers ? messageData.headers.filter(header => !/^x|^received|^arc|^dkim|^authentication/gi.test(header.key)) : null,
+
+        inReplyTo: messageData.inReplyTo || null,
+
+        msgid: messageData.msgid || null,
+
+        replyTo: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader['reply-to']),
+
+        size: messageData.size || null,
+
+        subject: messageData.subject || '',
+
+        to: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.to),
+
+        unseen: messageData.flags ? !messageData.flags.includes('\\Seen') : null,
+
+        html: (messageData.html && messageData.html.join('\n')) || null,
+
+        text: messageData.text || null,
+
+        modseq: Number.isFinite(messageData.modseq) ? messageData.modseq : null
+    });
+}
+
+async function loadMessageForSync(data) {
+    const messageId = new ObjectId(data.message);
+    const query = {
+        _id: messageId
+    };
+
+    if (data.mailbox && ObjectId.isValid(data.mailbox)) {
+        query.mailbox = new ObjectId(data.mailbox);
+    }
+
+    if (Number.isFinite(data.uid)) {
+        query.uid = data.uid;
+    }
+
+    let messageData = await db.database.collection('messages').findOne(query, {
+        projection: {
+            bodystructure: false,
+            envelope: false,
+            'mimeTree.childNodes': false,
+            'mimeTree.header': false
+        }
+    });
+
+    if (!messageData && (query.mailbox || Number.isFinite(query.uid))) {
+        messageData = await db.database.collection('messages').findOne(
+            {
+                _id: messageId
+            },
+            {
+                projection: {
+                    bodystructure: false,
+                    envelope: false,
+                    'mimeTree.childNodes': false,
+                    'mimeTree.header': false
+                }
+            }
+        );
+    }
+
+    return messageData;
+}
+
+async function indexMessage(esclient, messageData) {
+    const messageObj = buildMessageObject(messageData);
+    const indexRequest = {
+        id: messageData._id.toString(),
+        index: config.elasticsearch.index,
+        body: messageObj,
+        refresh: false
+    };
+
+    if (Number.isFinite(messageObj.modseq) && messageObj.modseq > 0) {
+        indexRequest.version = messageObj.modseq;
+        indexRequest.version_type = 'external_gte';
+    }
+
+    let indexResponse = await esclient.index(indexRequest);
+
+    log.verbose('Indexing', 'Document sync result=%s message=%s', indexResponse.body && indexResponse.body.result, indexResponse.body && indexResponse.body._id);
+
+    loggelf({
+        short_message: '[INDEXER]',
+        _mail_action: 'indexer_sync',
+        _user: messageObj.user,
+        _mailbox: messageObj.mailbox,
+        _uid: messageObj.uid,
+        _modseq: messageObj.modseq,
+        _indexer_result: indexResponse.body && indexResponse.body.result,
+        _indexer_message: indexResponse.body && indexResponse.body._id
+    });
+}
+
+async function deleteMessage(esclient, data) {
+    let deleteResponse;
+    try {
+        deleteResponse = await esclient.delete({
+            id: data.message,
+            index: config.elasticsearch.index,
+            refresh: false
+        });
+    } catch (err) {
+        if (err.meta && err.meta.body && err.meta.body.result === 'not_found') {
+            log.verbose('Indexing', 'Document already deleted message=%s', data.message);
+            return;
+        }
+
+        throw err;
+    }
+
+    log.verbose('Indexing', 'Document delete result=%s message=%s', deleteResponse.body && deleteResponse.body.result, deleteResponse.body && deleteResponse.body._id);
+
+    loggelf({
+        short_message: '[INDEXER]',
+        _mail_action: 'indexer_sync_delete',
+        _user: data.user,
+        _mailbox: data.mailbox,
+        _uid: data.uid,
+        _modseq: data.modseq,
+        _indexer_result: deleteResponse.body && deleteResponse.body.result,
+        _indexer_message: deleteResponse.body && deleteResponse.body._id
+    });
+}
+
+async function clearSyncState(stateKey, version) {
+    return db.redis.eval(CLEAR_SYNC_STATE_SCRIPT, 1, stateKey, version);
+}
+
 function indexingJob(esclient) {
     return async job => {
         try {
             if (!job || !job.data) {
                 return false;
             }
-            const data = job.data;
+            const data = normalizeJobData(job.data);
+            if (!data) {
+                return false;
+            }
 
-            const dateKeyTdy = new Date().toISOString().substring(0, 10).replace(/-/g, '');
-            const dateKeyYdy = new Date(Date.now() - 24 * 3600 * 1000).toISOString().substring(0, 10).replace(/-/g, '');
-            const tombstoneTdy = `indexer:tomb:${dateKeyTdy}`;
-            const tombstoneYdy = `indexer:tomb:${dateKeyYdy}`;
+            const stateKey = getSyncStateKey(data.message);
+            let pass = 0;
 
-            switch (data.action) {
-                case 'new': {
-                    // check tombstone for race conditions (might be already deleted)
+            while (pass < MAX_SYNC_PASSES) {
+                pass++;
 
-                    let [[err1, isDeleted1], [err2, isDeleted2]] = await db.redis
-                        .multi()
-                        .sismember(tombstoneTdy, data.message)
-                        .sismember(tombstoneYdy, data.message)
-                        .exec();
+                const startVersion = (await db.redis.get(stateKey)) || createSyncToken();
+                const messageData = await loadMessageForSync(data);
 
-                    if (err1) {
-                        log.verbose('Indexing', 'Failed checking tombstone key=%s error=%s', tombstoneTdy, err1.message);
-                    }
-
-                    if (err2) {
-                        log.verbose('Indexing', 'Failed checking tombstone key=%s error=%s', tombstoneYdy, err2.message);
-                    }
-
-                    if (isDeleted1 || isDeleted2) {
-                        log.info('Indexing', 'Document tombstone found, skip index message=%s', data.message);
-                        break;
-                    }
-
-                    // fetch message from DB
-                    let messageData = await db.database.collection('messages').findOne(
-                        {
-                            _id: new ObjectId(data.message),
-                            // shard key
-                            mailbox: new ObjectId(data.mailbox),
-                            uid: data.uid
-                        },
-                        {
-                            projection: {
-                                bodystructure: false,
-                                envelope: false,
-                                'mimeTree.childNodes': false,
-                                'mimeTree.header': false
-                            }
-                        }
-                    );
-
-                    if (!messageData) {
-                        log.info('Indexing', 'Message not found from DB, skip index message=%s', data.message);
-                        break;
-                    }
-
-                    const now = messageData._id.getTimestamp();
-
-                    const messageObj = removeEmptyKeys({
-                        user: messageData.user.toString(),
-                        mailbox: messageData.mailbox.toString(),
-
-                        thread: messageData.thread ? messageData.thread.toString() : null,
-                        uid: messageData.uid,
-                        answered: messageData.flags ? messageData.flags.includes('\\Answered') : null,
-
-                        ha: (messageData.attachments && messageData.attachments.length > 0) || false,
-
-                        attachments:
-                            (messageData.attachments &&
-                                messageData.attachments.map(attachment =>
-                                    removeEmptyKeys({
-                                        cid: attachment.cid || null,
-                                        contentType: attachment.contentType || null,
-                                        size: attachment.size,
-                                        filename: attachment.filename,
-                                        id: attachment.id,
-                                        disposition: attachment.disposition
-                                    })
-                                )) ||
-                            null,
-
-                        bcc: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.bcc),
-                        cc: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.cc),
-
-                        // Time when stored
-                        created: now.toISOString(),
-
-                        // Internal Date
-                        idate: (messageData.idate && messageData.idate.toISOString()) || now.toISOString(),
-
-                        // Header Date
-                        hdate: (messageData.hdate && messageData.hdate.toISOString()) || now.toISOString(),
-
-                        draft: messageData.flags ? messageData.flags.includes('\\Draft') : null,
-
-                        flagged: messageData.flags ? messageData.flags.includes('\\Flagged') : null,
-
-                        flags: messageData.flags || [],
-
-                        from: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.from),
-
-                        // do not index authentication and transport headers
-                        headers: messageData.headers
-                            ? messageData.headers.filter(header => !/^x|^received|^arc|^dkim|^authentication/gi.test(header.key))
-                            : null,
-
-                        inReplyTo: messageData.inReplyTo || null,
-
-                        msgid: messageData.msgid || null,
-
-                        replyTo: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader['reply-to']),
-
-                        size: messageData.size || null,
-
-                        subject: messageData.subject || '',
-
-                        to: formatAddresses(messageData.mimeTree && messageData.mimeTree.parsedHeader && messageData.mimeTree.parsedHeader.to),
-
-                        unseen: messageData.flags ? !messageData.flags.includes('\\Seen') : null,
-
-                        html: (messageData.html && messageData.html.join('\n')) || null,
-
-                        text: messageData.text || null,
-
-                        modseq: data.modseq
-                    });
-
-                    let indexResponse = await esclient.index({
-                        id: messageData._id.toString(),
-                        index: config.elasticsearch.index,
-                        body: messageObj,
-                        refresh: false
-                    });
-
-                    log.verbose(
-                        'Indexing',
-                        'Document index result=%s message=%s',
-                        indexResponse.body && indexResponse.body.result,
-                        indexResponse.body && indexResponse.body._id
-                    );
-
-                    loggelf({
-                        short_message: '[INDEXER]',
-                        _mail_action: `indexer_${data.action}`,
-                        _user: data.user,
-                        _mailbox: data.mailbox,
-                        _uid: data.uid,
-                        _modseq: data.modseq,
-                        _indexer_result: indexResponse.body && indexResponse.body.result,
-                        _indexer_message: indexResponse.body && indexResponse.body._id
-                    });
-
-                    break;
+                if (messageData) {
+                    await indexMessage(esclient, messageData);
+                } else {
+                    await deleteMessage(esclient, data);
                 }
 
-                case 'delete': {
-                    let deleteResponse;
-                    try {
-                        deleteResponse = await esclient.delete({
-                            id: data.message,
-                            index: config.elasticsearch.index,
-                            refresh: false
-                        });
-                    } catch (err) {
-                        if (err.meta && err.meta.body && err.meta.body.result === 'not_found') {
-                            // set tombstone to prevent indexing this message in case of race conditions
-                            await db.redis
-                                .multi()
-                                .sadd(tombstoneTdy, data.message)
-                                .expire(tombstoneTdy, 24 * 3600)
-                                .exec();
-                        }
-                        throw err;
-                    }
-
-                    log.verbose(
-                        'Indexing',
-                        'Document delete result=%s message=%s',
-                        deleteResponse.body && deleteResponse.body.result,
-                        deleteResponse.body && deleteResponse.body._id
-                    );
-
-                    loggelf({
-                        short_message: '[INDEXER]',
-                        _mail_action: `indexer_${data.action}`,
-                        _user: data.user,
-                        _mailbox: data.mailbox,
-                        _uid: data.uid,
-                        _modseq: data.modseq,
-                        _indexer_result: deleteResponse.body && deleteResponse.body.result,
-                        _indexer_message: deleteResponse.body && deleteResponse.body._id
-                    });
-                    break;
+                const latestVersion = await db.redis.get(stateKey);
+                if (!latestVersion) {
+                    return true;
                 }
 
-                case 'update': {
-                    let updateRequest = {
-                        id: data.message,
-                        index: config.elasticsearch.index,
-                        refresh: false
-                    };
+                if (latestVersion !== startVersion) {
+                    log.verbose('Indexing', 'Document changed during sync, retrying message=%s from=%s to=%s', data.message, startVersion, latestVersion);
+                    continue;
+                }
 
-                    if (data.modseq && typeof data.modseq === 'number') {
-                        updateRequest.body = {
-                            script: {
-                                lang: 'painless',
-                                source: `
-                                    if( ctx._source.modseq >= params.modseq) {
-                                        ctx.op = 'none';
-                                    } else {
-                                        ctx._source.draft = params.draft;
-                                        ctx._source.flagged = params.flagged;
-                                        ctx._source.flags = params.flags;
-                                        ctx._source.unseen = params.unseen;
-                                        ctx._source.modseq = params.modseq;
-                                    }
-                                `,
-                                params: {
-                                    modseq: data.modseq,
-                                    draft: data.flags.includes('\\Draft'),
-                                    flagged: data.flags.includes('\\Flagged'),
-                                    flags: data.flags || [],
-                                    unseen: !data.flags.includes('\\Seen')
-                                }
-                            }
-                        };
-                    } else {
-                        updateRequest.body = {
-                            doc: removeEmptyKeys({
-                                draft: data.flags ? data.flags.includes('\\Draft') : null,
-                                flagged: data.flags ? data.flags.includes('\\Flagged') : null,
-                                flags: data.flags || [],
-                                unseen: data.flags ? !data.flags.includes('\\Seen') : null
-                            })
-                        };
-                    }
-
-                    let updateResponse = await esclient.update(updateRequest);
-
-                    log.verbose(
-                        'Indexing',
-                        'Document update result=%s message=%s',
-                        updateResponse.body && updateResponse.body.result,
-                        updateResponse.body && updateResponse.body._id
-                    );
-
-                    loggelf({
-                        short_message: '[INDEXER]',
-                        _mail_action: `indexer_${data.action}`,
-                        _user: data.user,
-                        _mailbox: data.mailbox,
-                        _uid: data.uid,
-
-                        _modseq: data.modseq,
-                        _flags: data.flags && data.flags.join(', '),
-                        _indexer_result: updateResponse.body && updateResponse.body.result,
-                        _indexer_message: updateResponse.body && updateResponse.body._id
-                    });
+                const cleared = await clearSyncState(stateKey, startVersion);
+                if (cleared) {
+                    return true;
                 }
             }
 
-            // loggelf({ _msg: 'hello world' });
+            let err = new Error(`Failed to settle indexing sync for message ${data.message}`);
+            err.code = 'IndexingSyncUnsettled';
+            throw err;
         } catch (err) {
-            if (err.meta && err.meta.body && err.meta.body.result === 'not_found') {
-                // missing document, ignore
-                log.error('Indexing', 'Failed to process indexing request, document not found message=%s', err.meta.body._id);
-                return;
-            }
-
             log.error('Indexing', err);
 
-            const data = job.data;
+            const data = normalizeJobData(job.data) || job.data;
             loggelf({
                 short_message: '[INDEXER]',
-                _mail_action: `indexer_${data.action}`,
+                _mail_action: 'indexer_sync',
                 _user: data.user,
                 _mailbox: data.mailbox,
                 _uid: data.uid,
@@ -619,7 +571,7 @@ module.exports.start = callback => {
             return setTimeout(() => process.exit(1), 3000);
         }
 
-        liveIndexingQueue = new Queue('live_indexing', db.queueConf);
+        messageIndexingQueue = new Queue(MESSAGE_INDEXING_QUEUE, db.queueConf);
 
         processlock = counters(db.redis).processlock;
 
@@ -630,26 +582,32 @@ module.exports.start = callback => {
 
         const esclient = getClient();
 
-        queueWorkers.liveIndexing = new Worker(
+        queueWorkers.messageIndexing = new Worker(
+            MESSAGE_INDEXING_QUEUE,
+            indexingJob(esclient),
+            {
+                concurrency: Math.max(1, Number(config.elasticsearch.indexer.concurrency) || 10),
+                ...db.queueConf
+            }
+        );
+
+        // Drain legacy queue names during rollout. New jobs are enqueued into MESSAGE_INDEXING_QUEUE.
+        queueWorkers.liveIndexingLegacy = new Worker(
             'live_indexing',
             indexingJob(esclient),
-            Object.assign(
-                {
-                    concurrency: 1
-                },
-                db.queueConf
-            )
+            {
+                concurrency: 1,
+                ...db.queueConf
+            }
         );
 
         queueWorkers.backlogIndexing = new Worker(
             'backlog_indexing',
             indexingJob(esclient),
-            Object.assign(
-                {
-                    concurrency: 1
-                },
-                db.queueConf
-            )
+            {
+                concurrency: 1,
+                ...db.queueConf
+            }
         );
 
         callback();
