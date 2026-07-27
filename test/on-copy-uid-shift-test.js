@@ -8,6 +8,7 @@ const { ObjectId } = require('mongodb');
 
 const db = require('../lib/db');
 const onCopy = require('../lib/handlers/on-copy');
+const metrics = require('../lib/metrics');
 
 describe('on-copy UID arrays', function () {
     let userId, sourceMailboxId, targetMailboxId;
@@ -320,6 +321,28 @@ describe('on-copy UID arrays', function () {
             });
         });
     }
+
+    it('records rejected COPY operations as errors', async function () {
+        let originalStartMessageOperation = metrics.startMessageOperation;
+        let metricResult;
+
+        metrics.startMessageOperation = () => result => {
+            metricResult = result;
+        };
+        db.users = {
+            collection: () => ({
+                findOne: () => Promise.resolve({ _id: userId, quota: 100, storageUsed: 101 })
+            })
+        };
+
+        try {
+            let { status } = await runCopy({ logger: { debug() {} } }, {}, [10]);
+            expect(status).to.equal('OVERQUOTA');
+            expect(metricResult).to.equal('error');
+        } finally {
+            metrics.startMessageOperation = originalStartMessageOperation;
+        }
+    });
 
     let encryptResult = {
         prepared: {

@@ -4,8 +4,19 @@
 const { expect } = require('chai');
 const { PassThrough } = require('stream');
 const { IMAPCommand } = require('../lib/imap-command');
+const metrics = require('../../lib/metrics');
 
 describe('IMAPCommand', function () {
+    let originalRecordImapCommand;
+
+    beforeEach(() => {
+        originalRecordImapCommand = metrics.recordImapCommand;
+    });
+
+    afterEach(() => {
+        metrics.recordImapCommand = originalRecordImapCommand;
+    });
+
     const createConnection = options => {
         options = options || {};
 
@@ -219,5 +230,56 @@ describe('IMAPCommand', function () {
                 );
             }
         );
+    });
+
+    it('should not record continuation input as a command', function (done) {
+        const { connection } = createConnection();
+        const records = [];
+        connection._nextHandler = (payload, callback) => callback();
+        metrics.recordImapCommand = (command, result) => records.push({ command, result });
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'DONE' }, err => {
+            expect(err).to.not.exist;
+            expect(records).to.deep.equal([]);
+            done();
+        });
+    });
+
+    it('should record terminal LOGOUT commands', function (done) {
+        const { connection, responses } = createConnection();
+        const records = [];
+        metrics.recordImapCommand = (command, result) => records.push({ command, result });
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 LOGOUT\r\n' }, () => {
+            done(new Error('LOGOUT must not resume command parsing'));
+        });
+
+        setImmediate(() => {
+            expect(responses).to.include('* BYE Logout requested');
+            expect(records).to.deep.equal([{ command: 'LOGOUT', result: 'ok' }]);
+            done();
+        });
+    });
+
+    it('should record the protocol error that disconnects the client', function (done) {
+        const { connection, responses } = createConnection();
+        const records = [];
+        let callbackCalled = false;
+        connection._badCount = 50;
+        metrics.recordImapCommand = (command, result) => records.push({ command, result });
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 UNKNOWN\r\n' }, () => {
+            callbackCalled = true;
+        });
+
+        setImmediate(() => {
+            expect(callbackCalled).to.be.false;
+            expect(responses).to.include('* BYE Too many protocol errors');
+            expect(records).to.deep.equal([{ command: 'UNKNOWN', result: 'UnknownCommand' }]);
+            done();
+        });
     });
 });

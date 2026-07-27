@@ -14,6 +14,7 @@ const tools = require('./lib/tools');
 const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const metrics = require('./lib/metrics');
 
 const MAX_MESSAGES = 250;
 
@@ -445,6 +446,7 @@ function markAsSeen(session, messages, callback) {
 
 module.exports = done => {
     if (!config.pop3.enabled) {
+        metrics.setServiceUp('pop3', false);
         return setImmediate(() => done(null, false));
     }
 
@@ -516,6 +518,7 @@ module.exports = done => {
             return server.close();
         }
         started = true;
+        metrics.setServiceUp('pop3', true);
         done(null, server);
     });
 };

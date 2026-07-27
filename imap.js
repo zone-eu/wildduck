@@ -17,6 +17,7 @@ const Gelf = require('gelf');
 const os = require('os');
 const Lock = require('ioredfour');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const metrics = require('./lib/metrics');
 
 const onFetch = require('./lib/handlers/on-fetch');
 const onAuth = require('./lib/handlers/on-auth');
@@ -203,6 +204,7 @@ let createInterface = (ifaceOptions, callback) => {
 
 module.exports = done => {
     if (!config.imap.enabled) {
+        metrics.setServiceUp('imap', false);
         return setImmediate(() => done(null, false));
     }
 
@@ -302,6 +304,7 @@ module.exports = done => {
     let iPos = 0;
     let startInterfaces = () => {
         if (iPos >= ifaceOptions.length) {
+            metrics.setServiceUp('imap', true);
             return db.redis.del('lim:imap', () => done());
         }
         let opts = ifaceOptions[iPos++];
