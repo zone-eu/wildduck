@@ -248,11 +248,11 @@ if (metricsEnabled) {
         res.setHeader('Content-Type', metrics.contentType);
 
         try {
-            return res.send(await metrics.getMetrics());
+            res.send(await metrics.getMetrics());
         } catch (err) {
             log.error('API', 'Failed to collect metrics: %s', err.message);
             res.status(500);
-            return res.send('error: metrics collection failed');
+            res.send('error: metrics collection failed');
         }
     });
 }

@@ -187,8 +187,7 @@ const serverOptions = {
                         }
                     },
                     (err, response, preparedResponse) => {
-                        if (err) {
-                            // ???
+                        if (err || (response && response.response instanceof Error)) {
                             failed = true;
                         }
 
