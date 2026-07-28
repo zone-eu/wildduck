@@ -923,7 +923,7 @@ describe('Messages tests', function () {
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 
-    it('should GET /users/:user/search expect success / collapseThreads returns one message per thread and hasDrafts covers the entire thread', async () => {
+    it('should GET /users/:user/search expect success / collapseThreads controls the hasDrafts scope', async () => {
         const mailboxResponse = await server
             .post(`/users/${user}/mailboxes`)
             .send({ path: `/search-collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
@@ -933,19 +933,19 @@ describe('Messages tests', function () {
         const root = await server
             .post(`/users/${user}/mailboxes/${mailbox}/messages`)
             .send({
-                draft: true,
+                draft: false,
                 to: [{ address: 'search-collapse@example.com' }],
                 subject: 'Search Collapse Thread A',
-                text: 'Draft root'
+                text: 'Root message'
             })
             .expect(200);
 
         const reply = await server
             .post(`/users/${user}/mailboxes/${mailbox}/messages`)
             .send({
-                draft: false,
+                draft: true,
                 to: [{ address: 'search-collapse@example.com' }],
-                text: 'Non-draft reply',
+                text: 'Draft reply',
                 reference: {
                     mailbox,
                     id: root.body.message.id,
@@ -953,8 +953,6 @@ describe('Messages tests', function () {
                 }
             })
             .expect(200);
-
-        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
 
         const single = await server
             .post(`/users/${user}/mailboxes/${mailbox}/messages`)
@@ -978,26 +976,32 @@ describe('Messages tests', function () {
         expect(expandedPage.body.total).to.equal(2);
         expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
         expect(expandedPage.body.results[0].threadMessageCount).to.equal(2);
-        expect(expandedPage.body.results[0].hasDrafts).to.be.true;
+        expect(expandedPage.body.results[0]).to.not.have.property('hasDrafts');
 
         const expandedThread = await server
-            .get(`/users/${user}/search?thread=${thread}&threadCounters=true&limit=2`)
+            .get(`/users/${user}/search?thread=${thread}&includeHasDrafts=true&limit=2`)
             .send({})
             .expect(200);
 
         expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id, root.body.message.id]);
-        expect(expandedThread.body.results.every(entry => entry.hasDrafts)).to.be.true;
+        expect(expandedThread.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
+        expect(expandedThread.body.results[0]).to.not.have.property('threadMessageCount');
 
         const expandedMailboxPage = await server
-            .get(`/users/${user}/mailboxes/${mailbox}/messages?threadCounters=true&limit=2&order=desc`)
+            .get(`/users/${user}/mailboxes/${mailbox}/messages?includeHasDrafts=true&limit=3&order=desc`)
             .send({})
             .expect(200);
 
-        expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id, reply.body.message.id]);
-        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
+        expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([
+            single.body.message.id,
+            reply.body.message.id,
+            root.body.message.id
+        ]);
+        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false, true]);
+        expect(expandedMailboxPage.body.results[0]).to.not.have.property('threadMessageCount');
 
         const collapsedPage1 = await server
-            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1`)
+            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&includeHasDrafts=true&limit=1`)
             .send({})
             .expect(200);
 
@@ -1017,7 +1021,7 @@ describe('Messages tests', function () {
 
         const collapsedPage2 = await server
             .get(
-                `/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1&next=${encodeURIComponent(
+                `/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&includeHasDrafts=true&limit=1&next=${encodeURIComponent(
                     collapsedPage1.body.nextCursor
                 )}`
             )
@@ -1029,6 +1033,14 @@ describe('Messages tests', function () {
         expect(collapsedPage2.body.results[0].hasDrafts).to.be.true;
         expect(collapsedPage2.body.previousCursor).to.be.a('string');
         expect(collapsedPage2.body.nextCursor).to.be.false;
+
+        await server.delete(`/users/${user}/mailboxes/${mailbox}/messages/${root.body.message.id}`).send({}).expect(200);
+
+        const archived = await server.get(`/users/${user}/archived/messages?threadCounters=true&limit=250`).send({}).expect(200);
+        const archivedRoot = archived.body.results.find(entry => entry.thread === thread);
+
+        expect(archivedRoot).to.exist;
+        expect(archivedRoot).to.not.have.property('hasDrafts');
     });
 
     it('should GET /users/:user/search expect success / q supports subject and in keywords', async () => {
@@ -1777,7 +1789,7 @@ describe('Messages tests', function () {
             .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
             .send({
                 date: new Date('2026-01-01T00:00:00.000Z'),
-                draft: true,
+                draft: false,
                 to: [{ address: 'collapse.thread@example.com' }],
                 subject: 'Collapse Thread A',
                 text: 'Root message'
@@ -1825,8 +1837,23 @@ describe('Messages tests', function () {
             })
             .expect(200);
 
+        const expanded = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?includeHasDrafts=true&limit=10&order=asc`)
+            .send({})
+            .expect(200);
+
+        expect(expanded.body.results.map(entry => entry.id)).to.deep.equal([
+            threadRoot.body.message.id,
+            singleB.body.message.id,
+            threadReply.body.message.id,
+            singleC.body.message.id
+        ]);
+        expect(expanded.body.results.map(entry => entry.hasDrafts)).to.deep.equal([true, false, false, false]);
+
         const descPage1 = await server
-            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc`)
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&includeHasDrafts=true&limit=2&order=desc`
+            )
             .send({})
             .expect(200);
 
@@ -1887,7 +1914,7 @@ describe('Messages tests', function () {
 
         const descPage2 = await server
             .get(
-                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc&next=${encodeURIComponent(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&includeHasDrafts=true&limit=2&order=desc&next=${encodeURIComponent(
                     descPage1.body.nextCursor
                 )}`
             )
@@ -1903,7 +1930,7 @@ describe('Messages tests', function () {
 
         const descPage1Again = await server
             .get(
-                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc&previous=${encodeURIComponent(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&includeHasDrafts=true&limit=2&order=desc&previous=${encodeURIComponent(
                     descPage2.body.previousCursor
                 )}`
             )
@@ -1978,6 +2005,7 @@ describe('Messages tests', function () {
         expect(singleThread.body.total).to.equal(1);
         expect(singleThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
         expect(singleThread.body.results[0].threadMessageCount).to.equal(2);
+        expect(singleThread.body.results[0]).to.not.have.property('hasDrafts');
         expect(singleThread.body.nextCursor).to.be.false;
         expect(singleThread.body.previousCursor).to.be.false;
     });
