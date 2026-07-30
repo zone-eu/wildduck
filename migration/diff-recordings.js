@@ -21,7 +21,10 @@ if (!fileA || !fileB) {
 }
 
 // headers whose values are inherently volatile or transport-specific
-const DROP_HEADERS = new Set(['date', 'content-length', 'transfer-encoding', 'connection', 'keep-alive', 'server', 'request-id', 'x-request-id', 'etag']);
+const DROP_HEADERS = new Set(['date', 'content-length', 'transfer-encoding', 'connection', 'keep-alive', 'server', 'request-id', 'x-request-id', 'etag', 'vary',
+    // @fastify/cors adds these on every response; restify-cors-middleware2
+    // only did when an Origin header was present (documented deviation)
+    'access-control-allow-origin', 'access-control-allow-credentials', 'access-control-expose-headers']);
 
 function makeRegistry() {
     return { map: new Map(), counts: new Map() };

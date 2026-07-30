@@ -23,6 +23,12 @@ cd "$ROOT"
 
 rm -f "$OUT"
 
+if lsof -nP -i :$SERVER_PORT -i :$PROXY_PORT 2> /dev/null | grep -q LISTEN; then
+    echo "ERROR: port $SERVER_PORT or $PROXY_PORT already in use, refusing to capture against a stale server" >&2
+    lsof -nP -i :$SERVER_PORT -i :$PROXY_PORT >&2
+    exit 1
+fi
+
 echo "== clearing test db + redis"
 mongosh --eval 'db.dropDatabase()' wildduck-test > /dev/null
 redis-cli -n 13 flushdb > /dev/null
