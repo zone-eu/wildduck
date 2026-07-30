@@ -992,7 +992,7 @@ describe('Mailboxes tests', function () {
         const response = await server.post(`/users/${user}/mailboxes`).send({ path, hidden: false }).expect(400);
 
         expect(response.body.code).to.eq('InputValidationError');
-        expect(response.body.error).to.eq('"path" with value "somepath/abc/" matches the inverted pattern: /\\/{2,}|\\/$/');
+        expect(response.body.error).to.eq('"path" contains an invalid value');
     });
 
     it('should PUT /users/{user}/mailboxes/{mailbox} expect failure / trailing slash', async () => {
@@ -1001,6 +1001,6 @@ describe('Mailboxes tests', function () {
         const response = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ path, hidden: false }).expect(400);
 
         expect(response.body.code).to.eq('InputValidationError');
-        expect(response.body.error).to.eq('"path" with value "somepath/abc/" matches the inverted pattern: /\\/{2,}|\\/$/');
+        expect(response.body.error).to.eq('"path" contains an invalid value');
     });
 });

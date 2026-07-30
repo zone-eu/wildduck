@@ -54,6 +54,9 @@ function normalizeString(str, reg) {
             // nodemailer MIME boundaries (random per generated message)
             .replace(/--_NmP-[0-9a-f]+-Part_\d+/gi, '<nmboundary>')
             .replace(/\bnm_[0-9a-f]{10,}\b/gi, '<nmboundary2>')
+            // fixture subjects embed Date.now() inside MIME encoded words and
+            // quoted-printable wrapping splits the digits across lines
+            .replace(/_message_=5B[\s\S]{0,60}?=5D/g, '_message_=5B<n>=5D')
             // racy concurrent-store fixture content: uid ties break by random
             // _id, so numbered fixture docs pair differently across runs
             .replace(/\d{0,4}Test message \d{1,4}/g, 'Test message <n>')
@@ -75,8 +78,8 @@ function normalizeString(str, reg) {
             .replace(/\b1[0-9]{9}\b/g, '<epochs>')
             // test-suite random username convention: name-<random>-<epochms>
             // or name-<epochms>-<random>
-            .replace(/\b(\d{4,6})-<epochms>/g, '<rnd>-<epochms>')
-            .replace(/<epochms>-(\d{4,6})\b/g, '<epochms>-<rnd>')
+            .replace(/\b(\d{1,6})-<epochms>/g, '<rnd>-<epochms>')
+            .replace(/<epochms>-(\d{1,6})\b/g, '<epochms>-<rnd>')
             // bare 8-digit random numbers in generated fixture subjects
             .replace(/\b\d{8}\b/g, '<num8>')
             // addresses created without a domain get os.hostname() appended;

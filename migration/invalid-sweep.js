@@ -76,15 +76,27 @@ function normalizeKeyDesc(schema, isJsonSchema) {
     if (type === 'integer') {
         type = 'number';
     }
-    const hexMatch = typeof resolved.pattern === 'string' && /^\^\[0-9a-f\]\{(\d+)\}\$$/.exec(resolved.pattern);
+    let hexMatch = typeof resolved.pattern === 'string' && /^\^\[0-9a-f\]\{(\d+)\}\$$/.exec(resolved.pattern);
     const valids = [];
-    if (resolved.const && typeof resolved.const === 'string') {
-        valids.push(resolved.const);
-    }
-    for (const v of resolved.enum || []) {
-        if (typeof v === 'string' && v) {
-            valids.push(v);
+    const collectBranch = branch => {
+        if (!branch || typeof branch !== 'object') {
+            return;
         }
+        if (branch.const && typeof branch.const === 'string') {
+            valids.push(branch.const);
+        }
+        for (const v of branch.enum || []) {
+            if (typeof v === 'string' && v) {
+                valids.push(v);
+            }
+        }
+        if (!hexMatch && typeof branch.pattern === 'string') {
+            hexMatch = /^\^\[0-9a-f\]\{(\d+)\}\$$/.exec(branch.pattern);
+        }
+    };
+    collectBranch(resolved);
+    for (const branch of resolved.anyOf || []) {
+        collectBranch(branch);
     }
     return {
         type,
