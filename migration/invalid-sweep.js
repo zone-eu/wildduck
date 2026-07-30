@@ -64,13 +64,12 @@ function normalizeKeyDesc(schema, isJsonSchema) {
     const resolved = resolveTree(schema);
     let type = resolved.wdType || resolved.type;
     if (!type && Array.isArray(resolved.anyOf)) {
-        // converted Joi alternatives (e.g. date-or-false) carry the
-        // conversion target inside a branch
-        for (const branch of resolved.anyOf) {
-            if (branch && branch.wdType) {
-                type = branch.wdType;
-                break;
-            }
+        // converted Joi date-or-false style fields carry the conversion target
+        // inside a single branch; true Joi alternatives (several convertible
+        // branches) had describe() type 'alternatives' and produced no case
+        const branchTypes = resolved.anyOf.filter(branch => branch && branch.wdType).map(branch => branch.wdType);
+        if (branchTypes.length === 1) {
+            type = branchTypes[0];
         }
     }
     if (type === 'integer') {
