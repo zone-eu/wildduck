@@ -89,7 +89,9 @@ function normalizeKeyDesc(schema, isJsonSchema) {
                 valids.push(v);
             }
         }
-        if (!hexMatch && typeof branch.pattern === 'string') {
+        if (branch === resolved && !hexMatch && typeof branch.pattern === 'string') {
+            // top-level patterns only: Joi alternatives produced 'test'
+            // dummies, so anyOf branch patterns must not change that
             hexMatch = /^\^\[0-9a-f\]\{(\d+)\}\$$/.exec(branch.pattern);
         }
     };
