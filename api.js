@@ -473,11 +473,15 @@ module.exports = done => {
                             {
                                 _id: new ObjectId(ctx.user)
                             },
-                            { projection: { authVersion: true } }
+                            { projection: { authVersion: true, disabled: true, suspended: true } }
                         );
                         let userAuthVersion = Number(userData && userData.authVersion) || 0;
                         if (!userData || tokenAuthVersion < userAuthVersion) {
                             // unknown user or expired session
+                            return fail();
+                        }
+                        if (userData.disabled || userData.suspended) {
+                            // locked out account, existing tokens must not keep working
                             return fail();
                         }
                     }
