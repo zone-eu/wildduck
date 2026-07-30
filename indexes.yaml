@@ -605,10 +605,21 @@ indexes:
 
     - collection: tasks
       index:
-          name: task_user
+          name: task_data_user
           key:
               task: 1
-              user: 1
+              data.user: 1
+
+    - collection: tasks
+      index:
+          name: clear_folder_task
+          unique: true
+          partialFilterExpression:
+              task: clear-folder
+          key:
+              task: 1
+              data.user: 1
+              data.mailbox: 1
 
     - collection: certs
       index:

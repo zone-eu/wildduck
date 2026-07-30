@@ -2856,17 +2856,11 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response or true to return all headers",
+                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
                         "required": false,
                         "schema": {
-                            "oneOf": [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "boolean"
-                                }
-                            ]
+                            "type": "boolean",
+                            "default": false
                         }
                     }
                 ],
@@ -3425,12 +3419,11 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response",
+                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
                         "required": false,
-                        "example": "List-ID, MIME-Version",
                         "schema": {
-                            "type": "string",
-                            "example": "List-ID, MIME-Version"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -3647,9 +3640,9 @@
                                         "default": false
                                     },
                                     "includeHeaders": {
-                                        "type": "string",
-                                        "description": "Comma separated list of header keys to include in the response",
-                                        "example": "List-ID, MIME-Version"
+                                        "type": "boolean",
+                                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
+                                        "default": false
                                     },
                                     "metaData": {
                                         "type": "boolean",
@@ -4440,12 +4433,11 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response",
+                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
                         "required": false,
-                        "example": "List-ID, MIME-Version",
                         "schema": {
-                            "type": "string",
-                            "example": "List-ID, MIME-Version"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -7053,6 +7045,47 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/GetAuthlogEventResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticated": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Validates the user authentication status",
+                "operationId": "isUserAuthenticated",
+                "parameters": [
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetIsUserAuthenticatedResponse"
                                 }
                             }
                         }
@@ -10959,7 +10992,7 @@
                     },
                     "headers": {
                         "type": "object",
-                        "description": "Header object keys requested with the includeHeaders argument",
+                        "description": "All parsed message headers. Included when includeHeaders is true",
                         "properties": {}
                     }
                 },
@@ -13389,7 +13422,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required then this is the value to use as access token when making API requests on behalf of logged in user."
+                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the value to use as access token when making API requests on behalf of logged in user."
                     },
                     "twoFactorNonce": {
                         "type": "string",
@@ -13699,6 +13732,27 @@
                     "last",
                     "events",
                     "expires"
+                ]
+            },
+            "GetIsUserAuthenticatedResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "sess": {
+                        "type": "string",
+                        "description": "Session identifier for the logs"
+                    },
+                    "ip": {
+                        "type": "string",
+                        "description": "IP address for the logs "
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "UpdateAutoreplyResponse": {

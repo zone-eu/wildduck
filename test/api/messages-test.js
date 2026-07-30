@@ -26,6 +26,12 @@ describe('Search query parser tests', function () {
         expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase here', negated: false, exactPhrase: true }]);
     });
 
+    it('should recover unclosed quoted phrases', () => {
+        const quoted = parseSearchQuery('"phrase search here');
+
+        expect(quoted.map(entry => entry.text)).to.deep.equal([{ value: 'phrase search here', negated: false, exactPhrase: true }]);
+    });
+
     it('should parse quoted in keyword values as mailbox filters', () => {
         for (let mailboxPath of ['Sub (dub)', 'INBOX/(dub)', 'INBOX/Sub (dub)', '(dub)']) {
             const parsed = parseSearchQuery(`in:"${mailboxPath}"`);
@@ -155,6 +161,86 @@ describe('Search query parser tests', function () {
             ]
         });
     });
+
+    it('should not build empty MongoDB logical arrays for ignored q filters', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+
+        expect(await getMongoDBQuery(db, user, 'has:')).to.deep.equal({ user: false });
+        expect(await getMongoDBQuery(db, user, 'unknown:')).to.deep.equal({ user: false });
+        expect(await getMongoDBQuery(db, user, 'foo OR has:')).to.deep.equal({
+            user,
+            $and: [
+                {
+                    $text: {
+                        $search: 'foo'
+                    }
+                }
+            ],
+            searchable: true
+        });
+    });
+
+    it('should build searchable mailbox filter for q searchable option', async () => {
+        const mailboxIds = [new ObjectId(), new ObjectId()];
+        const user = new ObjectId();
+        const db = {
+            database: {
+                collection(name) {
+                    expect(name).to.equal('mailboxes');
+                    return {
+                        countDocuments(query) {
+                            expect(query).to.deep.equal({
+                                user,
+                                specialUse: { $nin: ['\\Junk', '\\Trash'] }
+                            });
+                            return Promise.resolve(mailboxIds.length);
+                        },
+                        find(query) {
+                            expect(query).to.deep.equal({
+                                user,
+                                specialUse: { $nin: ['\\Junk', '\\Trash'] }
+                            });
+                            return {
+                                project(projection) {
+                                    expect(projection).to.deep.equal({ _id: true });
+                                    return {
+                                        toArray() {
+                                            return Promise.resolve(mailboxIds.map(_id => ({ _id })));
+                                        }
+                                    };
+                                }
+                            };
+                        }
+                    };
+                }
+            }
+        };
+        const query = await getMongoDBQuery(db, user, 'phrase', { searchable: true });
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [
+                {
+                    $text: {
+                        $search: 'phrase'
+                    }
+                },
+                {
+                    mailbox: {
+                        $in: mailboxIds
+                    }
+                }
+            ],
+            searchable: true
+        });
+    });
 });
 
 describe('Messages tests', function () {
@@ -180,6 +266,9 @@ describe('Messages tests', function () {
         subjectExcluded: 'Search Query Excluded Phrase',
         subjectExactPhrase: 'Search Query Exact Phrase Marker',
         subjectExactPhraseSplit: 'Search Query Exact Phrase Split Marker',
+        subjectFulltextOnly: 'Search Query Subject Fulltext Only Marker',
+        subjectPhraseOnly: 'Search Query Subject Exact Phrase Only Marker',
+        subjectPhraseSplit: 'Search Query Subject Exact Phrase Split Marker',
         subjectWhitespacePhrase: 'Search Query Whitespace Phrase Marker',
         subjectAttachment: 'Search Query Attachment Marker',
         subjectFlaggedSeenAttachment: 'Search Query Flagged Seen Attachment Marker',
@@ -191,6 +280,9 @@ describe('Messages tests', function () {
         exactPhraseContext: 'searchqueryexactcontexttoken',
         exactPhraseTerm1: 'searchqueryexactfirsttoken',
         exactPhraseTerm2: 'searchqueryexactsecondtoken',
+        subjectFulltextTerm: 'searchquerysubjectfulltexttoken',
+        subjectPhraseTerm1: 'searchquerysubjectfirsttoken',
+        subjectPhraseTerm2: 'searchquerysubjectsecondtoken',
         attachmentBody: 'searchqueryattachmenttoken',
         multiTerm1: 'searchquerymultiterm1token',
         multiTerm2: 'searchquerymultiterm2token',
@@ -349,6 +441,42 @@ describe('Messages tests', function () {
                 to: [{ address: queryFixture.toAddress }],
                 subject: queryFixture.subjectExactPhraseSplit,
                 text: `${queryFixture.exactPhraseContext} ${queryFixture.exactPhraseTerm1} separated ${queryFixture.exactPhraseTerm2}`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:10:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: `${queryFixture.subjectFulltextOnly} ${queryFixture.subjectFulltextTerm}`,
+                text: 'subject fulltext marker is not in the body'
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:20:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: `${queryFixture.subjectPhraseOnly} ${queryFixture.subjectPhraseTerm1} ${queryFixture.subjectPhraseTerm2}`,
+                text: `${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`
+            })
+            .expect(200);
+
+        await server
+            .post(`/users/${user}/mailboxes/${queryMailbox}/messages`)
+            .send({
+                date: new Date('2021-01-03T12:30:00.000Z'),
+                draft: true,
+                from: { address: queryFixture.fromAddress },
+                to: [{ address: queryFixture.toAddress }],
+                subject: `${queryFixture.subjectPhraseSplit} ${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`,
+                text: `${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`
             })
             .expect(200);
 
@@ -623,6 +751,151 @@ describe('Messages tests', function () {
         ]);
     });
 
+    it('should POST /users/:user/submit expect success / isDraft stores unencrypted draft without queueing', async () => {
+        await server.put(`/users/${user}`).send({ encryptMessages: true }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    isDraft: true,
+                    from: {
+                        name: 'messages user',
+                        address: testAddress
+                    },
+                    to: [{ address: 'draft-recipient@to.com' }],
+                    bcc: [{ address: 'hidden-draft-recipient@to.com' }],
+                    subject: 'direct submit draft storage',
+                    text: 'Draft body should remain readable'
+                })
+                .expect(200);
+
+            expect(submitResponse.body.success).to.be.true;
+            expect(submitResponse.body.message.queueId).to.equal(false);
+
+            const messageResponse = await server
+                .get(`/users/${user}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`)
+                .send({})
+                .expect(200);
+
+            expect(messageResponse.body.draft).to.be.true;
+            expect(messageResponse.body.encrypted).to.not.equal(true);
+            expect(messageResponse.body.text).to.equal('Draft body should remain readable');
+            expect(messageResponse.body.bcc.map(entry => entry.address)).to.include('hidden-draft-recipient@to.com');
+        } finally {
+            await server.put(`/users/${user}`).send({ encryptMessages: false }).expect(200);
+        }
+    });
+
+    it('should POST /users/:user/submit expect failure / recipient cap counts all recipients', async () => {
+        const settingResponse = await server.get('/settings/const:max:rcpt_to').send({}).expect(200);
+        const previousMaxRecipients = settingResponse.body.value;
+
+        await server.post('/settings/const:max:rcpt_to').send({ value: 2 }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    from: {
+                        name: 'messages user',
+                        address: testAddress
+                    },
+                    to: [{ address: 'limit1@to.com' }, { address: 'limit2@to.com' }, { address: 'limit3@to.com' }],
+                    subject: 'direct submit recipient cap',
+                    text: 'This message should be rejected before queueing'
+                })
+                .expect(403);
+
+            expect(submitResponse.body.code).to.equal('TooMany');
+        } finally {
+            await server.post('/settings/const:max:rcpt_to').send({ value: previousMaxRecipients }).expect(200);
+        }
+    });
+
+    it('should POST /users/:user/submit expect success / uploadOnly reference does not mark answered', async () => {
+        const referenceResponse = await server
+            .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
+            .send({
+                from: { address: 'external-reference@from.com' },
+                to: [{ address: testAddress }],
+                subject: 'direct submit upload only reference',
+                text: 'Original message'
+            })
+            .expect(200);
+
+        const referenceMessage = referenceResponse.body.message.id;
+
+        await server
+            .post(`/users/${user}/submit`)
+            .send({
+                uploadOnly: true,
+                reference: {
+                    action: 'reply',
+                    mailbox: testMailbox,
+                    id: referenceMessage
+                },
+                from: {
+                    name: 'messages user',
+                    address: testAddress
+                },
+                text: 'This is only stored, not sent'
+            })
+            .expect(200);
+
+        const referenceData = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages/${referenceMessage}`).send({}).expect(200);
+        expect(referenceData.body.answered).to.not.equal(true);
+    });
+
+    it('should POST /users/:user/submit expect success / over quota queued reply marks answered', async () => {
+        const referenceResponse = await server
+            .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
+            .send({
+                from: { address: 'over-quota-reference@from.com' },
+                to: [{ address: testAddress }],
+                subject: 'direct submit over quota reference',
+                text: 'Original message'
+            })
+            .expect(200);
+
+        const referenceMessage = referenceResponse.body.message.id;
+        let queueId;
+
+        await server.put(`/users/${user}`).send({ quota: 1 }).expect(200);
+
+        try {
+            const submitResponse = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    reference: {
+                        action: 'reply',
+                        mailbox: testMailbox,
+                        id: referenceMessage
+                    },
+                    from: {
+                        name: 'messages user',
+                        address: testAddress
+                    },
+                    to: [{ address: 'over-quota-reply@to.com' }],
+                    text: 'This reply should queue even when Sent storage is skipped'
+                })
+                .expect(200);
+
+            expect(submitResponse.body.success).to.be.true;
+            expect(submitResponse.body.message.overQuota).to.be.true;
+            queueId = submitResponse.body.message.queueId;
+            expect(queueId).to.exist;
+
+            const referenceData = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages/${referenceMessage}`).send({}).expect(200);
+            expect(referenceData.body.answered).to.be.true;
+        } finally {
+            await server.put(`/users/${user}`).send({ quota: 0 }).expect(200);
+            if (queueId) {
+                await server.delete(`/users/${user}/outbound/${queueId}`).expect(200);
+            }
+        }
+    });
+
     it('should POST /users/:user/search expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
         const orderSearch = 'desc';
         const from = 'messagestests'; // Partial match
@@ -648,6 +921,114 @@ describe('Messages tests', function () {
             .get(`/users/${user}/search?previous=${search4.body.previousCursor}&order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`)
             .send({}); // page 2 -> page 1
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
+    });
+
+    it('should GET /users/:user/search expect success / collapseThreads returns one message per thread and hasDrafts covers the entire thread', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/search-collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const mailbox = mailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: true,
+                to: [{ address: 'search-collapse@example.com' }],
+                subject: 'Search Collapse Thread A',
+                text: 'Draft root'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: false,
+                to: [{ address: 'search-collapse@example.com' }],
+                text: 'Non-draft reply',
+                reference: {
+                    mailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        const single = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: false,
+                to: [{ address: 'search-collapse@example.com' }],
+                headers: [{ key: 'X-Search-Collapse', value: 'single-message' }],
+                subject: 'Search Collapse Thread B',
+                text: 'Single message'
+            })
+            .expect(200);
+
+        const rootData = await server.get(`/users/${user}/mailboxes/${mailbox}/messages/${root.body.message.id}`).send({}).expect(200);
+        const thread = rootData.body.thread;
+
+        const expandedPage = await server
+            .get(`/users/${user}/search?thread=${thread}&threadCounters=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(expandedPage.body.total).to.equal(2);
+        expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
+        expect(expandedPage.body.results[0].threadMessageCount).to.equal(2);
+        expect(expandedPage.body.results[0].hasDrafts).to.be.true;
+
+        const expandedThread = await server
+            .get(`/users/${user}/search?thread=${thread}&threadCounters=true&limit=2`)
+            .send({})
+            .expect(200);
+
+        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id, root.body.message.id]);
+        expect(expandedThread.body.results.every(entry => entry.hasDrafts)).to.be.true;
+
+        const expandedMailboxPage = await server
+            .get(`/users/${user}/mailboxes/${mailbox}/messages?threadCounters=true&limit=2&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id, reply.body.message.id]);
+        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
+
+        const collapsedPage1 = await server
+            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(collapsedPage1.body.total).to.equal(2);
+        expect(collapsedPage1.body.results.map(entry => entry.id)).to.deep.equal([single.body.message.id]);
+        expect(collapsedPage1.body.nextCursor).to.be.a('string');
+
+        const allHeaders = await server
+            .get(`/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&includeHeaders=true&limit=1`)
+            .send({})
+            .expect(200);
+
+        expect(allHeaders.body.results[0].headers['x-search-collapse']).to.equal('single-message');
+
+        await server.get(`/users/${user}/search?mailbox=${mailbox}&includeHeaders=List-ID,X-Foo&limit=1`).send({}).expect(400);
+        await server.get(`/users/${user}/archived/messages?includeHeaders=List-ID,X-Foo&limit=1`).send({}).expect(400);
+
+        const collapsedPage2 = await server
+            .get(
+                `/users/${user}/search?mailbox=${mailbox}&collapseThreads=true&threadCounters=true&limit=1&next=${encodeURIComponent(
+                    collapsedPage1.body.nextCursor
+                )}`
+            )
+            .send({})
+            .expect(200);
+
+        expect(collapsedPage2.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
+        expect(collapsedPage2.body.results[0].threadMessageCount).to.equal(2);
+        expect(collapsedPage2.body.results[0].hasDrafts).to.be.true;
+        expect(collapsedPage2.body.previousCursor).to.be.a('string');
+        expect(collapsedPage2.body.nextCursor).to.be.false;
     });
 
     it('should GET /users/:user/search expect success / q supports subject and in keywords', async () => {
@@ -774,12 +1155,27 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectExcluded);
     });
 
+    it('should GET /users/:user/search expect success / q supports subject fulltext terms', async () => {
+        const q = `${queryFixture.subjectFulltextTerm} in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(`${queryFixture.subjectFulltextOnly} ${queryFixture.subjectFulltextTerm}`);
+    });
+
     it('should GET /users/:user/search expect success / q supports exact fulltext phrases', async () => {
         const q = `"${queryFixture.exactPhraseTerm1} ${queryFixture.exactPhraseTerm2}" in:${queryMailbox}`;
         const search = await searchQ(q);
 
         expect(getSubjects(search)).to.include(queryFixture.subjectExactPhrase);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectExactPhraseSplit);
+    });
+
+    it('should GET /users/:user/search expect success / q supports exact phrases in subject', async () => {
+        const q = `"${queryFixture.subjectPhraseTerm1} ${queryFixture.subjectPhraseTerm2}" in:${queryMailbox}`;
+        const search = await searchQ(q);
+
+        expect(getSubjects(search)).to.include(`${queryFixture.subjectPhraseOnly} ${queryFixture.subjectPhraseTerm1} ${queryFixture.subjectPhraseTerm2}`);
+        expect(getSubjects(search)).to.not.include(`${queryFixture.subjectPhraseSplit} ${queryFixture.subjectPhraseTerm1} separated ${queryFixture.subjectPhraseTerm2}`);
     });
 
     it('should GET /users/:user/search expect success / q supports exact fulltext phrases without mailbox scope', async () => {
@@ -828,6 +1224,20 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(searchWithSearchable.body.results.map(entry => entry.subject)).to.include(queryFixture.subjectKeyword);
         expect(searchWithSearchable.body.results).to.deep.equal(search.results);
+    });
+
+    it('should GET /users/:user/search expect success / q searchable=1 excludes trash mailbox matches', async () => {
+        const q = queryFixture.body;
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectTrash);
+        expect(search.body.results.every(entry => entry.mailbox !== trashId)).to.be.true;
     });
 
     it('should GET /users/:user/search expect success / q plain text terms default to OR semantics', async () => {
@@ -885,6 +1295,22 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectTrash);
         expect(search.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / q searchable:true with searchable=1 excludes trash mailbox matches', async () => {
+        const q = `${queryFixture.body} searchable:true`;
+        const qOnlySearch = await searchQ(q);
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&limit=50`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(getSubjects(search.body)).to.include(queryFixture.subjectKeyword);
+        expect(getSubjects(search.body)).to.not.include(queryFixture.subjectTrash);
+        expect(search.body.results.every(entry => entry.mailbox !== trashId)).to.be.true;
+        expect(search.body.results).to.deep.equal(qOnlySearch.results);
     });
 
     it('should GET /users/:user/search expect success / q searchable:true excludes trash with more than 200 mailboxes', async function () {
@@ -1337,6 +1763,223 @@ describe('Messages tests', function () {
 
         const res5 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?previous=${res4.body.previousCursor}&page=100?order=${order}`).send({}); // page 2 -> page 1
         expect(res5.body.results).to.deep.eq(res.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
+    });
+
+    it('should GET /users/:user/mailboxes/:mailbox/messages expect success / collapseThreads returns one message per thread', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+
+        const collapseMailbox = mailboxResponse.body.id;
+
+        const threadRoot = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-01T00:00:00.000Z'),
+                draft: true,
+                to: [{ address: 'collapse.thread@example.com' }],
+                subject: 'Collapse Thread A',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const singleB = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-02T00:00:00.000Z'),
+                draft: false,
+                to: [{ address: 'collapse.thread@example.com' }],
+                subject: 'Collapse Thread B',
+                text: 'Single message B'
+            })
+            .expect(200);
+
+        const threadReply = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-03T00:00:00.000Z'),
+                to: [{ address: 'collapse.thread@example.com' }],
+                text: 'Reply message',
+                reference: {
+                    mailbox: collapseMailbox,
+                    id: threadRoot.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const singleC = await server
+            .post(`/users/${user}/mailboxes/${collapseMailbox}/messages`)
+            .send({
+                date: new Date('2026-01-04T00:00:00.000Z'),
+                draft: true,
+                unseen: true,
+                to: [{ address: 'collapse.thread@example.com' }],
+                headers: [{ key: 'X-Collapse-Test', value: 'single-c' }],
+                subject: 'Collapse Thread C',
+                text: 'Single message C',
+                metaData: {
+                    marker: 'collapse-single-c'
+                }
+            })
+            .expect(200);
+
+        const descPage1 = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(descPage1.body.total).to.equal(3);
+        expect(descPage1.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id, threadReply.body.message.id]);
+        expect(descPage1.body.results[1].threadMessageCount).to.equal(2);
+        expect(descPage1.body.results[0].hasDrafts).to.be.true;
+        expect(descPage1.body.results[1].hasDrafts).to.be.true;
+        expect(descPage1.body.nextCursor).to.be.a('string');
+        expect(descPage1.body.previousCursor).to.be.false;
+
+        const headersAndMetaData = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&includeHeaders=true&metaData=true&limit=1&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(headersAndMetaData.body.results[0].id).to.equal(singleC.body.message.id);
+        expect(headersAndMetaData.body.results[0].headers['x-collapse-test']).to.equal('single-c');
+        expect(headersAndMetaData.body.results[0].metaData).to.deep.equal({
+            marker: 'collapse-single-c'
+        });
+
+        await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?includeHeaders=List-ID,X-Foo&limit=1&order=desc`)
+            .send({})
+            .expect(400);
+
+        const unseen = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&unseen=true&limit=10&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(unseen.body.total).to.equal(1);
+        expect(unseen.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id]);
+        expect(unseen.body.results.every(entry => !entry.seen)).to.be.true;
+
+        const exactLimit = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&limit=3&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(exactLimit.body.total).to.equal(3);
+        expect(exactLimit.body.results.map(entry => entry.id)).to.deep.equal([singleC.body.message.id, threadReply.body.message.id, singleB.body.message.id]);
+        expect(exactLimit.body.nextCursor).to.be.false;
+        expect(exactLimit.body.previousCursor).to.be.false;
+
+        const invalidCollapseCursor = Buffer.from(JSON.stringify([JSON.stringify({ invalid: true }), 2])).toString('base64url');
+        const invalidCursor = await server
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&limit=2&order=desc&next=${encodeURIComponent(
+                    invalidCollapseCursor
+                )}`
+            )
+            .send({})
+            .expect(500);
+
+        expect(invalidCursor.body.error).to.contain('Invalid paging cursor');
+
+        const descPage2 = await server
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc&next=${encodeURIComponent(
+                    descPage1.body.nextCursor
+                )}`
+            )
+            .send({})
+            .expect(200);
+
+        expect(descPage2.body.page).to.equal(2);
+        expect(descPage2.body.results.map(entry => entry.id)).to.deep.equal([singleB.body.message.id]);
+        expect(descPage2.body.results.map(entry => entry.thread)).to.not.include(descPage1.body.results[1].thread);
+        expect(descPage2.body.results[0].hasDrafts).to.be.false;
+        expect(descPage2.body.previousCursor).to.be.a('string');
+        expect(descPage2.body.nextCursor).to.be.false;
+
+        const descPage1Again = await server
+            .get(
+                `/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&threadCounters=true&limit=2&order=desc&previous=${encodeURIComponent(
+                    descPage2.body.previousCursor
+                )}`
+            )
+            .send({})
+            .expect(200);
+
+        expect(descPage1Again.body.results).to.deep.equal(descPage1.body.results);
+
+        const asc = await server
+            .get(`/users/${user}/mailboxes/${collapseMailbox}/messages?collapseThreads=true&limit=10&order=asc`)
+            .send({})
+            .expect(200);
+
+        expect(asc.body.total).to.equal(3);
+        expect(asc.body.results.map(entry => entry.id)).to.deep.equal([threadRoot.body.message.id, singleB.body.message.id, singleC.body.message.id]);
+        expect(asc.body.results[0]).to.not.have.property('threadMessageCount');
+        expect(asc.body.results[0]).to.not.have.property('hasDrafts');
+    });
+
+    it('should GET /users/:user/mailboxes/:mailbox/messages expect success / collapseThreads handles empty mailbox and a single thread', async () => {
+        const emptyMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/collapse-empty-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+
+        const empty = await server
+            .get(`/users/${user}/mailboxes/${emptyMailboxResponse.body.id}/messages?collapseThreads=true&limit=2&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(empty.body.total).to.equal(0);
+        expect(empty.body.results).to.deep.equal([]);
+        expect(empty.body.nextCursor).to.be.false;
+        expect(empty.body.previousCursor).to.be.false;
+
+        const singleThreadMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/collapse-single-thread-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+
+        const singleThreadMailbox = singleThreadMailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${singleThreadMailbox}/messages`)
+            .send({
+                date: new Date('2026-02-01T00:00:00.000Z'),
+                to: [{ address: 'collapse.single@example.com' }],
+                subject: 'Collapse Single Thread Root',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${singleThreadMailbox}/messages`)
+            .send({
+                date: new Date('2026-02-02T00:00:00.000Z'),
+                to: [{ address: 'collapse.single@example.com' }],
+                text: 'Reply message',
+                reference: {
+                    mailbox: singleThreadMailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const singleThread = await server
+            .get(`/users/${user}/mailboxes/${singleThreadMailbox}/messages?collapseThreads=true&threadCounters=true&limit=1&order=desc`)
+            .send({})
+            .expect(200);
+
+        expect(singleThread.body.total).to.equal(1);
+        expect(singleThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
+        expect(singleThread.body.results[0].threadMessageCount).to.equal(2);
+        expect(singleThread.body.nextCursor).to.be.false;
+        expect(singleThread.body.previousCursor).to.be.false;
     });
 
     it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / move lots of messages to trash, should not timeout', async () => {

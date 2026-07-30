@@ -43,6 +43,17 @@ describe('#parseMimeTree', function() {
             done();
         });
     });
+
+    it('should not mutate subject header order when generating envelope', function() {
+        let parsed = indexer.parseMimeTree(
+            ['From: sender@example.com', 'Subject: Original subject', 'Subject: Override subject', '', 'Hello world', ''].join('\r\n')
+        );
+
+        expect(parsed.parsedHeader.subject).to.deep.equal(['Original subject', 'Override subject']);
+        expect(indexer.getEnvelope(parsed)[1].toString()).to.equal('Override subject');
+        expect(parsed.parsedHeader.subject).to.deep.equal(['Original subject', 'Override subject']);
+        expect(indexer.getEnvelope(parsed)[1].toString()).to.equal('Override subject');
+    });
 });
 
 /*

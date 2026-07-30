@@ -13,6 +13,7 @@ const expect = chai.expect;
 chai.config.includeStack = true;
 
 const authRoutes = require('../../lib/api/auth');
+const webauthnRoutes = require('../../lib/api/2fa/webauthn');
 const UserHandler = require('../../lib/user-handler');
 
 function getAuthenticateRoute(userHandler) {
@@ -27,6 +28,24 @@ function getAuthenticateRoute(userHandler) {
 
     authRoutes({}, server, userHandler);
     return routes.find(route => route.spec.path === '/authenticate' && route.spec.name === 'authenticate');
+}
+
+function getWebAuthnRoute(userHandler, path, name) {
+    const routes = [];
+    const server = {
+        post(spec, handler) {
+            routes.push({ spec, handler });
+        },
+        del(spec, handler) {
+            routes.push({ spec, handler });
+        },
+        get(spec, handler) {
+            routes.push({ spec, handler });
+        }
+    };
+
+    webauthnRoutes({}, server, userHandler);
+    return routes.find(route => route.spec.path === path && route.spec.name === name);
 }
 
 function getResponse() {
@@ -383,6 +402,169 @@ describe('Pending 2FA Nonce Handling', function () {
         expect(restoredPexpireArgs[0]).to.equal(consumedPending2faAuth.key);
         expect(restoredPexpireArgs[1]).to.be.above(0);
         expect(restoredPexpireArgs[1]).to.be.at.most(5 * 60 * 1000);
+    });
+
+    it('should accept a legacy U2F pending nonce for WebAuthn authentication challenge', async () => {
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        const rawId = Buffer.from('001122', 'hex');
+        let storedChallengeData;
+        let storedChallengeTtl;
+
+        const handler = Object.assign(Object.create(UserHandler.prototype), {
+            redis: {
+                multi() {
+                    const commands = [];
+                    return {
+                        hgetall(key) {
+                            commands.push(['hgetall', key]);
+                            return this;
+                        },
+                        pttl(key) {
+                            commands.push(['pttl', key]);
+                            return this;
+                        },
+                        hmset(key, data) {
+                            commands.push(['hmset', key, data]);
+                            storedChallengeData = data;
+                            return this;
+                        },
+                        expire(key, ttl) {
+                            commands.push(['expire', key, ttl]);
+                            storedChallengeTtl = ttl;
+                            return this;
+                        },
+                        exec: async () => {
+                            if (commands[0][0] === 'hgetall') {
+                                return [
+                                    [
+                                        null,
+                                        {
+                                            user: user.toString(),
+                                            methods: '["u2f"]',
+                                            tokenRequested: 'true',
+                                            created: Date.now().toString()
+                                        }
+                                    ],
+                                    [null, 42 * 1000]
+                                ];
+                            }
+                            return commands.map(() => [null, 1]);
+                        }
+                    };
+                }
+            },
+            users: {
+                collection() {
+                    return {
+                        findOne: async () => ({
+                            _id: user,
+                            address: 'u2fuser@example.com',
+                            username: 'u2fuser',
+                            enabled2fa: ['u2f'],
+                            webauthn: {
+                                credentials: [
+                                    {
+                                        _id: new ObjectId(),
+                                        rawId,
+                                        type: 'public-key'
+                                    }
+                                ]
+                            }
+                        })
+                    };
+                }
+            }
+        });
+
+        const authenticationOptions = await UserHandler.prototype.webauthnGetAuthenticationOptions.call(handler, user, {
+            origin: 'https://example.com',
+            authenticatorAttachment: 'cross-platform',
+            twoFactorNonce
+        });
+
+        expect(authenticationOptions.allowCredentials).to.deep.equal([
+            {
+                rawId: rawId.toString('hex'),
+                type: 'public-key'
+            }
+        ]);
+        expect(storedChallengeData.twoFactorNonce).to.equal(twoFactorNonce);
+        expect(storedChallengeData.ttl).to.be.above(0);
+        expect(storedChallengeData.ttl).to.be.at.most(42);
+        expect(storedChallengeTtl).to.equal(storedChallengeData.ttl);
+    });
+
+    it('should pass the 2FA nonce through WebAuthn assertion and issue the pending token', async () => {
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        const accessToken = crypto.randomBytes(20).toString('hex');
+        const challenge = crypto.randomBytes(32).toString('hex');
+        const calls = [];
+
+        const route = getWebAuthnRoute(
+            {
+                webauthnAssertAuthentication: async (authUser, data) => {
+                    calls.push(['assert', authUser.toString(), data.twoFactorNonce]);
+                    return {
+                        authenticated: true,
+                        credential: new ObjectId().toString(),
+                        pending2fa: {
+                            user,
+                            key: 'pending2fa:test',
+                            data: {
+                                user: user.toString(),
+                                methods: '["webauthn"]',
+                                tokenRequested: 'true'
+                            },
+                            tokenRequested: true,
+                            expires: Date.now() + 5 * 60 * 1000
+                        }
+                    };
+                },
+                generateAuthToken: async authUser => {
+                    calls.push(['token', authUser.toString()]);
+                    return accessToken;
+                },
+                restorePending2faAuth: async pending2fa => {
+                    calls.push(['restore', pending2fa.key]);
+                    return true;
+                }
+            },
+            '/users/:user/2fa/webauthn/authentication-assertion',
+            'assertWebAuthN'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: `/users/${user}/2fa/webauthn/authentication-assertion`,
+                route: { spec: route.spec },
+                params: {
+                    user: user.toString(),
+                    challenge,
+                    rawId: '00',
+                    clientDataJSON: '00',
+                    authenticatorData: '00',
+                    signature: '00',
+                    twoFactorNonce,
+                    token: false
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.equal(accessToken);
+        expect(res.body.response.authenticated).to.be.true;
+        expect(res.body.response.pending2fa).to.not.exist;
+        expect(calls).to.deep.equal([
+            ['assert', user.toString(), twoFactorNonce],
+            ['token', user.toString()]
+        ]);
     });
 
     it('should reject a WebAuthn assertion nonce that was not bound to the challenge', async () => {

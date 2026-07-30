@@ -4,6 +4,8 @@
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const FilterHandler = require('../lib/filter-handler');
+const MessageHandler = require('../lib/message-handler');
+const Indexer = require('../imap-core/lib/indexer/indexer');
 
 describe('FilterHandler recipient spam overrides', () => {
     const buildPrepared = () => ({
@@ -25,6 +27,7 @@ describe('FilterHandler recipient spam overrides', () => {
 
     const createHandler = ({ filters = [], domainaccessData = false } = {}) => {
         let addOptions;
+        let encryptionOptions;
 
         const handler = new FilterHandler({
             db: {
@@ -98,8 +101,32 @@ describe('FilterHandler recipient spam overrides', () => {
                         };
                     }
                 },
-                async prepareMessageAsync() {
-                    return buildPrepared();
+                async prepareMessageAsync(options = {}) {
+                    let prepared = buildPrepared();
+                    if (options.mimeTree) {
+                        prepared.mimeTree = options.mimeTree;
+                        prepared.headers = this.generateIndexedHeaders(options.mimeTree.header);
+                        prepared.size = this.indexer.getSize(options.mimeTree);
+                    }
+                    return prepared;
+                },
+                generateIndexedHeaders(headers) {
+                    return (headers || []).map(line => {
+                        let pos = line.indexOf(':');
+                        return {
+                            key: line.substr(0, pos).toLowerCase(),
+                            value: line.substr(pos + 1).trim()
+                        };
+                    });
+                },
+                async encryptMessageAsync(encryptionKey, raw) {
+                    encryptionOptions = {
+                        encryptionKey,
+                        raw
+                    };
+                    return {
+                        raw: Buffer.from('Subject: Encrypted\r\n\r\nEncrypted body\r\n')
+                    };
                 },
                 async addAsync(options) {
                     addOptions = options;
@@ -126,11 +153,151 @@ describe('FilterHandler recipient spam overrides', () => {
             handler,
             getAddOptions() {
                 return addOptions;
+            },
+            getEncryptionOptions() {
+                return encryptionOptions;
             }
         };
     };
 
-    const runCase = async ({ overrideFlags, spamLevel = 50, spamAction = 'no action', filters = [], domainaccessData = false, tagsview = [] }) => {
+    const readRebuild = async outputStream =>
+        await new Promise((resolve, reject) => {
+            let chunks = [];
+            let chunklen = 0;
+
+            outputStream.value
+                .on('data', chunk => {
+                    chunks.push(chunk);
+                    chunklen += chunk.length;
+                })
+                .on('end', () => resolve(Buffer.concat(chunks, chunklen)))
+                .on('error', reject);
+        });
+
+    const createRealIndexerHandler = () => {
+        let addOptions;
+        let encryptionOptions;
+        const indexer = new Indexer();
+        const mailboxId = new ObjectId();
+
+        const messageHandler = {
+            counters: {
+                ttlcounter(key, ttl, count, callback) {
+                    callback(null, false);
+                }
+            },
+            indexer,
+            async prepareMessageAsync(options = {}) {
+                return await MessageHandler.prototype.prepareMessageAsync.call(this, options);
+            },
+            generateIndexedHeaders(headers) {
+                return MessageHandler.prototype.generateIndexedHeaders.call(this, headers);
+            },
+            normalizeSubject(subject, options) {
+                return MessageHandler.prototype.normalizeSubject.call(this, subject, options);
+            },
+            async getMailboxAsync(options) {
+                return {
+                    _id: mailboxId,
+                    user: options.user,
+                    path: 'INBOX',
+                    uidValidity: 1
+                };
+            },
+            async encryptMessageAsync(encryptionKey, raw) {
+                encryptionOptions = {
+                    encryptionKey,
+                    raw
+                };
+                return {
+                    raw: Buffer.from('Subject: Encrypted\r\n\r\nEncrypted body\r\n')
+                };
+            },
+            async addAsync(options) {
+                addOptions = options;
+                return {
+                    data: {
+                        mailbox: mailboxId,
+                        mailboxPath: options.specialUse === '\\Junk' ? 'Junk' : 'INBOX',
+                        uid: 1,
+                        id: new ObjectId(),
+                        size: options.prepared.size
+                    }
+                };
+            }
+        };
+
+        const handler = new FilterHandler({
+            db: {
+                senderDb: {
+                    collection() {
+                        return {};
+                    }
+                },
+                database: {
+                    collection(name) {
+                        switch (name) {
+                            case 'filters':
+                                return {
+                                    find() {
+                                        return {
+                                            sort() {
+                                                return {
+                                                    async toArray() {
+                                                        return [];
+                                                    }
+                                                };
+                                            }
+                                        };
+                                    }
+                                };
+
+                            case 'messages':
+                                return {
+                                    async findOne() {
+                                        return false;
+                                    }
+                                };
+
+                            default:
+                                return {
+                                    async findOne() {
+                                        return false;
+                                    },
+                                    find() {
+                                        return {
+                                            async toArray() {
+                                                return [];
+                                            }
+                                        };
+                                    }
+                                };
+                        }
+                    }
+                }
+            },
+            messageHandler,
+            sender: {
+                collection: 'maildrop'
+            },
+            loggelf() {
+                return false;
+            }
+        });
+
+        return {
+            handler,
+            indexer,
+            getAddOptions() {
+                return addOptions;
+            },
+            getEncryptionOptions() {
+                return encryptionOptions;
+            }
+        };
+    };
+
+    const runCase = async ({ overrideFlags, spamLevel = 50, spamAction = 'no action', filters = [], domainaccessData = false, tagsview = [], raw }) => {
         const { handler, getAddOptions } = createHandler({ filters, domainaccessData });
         const userData = {
             _id: new ObjectId(),
@@ -144,7 +311,7 @@ describe('FilterHandler recipient spam overrides', () => {
         const result = await handler.storeMessage(userData, {
             recipient: userData.address,
             sender: 'alice@example.com',
-            raw: Buffer.from('Subject: Override test\r\n\r\nHello world\r\n'),
+            raw: raw || Buffer.from('Subject: Override test\r\n\r\nHello world\r\n'),
             meta: {
                 spamAction,
                 overrides: overrideFlags
@@ -296,5 +463,514 @@ describe('FilterHandler recipient spam overrides', () => {
 
         expect(addOptions.specialUse).to.equal('\\Junk');
         expect(addOptions.path).to.not.exist;
+    });
+
+    it('should return a reusable mimeTree without per-recipient headers', async () => {
+        const { handler, getAddOptions } = createHandler();
+        const sender = 'alice@example.com';
+        const userData = {
+            _id: new ObjectId(),
+            address: 'recipient@example.com',
+            spamLevel: 50,
+            encryptMessages: false,
+            autoreply: false,
+            tagsview: []
+        };
+
+        const firstResult = await handler.storeMessage(userData, {
+            recipient: userData.address,
+            sender,
+            raw: Buffer.from('Subject: Reuse test\r\n\r\nHello world\r\n'),
+            meta: {}
+        });
+
+        expect(getAddOptions().prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['Delivered-To: recipient@example.com', 'Return-Path: <alice@example.com>']);
+        expect(firstResult.prepared.mimeTree.header).to.deep.equal(['From: Alice Example <alice@example.com>']);
+
+        const reusableMimeTree = firstResult.prepared.mimeTree;
+
+        await handler.storeMessage(Object.assign({}, userData, { _id: new ObjectId(), address: 'second@example.com' }), {
+            recipient: 'second@example.com',
+            sender,
+            mimeTree: reusableMimeTree,
+            maildata: firstResult.prepared.maildata,
+            meta: {}
+        });
+
+        expect(reusableMimeTree.header).to.deep.equal(['From: Alice Example <alice@example.com>']);
+        expect(getAddOptions().prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['Delivered-To: second@example.com', 'Return-Path: <alice@example.com>']);
+    });
+
+    it('should preserve real indexer maildata and rebuilt body for mimeTree reuse without maildata', async () => {
+        const { handler, indexer, getAddOptions } = createRealIndexerHandler();
+        const bodyText = 'This is the body text that we want to extract.';
+        const raw = Buffer.from(
+            [
+                'From: Alice Example <alice@example.com>',
+                'To: Recipient <recipient@example.com>',
+                'Subject: Real reuse',
+                'Message-ID: <real-reuse@example.com>',
+                'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                '',
+                bodyText,
+                ''
+            ].join('\r\n')
+        );
+        const reusableMimeTree = indexer.parseMimeTree(raw);
+
+        const result = await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: reusableMimeTree,
+                meta: {}
+            }
+        );
+
+        const addOptions = getAddOptions();
+        const rebuilt = await readRebuild(indexer.rebuild(addOptions.prepared.mimeTree));
+
+        expect(Buffer.isBuffer(reusableMimeTree.body)).to.equal(true);
+        expect(Buffer.isBuffer(addOptions.prepared.mimeTree.body)).to.equal(true);
+        expect(addOptions.maildata.text).to.equal(bodyText);
+        expect(result.prepared.maildata.text).to.equal(bodyText);
+        expect(rebuilt.toString()).to.include(bodyText);
+        expect(result.prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['From: Alice Example <alice@example.com>', 'To: Recipient <recipient@example.com>']);
+    });
+
+    it('should rebuild encryption input for mimeTree reuse without raw chunks', async () => {
+        const { handler, indexer, getEncryptionOptions } = createRealIndexerHandler();
+        const bodyText = 'This body must be present before encryption.';
+        const raw = Buffer.from(
+            [
+                'From: Alice Example <alice@example.com>',
+                'To: Recipient <recipient@example.com>',
+                'Subject: Encrypt reused tree',
+                'Message-ID: <encrypt-reuse@example.com>',
+                'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                '',
+                bodyText,
+                ''
+            ].join('\r\n')
+        );
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: true,
+                pubKey: 'test-key',
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: indexer.parseMimeTree(raw),
+                meta: {}
+            }
+        );
+
+        const encryptionRaw = getEncryptionOptions().raw.toString();
+
+        expect(encryptionRaw).to.include('Delivered-To: recipient@example.com');
+        expect(encryptionRaw).to.include('Return-Path: <alice@example.com>');
+        expect(encryptionRaw).to.include('Subject: Encrypt reused tree');
+        expect(encryptionRaw).to.include(bodyText);
+    });
+
+    it('should apply override header additions before filtering', async () => {
+        const { handler, getAddOptions } = createHandler({
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    query: {
+                        headers: {
+                            subject: 'override subject'
+                        }
+                    },
+                    action: {
+                        flag: true
+                    }
+                }
+            ]
+        });
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                raw: Buffer.from('Subject: Original\r\n\r\nHello world\r\n'),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'Subject',
+                                value: 'Override subject'
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        expect(getAddOptions().flags).to.deep.equal(['\\Flagged']);
+        expect(getAddOptions().prepared.mimeTree.header).to.include('Subject: Override subject');
+    });
+
+    it('should refresh derived prepared fields after override header additions', async () => {
+        const { handler, getAddOptions } = createRealIndexerHandler();
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                raw: Buffer.from(
+                    [
+                        'From: Alice Example <alice@example.com>',
+                        'To: Recipient <recipient@example.com>',
+                        '',
+                        'Hello world',
+                        ''
+                    ].join('\r\n')
+                ),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'Subject',
+                                value: 'Override subject'
+                            },
+                            {
+                                action: 'add',
+                                name: 'Message-ID',
+                                value: '<override@example.com>'
+                            },
+                            {
+                                action: 'add',
+                                name: 'Date',
+                                value: 'Sat, 06 Jun 2026 10:20:30 +0000'
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const prepared = getAddOptions().prepared;
+
+        expect(prepared.subject).to.equal('Override subject');
+        expect(prepared.envelope[1].toString()).to.equal('Override subject');
+        expect(prepared.msgid).to.equal('<override@example.com>');
+        expect(prepared.hdate.toISOString()).to.equal('2026-06-06T10:20:30.000Z');
+        expect(prepared.headers.find(header => header.key === 'message-id' && header.value === '<override@example.com>')).to.exist;
+    });
+
+    it('should apply positional insert change and delete header overrides', async () => {
+        const { handler, getAddOptions } = createRealIndexerHandler();
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 50,
+                encryptMessages: false,
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                raw: Buffer.from(
+                    [
+                        'From: Alice Example <alice@example.com>',
+                        'To: Recipient <recipient@example.com>',
+                        'X-Test: one',
+                        'X-Test: two',
+                        'Subject: Positional overrides',
+                        '',
+                        'Hello world',
+                        ''
+                    ].join('\r\n')
+                ),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'insert',
+                                name: 'X-Inserted',
+                                value: 'first',
+                                pos: 0
+                            },
+                            {
+                                action: 'change',
+                                name: 'X-Test',
+                                value: 'changed second',
+                                pos: 2
+                            },
+                            {
+                                action: 'delete',
+                                name: 'X-Test',
+                                pos: 1
+                            },
+                            {
+                                action: 'change',
+                                name: 'X-Fallback',
+                                value: 'added by change',
+                                pos: 0
+                            },
+                            {
+                                action: 'insert',
+                                name: 'X-Tail',
+                                value: 'appended',
+                                pos: 999
+                            },
+                            {
+                                action: 'delete',
+                                name: 'Subject',
+                                pos: 0
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const headers = getAddOptions().prepared.mimeTree.header;
+
+        expect(headers[0]).to.equal('X-Inserted: first');
+        expect(headers).to.not.include('X-Test: one');
+        expect(headers).to.include('X-Test: changed second');
+        expect(headers).to.include('X-Fallback: added by change');
+        expect(headers[headers.length - 1]).to.equal('X-Tail: appended');
+        expect(headers.some(header => /^Subject:/i.test(header))).to.equal(false);
+    });
+
+    it('should remove previously added visible override headers when delete matches them', async () => {
+        const { handler, indexer, getAddOptions, getEncryptionOptions } = createRealIndexerHandler();
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 100,
+                encryptMessages: true,
+                pubKey: 'test-key',
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: indexer.parseMimeTree(Buffer.from('Subject: Delete visible\r\n\r\nHello world\r\n')),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'X-Transient',
+                                value: 'gone'
+                            },
+                            {
+                                action: 'delete',
+                                name: 'X-Transient',
+                                pos: 1
+                            },
+                            {
+                                action: 'insert',
+                                name: 'X-Visible',
+                                value: 'kept',
+                                pos: 999
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const encryptionRaw = getEncryptionOptions().raw.toString();
+        const encryptedOuterHeaders = getAddOptions().prepared.mimeTree.header;
+
+        expect(encryptionRaw).to.not.include('X-Transient: gone');
+        expect(encryptedOuterHeaders).to.not.include('X-Transient: gone');
+        expect(encryptionRaw).to.include('X-Visible: kept');
+        expect(encryptedOuterHeaders).to.include('X-Visible: kept');
+    });
+
+    it('should add WD classification headers for non-overridden spam decisions', async () => {
+        const { addOptions } = await runCase({
+            spamLevel: 100
+        });
+
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: not-junk');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: user-spamlevel');
+        expect(addOptions.prepared.mimeTree.header).to.include(
+            'WD-Mail-Classification-Info: This message was marked as not junk by spam protection rules. If this is spam, move it to Junk.'
+        );
+    });
+
+    it('should replace existing WD classification headers', async () => {
+        const { addOptions } = await runCase({
+            spamLevel: 100,
+            raw: Buffer.from(
+                [
+                    'Subject: Existing classification',
+                    'WD-Mail-Classification: junk',
+                    'wd-mail-classification: old',
+                    'WD-Mail-Classification-Source: old-source',
+                    'WD-Mail-Classification-Info: Old info',
+                    '',
+                    'Hello world',
+                    ''
+                ].join('\r\n')
+            )
+        });
+
+        const headers = addOptions.prepared.mimeTree.header;
+        const classificationHeaders = headers.filter(header => /^WD-Mail-Classification:/i.test(header));
+        const classificationSourceHeaders = headers.filter(header => /^WD-Mail-Classification-Source:/i.test(header));
+        const classificationInfoHeaders = headers.filter(header => /^WD-Mail-Classification-Info:/i.test(header));
+
+        expect(classificationHeaders).to.deep.equal(['WD-Mail-Classification: not-junk']);
+        expect(classificationSourceHeaders).to.deep.equal(['WD-Mail-Classification-Source: user-spamlevel']);
+        expect(classificationInfoHeaders).to.deep.equal([
+            'WD-Mail-Classification-Info: This message was marked as not junk by spam protection rules. If this is spam, move it to Junk.'
+        ]);
+        expect(addOptions.prepared.mimeTree.parsedHeader['wd-mail-classification']).to.equal('not-junk');
+        expect(addOptions.prepared.mimeTree.parsedHeader['wd-mail-classification-source']).to.equal('user-spamlevel');
+    });
+
+    it('should add WD classification info for domainaccess decisions', async () => {
+        const { addOptions } = await runCase({
+            tagsview: ['tenant-a'],
+            domainaccessData: {
+                _id: new ObjectId(),
+                tag: 'tenant-a',
+                domain: 'example.com',
+                action: 'block'
+            }
+        });
+
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: junk');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: user-domainaccess');
+        expect(addOptions.prepared.mimeTree.header).to.include(
+            'WD-Mail-Classification-Info: This message was moved to Junk because messages from the sender domain example.com are blocked for your account. If this is not spam, mark it as Not Junk.'
+        );
+    });
+
+    it('should add WD classification info for user filter decisions', async () => {
+        const { addOptions } = await runCase({
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    created: new Date('2026-01-01T12:00:00.000Z'),
+                    query: {
+                        headers: {
+                            from: 'alice@example.com'
+                        }
+                    },
+                    action: {
+                        spam: true
+                    }
+                }
+            ]
+        });
+
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification: junk');
+        expect(addOptions.prepared.mimeTree.header).to.include('WD-Mail-Classification-Source: user-filter');
+        expect(addOptions.prepared.mimeTree.header).to.include(
+            'WD-Mail-Classification-Info: This message was moved to Junk by your mail filter added on 2026-01-01. If this is not spam, update your filter settings in Webmail.'
+        );
+    });
+
+    it('should not add WD classification headers when spam override is applied', async () => {
+        const { addOptions } = await runCase({
+            overrideFlags: ['spam'],
+            spamLevel: 100
+        });
+
+        expect(addOptions.prepared.mimeTree.header.some(header => /^WD-Mail-Classification:/i.test(header))).to.equal(false);
+    });
+
+    it('should pass override and classification headers into encryption input and encrypted outer headers', async () => {
+        const { handler, indexer, getAddOptions, getEncryptionOptions } = createRealIndexerHandler();
+        const bodyText = 'Encrypted override body.';
+        const raw = Buffer.from(
+            [
+                'From: Alice Example <alice@example.com>',
+                'To: Recipient <recipient@example.com>',
+                'Subject: Encrypt override',
+                'Message-ID: <encrypt-override@example.com>',
+                'Date: Fri, 05 Jun 2026 12:00:00 +0000',
+                '',
+                bodyText,
+                ''
+            ].join('\r\n')
+        );
+
+        await handler.storeMessage(
+            {
+                _id: new ObjectId(),
+                address: 'recipient@example.com',
+                spamLevel: 100,
+                encryptMessages: true,
+                pubKey: 'test-key',
+                autoreply: false,
+                tagsview: []
+            },
+            {
+                recipient: 'recipient@example.com',
+                sender: 'alice@example.com',
+                mimeTree: indexer.parseMimeTree(raw),
+                meta: {
+                    overrides: {
+                        headers: [
+                            {
+                                action: 'add',
+                                name: 'X-WD-Override',
+                                value: 'yes'
+                            }
+                        ]
+                    }
+                }
+            }
+        );
+
+        const encryptionRaw = getEncryptionOptions().raw.toString();
+        const encryptedOuterHeaders = getAddOptions().prepared.mimeTree.header;
+
+        expect(encryptionRaw).to.include('X-WD-Override: yes');
+        expect(encryptionRaw).to.include('WD-Mail-Classification: not-junk');
+        expect(encryptionRaw).to.include(bodyText);
+        expect(encryptedOuterHeaders).to.include('X-WD-Override: yes');
+        expect(encryptedOuterHeaders).to.include('WD-Mail-Classification: not-junk');
+        expect(encryptedOuterHeaders).to.include('WD-Mail-Classification-Source: user-spamlevel');
     });
 });

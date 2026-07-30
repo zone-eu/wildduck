@@ -1,6 +1,7 @@
 'use strict';
 
 const errors = require('../../lib/errors.js');
+const metrics = require('../../lib/metrics');
 const imapHandler = require('./handler/imap-handler');
 const MAX_MESSAGE_SIZE = 1 * 1024 * 1024;
 const MAX_BAD_COMMANDS = 50;
@@ -243,6 +244,16 @@ class IMAPCommand {
 
     end(command, callback) {
         let callbackSent = false;
+        let metricRecorded = false;
+        let metricStart = process.hrtime();
+        let recordMetric = result => {
+            if (metricRecorded) {
+                return;
+            }
+            metricRecorded = true;
+            let diff = process.hrtime(metricStart);
+            metrics.recordImapCommand(this.command || 'unknown', result, diff[0] + diff[1] / 1e9);
+        };
         let next = err => {
             if (!callbackSent) {
                 callbackSent = true;
@@ -263,9 +274,11 @@ class IMAPCommand {
                     this.payload || ''
                 );
                 if (!this.countBadResponses()) {
+                    recordMetric((err && (err.response || err.code)) || 'error');
                     // stop processing
                     return;
                 }
+                recordMetric((err && (err.response || err.code)) || 'error');
                 return next(err);
             }
 
@@ -306,9 +319,11 @@ class IMAPCommand {
                 );
                 this.connection.send(this.tag + ' BAD ' + E.message);
                 if (!this.countBadResponses()) {
+                    recordMetric('bad');
                     // stop processing
                     return;
                 }
+                recordMetric('bad');
                 return next();
             }
 
@@ -351,9 +366,11 @@ class IMAPCommand {
                     }
                     this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
                     if (!this.countBadResponses()) {
+                        recordMetric(err.response || err.code || 'bad');
                         // stop processing
                         return;
                     }
+                    recordMetric(err.response || err.code || 'bad');
                     return next(err);
                 }
 
@@ -375,10 +392,12 @@ class IMAPCommand {
                                 this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
                                 if (!err.response || err.response === 'BAD') {
                                     if (!this.countBadResponses()) {
+                                        recordMetric(err.response || err.code || 'error');
                                         // stop processing
                                         return;
                                     }
                                 }
+                                recordMetric(err.response || err.code || 'error');
                                 return next(err);
                             }
 
@@ -408,13 +427,18 @@ class IMAPCommand {
                                         })
                                 });
 
+                                recordMetric(response.response || 'ok');
                                 next();
                             });
                         },
                         next
                     );
+                    if (this.command === 'LOGOUT') {
+                        recordMetric('ok');
+                    }
                 } else {
                     this.connection.send(this.tag + ' NO Not implemented: ' + this.command);
+                    recordMetric('no');
                     return next();
                 }
             });

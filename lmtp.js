@@ -16,6 +16,7 @@ const ApnClient = require('./lib/apn-client');
 const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const metrics = require('./lib/metrics');
 
 let messageHandler;
 let userHandler;
@@ -55,6 +56,15 @@ const serverOptions = {
 
     disabledCommands: ['AUTH'].concat(config.lmtp.disableSTARTTLS ? 'STARTTLS' : []),
 
+    onConnect(session, callback) {
+        metrics.connectionStarted('lmtp', session && session.secure);
+        callback();
+    },
+
+    onClose() {
+        metrics.connectionClosed('lmtp');
+    },
+
     onMailFrom(address, session, callback) {
         // reset session entries
         session.users = [];
@@ -85,9 +95,11 @@ const serverOptions = {
             (err, userData) => {
                 if (err) {
                     log.error('LMTP', err);
+                    metrics.recordLmtpRecipient('error');
                     return callback(new Error('Database error'));
                 }
                 if (!userData) {
+                    metrics.recordLmtpRecipient('rejected');
                     return callback(new Error('Unknown recipient'));
                 }
 
@@ -100,6 +112,7 @@ const serverOptions = {
                     user: userData
                 });
 
+                metrics.recordLmtpRecipient('accepted');
                 callback();
             }
         );
@@ -120,6 +133,7 @@ const serverOptions = {
 
         stream.once('error', err => {
             log.error('LMTP', err);
+            metrics.recordLmtpMessage('error', chunklen);
             callback(new Error('Error reading from stream'));
         });
 
@@ -128,12 +142,14 @@ const serverOptions = {
             let responses = [];
             let users = session.users;
             let stored = 0;
+            let failed = false;
 
             let transactionId = new ObjectId();
             let prepared = false;
 
             let storeNext = () => {
                 if (stored >= users.length) {
+                    metrics.recordLmtpMessage(failed ? 'error' : 'success', chunklen);
                     return callback(
                         null,
                         responses.map(r => r.response)
@@ -172,8 +188,8 @@ const serverOptions = {
                         }
                     },
                     (err, response, preparedResponse) => {
-                        if (err) {
-                            // ???
+                        if (err || (response && response.response instanceof Error)) {
+                            failed = true;
                         }
 
                         if (response) {
@@ -202,6 +218,7 @@ certs.registerReload(server, 'lmtp');
 
 module.exports = done => {
     if (!config.lmtp.enabled) {
+        metrics.setServiceUp('lmtp', false);
         return setImmediate(() => done(null, false));
     }
 
@@ -279,6 +296,7 @@ module.exports = done => {
             return server.close();
         }
         started = true;
+        metrics.setServiceUp('lmtp', true);
         done(null, server);
     });
 };

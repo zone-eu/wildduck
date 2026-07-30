@@ -6,6 +6,38 @@ WildDuck sends gelf-formatted log messages to a Graylog server. Set `log.gelf.en
 
 > Graylog logging replaces previously used 'messagelog' database collection
 
+## Prometheus metrics
+
+WildDuck exposes Prometheus metrics from the API service:
+
+```bash
+curl http://127.0.0.1:8080/metrics
+```
+
+> **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Refreshing task and job counts queries MongoDB and Redis-backed BullMQ queues. In production, restrict access with the API bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
+
+The endpoint is disabled by default. Enable it and configure the expensive collector cache in the API configuration:
+
+```toml
+[metrics]
+enabled = true
+collectCacheTtl = 10000
+```
+
+`collectCacheTtl` is specified in milliseconds and defaults to 10 seconds. Set it to `0` to query MongoDB task counts and Redis-backed BullMQ job counts on every scrape. In cluster mode, one elected worker runs these backend collectors, and the cache limits repeated queries from frequent or concurrent scrapes.
+
+Example Prometheus target:
+
+```yaml
+scrape_configs:
+  - job_name: wildduck
+    static_configs:
+      - targets: ['127.0.0.1:8080']
+    metrics_path: "/metrics"
+```
+
+WildDuck exports the default Node.js process metrics from `prom-client` and operational WildDuck metrics for API requests, authentication results, IMAP/POP3/LMTP connections and commands, message operations, notification journal activity, task processing, webhook queues, and indexing queues. Metric labels intentionally avoid user IDs, mailbox IDs, message IDs, email addresses, and IP addresses.
+
 ## Testing
 
 Create an email account and use your IMAP client to connect to it. To send mail to this account, run the example script:
