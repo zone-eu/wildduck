@@ -153,3 +153,15 @@ listed here is expected to match the goldens exactly.
 - The /api-methods test-only route dumps the adapter route registry instead of
   restify's router.getRoutes() internals (same essential fields: name, method,
   path, spec).
+- GET message with replaceCidLinks=true now produces real attachment URLs.
+  The restify code called server.router.render('attachment', ...) but the
+  route is named getMessageAttachment, so render() returned null and every
+  cid link was replaced with the literal string "null". The adapter's render()
+  is called with the correct route name and restores the documented intent.
+- The convert pre-pass applies anyOf/oneOf branch transforms even when that
+  branch does not end up matching, so mixed-case EMAIL usernames on
+  /preauth and /authenticate reach the handler lowercased (the wd:username
+  branch's lowercase transform fires before the email branch matches). Joi
+  alternatives kept the original casing. Behaviorally inert: authentication
+  normalizes addresses through tools.normalizeAddress anyway; the difference
+  is only visible in authlog echoes.

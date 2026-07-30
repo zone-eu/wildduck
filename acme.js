@@ -9,14 +9,11 @@ const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
+const { attachCompatReplyDecorations, attachServerHeader, attachAccessLog, attachCompatErrorHandler } = require('./lib/fastify/bootstrap');
 
 const acmeRoutes = require('./lib/api/acme');
 
 let loggelf;
-
-function maskUrl(url) {
-    return (url || '').replace(/(accessToken=)[^&]+/, '$1xxxxxx');
-}
 
 module.exports = done => {
     if (!config.acme || !config.acme.agent || !config.acme.agent.enabled) {
@@ -70,50 +67,10 @@ module.exports = done => {
         disableRequestLogging: true
     });
 
-    app.decorateReply('wdResponseBody', null);
-    app.decorateReply('wdContentType', null);
-
-    app.addHook('onSend', async (request, reply, payload) => {
-        reply.header('server', 'WildDuck ACME Agent');
-        if (reply.wdContentType) {
-            reply.header('content-type', reply.wdContentType);
-        }
-        return payload;
-    });
-
-    // ---- HTTP access log (previously restify-logger) ----
-
-    app.addHook('onResponse', async (request, reply) => {
-        const params = request.wdMergedParams || request.query || {};
-        const userIp = ((params && params.ip) || '').toString().substr(0, 40) || '-';
-        const userSess = (params && params.sess) || '-';
-        const line = `${request.raw.socket.remoteAddress} - [${userIp}/${userSess}] ${request.method} ${maskUrl(request.url)} ${reply.statusCode} ${Math.round(
-            reply.elapsedTime
-        )}ms`;
-        log.http('ACME', line);
-    });
-
-    app.setErrorHandler((err, request, reply) => {
-        if (err.restifyStyle || (err.responseCode && !reply.sent)) {
-            const body = {
-                code: err.code || 'InternalError',
-                message: err.message
-            };
-            reply.status(err.responseCode || 500);
-            reply.wdResponseBody = body;
-            reply.wdContentType = 'application/json';
-            return reply.send(body);
-        }
-
-        log.error('ACME', 'Unhandled error: %s', err.stack || err.message);
-        const body = {
-            code: 'InternalError',
-            message: err.message
-        };
-        reply.status(500);
-        reply.wdResponseBody = body;
-        return reply.send(body);
-    });
+    attachCompatReplyDecorations(app);
+    attachServerHeader(app, 'WildDuck ACME Agent');
+    attachAccessLog(app, 'ACME');
+    attachCompatErrorHandler(app, 'ACME');
 
     const server = new RestifyCompatAdapter(app);
     server.loggelf = message => loggelf(message);

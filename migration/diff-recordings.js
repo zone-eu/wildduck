@@ -21,10 +21,23 @@ if (!fileA || !fileB) {
 }
 
 // headers whose values are inherently volatile or transport-specific
-const DROP_HEADERS = new Set(['date', 'content-length', 'transfer-encoding', 'connection', 'keep-alive', 'server', 'request-id', 'x-request-id', 'etag', 'vary',
+const DROP_HEADERS = new Set([
+    'date',
+    'content-length',
+    'transfer-encoding',
+    'connection',
+    'keep-alive',
+    'server',
+    'request-id',
+    'x-request-id',
+    'etag',
+    'vary',
     // @fastify/cors adds these on every response; restify-cors-middleware2
     // only did when an Origin header was present (documented deviation)
-    'access-control-allow-origin', 'access-control-allow-credentials', 'access-control-expose-headers']);
+    'access-control-allow-origin',
+    'access-control-allow-credentials',
+    'access-control-expose-headers'
+]);
 
 function makeRegistry() {
     return { map: new Map(), counts: new Map() };
@@ -109,7 +122,19 @@ function normalizeString(str, reg) {
 // response fields that are volatile by nature (crypto signatures with embedded
 // timestamps, generated passwords/keys); compared by presence + length bucket
 // only. Matched on the path tail (parent.key or bare key).
-const VOLATILE_FIELDS = new Set(['mobileconfig', 'password', 'dnsTxt.value', 'publicKey', 'fingerprint', 'fileContentHash', 'challenge', 'hash', 'qrcode', 'rawId', 'seed']);
+const VOLATILE_FIELDS = new Set([
+    'mobileconfig',
+    'password',
+    'dnsTxt.value',
+    'publicKey',
+    'fingerprint',
+    'fileContentHash',
+    'challenge',
+    'hash',
+    'qrcode',
+    'rawId',
+    'seed'
+]);
 
 // fields whose values are legitimately nondeterministic across runs of the
 // suite (concurrent message stores race for uids; generated MIME boundary
@@ -197,7 +222,14 @@ function normalizeRecord(rec, reg) {
     };
     if (['/metrics', '/api-methods'].includes((rec.url || '').split('?')[0])) {
         // prometheus counters are volatile by definition; presence-only
-        return { method: rec.method, url: (rec.url || '').split('?')[0], status: rec.status, headers, body: { presenceOnly: true }, proxyError: rec.proxyError };
+        return {
+            method: rec.method,
+            url: (rec.url || '').split('?')[0],
+            status: rec.status,
+            headers,
+            body: { presenceOnly: true },
+            proxyError: rec.proxyError
+        };
     }
     if (body.kind === 'text' && /json/.test(ctype)) {
         try {

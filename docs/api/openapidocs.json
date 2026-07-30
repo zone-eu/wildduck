@@ -1341,7 +1341,6 @@
                 "parameters": [
                     {
                         "schema": {
-                            "default": false,
                             "anyOf": [
                                 {
                                     "type": "string",
@@ -1352,7 +1351,8 @@
                                         false
                                     ]
                                 }
-                            ]
+                            ],
+                            "default": false
                         },
                         "in": "query",
                         "name": "deleteAfter",
@@ -4035,6 +4035,7 @@
                                 "properties": {
                                     "path": {
                                         "type": "string",
+                                        "minLength": 1,
                                         "maxLength": 65663,
                                         "not": {
                                             "pattern": "/{2,}|/$"
@@ -4276,6 +4277,7 @@
                                 "properties": {
                                     "path": {
                                         "type": "string",
+                                        "minLength": 1,
                                         "maxLength": 65663,
                                         "not": {
                                             "pattern": "/{2,}|/$"
@@ -4501,10 +4503,6 @@
                     },
                     {
                         "schema": {
-                            "enum": [
-                                "asc",
-                                "desc"
-                            ],
                             "default": "desc"
                         },
                         "in": "query",
@@ -5655,19 +5653,16 @@
                                 },
                                 "from": {
                                     "type": "string",
-                                    "maxLength": 255,
                                     "minLength": 1,
                                     "description": "Partial match for the From: header line"
                                 },
                                 "to": {
                                     "type": "string",
-                                    "maxLength": 255,
                                     "minLength": 1,
                                     "description": "Partial match for the To: and Cc: header lines"
                                 },
                                 "subject": {
                                     "type": "string",
-                                    "maxLength": 255,
                                     "minLength": 1,
                                     "description": "Partial match for the Subject: header line"
                                 }
@@ -5712,7 +5707,6 @@
                     {
                         "schema": {
                             "type": "string",
-                            "maxLength": 255,
                             "minLength": 1
                         },
                         "in": "query",
@@ -5723,7 +5717,6 @@
                     {
                         "schema": {
                             "type": "string",
-                            "maxLength": 255,
                             "minLength": 1
                         },
                         "in": "query",
@@ -5734,7 +5727,6 @@
                     {
                         "schema": {
                             "type": "string",
-                            "maxLength": 255,
                             "minLength": 1
                         },
                         "in": "query",
@@ -5889,12 +5881,7 @@
                         "description": "How many records to return"
                     },
                     {
-                        "schema": {
-                            "enum": [
-                                "asc",
-                                "desc"
-                            ]
-                        },
+                        "schema": {},
                         "in": "query",
                         "name": "order",
                         "required": false,
@@ -6283,19 +6270,16 @@
                                             },
                                             "from": {
                                                 "type": "string",
-                                                "maxLength": 255,
                                                 "minLength": 1,
                                                 "description": "Partial match for the From: header line"
                                             },
                                             "to": {
                                                 "type": "string",
-                                                "maxLength": 255,
                                                 "minLength": 1,
                                                 "description": "Partial match for the To: and Cc: header lines"
                                             },
                                             "subject": {
                                                 "type": "string",
-                                                "maxLength": 255,
                                                 "minLength": 1,
                                                 "description": "Partial match for the Subject: header line"
                                             }
@@ -6319,19 +6303,16 @@
                                     },
                                     "from": {
                                         "type": "string",
-                                        "maxLength": 255,
                                         "minLength": 1,
                                         "description": "Partial match for the From: header line"
                                     },
                                     "to": {
                                         "type": "string",
-                                        "maxLength": 255,
                                         "minLength": 1,
                                         "description": "Partial match for the To: and Cc: header lines"
                                     },
                                     "subject": {
                                         "type": "string",
-                                        "maxLength": 255,
                                         "minLength": 1,
                                         "description": "Partial match for the Subject: header line"
                                     },
@@ -6430,25 +6411,7 @@
                                                     ]
                                                 },
                                                 "then": {
-                                                    "not": {
-                                                        "anyOf": [
-                                                            {
-                                                                "required": [
-                                                                    "moveTo"
-                                                                ]
-                                                            },
-                                                            {
-                                                                "required": [
-                                                                    "seen"
-                                                                ]
-                                                            },
-                                                            {
-                                                                "required": [
-                                                                    "flagged"
-                                                                ]
-                                                            }
-                                                        ]
-                                                    }
+                                                    "maxProperties": 1
                                                 }
                                             }
                                         ]
@@ -7853,10 +7816,6 @@
                     },
                     {
                         "schema": {
-                            "enum": [
-                                "asc",
-                                "desc"
-                            ],
                             "default": "desc"
                         },
                         "in": "query",
@@ -10321,10 +10280,8 @@
                                                 },
                                                 "required": [
                                                     "id",
-                                                    "description",
                                                     "scopes",
-                                                    "lastUse",
-                                                    "created"
+                                                    "lastUse"
                                                 ]
                                             }
                                         }
@@ -10583,10 +10540,8 @@
                                     "required": [
                                         "success",
                                         "id",
-                                        "description",
                                         "scopes",
-                                        "lastUse",
-                                        "created"
+                                        "lastUse"
                                     ]
                                 }
                             }
@@ -12133,7 +12088,6 @@
                                         "success",
                                         "id",
                                         "username",
-                                        "address",
                                         "scope",
                                         "require2fa"
                                     ]
@@ -13457,21 +13411,28 @@
                                             "$ref": "#/components/schemas/successRes"
                                         },
                                         "message": {
-                                            "type": "object",
-                                            "title": "MessageWithQueueId",
-                                            "additionalProperties": true,
-                                            "description": "Information about submitted Message",
-                                            "properties": {
-                                                "mailbox": {
-                                                    "description": "Mailbox ID the message was stored to or false if not stored"
+                                            "anyOf": [
+                                                {
+                                                    "type": "object",
+                                                    "title": "MessageWithQueueId",
+                                                    "additionalProperties": true,
+                                                    "properties": {
+                                                        "mailbox": {
+                                                            "description": "Mailbox ID the message was stored to or false if not stored"
+                                                        },
+                                                        "id": {
+                                                            "description": "Message ID in the Mailbox or false if not stored"
+                                                        },
+                                                        "queueId": {
+                                                            "description": "Queue ID in MTA or false if not queued"
+                                                        }
+                                                    }
                                                 },
-                                                "id": {
-                                                    "description": "Message ID in the Mailbox or false if not stored"
-                                                },
-                                                "queueId": {
-                                                    "description": "Queue ID in MTA or false if not queued"
+                                                {
+                                                    "type": "boolean"
                                                 }
-                                            }
+                                            ],
+                                            "description": "Information about submitted Message"
                                         }
                                     },
                                     "required": [
@@ -14098,8 +14059,7 @@
                                         "success",
                                         "id",
                                         "alias",
-                                        "domain",
-                                        "created"
+                                        "domain"
                                     ]
                                 }
                             }
@@ -14308,9 +14268,7 @@
                                                 "required": [
                                                     "id",
                                                     "domain",
-                                                    "selector",
-                                                    "fingerprint",
-                                                    "created"
+                                                    "selector"
                                                 ]
                                             }
                                         }
@@ -14883,8 +14841,7 @@
                                                 "required": [
                                                     "id",
                                                     "servername",
-                                                    "acme",
-                                                    "altNames"
+                                                    "acme"
                                                 ]
                                             }
                                         }
@@ -15423,9 +15380,7 @@
                                                 "required": [
                                                     "id",
                                                     "type",
-                                                    "user",
-                                                    "url",
-                                                    "created"
+                                                    "user"
                                                 ]
                                             }
                                         }
@@ -15660,17 +15615,6 @@
                                                         "description": "Setting key"
                                                     },
                                                     "value": {
-                                                        "anyOf": [
-                                                            {
-                                                                "type": "string"
-                                                            },
-                                                            {
-                                                                "type": "number"
-                                                            },
-                                                            {
-                                                                "type": "boolean"
-                                                            }
-                                                        ],
                                                         "description": "Setting value"
                                                     },
                                                     "name": {
@@ -15682,17 +15626,6 @@
                                                         "description": "Setting description"
                                                     },
                                                     "default": {
-                                                        "anyOf": [
-                                                            {
-                                                                "type": "string"
-                                                            },
-                                                            {
-                                                                "type": "number"
-                                                            },
-                                                            {
-                                                                "type": "boolean"
-                                                            }
-                                                        ],
                                                         "description": "Default value"
                                                     },
                                                     "type": {
@@ -15706,11 +15639,6 @@
                                                 },
                                                 "required": [
                                                     "key",
-                                                    "value",
-                                                    "name",
-                                                    "description",
-                                                    "default",
-                                                    "type",
                                                     "custom"
                                                 ]
                                             }
@@ -15878,17 +15806,6 @@
                                             "description": "Key of the Setting"
                                         },
                                         "value": {
-                                            "anyOf": [
-                                                {
-                                                    "type": "string"
-                                                },
-                                                {
-                                                    "type": "number"
-                                                },
-                                                {
-                                                    "type": "boolean"
-                                                }
-                                            ],
                                             "description": "Setting value"
                                         },
                                         "error": {

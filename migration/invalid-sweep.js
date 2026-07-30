@@ -133,7 +133,9 @@ function buildCases() {
             continue; // SSE hangs by design; migrated and verified separately
         }
 
-        const desc = mergedDescribe(route.validationObjs, !!route.jsonSchema);
+        // every route is JSON Schema since the migration completed (the
+        // per-route jsonSchema flag was retired with the legacy Joi mode)
+        const desc = mergedDescribe(route.validationObjs, true);
         const keys = desc.keys || {};
         const pathParamNames = (route.path.match(/:[a-zA-Z0-9_]+/g) || []).map(p => p.slice(1));
 
@@ -190,14 +192,11 @@ function buildCases() {
 
 function send(method, url) {
     return new Promise(resolve => {
-        const req = http.request(
-            { host: '127.0.0.1', port, method: method.toUpperCase(), path: url, headers: { 'x-migration-probe': '1' } },
-            res => {
-                const chunks = [];
-                res.on('data', c => chunks.push(c));
-                res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
-            }
-        );
+        const req = http.request({ host: '127.0.0.1', port, method: method.toUpperCase(), path: url, headers: { 'x-migration-probe': '1' } }, res => {
+            const chunks = [];
+            res.on('data', c => chunks.push(c));
+            res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+        });
         req.setTimeout(10000, () => {
             req.destroy();
             resolve({ status: 0, body: 'TIMEOUT' });

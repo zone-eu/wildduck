@@ -26,7 +26,6 @@
     "license": "EUPL-1.2",
     "homepage": "https://wildduck.email/",
     "devDependencies": {
-        "ajv": "8.20.0",
         "chai": "4.3.10",
         "docsify-cli": "4.4.4",
         "eslint": "8.57.0",
@@ -50,6 +49,7 @@
         "@fastify/swagger": "^9.8.1",
         "@fidm/x509": "1.2.1",
         "@hapi/address": "^5.1.1",
+        "@hapi/tlds": "^1.1.7",
         "@opensearch-project/opensearch": "3.6.0",
         "@phc/pbkdf2": "1.1.14",
         "@postalsys/vmc": "1.1.5",
@@ -63,6 +63,7 @@
         "@zone-eu/wild-plugins": "1.0.9",
         "@zone-eu/zone-mta": "3.10.17",
         "accesscontrol": "2.2.1",
+        "ajv": "8.20.0",
         "ajv-formats": "^3.0.1",
         "axios": "1.18.1",
         "base32.js": "0.1.0",

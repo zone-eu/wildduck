@@ -29,28 +29,10 @@ const Path = require('path');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const metrics = require('./lib/metrics');
 const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
-const { sharedSchemas } = require('./lib/fastify/validation');
+const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
+const { maskUrl, attachCompatReplyDecorations, attachServerHeader, attachAccessLog, attachCompatErrorHandler } = require('./lib/fastify/bootstrap');
 require('./lib/schemas/json-schemas'); // populates sharedSchemas
 const apiDocsConfig = require('./config/apigeneration.json');
-
-// the wd* vocabulary is internal to the validation engine, strip it from the
-// published OpenAPI specification
-function stripInternalKeywords(node) {
-    if (Array.isArray(node)) {
-        return node.map(entry => stripInternalKeywords(entry));
-    }
-    if (!node || typeof node !== 'object') {
-        return node;
-    }
-    const out = {};
-    for (const key of Object.keys(node)) {
-        if (key.startsWith('wd') && /^wd[A-Z]/.test(key)) {
-            continue;
-        }
-        out[key] = stripInternalKeywords(node[key]);
-    }
-    return out;
-}
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -86,12 +68,9 @@ let settingsHandler;
 let notifier;
 let loggelf;
 
-// routes that skip the access token check (same list as the restify setup)
-const PUBLIC_ROUTE_NAMES = new Set(['public_get', 'public_post', 'acmeToken', 'metrics']);
-
-function maskUrl(url) {
-    return (url || '').replace(/(accessToken=)[^&]+/, '$1xxxxxx');
-}
+// named routes that skip the access token check (static /public files are
+// matched by URL prefix instead, restify used routes named public_get/public_post)
+const PUBLIC_ROUTE_NAMES = new Set(['acmeToken', 'metrics']);
 
 function buildServer() {
     const serverOptions = {
@@ -288,18 +267,8 @@ module.exports = done => {
         credentials: true
     });
 
-    app.decorateReply('wdResponseBody', null);
-    app.decorateReply('wdContentType', null);
-
-    app.addHook('onSend', async (request, reply, payload) => {
-        reply.header('server', 'WildDuck API');
-        if (reply.wdContentType) {
-            // exact content type parity with restify (it only appended a
-            // charset parameter when the handler called res.charSet())
-            reply.header('content-type', reply.wdContentType);
-        }
-        return payload;
-    });
+    attachCompatReplyDecorations(app);
+    attachServerHeader(app, 'WildDuck API');
 
     // public files (restify serveStatic joined the route path to the root
     // directory, so the files live under public/public)
@@ -341,6 +310,7 @@ module.exports = done => {
             user: null,
             role: null,
             accessToken: null,
+            isPublic: false,
             validate: permission => {
                 if (!permission.granted) {
                     let err = new Error('Not enough privileges');
@@ -354,6 +324,7 @@ module.exports = done => {
 
         if (PUBLIC_ROUTE_NAMES.has(routeName) || request.url.startsWith('/public/')) {
             // skip token check for public pages
+            ctx.isPublic = true;
             return;
         }
 
@@ -364,7 +335,7 @@ module.exports = done => {
             false;
 
         if (request.query && request.query.accessToken) {
-            // delete or it will conflict with Joi schemes
+            // delete or the strict routes would reject it as an unknown key
             delete request.query.accessToken;
         }
 
@@ -527,6 +498,19 @@ module.exports = done => {
         ctx.user = 'root';
     });
 
+    // restify's bodyParser mapped JSON body keys into req.params and the token
+    // middleware then deleted req.params.accessToken, so a token redundantly
+    // included in the request body never reached validation; the body is not
+    // parsed yet in onRequest, so this runs as a separate preHandler hook
+    app.addHook('preHandler', async request => {
+        if (!request.wdCtx || request.wdCtx.isPublic) {
+            return;
+        }
+        if (request.body && typeof request.body === 'object' && !Array.isArray(request.body) && !Buffer.isBuffer(request.body) && request.body.accessToken) {
+            delete request.body.accessToken;
+        }
+    });
+
     // ---- metrics timing (previously a restify server.use middleware) ----
 
     if (metricsEnabled) {
@@ -631,45 +615,8 @@ module.exports = done => {
         return payload;
     });
 
-    // ---- HTTP access log (previously restify-logger) ----
-
-    app.addHook('onResponse', async (request, reply) => {
-        const ctx = request.wdCtx || {};
-        const params = request.wdMergedParams || request.query || {};
-        const userIp = ((params && params.ip) || '').toString().substr(0, 40) || '-';
-        const userSess = (params && params.sess) || '-';
-        const line = `${request.raw.socket.remoteAddress} ${(ctx.user && ctx.user.toString()) || '-'} [${userIp}/${userSess}] ${request.method} ${maskUrl(
-            request.url
-        )} ${reply.statusCode} ${Math.round(reply.elapsedTime)}ms`;
-        log.http('API', line);
-    });
-
-    // ---- error handling ----
-
-    app.setErrorHandler((err, request, reply) => {
-        if (err.restifyStyle || (err.responseCode && !reply.sent)) {
-            // restify-errors style output ({code, message}) used by the access
-            // token middleware and body parser failures
-            const body = {
-                code: err.code || 'InternalError',
-                message: err.message
-            };
-            reply.status(err.responseCode || 500);
-            reply.wdResponseBody = body;
-            // restify-errors responses carried no charset parameter
-            reply.wdContentType = 'application/json';
-            return reply.send(body);
-        }
-
-        log.error('API', 'Unhandled error: %s', err.stack || err.message);
-        const body = {
-            code: 'InternalError',
-            message: err.message
-        };
-        reply.status(500);
-        reply.wdResponseBody = body;
-        return reply.send(body);
-    });
+    attachAccessLog(app, 'API', { includeUser: true });
+    attachCompatErrorHandler(app, 'API');
 
     app.setNotFoundHandler((request, reply) => {
         const body = {
@@ -777,9 +724,14 @@ module.exports = done => {
         });
     }
 
+    // the specification is static once the routes are registered, build once
+    let openApiDocsCache = null;
     app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs' }, schema: { hide: true } }, async (request, reply) => {
         reply.wdContentType = 'application/json; charset=utf-8';
-        return app.swagger();
+        if (!openApiDocsCache) {
+            openApiDocsCache = app.swagger();
+        }
+        return openApiDocsCache;
     });
 
     if (process.env.GENERATE_API_DOCS === 'true') {
