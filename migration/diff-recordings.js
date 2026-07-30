@@ -80,6 +80,8 @@ function normalizeString(str, reg) {
             // or name-<epochms>-<random>
             .replace(/\b(\d{1,6})-<epochms>/g, '<rnd>-<epochms>')
             .replace(/<epochms>-(\d{1,6})\b/g, '<epochms>-<rnd>')
+            // random 8-hex attachment filenames generated for PGP parts
+            .replace(/\b[0-9a-f]{8}(?=\.asc\b)/g, '<hex8name>')
             // bare 8-digit random numbers in generated fixture subjects
             .replace(/\b\d{8}\b/g, '<num8>')
             // addresses created without a domain get os.hostname() appended;
@@ -99,8 +101,6 @@ function normalizeString(str, reg) {
                     return m;
                 }
             })
-            // random 8-hex attachment filenames generated for PGP parts
-            .replace(/\b[0-9a-f]{8}(?=\.asc\b)/g, '<hex8name>')
             // multipart boundaries
             .replace(/-{4,}[a-zA-Z0-9'()+_,\-./:=?]{8,}/g, '<boundary>')
     );
