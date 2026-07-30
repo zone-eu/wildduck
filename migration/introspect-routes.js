@@ -86,6 +86,8 @@ function collectRoutes() {
                     tags: spec.tags,
                     responseType: spec.responseType,
                     validationObjs: spec.validationObjs,
+                    jsonSchema: !!spec.jsonSchema,
+                    allowUnknown: !!spec.allowUnknown,
                     handlerCount: handlers.length
                 });
             };

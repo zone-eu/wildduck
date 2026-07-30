@@ -12,25 +12,22 @@ const http = require('http');
 const { collectRoutes } = require('./introspect-routes');
 
 const port = Number(process.argv[2]);
-if (!port) {
+if (!port && require.main === module) {
     console.error('Usage: node migration/invalid-sweep.js <port>');
     process.exit(1);
 }
 
-// stable, syntactically valid dummy for a path param based on its Joi description
+// stable, syntactically valid dummy for a path param based on its normalized
+// description (see normalizeKeyDesc: works for Joi and JSON Schema alike)
 function dummyForParam(desc, name) {
     if (!desc) {
         return 'test';
     }
-    const valids = desc.allow && desc.allow.filter(v => typeof v === 'string' && v);
-    if (valids && valids.length) {
-        return valids[0];
+    if (desc.valids && desc.valids.length) {
+        return desc.valids[0];
     }
-    const rules = desc.rules || [];
-    const hasHex = rules.some(r => r.name === 'hex');
-    const lengthRule = rules.find(r => r.name === 'length');
-    if (hasHex && lengthRule) {
-        return '1'.repeat(Number(lengthRule.args && lengthRule.args.limit) || 24);
+    if (desc.hexLen) {
+        return '1'.repeat(desc.hexLen);
     }
     if (desc.type === 'number') {
         return '1';
@@ -41,10 +38,62 @@ function dummyForParam(desc, name) {
     return 'test';
 }
 
-function mergedDescribe(validationObjs) {
-    // describe() each key individually: Joi's manifest validation chokes on
-    // some schema shapes used in the routes (e.g. failover('')), and one bad
-    // key must not lose introspection for the whole route
+// normalize a Joi describe() result or a plain JSON Schema (migrated routes)
+// into { type, hexLen, valids } so both produce the SAME sweep cases
+function normalizeKeyDesc(schema, isJsonSchema) {
+    if (!schema) {
+        return null;
+    }
+    if (!isJsonSchema) {
+        let desc;
+        try {
+            desc = schema.describe();
+        } catch {
+            return null;
+        }
+        const rules = desc.rules || [];
+        const lengthRule = rules.find(r => r.name === 'length');
+        return {
+            type: desc.type,
+            hexLen: rules.some(r => r.name === 'hex') && lengthRule ? Number(lengthRule.args && lengthRule.args.limit) || 24 : 0,
+            valids: (desc.allow || []).filter(v => typeof v === 'string' && v)
+        };
+    }
+    const { resolveTree } = require('../lib/fastify/validation');
+    require('../lib/schemas/json-schemas');
+    const resolved = resolveTree(schema);
+    let type = resolved.wdType || resolved.type;
+    if (!type && Array.isArray(resolved.anyOf)) {
+        // converted Joi alternatives (e.g. date-or-false) carry the
+        // conversion target inside a branch
+        for (const branch of resolved.anyOf) {
+            if (branch && branch.wdType) {
+                type = branch.wdType;
+                break;
+            }
+        }
+    }
+    if (type === 'integer') {
+        type = 'number';
+    }
+    const hexMatch = typeof resolved.pattern === 'string' && /^\^\[0-9a-f\]\{(\d+)\}\$$/.exec(resolved.pattern);
+    const valids = [];
+    if (resolved.const && typeof resolved.const === 'string') {
+        valids.push(resolved.const);
+    }
+    for (const v of resolved.enum || []) {
+        if (typeof v === 'string' && v) {
+            valids.push(v);
+        }
+    }
+    return {
+        type,
+        hexLen: hexMatch ? Number(hexMatch[1]) : 0,
+        valids
+    };
+}
+
+function mergedDescribe(validationObjs, isJsonSchema) {
     const merged = {
         ...(validationObjs.pathParams || {}),
         ...(validationObjs.requestBody || {}),
@@ -52,11 +101,7 @@ function mergedDescribe(validationObjs) {
     };
     const keys = {};
     for (const [key, schema] of Object.entries(merged)) {
-        try {
-            keys[key] = schema.describe();
-        } catch {
-            keys[key] = null;
-        }
+        keys[key] = normalizeKeyDesc(schema, isJsonSchema);
     }
     return { keys };
 }
@@ -73,7 +118,7 @@ function buildCases() {
             continue; // SSE hangs by design; migrated and verified separately
         }
 
-        const desc = mergedDescribe(route.validationObjs);
+        const desc = mergedDescribe(route.validationObjs, !!route.jsonSchema);
         const keys = desc.keys || {};
         const pathParamNames = (route.path.match(/:[a-zA-Z0-9_]+/g) || []).map(p => p.slice(1));
 
@@ -164,7 +209,11 @@ async function main() {
     console.log(`sweep done: ${n} cases sent`);
 }
 
-main().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+module.exports = { buildCases };
+
+if (require.main === module) {
+    main().catch(err => {
+        console.error(err);
+        process.exit(1);
+    });
+}

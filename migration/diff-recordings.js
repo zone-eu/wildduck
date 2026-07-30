@@ -79,6 +79,10 @@ function normalizeString(str, reg) {
             .replace(/<epochms>-(\d{4,6})\b/g, '<epochms>-<rnd>')
             // bare 8-digit random numbers in generated fixture subjects
             .replace(/\b\d{8}\b/g, '<num8>')
+            // addresses created without a domain get os.hostname() appended;
+            // the machine hostname drifts between captures (mac vs
+            // macbook-pro.local depending on network state)
+            .replace(/@(mac|macbook[a-z0-9.-]*)\b/gi, '@<hostname>')
             // base36 Date.now() tokens used in generated test usernames
             .replace(/\bms[0-9a-z]{6}\b/g, '<ts36>')
             // long base64/base64url runs that decode to JSON (pagination
@@ -170,13 +174,31 @@ function normalizeRecord(rec, reg) {
     const body = decodeBody(rec.resBody);
     let bodyNorm;
     const ctype = String((rec.resHeaders && rec.resHeaders['content-type']) || '');
+
+    // migrated routes produce Ajv-worded validation errors; the goal accepts
+    // text differences but the shape, the code and the set of offending
+    // field paths must match, so blank only the message strings
+    const maskValidationMessages = json => {
+        if (json && typeof json === 'object' && json.code === 'InputValidationError') {
+            const out = Object.assign({}, json, { error: '<validation-msg>' });
+            if (out.details && typeof out.details === 'object') {
+                const details = {};
+                for (const key of Object.keys(out.details)) {
+                    details[key] = '<validation-msg>';
+                }
+                out.details = details;
+            }
+            return out;
+        }
+        return json;
+    };
     if (['/metrics', '/api-methods'].includes((rec.url || '').split('?')[0])) {
         // prometheus counters are volatile by definition; presence-only
         return { method: rec.method, url: (rec.url || '').split('?')[0], status: rec.status, headers, body: { presenceOnly: true }, proxyError: rec.proxyError };
     }
     if (body.kind === 'text' && /json/.test(ctype)) {
         try {
-            bodyNorm = { json: normalizeValue(JSON.parse(body.text), reg) };
+            bodyNorm = { json: normalizeValue(maskValidationMessages(JSON.parse(body.text)), reg) };
         } catch {
             bodyNorm = { text: normalizeString(body.text, reg) };
         }

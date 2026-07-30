@@ -27,6 +27,8 @@ const Path = require('path');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const metrics = require('./lib/metrics');
 const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
+const { sharedSchemas } = require('./lib/fastify/validation');
+require('./lib/schemas/json-schemas'); // populates sharedSchemas
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -122,6 +124,17 @@ function buildServer() {
     }
 
     const app = fastify(serverOptions);
+
+    // shared schema definitions, referenced from route response schemas via
+    // $ref and published to OpenAPI docs
+    for (const schema of sharedSchemas.values()) {
+        app.addSchema(schema);
+    }
+
+    // request validation happens in the compat adapter on the MERGED params
+    // object (see migration/SEMANTICS.md section 2); Fastify's own per-part
+    // request validation must not run
+    app.setValidatorCompiler(() => () => true);
 
     // ---- body parsing (restify bodyParser equivalents) ----
 
