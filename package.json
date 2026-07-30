@@ -49,6 +49,7 @@
         "@fastify/static": "^10.1.2",
         "@fastify/swagger": "^9.8.1",
         "@fidm/x509": "1.2.1",
+        "@hapi/address": "^5.1.1",
         "@opensearch-project/opensearch": "3.6.0",
         "@phc/pbkdf2": "1.1.14",
         "@postalsys/vmc": "1.1.5",
