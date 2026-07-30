@@ -111,7 +111,9 @@ function buildCases() {
     const cases = [];
 
     for (const route of routes) {
-        if (!route.validationObjs) {
+        if (!route.validationObjs || route.excludeRoute) {
+            // excludeRoute routes (acme challenge) had no validationObjs in
+            // the restify implementation, keep the sweep sequence stable
             continue;
         }
         if (route.responseType === 'text/event-stream' || route.path === '/users/:user/updates') {

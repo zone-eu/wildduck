@@ -87,6 +87,7 @@ function collectRoutes() {
                     responseType: spec.responseType,
                     validationObjs: spec.validationObjs,
                     jsonSchema: !!spec.jsonSchema,
+                    excludeRoute: !!spec.excludeRoute,
                     allowUnknown: !!spec.allowUnknown,
                     handlerCount: handlers.length
                 });
