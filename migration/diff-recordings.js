@@ -87,7 +87,7 @@ function normalizeString(str, reg) {
             // addresses created without a domain get os.hostname() appended;
             // the machine hostname drifts between captures (mac vs
             // macbook-pro.local depending on network state)
-            .replace(/@(mac|macbook[a-z0-9.-]*)\b/gi, '@<hostname>')
+            .replace(/@(mac|macbook[a-z0-9.-]*)(\.(lan|local|home))?\b/gi, '@<hostname>')
             // base36 Date.now() tokens used in generated test usernames
             .replace(/\bms[0-9a-z]{6}\b/g, '<ts36>')
             // long base64/base64url runs that decode to JSON (pagination

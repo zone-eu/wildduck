@@ -4,6 +4,8 @@ const config = require('@zone-eu/wild-config');
 const fastify = require('fastify');
 const fastifyCors = require('@fastify/cors');
 const fastifyStatic = require('@fastify/static');
+const fastifySwagger = require('@fastify/swagger');
+const fs = require('fs');
 const qs = require('qs');
 const log = require('npmlog');
 const UserHandler = require('./lib/user-handler');
@@ -29,6 +31,26 @@ const metrics = require('./lib/metrics');
 const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
 const { sharedSchemas } = require('./lib/fastify/validation');
 require('./lib/schemas/json-schemas'); // populates sharedSchemas
+const apiDocsConfig = require('./config/apigeneration.json');
+
+// the wd* vocabulary is internal to the validation engine, strip it from the
+// published OpenAPI specification
+function stripInternalKeywords(node) {
+    if (Array.isArray(node)) {
+        return node.map(entry => stripInternalKeywords(entry));
+    }
+    if (!node || typeof node !== 'object') {
+        return node;
+    }
+    const out = {};
+    for (const key of Object.keys(node)) {
+        if (key.startsWith('wd') && /^wd[A-Z]/.test(key)) {
+            continue;
+        }
+        out[key] = stripInternalKeywords(node[key]);
+    }
+    return out;
+}
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -130,6 +152,26 @@ function buildServer() {
     for (const schema of sharedSchemas.values()) {
         app.addSchema(schema);
     }
+
+    // OpenAPI generation from the route schemas
+    app.register(fastifySwagger, {
+        openapi: {
+            openapi: apiDocsConfig.openapiVersion || '3.0.0',
+            info: apiDocsConfig.info,
+            servers: apiDocsConfig.servers,
+            tags: apiDocsConfig.tags,
+            components: apiDocsConfig.components,
+            security: apiDocsConfig.security
+        },
+        refResolver: {
+            buildLocalReference(json, baseUri, fragment, i) {
+                return String(json.$id || `def-${i}`).replace(/^wd:/, '');
+            }
+        },
+        transformSpecification(swaggerObject) {
+            return stripInternalKeywords(swaggerObject);
+        }
+    });
 
     // request validation happens in the compat adapter on the MERGED params
     // object (see migration/SEMANTICS.md section 2); Fastify's own per-part
@@ -699,29 +741,33 @@ module.exports = done => {
         namespace: 'mail'
     });
 
-    acmeRoutes(db, server, { disableRedirect: true });
-    usersRoutes(db, server, userHandler, settingsHandler);
-    addressesRoutes(db, server, userHandler, settingsHandler);
-    mailboxesRoutes(db, server, mailboxHandler);
-    messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler);
-    storageRoutes(db, server, storageHandler);
-    filtersRoutes(db, server, userHandler, settingsHandler);
-    domainaccessRoutes(db, server);
-    aspsRoutes(db, server, userHandler);
-    totpRoutes(db, server, userHandler);
-    custom2faRoutes(db, server, userHandler);
-    webauthnRoutes(db, server, userHandler);
-    updatesRoutes(db, server, notifier);
-    authRoutes(db, server, userHandler);
-    autoreplyRoutes(db, server);
-    submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
-    auditRoutes(db, server, auditHandler);
-    domainaliasRoutes(db, server);
-    dkimRoutes(db, server);
-    certsRoutes(db, server);
-    webhooksRoutes(db, server);
-    settingsRoutes(db, server, settingsHandler);
-    healthRoutes(db, server, loggelf);
+    // route modules load in a sibling plugin context so they boot after the
+    // swagger plugin (its onRoute hook only sees routes registered later)
+    app.register(async () => {
+        acmeRoutes(db, server, { disableRedirect: true });
+        usersRoutes(db, server, userHandler, settingsHandler);
+        addressesRoutes(db, server, userHandler, settingsHandler);
+        mailboxesRoutes(db, server, mailboxHandler);
+        messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler);
+        storageRoutes(db, server, storageHandler);
+        filtersRoutes(db, server, userHandler, settingsHandler);
+        domainaccessRoutes(db, server);
+        aspsRoutes(db, server, userHandler);
+        totpRoutes(db, server, userHandler);
+        custom2faRoutes(db, server, userHandler);
+        webauthnRoutes(db, server, userHandler);
+        updatesRoutes(db, server, notifier);
+        authRoutes(db, server, userHandler);
+        autoreplyRoutes(db, server);
+        submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
+        auditRoutes(db, server, auditHandler);
+        domainaliasRoutes(db, server);
+        dkimRoutes(db, server);
+        certsRoutes(db, server);
+        webhooksRoutes(db, server);
+        settingsRoutes(db, server, settingsHandler);
+        healthRoutes(db, server, loggelf);
+    });
 
     if (process.env.NODE_ENV === 'test') {
         app.get('/api-methods', { config: { name: 'api-methods' } }, async (request, reply) => {
@@ -729,6 +775,31 @@ module.exports = done => {
             reply.wdResponseBody = server.routes;
             return server.routes;
         });
+    }
+
+    app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs' }, schema: { hide: true } }, async (request, reply) => {
+        reply.wdContentType = 'application/json; charset=utf-8';
+        return app.swagger();
+    });
+
+    if (process.env.GENERATE_API_DOCS === 'true') {
+        app.ready(() => {
+            try {
+                fs.writeFileSync(Path.join(__dirname, 'docs', 'api', 'openapidocs.json'), JSON.stringify(app.swagger(), null, 4));
+                log.info('API', 'Generated OpenAPI docs to docs/api/openapidocs.json');
+            } catch (err) {
+                log.error('API', 'Failed to generate OpenAPI docs: %s', err.message);
+            }
+        });
+    }
+
+    if (process.env.REGENERATE_API_DOCS === 'true') {
+        // allow 2.5 seconds for services to start and the api doc to be generated, after that exit process
+        (async function () {
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            await sleep(2500);
+            process.exit(0);
+        })();
     }
 
     app.listen({ port: config.api.port, host: config.api.host || '0.0.0.0' }, err => {
