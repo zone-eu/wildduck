@@ -93,6 +93,26 @@ function collectRoutes() {
                 });
             };
         }
+        // native fastify route form: server.route({method, url, schema, config, handler})
+        collector.route = options => {
+            const routeConfig = options.config || {};
+            const schema = options.schema || {};
+            routes.push({
+                module: mod.file,
+                method: String(options.method || 'get').toLowerCase(),
+                path: options.url,
+                name: routeConfig.name,
+                summary: schema.summary,
+                tags: schema.tags,
+                responseType: routeConfig.responseType,
+                validationObjs: routeConfig.validationObjs,
+                jsonSchema: true,
+                excludeRoute: !!routeConfig.excludeRoute,
+                allowUnknown: !!routeConfig.allowUnknown,
+                handlerCount: options.handler ? 1 : 0
+            });
+        };
+        collector.setNotFoundHandler = () => false;
         const extras = mod.extras ? mod.extras() : [anyProxy(), anyProxy(), anyProxy(), anyProxy(), anyProxy(), anyProxy()];
         factory(anyProxy(), collector, ...extras);
     }

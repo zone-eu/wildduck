@@ -9,7 +9,15 @@ const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
-const { attachCompatReplyDecorations, attachServerHeader, attachAccessLog, attachCompatErrorHandler } = require('./lib/fastify/bootstrap');
+const { attachNativeRoutes } = require('./lib/fastify/routes');
+const {
+    attachRequestDecorations,
+    attachReplyDecorations,
+    attachPayloadStash,
+    attachResponseHeaders,
+    attachAccessLog,
+    attachErrorHandler
+} = require('./lib/fastify/bootstrap');
 
 const acmeRoutes = require('./lib/api/acme');
 
@@ -67,10 +75,13 @@ module.exports = done => {
         disableRequestLogging: true
     });
 
-    attachCompatReplyDecorations(app);
-    attachServerHeader(app, 'WildDuck ACME Agent');
+    attachRequestDecorations(app);
+    attachReplyDecorations(app);
+    attachPayloadStash(app);
+    attachResponseHeaders(app, 'WildDuck ACME Agent');
     attachAccessLog(app, 'ACME');
-    attachCompatErrorHandler(app, 'ACME');
+    attachErrorHandler(app, 'ACME');
+    attachNativeRoutes(app, {});
 
     const server = new RestifyCompatAdapter(app);
     server.loggelf = message => loggelf(message);

@@ -29,8 +29,17 @@ const Path = require('path');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const metrics = require('./lib/metrics');
 const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
+const { attachNativeRoutes } = require('./lib/fastify/routes');
 const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
-const { maskUrl, attachCompatReplyDecorations, attachServerHeader, attachAccessLog, attachCompatErrorHandler } = require('./lib/fastify/bootstrap');
+const {
+    maskUrl,
+    attachRequestDecorations,
+    attachReplyDecorations,
+    attachPayloadStash,
+    attachResponseHeaders,
+    attachAccessLog,
+    attachErrorHandler
+} = require('./lib/fastify/bootstrap');
 require('./lib/schemas/json-schemas'); // populates sharedSchemas
 const apiDocsConfig = require('./config/apigeneration.json');
 
@@ -267,8 +276,11 @@ module.exports = done => {
         credentials: true
     });
 
-    attachCompatReplyDecorations(app);
-    attachServerHeader(app, 'WildDuck API');
+    attachRequestDecorations(app);
+    attachReplyDecorations(app);
+    attachPayloadStash(app);
+    attachResponseHeaders(app, 'WildDuck API');
+    attachNativeRoutes(app, server.routes);
 
     // public files (restify serveStatic joined the route path to the root
     // directory, so the files live under public/public)
@@ -297,34 +309,16 @@ module.exports = done => {
 
     // ---- access token check (previously a restify server.use middleware) ----
 
-    app.decorateRequest('wdCtx', null);
-    app.decorateRequest('wdMergedParams', null);
-
     app.addHook('onRequest', async request => {
         if (request.is404) {
             return;
         }
 
         const routeName = request.routeOptions && request.routeOptions.config && request.routeOptions.config.name;
-        const ctx = {
-            user: null,
-            role: null,
-            accessToken: null,
-            isPublic: false,
-            validate: permission => {
-                if (!permission.granted) {
-                    let err = new Error('Not enough privileges');
-                    err.responseCode = 403;
-                    err.code = 'MissingPrivileges';
-                    throw err;
-                }
-            }
-        };
-        request.wdCtx = ctx;
 
         if (PUBLIC_ROUTE_NAMES.has(routeName) || request.url.startsWith('/public/')) {
             // skip token check for public pages
-            ctx.isPublic = true;
+            request.wdIsPublic = true;
             return;
         }
 
@@ -361,8 +355,8 @@ module.exports = done => {
         if (config.api.accessToken) {
             tokenRequired = true;
             if (config.api.accessToken === accessToken) {
-                ctx.role = 'root';
-                ctx.user = 'root';
+                request.role = 'root';
+                request.user = 'root';
                 return;
             }
         }
@@ -431,13 +425,13 @@ module.exports = done => {
                             } catch (err) {
                                 // ignore
                             }
-                            ctx.role = tokenData.role;
-                            ctx.user = tokenData.user;
+                            request.role = tokenData.role;
+                            request.user = tokenData.user;
 
                             // make a reference to original method, otherwise might be overridden
                             let setAuthToken = userHandler.setAuthToken.bind(userHandler);
 
-                            ctx.accessToken = {
+                            request.accessToken = {
                                 hash: tokenHash,
                                 user: tokenData.user,
                                 // if called then refreshes token data for current hash
@@ -455,23 +449,23 @@ module.exports = done => {
                             }
                         }
                     } else {
-                        ctx.role = tokenData.role;
-                        ctx.user = tokenData.user;
+                        request.role = tokenData.role;
+                        request.user = tokenData.user;
                     }
 
-                    if (request.params && request.params.user === 'me' && /^[0-9a-f]{24}$/i.test(ctx.user)) {
-                        request.params.user = ctx.user;
+                    if (request.params && request.params.user === 'me' && /^[0-9a-f]{24}$/i.test(request.user)) {
+                        request.params.user = request.user;
                     }
 
-                    if (!ctx.role) {
+                    if (!request.role) {
                         return fail();
                     }
 
-                    if (/^[0-9a-f]{24}$/i.test(ctx.user)) {
+                    if (/^[0-9a-f]{24}$/i.test(request.user)) {
                         let tokenAuthVersion = Number(tokenData.authVersion) || 0;
                         let userData = await db.users.collection('users').findOne(
                             {
-                                _id: new ObjectId(ctx.user)
+                                _id: new ObjectId(request.user)
                             },
                             { projection: { authVersion: true, disabled: true, suspended: true } }
                         );
@@ -498,8 +492,8 @@ module.exports = done => {
         }
 
         // allow all
-        ctx.role = 'root';
-        ctx.user = 'root';
+        request.role = 'root';
+        request.user = 'root';
     });
 
     // restify's bodyParser mapped JSON body keys into req.params and the token
@@ -507,7 +501,7 @@ module.exports = done => {
     // included in the request body never reached validation; the body is not
     // parsed yet in onRequest, so this runs as a separate preHandler hook
     app.addHook('preHandler', async request => {
-        if (!request.wdCtx || request.wdCtx.isPublic) {
+        if (request.is404 || request.wdIsPublic) {
             return;
         }
         if (request.body && typeof request.body === 'object' && !Array.isArray(request.body) && !Buffer.isBuffer(request.body) && request.body.accessToken) {
@@ -519,8 +513,7 @@ module.exports = done => {
 
     if (metricsEnabled) {
         app.addHook('onResponse', async (request, reply) => {
-            const spec = request.routeOptions && request.routeOptions.config && request.routeOptions.config.spec;
-            const route = (spec && spec.path) || (request.routeOptions && request.routeOptions.url) || 'unknown';
+            const route = (request.routeOptions && request.routeOptions.url) || 'unknown';
             if (route === '/metrics') {
                 return;
             }
@@ -536,12 +529,15 @@ module.exports = done => {
             return payload;
         }
 
-        const size = typeof payload === 'string' || Buffer.isBuffer(payload) ? Buffer.byteLength(payload) : 0;
-        const spec = request.routeOptions && request.routeOptions.config && request.routeOptions.config.spec;
-        const params = request.wdMergedParams || request.query || {};
-        const ctx = request.wdCtx || {};
+        const routeConfig = (request.routeOptions && request.routeOptions.config) || {};
+        if (routeConfig.logGelf === false) {
+            return payload;
+        }
 
-        let path = (spec && spec.path) || maskUrl(request.url);
+        const size = typeof payload === 'string' || Buffer.isBuffer(payload) ? Buffer.byteLength(payload) : 0;
+        const params = request.wdMergedParams || request.query || {};
+
+        let path = (request.routeOptions && request.routeOptions.url) || maskUrl(request.url);
 
         let message = {
             short_message: 'HTTP [' + request.method + ' ' + path + '] ' + (body.success ? 'OK' : 'FAILED'),
@@ -553,8 +549,8 @@ module.exports = done => {
 
             _http_route: path,
             _http_method: request.method,
-            _user: ctx.user,
-            _role: ctx.role,
+            _user: request.user,
+            _role: request.role,
 
             _api_response: body.success ? 'success' : 'fail',
 
@@ -620,7 +616,7 @@ module.exports = done => {
     });
 
     attachAccessLog(app, 'API', { includeUser: true });
-    attachCompatErrorHandler(app, 'API');
+    attachErrorHandler(app, 'API');
 
     app.setNotFoundHandler((request, reply) => {
         const body = {
@@ -628,7 +624,6 @@ module.exports = done => {
             message: `${request.url} does not exist`
         };
         reply.status(404);
-        reply.wdResponseBody = body;
         reply.wdContentType = 'application/json';
         return reply.send(body);
     });
@@ -692,6 +687,10 @@ module.exports = done => {
         namespace: 'mail'
     });
 
+    // native route modules receive the fastify instance itself
+    app.decorate('loggelf', server.loggelf);
+    app.decorate('lock', server.lock);
+
     // route modules load in a sibling plugin context so they boot after the
     // swagger plugin (its onRoute hook only sees routes registered later)
     app.register(async () => {
@@ -721,17 +720,12 @@ module.exports = done => {
     });
 
     if (process.env.NODE_ENV === 'test') {
-        app.get('/api-methods', { config: { name: 'api-methods' } }, async (request, reply) => {
-            reply.wdContentType = 'application/json; charset=utf-8';
-            reply.wdResponseBody = server.routes;
-            return server.routes;
-        });
+        app.get('/api-methods', { config: { name: 'api-methods' } }, async () => server.routes);
     }
 
     // the specification is static once the routes are registered, build once
     let openApiDocsCache = null;
-    app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs' }, schema: { hide: true } }, async (request, reply) => {
-        reply.wdContentType = 'application/json; charset=utf-8';
+    app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs', logGelf: false }, schema: { hide: true } }, async () => {
         if (!openApiDocsCache) {
             openApiDocsCache = app.swagger();
         }

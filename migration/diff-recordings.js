@@ -95,6 +95,8 @@ function normalizeString(str, reg) {
             .replace(/<epochms>-(\d{1,6})\b/g, '<epochms>-<rnd>')
             // random 8-hex attachment filenames generated for PGP parts
             .replace(/\b[0-9a-f]{8}(?=\.asc\b)/g, '<hex8name>')
+            // storage-test upload filenames embed the capture date
+            .replace(/\bupload-\d{4}-\d{2}-\d{2}\./g, 'upload-<date>.')
             // bare 8-digit random numbers in generated fixture subjects
             .replace(/\b\d{8}\b/g, '<num8>')
             // addresses created without a domain get os.hostname() appended;
