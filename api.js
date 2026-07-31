@@ -702,7 +702,7 @@ module.exports = done => {
         storageRoutes(db, server, storageHandler);
         filtersRoutes(db, server, userHandler, settingsHandler);
         domainaccessRoutes(db, app);
-        aspsRoutes(db, server, userHandler);
+        aspsRoutes(db, app, userHandler);
         totpRoutes(db, server, userHandler);
         custom2faRoutes(db, server, userHandler);
         webauthnRoutes(db, server, userHandler);
@@ -710,12 +710,12 @@ module.exports = done => {
         authRoutes(db, server, userHandler);
         autoreplyRoutes(db, app);
         submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
-        auditRoutes(db, server, auditHandler);
+        auditRoutes(db, app, auditHandler);
         domainaliasRoutes(db, server);
-        dkimRoutes(db, server);
-        certsRoutes(db, server);
-        webhooksRoutes(db, server);
-        settingsRoutes(db, server, settingsHandler);
+        dkimRoutes(db, app);
+        certsRoutes(db, app);
+        webhooksRoutes(db, app);
+        settingsRoutes(db, app, settingsHandler);
         healthRoutes(db, app, loggelf);
     });
 
