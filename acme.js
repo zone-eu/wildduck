@@ -8,7 +8,6 @@ const db = require('./lib/db');
 const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
-const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
 const { attachNativeRoutes } = require('./lib/fastify/routes');
 const {
     attachRequestDecorations,
@@ -83,11 +82,17 @@ module.exports = done => {
     attachErrorHandler(app, 'ACME');
     attachNativeRoutes(app, {});
 
-    const server = new RestifyCompatAdapter(app);
-    server.loggelf = message => loggelf(message);
+    app.decorate('loggelf', message => loggelf(message));
 
-    // registers the challenge route and the catch-all NotFound redirect
-    acmeRoutes(db, server);
+    // the ACME http-01 challenge route
+    acmeRoutes(db, app);
+
+    // catch-all redirect for everything that is not a challenge request
+    app.setNotFoundHandler((request, reply) => {
+        let remoteAddress = (request.raw.socket.remoteAddress || '').replace(/^::ffff:/, '');
+        log.http('ACME', `${remoteAddress} ${request.method} ${request.url} 302 [redirect=${config.acme.agent.redirect}]`);
+        return reply.redirect(config.acme.agent.redirect, 302);
+    });
 
     app.listen({ port: config.acme.agent.port, host: config.acme.agent.host || '0.0.0.0' }, err => {
         if (err) {
@@ -104,6 +109,6 @@ module.exports = done => {
         }
         started = true;
         log.info('ACME', 'Server listening on %s:%s', config.acme.agent.host || '0.0.0.0', config.acme.agent.port);
-        done(null, server);
+        done(null, app);
     });
 };

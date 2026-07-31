@@ -16,52 +16,39 @@ const authRoutes = require('../../lib/api/auth');
 const webauthnRoutes = require('../../lib/api/2fa/webauthn');
 const UserHandler = require('../../lib/user-handler');
 
+// captures native fastify route registrations: server.route({method, url, config, handler})
+function routeCollector(routes) {
+    return {
+        route(options) {
+            routes.push({ spec: { path: options.url, name: options.config && options.config.name }, handler: options.handler });
+        }
+    };
+}
+
 function getAuthenticateRoute(userHandler) {
     const routes = [];
-    const server = {
-        post(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        del() {},
-        get() {}
-    };
-
-    authRoutes({}, server, userHandler);
+    authRoutes({}, routeCollector(routes), userHandler);
     return routes.find(route => route.spec.path === '/authenticate' && route.spec.name === 'authenticate');
 }
 
 function getWebAuthnRoute(userHandler, path, name) {
     const routes = [];
-    const server = {
-        post(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        del(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        get(spec, handler) {
-            routes.push({ spec, handler });
-        }
-    };
-
-    webauthnRoutes({}, server, userHandler);
+    webauthnRoutes({}, routeCollector(routes), userHandler);
     return routes.find(route => route.spec.path === path && route.spec.name === name);
 }
 
+// minimal fastify reply stand-in: handlers use reply.code().send()
 function getResponse() {
     return {
         statusCode: 200,
         body: false,
-        charSet() {
-            return this;
-        },
-        status(statusCode) {
+        code(statusCode) {
             this.statusCode = statusCode;
             return this;
         },
-        json(body) {
+        send(body) {
             this.body = body;
-            return body;
+            return this;
         }
     };
 }

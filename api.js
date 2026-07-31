@@ -694,24 +694,24 @@ module.exports = done => {
     // route modules load in a sibling plugin context so they boot after the
     // swagger plugin (its onRoute hook only sees routes registered later)
     app.register(async () => {
-        acmeRoutes(db, server, { disableRedirect: true });
-        usersRoutes(db, server, userHandler, settingsHandler);
-        addressesRoutes(db, server, userHandler, settingsHandler);
-        mailboxesRoutes(db, server, mailboxHandler);
-        messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler);
-        storageRoutes(db, server, storageHandler);
-        filtersRoutes(db, server, userHandler, settingsHandler);
+        acmeRoutes(db, app);
+        usersRoutes(db, app, userHandler, settingsHandler);
+        addressesRoutes(db, app, userHandler, settingsHandler);
+        mailboxesRoutes(db, app, mailboxHandler);
+        messagesRoutes(db, app, messageHandler, userHandler, storageHandler, settingsHandler);
+        storageRoutes(db, app, storageHandler);
+        filtersRoutes(db, app, userHandler, settingsHandler);
         domainaccessRoutes(db, app);
         aspsRoutes(db, app, userHandler);
-        totpRoutes(db, server, userHandler);
-        custom2faRoutes(db, server, userHandler);
-        webauthnRoutes(db, server, userHandler);
-        updatesRoutes(db, server, notifier);
-        authRoutes(db, server, userHandler);
+        totpRoutes(db, app, userHandler);
+        custom2faRoutes(db, app, userHandler);
+        webauthnRoutes(db, app, userHandler);
+        updatesRoutes(db, app, notifier);
+        authRoutes(db, app, userHandler);
         autoreplyRoutes(db, app);
-        submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
+        submitRoutes(db, app, messageHandler, userHandler, settingsHandler);
         auditRoutes(db, app, auditHandler);
-        domainaliasRoutes(db, server);
+        domainaliasRoutes(db, app);
         dkimRoutes(db, app);
         certsRoutes(db, app);
         webhooksRoutes(db, app);
