@@ -165,3 +165,24 @@ listed here is expected to match the goldens exactly.
   alternatives kept the original casing. Behaviorally inert: authentication
   normalizes addresses through tools.normalizeAddress anyway; the difference
   is only visible in authlog echoes.
+
+Native-route phase (compat adapter retired), additional deviations. None of
+these are observable in the goldens (no golden record covers a successful
+streamed download):
+
+- Single-stream downloads (audit export.mbox, storage getFile, message
+  source, message attachments) are sent with reply.send(stream) instead of
+  hijacking the raw response. The onSend/onResponse hooks now run for them:
+  they carry the `server` header and appear in the access log and metrics,
+  which the restify implementation did not do for streamed responses.
+  users /data/export and the updates SSE stream still hijack (the export
+  writes an error trailer mid-stream, SSE manages its own lifecycle).
+- storage getFile no longer writes err.message into the response body when
+  the GridFS stream errors mid-transfer; fastify tears the connection down
+  and the error is logged.
+- message attachment download opens the GridFS read stream before writing
+  the response head, so its "Failed to read attachment" 500 path is
+  reachable again (previously the 200 head was already flushed and the
+  error response was silently dropped, leaving the connection hanging).
+- handler crash bodies keep the exact responseWrapper shape, produced by
+  the global fastify error handler; the wrapper itself is gone.

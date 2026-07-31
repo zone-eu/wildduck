@@ -28,7 +28,6 @@ const Lock = require('ioredfour');
 const Path = require('path');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const metrics = require('./lib/metrics');
-const { RestifyCompatAdapter } = require('./lib/fastify/adapter');
 const { attachNativeRoutes } = require('./lib/fastify/routes');
 const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
 const {
@@ -267,7 +266,10 @@ module.exports = done => {
     };
 
     const app = buildServer();
-    const server = new RestifyCompatAdapter(app);
+
+    // named route registry, served by the test-only /api-methods route and
+    // used by the test overview generator
+    const routeRegistry = {};
 
     const corsOrigins = [].concat(config.api.cors.origins || ['*']);
     app.register(fastifyCors, {
@@ -280,7 +282,7 @@ module.exports = done => {
     attachReplyDecorations(app);
     attachPayloadStash(app);
     attachResponseHeaders(app, 'WildDuck API');
-    attachNativeRoutes(app, server.routes);
+    attachNativeRoutes(app, routeRegistry);
 
     // public files (restify serveStatic joined the route path to the root
     // directory, so the files live under public/public)
@@ -680,16 +682,15 @@ module.exports = done => {
         loggelf: message => loggelf(message)
     });
 
-    server.loggelf = (message, requiredKeys = []) => loggelf(message, requiredKeys);
-
-    server.lock = new Lock({
-        redis: db.redis,
-        namespace: 'mail'
-    });
-
-    // native route modules receive the fastify instance itself
-    app.decorate('loggelf', server.loggelf);
-    app.decorate('lock', server.lock);
+    // route modules read these off the fastify instance
+    app.decorate('loggelf', (message, requiredKeys = []) => loggelf(message, requiredKeys));
+    app.decorate(
+        'lock',
+        new Lock({
+            redis: db.redis,
+            namespace: 'mail'
+        })
+    );
 
     // route modules load in a sibling plugin context so they boot after the
     // swagger plugin (its onRoute hook only sees routes registered later)
@@ -720,7 +721,7 @@ module.exports = done => {
     });
 
     if (process.env.NODE_ENV === 'test') {
-        app.get('/api-methods', { config: { name: 'api-methods' } }, async () => server.routes);
+        app.get('/api-methods', { config: { name: 'api-methods' } }, async () => routeRegistry);
     }
 
     // the specification is static once the routes are registered, build once
@@ -766,6 +767,6 @@ module.exports = done => {
         started = true;
         metrics.setServiceUp('api', true);
         log.info('API', 'Server listening on %s:%s', config.api.host || '0.0.0.0', config.api.port);
-        done(null, server);
+        done(null, app);
     });
 };
