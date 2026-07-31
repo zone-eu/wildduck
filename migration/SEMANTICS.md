@@ -186,3 +186,33 @@ streamed download):
   error response was silently dropped, leaving the connection hanging).
 - handler crash bodies keep the exact responseWrapper shape, produced by
   the global fastify error handler; the wrapper itself is gone.
+
+## 9. Post-baseline bug fixes (deliberate behavior changes)
+
+Fixed after the golden baseline was recorded, so the full-recording diff no
+longer aligns. The sweep slice still verifies everything else, see
+migration/filter-sweep.js:
+
+- `GET /users/:user/archived/messages` returned a serializer error instead of
+  the listing whenever the archive was not empty: the shared listing model
+  types `results[].id` as a number, but archived entries are identified by
+  their archive ObjectId. The archived listing now uses its own item model.
+  (Migration regression: restify's res.json had no response schema.)
+- `POST /users/:user/archived/messages/:message/restore` typed its `message`
+  path param as the numeric mailbox uid while the handler looks the id up as
+  an ObjectId, so every real archived id was rejected with a 400 and the
+  route could not be used at all. Now an ObjectId schema. (Pre-existing on
+  master, where the param was Joi.number().)
+- `userHandler.webauthnAttestateRegistration` and
+  `webauthnAssertAuthentication` treated a missing challenge as found:
+  ioredis answers `{}` (truthy) for hgetall on a missing key, so the intended
+  404 ChallengeNotFound was dead code and an unknown challenge crashed into a
+  200 body carrying a Node TypeError. Both now check for the challenge field.
+  A replayed (consumed) webauthn challenge therefore answers 404
+  ChallengeNotFound where it used to answer 403 Invalid2faNonce; the nonce
+  binding check itself is unchanged and still answers 403 for a live
+  challenge asserted with the wrong nonce.
+- `userHandler.webauthnRemove` and `disable2fa` built a 404 UserNotFound error
+  for a vanished user but never threw it. Both now throw, so those two routes
+  answer 404 instead of 200 for an unknown user (the only two sweep records
+  that differ from the baseline).

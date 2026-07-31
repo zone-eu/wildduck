@@ -67,6 +67,11 @@ function typesCompatible(a, b) {
 // produced (it returns { success, response }); the new spec documents reality
 const CORRECTED_RESPONSES = new Set(['post /users/{user}/2fa/webauthn/registration-attestation']);
 
+// parameters whose documented type was wrong in the restify era and was fixed
+// deliberately (see migration/SEMANTICS.md section 9): the archived message id
+// is an ObjectId, the numeric type made the route impossible to call
+const CORRECTED_PARAMS = new Set(['post /users/{user}/archived/messages/{message}/restore path:message']);
+
 const normPath = p => p.replace(/:([A-Za-z0-9_-]+)/g, '{$1}');
 
 const oldPaths = {};
@@ -101,7 +106,7 @@ for (const [p, oldMethods] of Object.entries(oldPaths)) {
             }
             const oldType = typeOf(oldSpec, oldPar.schema || {});
             const newType = typeOf(newSpec, newPar.schema || {});
-            if (!typesCompatible(oldType, newType)) {
+            if (!typesCompatible(oldType, newType) && !CORRECTED_PARAMS.has(`${method} ${p} ${key}`)) {
                 report(`PARAM TYPE: ${method.toUpperCase()} ${p} ${key}: ${oldType} vs ${newType}`);
             }
             if (Boolean(oldPar.required) !== Boolean(newPar.required)) {

@@ -7913,12 +7913,11 @@
                                             "type": "array",
                                             "items": {
                                                 "type": "object",
-                                                "title": "GetMessagesResult",
+                                                "title": "GetArchivedMessagesResult",
                                                 "additionalProperties": true,
                                                 "properties": {
                                                     "id": {
-                                                        "type": "number",
-                                                        "description": "ID of the Message"
+                                                        "description": "ID of the archived Message"
                                                     },
                                                     "mailbox": {
                                                         "type": "string",
@@ -8316,8 +8315,10 @@
                     },
                     {
                         "schema": {
-                            "type": "number",
-                            "minimum": 1
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
                         },
                         "in": "path",
                         "name": "message",
