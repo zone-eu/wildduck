@@ -701,14 +701,14 @@ module.exports = done => {
         messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler);
         storageRoutes(db, server, storageHandler);
         filtersRoutes(db, server, userHandler, settingsHandler);
-        domainaccessRoutes(db, server);
+        domainaccessRoutes(db, app);
         aspsRoutes(db, server, userHandler);
         totpRoutes(db, server, userHandler);
         custom2faRoutes(db, server, userHandler);
         webauthnRoutes(db, server, userHandler);
         updatesRoutes(db, server, notifier);
         authRoutes(db, server, userHandler);
-        autoreplyRoutes(db, server);
+        autoreplyRoutes(db, app);
         submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
         auditRoutes(db, server, auditHandler);
         domainaliasRoutes(db, server);
@@ -716,7 +716,7 @@ module.exports = done => {
         certsRoutes(db, server);
         webhooksRoutes(db, server);
         settingsRoutes(db, server, settingsHandler);
-        healthRoutes(db, server, loggelf);
+        healthRoutes(db, app, loggelf);
     });
 
     if (process.env.NODE_ENV === 'test') {
