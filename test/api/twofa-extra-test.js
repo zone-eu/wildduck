@@ -183,14 +183,10 @@ describe('API 2FA extras', function () {
         expect(response.body.error).to.not.be.empty;
     });
 
-    it('should DELETE /users/{user}/2fa/webauthn/credentials/{credential} expect success / unknown credential still reports deleted', async () => {
-        // userHandler.webauthnRemove does not check whether the $pull actually
-        // removed anything, an unknown credential id for an existing user
-        // responds 200 with deleted=true
-        const response = await server.del(`/users/${customUser}/2fa/webauthn/credentials/${'0'.repeat(24)}`).expect(200);
+    it('should DELETE /users/{user}/2fa/webauthn/credentials/{credential} expect failure / unknown credential', async () => {
+        const response = await server.delete(`/users/${customUser}/2fa/webauthn/credentials/${'0'.repeat(24)}`).expect(404);
 
-        expect(response.body.success).to.be.true;
-        expect(response.body.deleted).to.be.true;
+        expect(response.body.code).to.equal('CredentialNotFound');
     });
 
     it('should POST /users/{user}/2fa/webauthn/registration-attestation expect failure / missing challenge', async () => {

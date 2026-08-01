@@ -15808,11 +15808,6 @@
                                         },
                                         "value": {
                                             "description": "Setting value"
-                                        },
-                                        "error": {
-                                            "type": "string",
-                                            "description": "Error if present",
-                                            "example": "Key was not found"
                                         }
                                     },
                                     "required": [

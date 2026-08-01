@@ -262,11 +262,8 @@ describe('Messages extra tests', function () {
     });
 
     it('should DELETE /users/{user}/outbound/{queueId} expect failure / unknown queueId', async () => {
-        // NB! a missing queue entry is reported with HTTP 200 and success=false,
-        // not with a 404 (the handler passes maildrop.removeFromQueue() output through)
-        const response = await server.delete(`/users/${user}/outbound/0123456789abcdef01`).expect(200);
+        const response = await server.delete(`/users/${user}/outbound/${'0'.repeat(24)}`).expect(404);
 
-        expect(response.body.success).to.be.false;
         expect(response.body.code).to.equal('NoSuchQueueEntry');
     });
 

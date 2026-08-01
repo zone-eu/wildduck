@@ -195,6 +195,11 @@ change stream at `/users/:user/updates`, which is a Server-Sent-Events stream,
 and `POST /data/export`, which appends an error trailer after the response has
 already started.
 
+Those two go through `server.beginRawResponse(req, reply, status, headers)`.
+Hijacking the response means Fastify runs none of the reply hooks, so the
+helper applies the header policy and emits the access log line and the request
+metric itself when the connection closes.
+
 ## Notes for API clients
 
 - JSON responses are compact. They are not pretty-printed and carry no

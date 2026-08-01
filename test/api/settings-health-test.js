@@ -68,13 +68,10 @@ describe('Settings and Health tests', function () {
         });
 
         it('should GET /settings/{key} expect failure / unknown key', async () => {
-            // unknown keys are not a validation error, the endpoint responds with
-            // HTTP 200 and success:false
-            const response = await server.get(`/settings/unknown:key:${Date.now()}`).expect(200);
+            const response = await server.get('/settings/this.key.does.not.exist').expect(404);
 
-            expect(response.body.success).to.be.false;
-            expect(response.body.error).to.be.equal('Key was not found');
-            expect(response.body.value).to.not.exist;
+            expect(response.body.code).to.equal('SettingNotFound');
+            expect(response.body.error).to.equal('Key was not found');
         });
 
         it('should POST /settings/{key} expect success / same value round-trip', async () => {

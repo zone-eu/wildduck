@@ -302,16 +302,13 @@ describe('API Users Extra', function () {
             expect(response.body.code).to.equal('InputValidationError');
         });
 
-        it('should PUT /users/{user}/addressregister/{id} expect failure / unknown id gives success false', async () => {
-            // the handler reports the missing entry as a 200 response with success:false
+        it('should PUT /users/{user}/addressregister/{id} expect failure / unknown id', async () => {
             const response = await server
-                .put(`/users/${userA}/addressregister/${crypto.randomBytes(12).toString('hex')}`)
-                .send({
-                    name: 'Renamed Friend',
-                    disabled: false
-                })
-                .expect(200);
-            expect(response.body.success).to.be.false;
+                .put(`/users/${userA}/addressregister/${'0'.repeat(24)}`)
+                .send({ name: 'Nobody', disabled: false })
+                .expect(404);
+
+            expect(response.body.code).to.equal('AddressNotFound');
         });
     });
 
@@ -342,8 +339,8 @@ describe('API Users Extra', function () {
         });
 
         it('should PUT /users/{user}/logout expect failure / unknown user', async () => {
-            // the handler responds with a hardcoded 500 although the error itself carries responseCode 404
-            const response = await server.put(`/users/${unknownUserId}/logout`).send({}).expect(500);
+            const response = await server.put(`/users/${unknownUserId}/logout`).send({ reason: 'test' }).expect(404);
+
             expect(response.body.code).to.equal('UserNotFound');
         });
 
@@ -358,8 +355,8 @@ describe('API Users Extra', function () {
         });
 
         it('should POST /users/{user}/restore expect failure / user not deleted', async () => {
-            // the handler responds with a hardcoded 500 although the error itself carries responseCode 404
-            const response = await server.post(`/users/${userA}/restore`).send({}).expect(500);
+            const response = await server.post(`/users/${userA}/restore`).send({}).expect(404);
+
             expect(response.body.code).to.equal('AccountNotFound');
         });
     });

@@ -505,16 +505,6 @@ module.exports = done => {
 
     // ---- metrics timing (previously a restify server.use middleware) ----
 
-    if (metricsEnabled) {
-        app.addHook('onResponse', async (request, reply) => {
-            const route = (request.routeOptions && request.routeOptions.url) || 'unknown';
-            if (route === '/metrics') {
-                return;
-            }
-            metrics.recordApiRequest(request.method, route, reply.statusCode, reply.elapsedTime / 1000);
-        });
-    }
-
     // ---- Gelf HTTP logging (previously done inside the restify JSON formatter) ----
 
     app.addHook('onResponse', async (request, reply) => {
@@ -598,7 +588,7 @@ module.exports = done => {
         loggelf(message);
     });
 
-    attachAccessLog(app, 'API', { includeUser: true });
+    attachAccessLog(app, 'API', { includeUser: true, serverName: 'WildDuck API' });
     attachErrorHandler(app, 'API');
 
     app.setNotFoundHandler((request, reply) => {
