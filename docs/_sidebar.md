@@ -28,3 +28,4 @@
     -   [Retention policies](in-depth/retention-policies.md)
     -   [Wildduck docker image](in-depth/docker.md)
     -   [API roles](in-depth/roles.md)
+    -   [API request handling and validation](in-depth/api-validation.md)

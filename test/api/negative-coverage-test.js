@@ -152,6 +152,13 @@ const cases = [
     {
         title: 'PUT /users/{user}/addressregister/{id} expect failure / malformed user id',
         request: () => server.put(`/users/zzz/addressregister/${ADDRESS}`).send({ name: 'Test' })
+    },
+    {
+        // length limits count UTF-16 code units, so 65 astral characters are
+        // 130 units and exceed the 128 character limit even though they are
+        // only 65 code points
+        title: 'PUT /users/{user}/autoreply expect failure / name longer than the limit in code units',
+        request: () => server.put(`/users/${USER}/autoreply`).send({ name: '😀'.repeat(65) })
     }
 ];
 

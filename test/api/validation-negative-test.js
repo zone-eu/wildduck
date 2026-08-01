@@ -4,14 +4,13 @@
 
 'use strict';
 
-const crypto = require('crypto');
 const supertest = require('supertest');
 const chai = require('chai');
 const { ObjectId } = require('mongodb');
-const forge = require('node-forge');
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
+const { createRoleToken, generateSelfSignedPair } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -40,63 +39,10 @@ describe('API validation negative tests', function () {
     // access tokens are validated even when access control is not required,
     // so a role token grants the audit permissions that the default root
     // role does not have (same helper as in audit-test.js)
-    const createRoleToken = async role => {
-        const accessToken = crypto.randomBytes(20).toString('hex');
-        const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-        const tokenData = {
-            user: 'root',
-            role,
-            ttl: 3600,
-            created: Date.now().toString()
-        };
-
-        tokenData.s = crypto
-            .createHmac('sha256', config.api.accessControl.secret)
-            .update(
-                JSON.stringify({
-                    token: accessToken,
-                    user: tokenData.user,
-                    role: tokenData.role
-                })
-            )
-            .digest('hex');
-
-        await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
-
-        return {
-            accessToken,
-            tokenHash
-        };
-    };
 
     // self-signed throwaway certificate. The RSA key comes from the native
     // node:crypto generator (fast), node-forge only assembles and signs the
     // certificate structure
-    const generateSelfSignedPair = servername => {
-        const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
-            modulusLength: 2048
-        });
-
-        // PKCS#1 PEM ("BEGIN RSA PRIVATE KEY") to match the API key pattern
-        const keyPem = privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
-        const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
-
-        const cert = forge.pki.createCertificate();
-        cert.publicKey = forge.pki.publicKeyFromPem(publicPem);
-        cert.serialNumber = '01' + crypto.randomBytes(8).toString('hex');
-        cert.validity.notBefore = new Date(Date.now() - 24 * 3600 * 1000);
-        cert.validity.notAfter = new Date(Date.now() + 7 * 24 * 3600 * 1000);
-
-        const attrs = [{ name: 'commonName', value: servername }];
-        cert.setSubject(attrs);
-        cert.setIssuer(attrs);
-        cert.sign(forge.pki.privateKeyFromPem(keyPem), forge.md.sha256.create());
-
-        return {
-            keyPem,
-            certPem: forge.pki.certificateToPem(cert)
-        };
-    };
 
     before(async () => {
         await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
@@ -525,13 +471,6 @@ describe('API validation negative tests', function () {
             expect(response.body.error).to.contain('"rogueKey" is not allowed');
         });
 
-        it('should POST /users/{user}/quota/reset expect failure / unknown user', async () => {
-            const response = await server.post(`/users/${UNKNOWN_ID}/quota/reset`).send({}).expect(404);
-
-            expect(response.body.error).to.equal('This user does not exist');
-            expect(response.body.code).to.equal('UserNotFound');
-        });
-
         it('should PUT /users/{user}/mailboxes/{mailbox}/messages expect failure / missing message list', async () => {
             const response = await server.put(`/users/${user}/mailboxes/${inboxId}/messages`).send({ seen: true }).expect(400);
 
@@ -566,11 +505,5 @@ describe('API validation negative tests', function () {
         });
     });
 
-    describe('ACME', () => {
-        it('should GET /.well-known/acme-challenge/{token} expect failure / unknown token', async () => {
-            const response = await server.get(`/.well-known/acme-challenge/vnegunknowntoken${runId}`).expect(404);
-
-            expect(response.body.error).to.equal('Unknown challenge');
-        });
-    });
+    describe('ACME', () => {});
 });

@@ -6,13 +6,13 @@
 const supertest = require('supertest');
 const chai = require('chai');
 const crypto = require('crypto');
-const forge = require('node-forge');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
+const { generateSelfSignedPair } = require('./_helpers');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -24,27 +24,6 @@ describe('API ACME challenge', function () {
     const keyAuthorization = `${token}.${crypto.randomBytes(32).toString('base64url')}`;
 
     let certId;
-
-    // self-signed throwaway certificate: the ACME challenge is stored on a
-    // certs record, so one has to exist for the servername
-    const generateSelfSignedPair = commonName => {
-        const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-        const keyPem = privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
-        const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
-
-        const cert = forge.pki.createCertificate();
-        cert.publicKey = forge.pki.publicKeyFromPem(publicPem);
-        cert.serialNumber = '01' + crypto.randomBytes(8).toString('hex');
-        cert.validity.notBefore = new Date(Date.now() - 24 * 3600 * 1000);
-        cert.validity.notAfter = new Date(Date.now() + 7 * 24 * 3600 * 1000);
-
-        const attrs = [{ name: 'commonName', value: commonName }];
-        cert.setSubject(attrs);
-        cert.setIssuer(attrs);
-        cert.sign(forge.pki.privateKeyFromPem(keyPem), forge.md.sha256.create());
-
-        return { keyPem, certPem: forge.pki.certificateToPem(cert) };
-    };
 
     before(async () => {
         await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));

@@ -32,6 +32,7 @@ const { attachNativeRoutes } = require('./lib/fastify/routes');
 const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
 const {
     maskUrl,
+    requestParams,
     attachRequestDecorations,
     attachReplyDecorations,
     attachPayloadStash,
@@ -67,6 +68,10 @@ const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const { SettingsHandler } = require('./lib/settings-handler');
 
+// logged param values are truncated to 128 chars, so there is no point in
+// rendering more than that per nested value
+const INSPECT_OPTIONS = { depth: 3, maxStringLength: 160, maxArrayLength: 20, breakLength: Infinity };
+
 let userHandler;
 let mailboxHandler;
 let messageHandler;
@@ -75,10 +80,6 @@ let auditHandler;
 let settingsHandler;
 let notifier;
 let loggelf;
-
-// named routes that skip the access token check (static /public files are
-// matched by URL prefix instead, restify used routes named public_get/public_post)
-const PUBLIC_ROUTE_NAMES = new Set(['acmeToken', 'metrics']);
 
 function buildServer() {
     const serverOptions = {
@@ -160,8 +161,8 @@ function buildServer() {
         }
     });
 
-    // request validation happens in the compat adapter on the MERGED params
-    // object (see migration/SEMANTICS.md section 2); Fastify's own per-part
+    // request validation runs on the MERGED params object in a preValidation
+    // hook (see docs/in-depth/api-validation.md); Fastify's own per-part
     // request validation must not run
     app.setValidatorCompiler(() => () => true);
 
@@ -184,7 +185,6 @@ function buildServer() {
             const parseError = new Error('Invalid JSON: ' + err.message);
             parseError.responseCode = 400;
             parseError.code = 'InvalidContent';
-            parseError.restifyStyle = true;
             return done(parseError);
         }
     };
@@ -274,6 +274,7 @@ module.exports = done => {
     const corsOrigins = [].concat(config.api.cors.origins || ['*']);
     app.register(fastifyCors, {
         origin: corsOrigins.includes('*') ? '*' : corsOrigins,
+        methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['X-Access-Token', 'Authorization'],
         credentials: true
     });
@@ -295,7 +296,7 @@ module.exports = done => {
     const metricsEnabled = metrics.enabled;
 
     if (metricsEnabled) {
-        app.get('/metrics', { config: { name: 'metrics' } }, async (request, reply) => {
+        app.get('/metrics', { config: { name: 'metrics', public: true } }, async (request, reply) => {
             try {
                 // restify's text formatter replaced prom-client's content type
                 // (version param included) with plain text/plain
@@ -316,10 +317,11 @@ module.exports = done => {
             return;
         }
 
-        const routeName = request.routeOptions && request.routeOptions.config && request.routeOptions.config.name;
+        const routeConfig = (request.routeOptions && request.routeOptions.config) || {};
 
-        if (PUBLIC_ROUTE_NAMES.has(routeName) || request.url.startsWith('/public/')) {
-            // skip token check for public pages
+        // routes opt out of the token check with config.public; the static
+        // files under /public/ are matched by URL prefix instead
+        if (routeConfig.public || request.url.startsWith('/public/')) {
             request.wdIsPublic = true;
             return;
         }
@@ -349,7 +351,6 @@ module.exports = done => {
             let error = new Error('Invalid accessToken value');
             error.responseCode = 403;
             error.code = 'InvalidToken';
-            error.restifyStyle = true;
             throw error;
         };
 
@@ -404,10 +405,7 @@ module.exports = done => {
                         /*
                             // do not delete just in case there is something wrong with the check
                             try {
-                                await db.redis
-                                    .multi()
-                                    .del('tn:token:' + tokenHash)
-                                    .exec();
+                                await db.redis.del('tn:token:' + tokenHash);
                             } catch (err) {
                                 // ignore
                             }
@@ -420,10 +418,7 @@ module.exports = done => {
                         if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
                             // token is still usable, increase session length
                             try {
-                                await db.redis
-                                    .multi()
-                                    .expire('tn:token:' + tokenHash, tokenTTL)
-                                    .exec();
+                                await db.redis.expire('tn:token:' + tokenHash, tokenTTL);
                             } catch (err) {
                                 // ignore
                             }
@@ -442,10 +437,7 @@ module.exports = done => {
                         } else {
                             // expired token, clear it
                             try {
-                                await db.redis
-                                    .multi()
-                                    .del('tn:token:' + tokenHash)
-                                    .exec();
+                                await db.redis.del('tn:token:' + tokenHash);
                             } catch (err) {
                                 // ignore
                             }
@@ -498,11 +490,11 @@ module.exports = done => {
         request.user = 'root';
     });
 
-    // restify's bodyParser mapped JSON body keys into req.params and the token
-    // middleware then deleted req.params.accessToken, so a token redundantly
-    // included in the request body never reached validation; the body is not
-    // parsed yet in onRequest, so this runs as a separate preHandler hook
-    app.addHook('preHandler', async request => {
+    // a token redundantly included in the request body must never reach
+    // validation (it is not a declared field) nor the logs. The body is not
+    // parsed yet in onRequest, so this runs as an instance level preValidation
+    // hook, which fastify runs before the route's own params merge
+    app.addHook('preValidation', async request => {
         if (request.is404 || request.wdIsPublic) {
             return;
         }
@@ -525,19 +517,23 @@ module.exports = done => {
 
     // ---- Gelf HTTP logging (previously done inside the restify JSON formatter) ----
 
-    app.addHook('onSend', async (request, reply, payload) => {
+    app.addHook('onResponse', async (request, reply) => {
         const body = reply.wdResponseBody;
         if (!body || typeof body !== 'object') {
-            return payload;
+            return;
         }
 
+        // only documented API routes produce a gelf line; infra routes
+        // (metrics, the OpenAPI document, /api-methods) declare no
+        // validationObjs and are not API responses
         const routeConfig = (request.routeOptions && request.routeOptions.config) || {};
-        if (routeConfig.logGelf === false) {
-            return payload;
+        if (!routeConfig.validationObjs) {
+            return;
         }
 
-        const size = typeof payload === 'string' || Buffer.isBuffer(payload) ? Buffer.byteLength(payload) : 0;
-        const params = request.wdMergedParams || request.query || {};
+        // fastify has already computed the body size for content-length
+        const size = Number(reply.getHeader('content-length')) || 0;
+        const params = requestParams(request);
 
         let path = (request.routeOptions && request.routeOptions.url) || maskUrl(request.url);
 
@@ -571,9 +567,9 @@ module.exports = done => {
             }
 
             // cast value to string if not string
-            value = typeof params[key] === 'string' ? params[key] : util.inspect(params[key], false, 3).toString().trim();
+            value = typeof value === 'string' ? value : util.inspect(value, INSPECT_OPTIONS).trim();
 
-            if (['password', 'existingPassword'].includes(key)) {
+            if (['password', 'existingPassword', 'accessToken'].includes(key)) {
                 value = '***';
             } else if (value.length > 128) {
                 value = value.substr(0, 128) + '…';
@@ -594,27 +590,12 @@ module.exports = done => {
             message['_req_' + key] = value;
         });
 
-        Object.keys(body).forEach(key => {
-            let value = body[key];
-            if (!body || !['id'].includes(key)) {
-                return;
-            }
-            value = typeof value === 'string' ? value : util.inspect(value, false, 3).toString().trim();
-
-            if (value.length > 128) {
-                value = value.substr(0, 128) + '…';
-            }
-
-            if (key.length > 30) {
-                key = key.substr(0, 30) + '…';
-            }
-
-            message['_res_' + key] = value;
-        });
+        if (typeof body.id !== 'undefined') {
+            let value = typeof body.id === 'string' ? body.id : util.inspect(body.id, INSPECT_OPTIONS).trim();
+            message._res_id = value.length > 128 ? value.substr(0, 128) + '…' : value;
+        }
 
         loggelf(message);
-
-        return payload;
     });
 
     attachAccessLog(app, 'API', { includeUser: true });
@@ -623,7 +604,7 @@ module.exports = done => {
     app.setNotFoundHandler((request, reply) => {
         const body = {
             code: 'ResourceNotFound',
-            message: `${request.url} does not exist`
+            message: `${maskUrl(request.url)} does not exist`
         };
         reply.status(404);
         reply.wdContentType = 'application/json';
@@ -726,7 +707,7 @@ module.exports = done => {
 
     // the specification is static once the routes are registered, build once
     let openApiDocsCache = null;
-    app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs', logGelf: false }, schema: { hide: true } }, async () => {
+    app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs' }, schema: { hide: true } }, async () => {
         if (!openApiDocsCache) {
             openApiDocsCache = app.swagger();
         }

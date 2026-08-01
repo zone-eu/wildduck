@@ -9,7 +9,6 @@
         "printconf": "NODE_CONFIG_ONLY=true npm start",
         "runtest": "NODE_ENV=test grunt",
         "runci": "npm run printconf && npm run runtest",
-        "apidoc": "apidoc -i lib/api/ -o docs/api/",
         "show": "NODE_CONFIG_ONLY=true node server.js",
         "start": "node server.js",
         "update": "rm -rf node_modules package-lock.json && ncu -u && npm install",

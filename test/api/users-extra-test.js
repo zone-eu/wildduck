@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const supertest = require('supertest');
 const chai = require('chai');
 const db = require('../../lib/db');
+const { createRoleToken, binaryParser } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -19,42 +20,6 @@ const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 const EXPORT_MAGIC = Buffer.from([0x09, 0x06, 0x82]);
 
 // collect a binary (application/octet-stream) response body as a Buffer
-const binaryParser = (res, callback) => {
-    const chunks = [];
-    res.on('data', chunk => chunks.push(chunk));
-    res.on('end', () => callback(null, Buffer.concat(chunks)));
-};
-
-const createRoleToken = async role => {
-    await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
-
-    const accessToken = crypto.randomBytes(20).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-    const tokenData = {
-        user: 'root',
-        role,
-        ttl: 3600,
-        created: Date.now().toString()
-    };
-
-    tokenData.s = crypto
-        .createHmac('sha256', config.api.accessControl.secret)
-        .update(
-            JSON.stringify({
-                token: accessToken,
-                user: tokenData.user,
-                role: tokenData.role
-            })
-        )
-        .digest('hex');
-
-    await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
-
-    return {
-        accessToken,
-        tokenHash
-    };
-};
 
 // open an SSE stream, resolve once the first idle comment arrives
 const readUpdatesStream = url =>

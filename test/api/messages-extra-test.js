@@ -11,13 +11,7 @@ chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
-
-// collect a non-JSON response (attachment bytes, raw eml source) into a Buffer
-const binaryParser = (res, callback) => {
-    const chunks = [];
-    res.on('data', chunk => chunks.push(chunk));
-    res.on('end', () => callback(null, Buffer.concat(chunks)));
-};
+const { binaryParser } = require('./_helpers');
 
 describe('Messages extra tests', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
