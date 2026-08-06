@@ -10,7 +10,7 @@ const { ObjectId } = require('mongodb');
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
-const { createRoleToken, generateSelfSignedPair } = require('./_helpers');
+const { connect, createRoleToken, generateSelfSignedPair } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -45,7 +45,7 @@ describe('API validation negative tests', function () {
     // certificate structure
 
     before(async () => {
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        await connect();
 
         // main test user
         const response = await server

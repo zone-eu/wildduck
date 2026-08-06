@@ -2,7 +2,6 @@
 
 const config = require('@zone-eu/wild-config');
 const fastify = require('fastify');
-const qs = require('qs');
 const log = require('npmlog');
 const db = require('./lib/db');
 const Gelf = require('gelf');
@@ -10,6 +9,7 @@ const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const { attachNativeRoutes } = require('./lib/fastify/routes');
 const {
+    baseServerOptions,
     attachRequestDecorations,
     attachReplyDecorations,
     attachPayloadStash,
@@ -64,15 +64,7 @@ module.exports = done => {
         gelf.emit('gelf.log', message);
     };
 
-    const app = fastify({
-        maxParamLength: 196,
-        exposeHeadRoutes: false,
-        querystringParser: str => qs.parse(str, { allowDots: true }),
-        // new code logs through Fastify's built-in pino JSON logger; the
-        // request logging is done by our own hook below
-        logger: { level: 'warn' },
-        disableRequestLogging: true
-    });
+    const app = fastify(baseServerOptions());
 
     attachRequestDecorations(app);
     attachReplyDecorations(app);
@@ -87,12 +79,9 @@ module.exports = done => {
     // the ACME http-01 challenge route
     acmeRoutes(db, app);
 
-    // catch-all redirect for everything that is not a challenge request
-    app.setNotFoundHandler((request, reply) => {
-        let remoteAddress = (request.raw.socket.remoteAddress || '').replace(/^::ffff:/, '');
-        log.http('ACME', `${remoteAddress} ${request.method} ${request.url} 302 [redirect=${config.acme.agent.redirect}]`);
-        return reply.redirect(config.acme.agent.redirect, 302);
-    });
+    // catch-all redirect for everything that is not a challenge request; the
+    // shared access log hook emits the log line (302 status) and the metric
+    app.setNotFoundHandler((request, reply) => reply.redirect(config.acme.agent.redirect, 302));
 
     app.listen({ port: config.acme.agent.port, host: config.acme.agent.host || '0.0.0.0' }, err => {
         if (err) {
@@ -109,6 +98,7 @@ module.exports = done => {
         }
         started = true;
         log.info('ACME', 'Server listening on %s:%s', config.acme.agent.host || '0.0.0.0', config.acme.agent.port);
+        log.info('ACME', 'Redirecting non-challenge requests to %s', config.acme.agent.redirect);
         done(null, app);
     });
 };

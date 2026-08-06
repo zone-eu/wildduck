@@ -12,7 +12,7 @@ chai.config.includeStack = true;
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
-const { generateSelfSignedPair } = require('./_helpers');
+const { connect, generateSelfSignedPair } = require('./_helpers');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -26,7 +26,7 @@ describe('API ACME challenge', function () {
     let certId;
 
     before(async () => {
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        await connect();
 
         const { keyPem, certPem } = generateSelfSignedPair(servername);
         const response = await server

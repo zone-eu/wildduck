@@ -3,6 +3,7 @@
 const config = require('@zone-eu/wild-config');
 const fastify = require('fastify');
 const fastifyCors = require('@fastify/cors');
+const fastifyMultipart = require('@fastify/multipart');
 const fastifyStatic = require('@fastify/static');
 const fastifySwagger = require('@fastify/swagger');
 const fs = require('fs');
@@ -31,6 +32,7 @@ const metrics = require('./lib/metrics');
 const { attachNativeRoutes } = require('./lib/fastify/routes');
 const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
 const {
+    baseServerOptions,
     maskUrl,
     requestParams,
     attachRequestDecorations,
@@ -83,16 +85,9 @@ let loggelf;
 
 function buildServer() {
     const serverOptions = {
-        maxParamLength: 196,
-        exposeHeadRoutes: false,
+        ...baseServerOptions(),
         // restify read bodies without a size limit (maxBodySize: 0)
-        bodyLimit: 1024 * 1024 * 1024,
-        // restify parsed query strings with qs and allowDots
-        querystringParser: str => qs.parse(str, { allowDots: true }),
-        // new code logs through Fastify's built-in pino JSON logger; the
-        // request/response logging is done by our own hooks below
-        logger: { level: 'warn' },
-        disableRequestLogging: true
+        bodyLimit: 1024 * 1024 * 1024
     };
 
     let certOptions = {};
@@ -190,7 +185,10 @@ function buildServer() {
     };
 
     app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonParser);
-    app.addContentTypeParser(/\+json$/, { parseAs: 'buffer' }, jsonParser);
+    // fastify matches the regex against the full header value including
+    // parameters, so 'application/report+json; charset=utf-8' must match too;
+    // the ^ anchor also keeps fastify from printing the FSTSEC001 warning
+    app.addContentTypeParser(/^application\/[a-z0-9._-]+\+json\b/i, { parseAs: 'buffer' }, jsonParser);
 
     app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'buffer' }, (request, payload, done) => {
         try {
@@ -201,12 +199,24 @@ function buildServer() {
         }
     });
 
-    // restify's bodyReader explicitly skipped application/octet-stream and
-    // multipart/form-data: the request stream stays unconsumed so handlers
-    // can pipe it themselves (POST /data/import does)
-    const passthroughParser = (request, payload, done) => done(null, undefined);
-    app.addContentTypeParser('application/octet-stream', passthroughParser);
-    app.addContentTypeParser('multipart/form-data', passthroughParser);
+    // restify's bodyReader explicitly skipped application/octet-stream: the
+    // request stream stays unconsumed so handlers can pipe it themselves
+    // (POST /data/import does)
+    app.addContentTypeParser('application/octet-stream', (request, payload, done) => done(null, undefined));
+
+    // restify's bodyParser handed multipart/form-data to formidable and mapped
+    // form fields and uploaded file contents into req.params (mapParams +
+    // mapFiles); keyValues mode replicates that: fields arrive as strings and
+    // files as Buffers under their field names (POST /users/:user/storage).
+    // Parts buffer in memory, so cap them at the largest payload any consumer
+    // accepts (storage uploads, wdMaxBytes MAX_ALLOWED_MESSAGE_SIZE)
+    app.register(fastifyMultipart, {
+        attachFieldsToBody: 'keyValues',
+        limits: {
+            fieldSize: consts.MAX_ALLOWED_MESSAGE_SIZE,
+            fileSize: consts.MAX_ALLOWED_MESSAGE_SIZE
+        }
+    });
 
     // everything else: Buffer for binary types, utf8 string for text/*
     // (message/rfc822 uploads and similar raw payloads)
@@ -275,7 +285,10 @@ module.exports = done => {
     app.register(fastifyCors, {
         origin: corsOrigins.includes('*') ? '*' : corsOrigins,
         methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['X-Access-Token', 'Authorization'],
+        // restify-cors-middleware2 always merged its own defaults (accept,
+        // content-type, x-requested-with and others) into the configured list;
+        // without content-type every cross-origin JSON request fails preflight
+        allowedHeaders: ['X-Access-Token', 'Authorization', 'Content-Type', 'Accept', 'X-Requested-With'],
         credentials: true
     });
 

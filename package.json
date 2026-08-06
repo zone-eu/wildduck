@@ -44,6 +44,7 @@
     },
     "dependencies": {
         "@fastify/cors": "^11.3.0",
+        "@fastify/multipart": "10.1.0",
         "@fastify/static": "^10.1.2",
         "@fastify/swagger": "^9.8.1",
         "@fidm/x509": "1.2.1",

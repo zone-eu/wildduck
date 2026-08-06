@@ -10,7 +10,7 @@ const { ObjectId } = require('mongodb');
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
-const { createRoleToken } = require('./_helpers');
+const { connect, createRoleToken } = require('./_helpers');
 const AuditHandler = require('../../lib/audit-handler');
 const MessageHandler = require('../../lib/message-handler');
 const auditTask = util.promisify(require('../../lib/tasks/audit'));
@@ -29,14 +29,6 @@ describe('Audit API tests', function () {
     let auditTokenHash;
     const createdUsers = [];
     const createdAudits = [];
-
-    const connectDatabase = async () => {
-        if (db.database && db.redis) {
-            return;
-        }
-
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
-    };
 
     const uniqueUsername = prefix => `${prefix}${Date.now()}${Math.random().toString(16).slice(2)}`;
 
@@ -179,7 +171,7 @@ describe('Audit API tests', function () {
     };
 
     before(async () => {
-        await connectDatabase();
+        await connect();
 
         auditHandler = new AuditHandler({
             database: db.database,

@@ -42,15 +42,15 @@ Fastify `schema: { hide: true }`.
 
 Recognized `config` keys:
 
-| key              | meaning                                                                |
-| ---------------- | ---------------------------------------------------------------------- |
-| `name`           | route name: OpenAPI `operationId` and the route registry               |
-| `validationObjs` | request and response schema declaration                                |
-| `allowUnknown`   | accept unknown keys instead of rejecting them                          |
-| `charset`        | `false` when JSON replies must not carry a charset parameter           |
-| `preValidate`    | mutate the merged params before validation                             |
-| `rawBodyParam`   | map a raw (Buffer or string) body into a named param                   |
-| `public`         | serve the route without an access token                                |
+| key              | meaning                                                      |
+| ---------------- | ------------------------------------------------------------ |
+| `name`           | route name: OpenAPI `operationId` and the route registry     |
+| `validationObjs` | request and response schema declaration                      |
+| `allowUnknown`   | accept unknown keys instead of rejecting them                |
+| `charset`        | `false` when JSON replies must not carry a charset parameter |
+| `preValidate`    | mutate the merged params before validation                   |
+| `rawBodyParam`   | map a raw (Buffer or string) body into a named param         |
+| `public`         | serve the route without an access token                      |
 
 ## The merged params model
 
@@ -176,13 +176,14 @@ produce an error response, and the global error handler in
 
 ## Body parsing
 
-| content type                                      | handling                                                                           |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `application/json`, `*+json`                      | parsed; an empty body is not an error                                              |
-| `application/x-www-form-urlencoded`               | parsed with `qs`                                                                   |
-| `application/octet-stream`, `multipart/form-data` | **not** consumed, so a handler can pipe the raw request (`POST /data/import` does) |
-| `text/*`                                          | utf-8 string                                                                       |
-| anything else                                     | Buffer (`message/rfc822` uploads and similar)                                      |
+| content type                        | handling                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `application/json`, `*+json`        | parsed; an empty body is not an error                                                      |
+| `application/x-www-form-urlencoded` | parsed with `qs`                                                                           |
+| `application/octet-stream`          | **not** consumed, so a handler can pipe the raw request (`POST /data/import` does)         |
+| `multipart/form-data`               | parsed with `@fastify/multipart`: form fields arrive as strings, uploaded files as Buffers |
+| `text/*`                            | utf-8 string                                                                               |
+| anything else                       | Buffer (`message/rfc822` uploads and similar)                                              |
 
 The body size limit is 1 GB and path parameters are limited to 196 characters.
 

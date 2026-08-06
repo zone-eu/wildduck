@@ -7,6 +7,7 @@
 const supertest = require('supertest');
 const chai = require('chai');
 const db = require('../../lib/db');
+const { connect } = require('./_helpers');
 const ObjectId = require('mongodb').ObjectId;
 const taskMailboxRetention = require('../../lib/tasks/mailbox-retention');
 
@@ -25,7 +26,7 @@ describe('Mailboxes tests', function () {
     let mailboxForPut;
 
     before(async () => {
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        await connect();
 
         // ensure that we have an existing user account
         const response = await server

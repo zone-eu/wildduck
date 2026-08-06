@@ -9,6 +9,7 @@ const chai = require('chai');
 const config = require('@zone-eu/wild-config');
 const consts = require('../../lib/consts');
 const db = require('../../lib/db');
+const { connect } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -30,7 +31,7 @@ describe('Authentication rate limits', function () {
     let scopeMismatchedAspId;
 
     before(async () => {
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        await connect();
 
         const createResponse = await server
             .post('/users')

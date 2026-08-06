@@ -9,7 +9,14 @@ const forge = require('node-forge');
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
 
-const connect = () => new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+// db.connect has no idempotency guard and opens (and leaks) a fresh
+// MongoDB+Redis connection set on every call, so connect at most once
+const connect = () => {
+    if (db.database && db.redis) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+};
 
 /**
  * Mints an access token for a role the root token does not cover (export,
