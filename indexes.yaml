@@ -299,6 +299,21 @@ indexes:
 
     - collection: messages
       index:
+          # covers the collapseThreads listing and count aggregations. The trailing
+          # thread key makes the id-only grouping a covered query, uid is included
+          # so that on sharded clusters the SHARDING_FILTER stage can run off index
+          # entries instead of forcing a fetch of every document. Supersedes
+          # by_idate_reverse_uid, which shares this prefix and can be dropped
+          name: by_idate_reverse_thread
+          key:
+              mailbox: 1
+              idate: -1
+              _id: -1
+              thread: 1
+              uid: 1
+
+    - collection: messages
+      index:
           name: by_hdate
           key:
               mailbox: 1
@@ -442,6 +457,14 @@ indexes:
           key:
               user: 1
               _id: -1
+
+    - collection: archived
+      index:
+          # backs the threadCounters lookup on archived message listings
+          name: user_messages_by_thread
+          key:
+              user: 1
+              thread: 1
 
     - collection: archived
       index:
