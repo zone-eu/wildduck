@@ -143,6 +143,7 @@ describe('API WebAuthn', function () {
     let authenticationChallenge;
     let registrationResponse;
     let accessToken;
+    let credentialId;
 
     after(async () => {
         if (!user) {
@@ -212,6 +213,8 @@ describe('API WebAuthn', function () {
         expect(response.body.credentials).to.have.length(1);
         expect(response.body.credentials[0].rawId).to.equal(authenticator.credentialId.toString('hex'));
         expect(response.body.credentials[0].authenticatorAttachment).to.equal('cross-platform');
+
+        credentialId = response.body.credentials[0].id;
     });
 
     it('should POST /authenticate expect success / return WebAuthn 2FA nonce without token', async () => {
@@ -351,5 +354,15 @@ describe('API WebAuthn', function () {
 
         expect(response.body.code).to.equal('Invalid2faNonce');
         expect(response.body.token).to.not.exist;
+    });
+
+    // runs last: deleting the credential invalidates the authenticator the
+    // rest of the suite depends on
+    it('should DELETE /users/{user}/2fa/webauthn/credentials/{credential} expect success', async () => {
+        const response = await server.delete(`/users/${user}/2fa/webauthn/credentials/${credentialId}`).expect(200);
+        expect(response.body.success).to.be.true;
+
+        const emptyResponse = await server.get(`/users/${user}/2fa/webauthn/credentials`).expect(200);
+        expect(emptyResponse.body.credentials).to.have.length(0);
     });
 });
