@@ -156,11 +156,6 @@ function buildServer() {
         }
     });
 
-    // request validation runs on the MERGED params object in a preValidation
-    // hook (see docs/in-depth/api-validation.md); Fastify's own per-part
-    // request validation must not run
-    app.setValidatorCompiler(() => () => true);
-
     // ---- body parsing (restify bodyParser equivalents) ----
 
     app.removeAllContentTypeParsers();
@@ -214,7 +209,11 @@ function buildServer() {
         attachFieldsToBody: 'keyValues',
         limits: {
             fieldSize: consts.MAX_ALLOWED_MESSAGE_SIZE,
-            fileSize: consts.MAX_ALLOWED_MESSAGE_SIZE
+            // one byte of headroom over the wdMaxBytes ceiling the routes
+            // declare: an oversized upload then fails request validation with
+            // the documented 400 InputValidationError instead of being cut off
+            // by the parser with a bare 413 FST_REQ_FILE_TOO_LARGE
+            fileSize: consts.MAX_ALLOWED_MESSAGE_SIZE + 1
         }
     });
 
@@ -283,12 +282,28 @@ module.exports = done => {
 
     const corsOrigins = [].concat(config.api.cors.origins || ['*']);
     app.register(fastifyCors, {
-        origin: corsOrigins.includes('*') ? '*' : corsOrigins,
+        // `true` reflects the request Origin (and sets Vary: Origin) instead of
+        // sending a literal "*", which browsers reject outright when combined
+        // with credentials. restify-cors-middleware2 echoed the origin too
+        origin: corsOrigins.includes('*') ? true : corsOrigins,
         methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        // restify-cors-middleware2 always merged its own defaults (accept,
-        // content-type, x-requested-with and others) into the configured list;
-        // without content-type every cross-origin JSON request fails preflight
-        allowedHeaders: ['X-Access-Token', 'Authorization', 'Content-Type', 'Accept', 'X-Requested-With'],
+        // restify-cors-middleware2 always merged its own defaults into the
+        // configured lists (src/constants.js), so the full set has to be
+        // spelled out here; without content-type every cross-origin JSON
+        // request fails preflight
+        allowedHeaders: [
+            'X-Access-Token',
+            'Authorization',
+            'Accept',
+            'Accept-Version',
+            'Content-Type',
+            'Request-Id',
+            'Origin',
+            'X-Api-Version',
+            'X-Request-Id',
+            'X-Requested-With'
+        ],
+        exposedHeaders: ['Api-Version', 'Content-Length', 'Content-Md5', 'Content-Type', 'Date', 'Request-Id', 'Response-Time'],
         credentials: true
     });
 
@@ -458,10 +473,6 @@ module.exports = done => {
                     } else {
                         request.role = tokenData.role;
                         request.user = tokenData.user;
-                    }
-
-                    if (request.params && request.params.user === 'me' && /^[0-9a-f]{24}$/i.test(request.user)) {
-                        request.params.user = request.user;
                     }
 
                     if (!request.role) {

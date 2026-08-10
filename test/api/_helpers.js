@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const forge = require('node-forge');
+const { ObjectId } = require('mongodb');
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
@@ -21,30 +22,39 @@ const connect = () => {
 /**
  * Mints an access token for a role the root token does not cover (export,
  * audit) straight into redis, the way UserHandler.setAuthToken would.
+ * Pass a user id to get a user scoped token (what the "me" alias resolves to),
+ * otherwise the token belongs to "root".
  * Returns { accessToken, tokenHash }; delete the key with deleteRoleToken.
  */
-const createRoleToken = async role => {
+const createRoleToken = async (role, user) => {
     await connect();
 
     const accessToken = crypto.randomBytes(20).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
     const tokenData = {
-        user: 'root',
+        user: user || 'root',
         role,
         ttl: 3600,
         created: Date.now().toString()
     };
 
-    tokenData.s = crypto
-        .createHmac('sha256', config.api.accessControl.secret)
-        .update(
-            JSON.stringify({
-                token: accessToken,
-                user: tokenData.user,
-                role: tokenData.role
-            })
-        )
-        .digest('hex');
+    // a user scoped token carries the account's auth version and the signature
+    // covers it, in this key order (UserHandler.setAuthToken); a token for
+    // "root" is not a user id and never reaches that check
+    const signPayload = {
+        token: accessToken,
+        user: tokenData.user
+    };
+
+    if (user) {
+        const userData = await db.database.collection('users').findOne({ _id: new ObjectId(user) }, { projection: { authVersion: true } });
+        tokenData.authVersion = Number(userData && userData.authVersion) || 0;
+        signPayload.authVersion = tokenData.authVersion;
+    }
+
+    signPayload.role = tokenData.role;
+
+    tokenData.s = crypto.createHmac('sha256', config.api.accessControl.secret).update(JSON.stringify(signPayload)).digest('hex');
 
     await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
 

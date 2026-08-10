@@ -296,7 +296,6 @@
                                                         "description": "Username of the User"
                                                     },
                                                     "name": {
-                                                        "type": "string",
                                                         "description": "Name of the User"
                                                     },
                                                     "address": {
@@ -873,7 +872,6 @@
                                             "description": "Username of the User"
                                         },
                                         "name": {
-                                            "type": "string",
                                             "description": "Name of the User"
                                         },
                                         "address": {
@@ -4001,8 +3999,6 @@
                                                     "id",
                                                     "name",
                                                     "path",
-                                                    "modifyIndex",
-                                                    "subscribed",
                                                     "hidden",
                                                     "encryptMessages"
                                                 ]
@@ -4251,8 +4247,6 @@
                                         "id",
                                         "name",
                                         "path",
-                                        "modifyIndex",
-                                        "subscribed",
                                         "hidden",
                                         "encryptMessages"
                                     ]
@@ -5378,6 +5372,7 @@
                                                 },
                                                 "content": {
                                                     "type": "string",
+                                                    "minLength": 1,
                                                     "description": "Base64 encoded attachment content"
                                                 },
                                                 "cid": {
@@ -8945,7 +8940,6 @@
                                                 },
                                                 "required": [
                                                     "id",
-                                                    "created",
                                                     "query",
                                                     "action",
                                                     "disabled",
@@ -9125,7 +9119,6 @@
                                                 },
                                                 "required": [
                                                     "id",
-                                                    "created",
                                                     "query",
                                                     "action",
                                                     "disabled",
@@ -9457,7 +9450,6 @@
                                     "required": [
                                         "success",
                                         "id",
-                                        "created",
                                         "query",
                                         "action",
                                         "disabled"
@@ -10328,6 +10320,7 @@
                                             ]
                                         },
                                         "uniqueItems": true,
+                                        "minItems": 1,
                                         "description": "List of scopes this Password applies to. Special scope \"*\" indicates that this password can be used for any scope except \"master\"",
                                         "default": [
                                             "*"
@@ -13194,6 +13187,7 @@
                                         "type": "array",
                                         "items": {
                                             "type": "object",
+                                            "title": "Attachment",
                                             "additionalProperties": false,
                                             "properties": {
                                                 "filename": {
@@ -13219,16 +13213,9 @@
                                                     "minLength": 1,
                                                     "description": "Transfer encoding"
                                                 },
-                                                "contentDisposition": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                        "inline",
-                                                        "attachment"
-                                                    ],
-                                                    "description": "Content Disposition"
-                                                },
                                                 "content": {
                                                     "type": "string",
+                                                    "minLength": 1,
                                                     "description": "Base64 encoded attachment content"
                                                 },
                                                 "cid": {
@@ -13236,6 +13223,14 @@
                                                     "maxLength": 255,
                                                     "minLength": 1,
                                                     "description": "Content-ID value if you want to reference to this attachment from HTML formatted message"
+                                                },
+                                                "contentDisposition": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "inline",
+                                                        "attachment"
+                                                    ],
+                                                    "description": "Content Disposition"
                                                 }
                                             },
                                             "required": [
@@ -13647,20 +13642,13 @@
                                                     "type": "number",
                                                     "description": "How many messages copied"
                                                 }
-                                            },
-                                            "required": [
-                                                "status",
-                                                "failed",
-                                                "copied"
-                                            ]
+                                            }
                                         }
                                     },
                                     "required": [
                                         "success",
                                         "id",
-                                        "user",
-                                        "expires",
-                                        "import"
+                                        "user"
                                     ]
                                 }
                             }
@@ -14609,8 +14597,7 @@
                                         "selector",
                                         "fingerprint",
                                         "publicKey",
-                                        "dnsTxt",
-                                        "created"
+                                        "dnsTxt"
                                     ]
                                 }
                             }
@@ -15156,7 +15143,6 @@
                                         "success",
                                         "id",
                                         "servername",
-                                        "altNames",
                                         "acme",
                                         "hasCert"
                                     ]

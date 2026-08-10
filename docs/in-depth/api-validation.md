@@ -174,6 +174,14 @@ produce an error response, and the global error handler in
 > not an idealized version of it. Fields that may hold `null` or values of
 > more than one type are declared without a `type`.
 
+`required` in a response model is documentation only. fast-json-stringify
+treats it as an assertion and throws when the payload lacks one of the keys,
+which would turn a single incomplete database document (a migration, an
+external tool, a record predating a field) into a 500 for a whole listing. The
+serializer compiler in `lib/fastify/routes.js` therefore strips `required` from
+the schema it compiles, while `@fastify/swagger` keeps reading the original, so
+the published specification still states which fields a caller can expect.
+
 ## Body parsing
 
 | content type                        | handling                                                                                   |
