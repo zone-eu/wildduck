@@ -26,8 +26,8 @@ npm run printconf
 # Start the server
 npm start
 
-# Generate API documentation
-npm run apidoc
+# Regenerate the OpenAPI specification (docs/api/openapidocs.json)
+npm run generate-api-docs
 ```
 
 ### Running Individual Tests
@@ -45,7 +45,7 @@ NODE_ENV=test ./node_modules/.bin/mocha test/api-test.js
 ### Entry Points
 
 - `server.js` - Main application, starts all services
-- `api.js` - REST API server (Restify-based)
+- `api.js` - REST API server (Fastify-based)
 - `imap.js` - IMAP protocol server
 - `pop3.js` - POP3 protocol server
 - `lmtp.js` - LMTP handler for incoming mail
@@ -338,37 +338,66 @@ From `lib/consts.js` and settings:
 
 ## API Development Patterns
 
+Routes are plain Fastify routes. The WildDuck specifics live in `config`, where
+an `onRoute` hook (`lib/fastify/routes.js`) turns `validationObjs` into request
+validation, response serialization and OpenAPI documentation. The full contract
+is documented in `docs/in-depth/api-validation.md`.
+
 ### Route Structure
 ```javascript
-server.post({
-    path: '/users/:user/mailboxes',
-    summary: 'Create Mailbox',
-    tags: ['Mailboxes'],
-    validationObjs: {
-        requestBody: { /* Joi schema */ },
-        pathParams: { /* Joi schema */ },
-        queryParams: { /* Joi schema */ },
-        response: { /* Joi schema */ }
+server.route({
+    method: 'POST',
+    url: '/users/:user/mailboxes',
+    schema: {
+        summary: 'Create Mailbox',
+        tags: ['Mailboxes']
+    },
+    config: {
+        name: 'createMailbox',
+        validationObjs: {
+            requestBody: { /* JSON Schema per key */ },
+            pathParams: { /* JSON Schema per key */ },
+            queryParams: { /* JSON Schema per key */ },
+            response: { 200: { description: 'Success', model: { /* JSON Schema */ } } }
+        }
+    },
+    async handler(req, reply) {
+        return reply.send({ success: true });
     }
-}, tools.responseWrapper(async (req, res) => { ... }));
+});
 ```
 
+Other `config` keys: `allowUnknown`, `charset: false`, `preValidate`,
+`rawBodyParam`, `public` (skip the access token check).
+
 ### Key Conventions
-- Always wrap handlers with `tools.responseWrapper()` for error handling
-- Validate with Joi schemas in `validationObjs`
+- Validation runs on the MERGED path+query+body object, exposed as `req.params`;
+  `req.rawParams` keeps the pre-validation view for key-presence checks
+- Handlers contain no validation and no error wrapping. Throw an error carrying
+  `responseCode`/`code`; the handler in `lib/fastify/bootstrap.js` owns the
+  `{error, code}` contract and the IMAP error code mapping
+- Reply with `reply.send(body)` / `reply.code(status).send(body)`; streams are
+  sent with `reply.send(stream)`
 - Use `roles.can(req.role).readOwn('resource')` for permissions
 - Apply `permission.filter(data)` to sensitive response data
 - Success: `{ success: true, id: "..." }`
 - Error: `{ error: "message", code: "ErrorCode", details: {...} }`
+- Response models activate fast-json-stringify, which silently DROPS undeclared
+  fields: a model must match what the handler actually returns
 
 ### Schemas Location
 - Request schemas: `lib/schemas/request/`
 - Response schemas: `lib/schemas/response/`
-- Common schemas: `lib/schemas/index.js` (`sessSchema`, `booleanSchema`, `metaDataSchema`)
+- Shared schemas and factories: `lib/schemas/json-schemas.js`, referenced by
+  `$ref` (`wd:userId`, `wd:sess`, `wd:boolean`, `wd:pageLimit`, ...)
+- Validation engine and the `wd*` annotation vocabulary: `lib/fastify/validation.js`
 
 ## Utilities
 
-- `lib/tools.js` - `normalizeAddress()`, `responseWrapper()`, `validationErrors()`, `getWildcardAddresses()`
+- `lib/tools.js` - `normalizeAddress()`, `validationErrors()`, `getWildcardAddresses()`
+- `lib/fastify/routes.js` - route registration hook, merged-params validation
+- `lib/fastify/bootstrap.js` - request/reply decorations, error handler, access log
+- `lib/fastify/validation.js` - Ajv setup, `wd*` conversion keywords, custom validators
 - `lib/counters.js` - Redis Lua scripts for rate limiting
 - `lib/user-cache.js` - Redis-backed user profile caching
 - `lib/imap-notifier.js` - Event aggregation (100ms batching)

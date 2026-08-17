@@ -130,7 +130,7 @@ function base64UrlDecode(value) {
     return Buffer.from(input, 'base64');
 }
 
-describe.only('API WebAuthn', function () {
+describe('API WebAuthn', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     const password = 'webauthnsecretvalue';
@@ -141,7 +141,9 @@ describe.only('API WebAuthn', function () {
     let user;
     let twoFactorNonce;
     let authenticationChallenge;
+    let registrationResponse;
     let accessToken;
+    let credentialId;
 
     after(async () => {
         if (!user) {
@@ -183,8 +185,10 @@ describe.only('API WebAuthn', function () {
         expect(response.body.registrationOptions.challenge).to.match(/^[0-9a-f]+$/);
         expect(response.body.registrationOptions.rp.id).to.equal(RP_ID);
 
-        const registrationResponse = authenticator.createRegistrationResponse(response.body.registrationOptions.challenge, ORIGIN);
+        registrationResponse = authenticator.createRegistrationResponse(response.body.registrationOptions.challenge, ORIGIN);
+    });
 
+    it('should POST /users/{user}/2fa/webauthn/registration-attestation expect success', async () => {
         const attestationResponse = await server
             .post(`/users/${user}/2fa/webauthn/registration-attestation`)
             .send({
@@ -209,6 +213,8 @@ describe.only('API WebAuthn', function () {
         expect(response.body.credentials).to.have.length(1);
         expect(response.body.credentials[0].rawId).to.equal(authenticator.credentialId.toString('hex'));
         expect(response.body.credentials[0].authenticatorAttachment).to.equal('cross-platform');
+
+        credentialId = response.body.credentials[0].id;
     });
 
     it('should POST /authenticate expect success / return WebAuthn 2FA nonce without token', async () => {
@@ -284,7 +290,9 @@ describe.only('API WebAuthn', function () {
         expect(response.body.id).to.equal(user);
     });
 
-    it('should POST /users/{user}/2fa/webauthn/authentication-assertion expect failure / reject reused nonce', async () => {
+    it('should POST /users/{user}/2fa/webauthn/authentication-assertion expect failure / reject replayed challenge', async () => {
+        // replaying the whole assertion: the challenge was consumed by the
+        // successful assertion above, so it is no longer known
         const assertionResponse = authenticator.createAssertionResponse(authenticationChallenge, ORIGIN);
         const response = await server
             .post(`/users/${user}/2fa/webauthn/authentication-assertion`)
@@ -298,8 +306,63 @@ describe.only('API WebAuthn', function () {
                 twoFactorNonce,
                 token: false
             })
+            .expect(404);
+
+        expect(response.body.code).to.equal('ChallengeNotFound');
+        expect(response.body.token).to.not.exist;
+    });
+
+    it('should POST /users/{user}/2fa/webauthn/authentication-assertion expect failure / reject nonce not bound to the challenge', async () => {
+        // a live challenge, but asserted with a different 2FA nonce than the
+        // one the challenge was issued for
+        const authResponse = await server
+            .post('/authenticate')
+            .send({
+                username,
+                password,
+                token: true
+            })
+            .expect(200);
+
+        const freshNonce = authResponse.body.twoFactorNonce;
+        expect(freshNonce).to.match(/^[0-9a-f]{40}$/);
+
+        const challengeResponse = await server
+            .post(`/users/${user}/2fa/webauthn/authentication-challenge`)
+            .send({
+                origin: ORIGIN,
+                rpId: RP_ID,
+                authenticatorAttachment: 'cross-platform',
+                twoFactorNonce: freshNonce
+            })
+            .expect(200);
+
+        const assertionResponse = authenticator.createAssertionResponse(challengeResponse.body.authenticationOptions.challenge, ORIGIN);
+        const response = await server
+            .post(`/users/${user}/2fa/webauthn/authentication-assertion`)
+            .send({
+                challenge: assertionResponse.challenge,
+                rawId: assertionResponse.rawId,
+                clientDataJSON: assertionResponse.clientDataJSON,
+                authenticatorData: assertionResponse.authenticatorData,
+                signature: assertionResponse.signature,
+                rpId: RP_ID,
+                twoFactorNonce: crypto.randomBytes(20).toString('hex'),
+                token: false
+            })
             .expect(403);
 
         expect(response.body.code).to.equal('Invalid2faNonce');
+        expect(response.body.token).to.not.exist;
+    });
+
+    // runs last: deleting the credential invalidates the authenticator the
+    // rest of the suite depends on
+    it('should DELETE /users/{user}/2fa/webauthn/credentials/{credential} expect success', async () => {
+        const response = await server.delete(`/users/${user}/2fa/webauthn/credentials/${credentialId}`).expect(200);
+        expect(response.body.success).to.be.true;
+
+        const emptyResponse = await server.get(`/users/${user}/2fa/webauthn/credentials`).expect(200);
+        expect(emptyResponse.body.credentials).to.have.length(0);
     });
 });

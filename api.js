@@ -1,10 +1,14 @@
 'use strict';
 
 const config = require('@zone-eu/wild-config');
-const restify = require('restify');
+const fastify = require('fastify');
+const fastifyCors = require('@fastify/cors');
+const fastifyMultipart = require('@fastify/multipart');
+const fastifyStatic = require('@fastify/static');
+const fastifySwagger = require('@fastify/swagger');
+const fs = require('fs');
+const qs = require('qs');
 const log = require('npmlog');
-const logger = require('restify-logger');
-const corsMiddleware = require('restify-cors-middleware2');
 const UserHandler = require('./lib/user-handler');
 const MailboxHandler = require('./lib/mailbox-handler');
 const MessageHandler = require('./lib/message-handler');
@@ -23,9 +27,23 @@ const ObjectId = require('mongodb').ObjectId;
 const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
-const errors = require('restify-errors');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const metrics = require('./lib/metrics');
+const { attachNativeRoutes } = require('./lib/fastify/routes');
+const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
+const {
+    baseServerOptions,
+    maskUrl,
+    requestParams,
+    attachRequestDecorations,
+    attachReplyDecorations,
+    attachPayloadStash,
+    attachResponseHeaders,
+    attachAccessLog,
+    attachErrorHandler
+} = require('./lib/fastify/bootstrap');
+require('./lib/schemas/json-schemas'); // populates sharedSchemas
+const apiDocsConfig = require('./config/apigeneration.json');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -52,10 +70,9 @@ const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const { SettingsHandler } = require('./lib/settings-handler');
 
-const { RestifyApiGenerate } = require('restifyapigenerate');
-const Joi = require('joi');
-const restifyApiGenerateConfig = require('./config/apigeneration.json');
-const restifyApiGenerate = new RestifyApiGenerate(Joi, __dirname);
+// logged param values are truncated to 128 chars, so there is no point in
+// rendering more than that per nested value
+const INSPECT_OPTIONS = { depth: 3, maxStringLength: 160, maxArrayLength: 20, breakLength: Infinity };
 
 let userHandler;
 let mailboxHandler;
@@ -66,446 +83,152 @@ let settingsHandler;
 let notifier;
 let loggelf;
 
-const serverOptions = {
-    name: 'WildDuck API',
-    strictRouting: true,
-    maxParamLength: 196,
-    formatters: {
-        'application/json; q=0.4': (req, res, body) => {
-            let data = body ? JSON.stringify(body, false, 2) + '\n' : 'null';
-            let size = Buffer.byteLength(data);
-            res.setHeader('Content-Length', size);
-            if (!body) {
-                return data;
-            }
+function buildServer() {
+    const serverOptions = {
+        ...baseServerOptions(),
+        // restify read bodies without a size limit (maxBodySize: 0)
+        bodyLimit: 1024 * 1024 * 1024
+    };
 
-            let path = (req.route && req.route.path) || (req.url || '').replace(/(accessToken=)[^&]+/, '$1xxxxxx');
+    let certOptions = {};
+    certs.loadTLSOptions(certOptions, 'api');
 
-            let message = {
-                short_message: 'HTTP [' + req.method + ' ' + path + '] ' + (body.success ? 'OK' : 'FAILED'),
+    if (config.api.secure && certOptions.key) {
+        let httpsServerOptions = {};
 
-                _req_remoteAddress: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+        httpsServerOptions.key = certOptions.key;
+        httpsServerOptions.cert = tools.buildCertChain(certOptions.cert, certOptions.ca);
 
-                _ip: ((req.params && req.params.ip) || '').toString().substr(0, 40) || '',
-                _sess: ((req.params && req.params.sess) || '').toString().substr(0, 40) || '',
+        let defaultSecureContext = tls.createSecureContext(httpsServerOptions);
 
-                _http_route: path,
-                _http_method: req.method,
-                _user: req.user,
-                _role: req.role,
-
-                _api_response: body.success ? 'success' : 'fail',
-
-                _error: body.error,
-                _code: body.code,
-
-                _size: size
+        httpsServerOptions.SNICallback = (servername, cb) => {
+            const opts = {
+                servername,
+                meta: {}
             };
 
-            Object.keys(req.params || {}).forEach(key => {
-                let value = req.params[key];
-
-                if (!value && value !== 0) {
-                    // if falsy don't continue, allow 0 integer as value
-                    return;
-                }
-
-                // cast value to string if not string
-                value = typeof req.params[key] === 'string' ? req.params[key] : util.inspect(req.params[key], false, 3).toString().trim();
-
-                if (['password', 'existingPassword'].includes(key)) {
-                    value = '***';
-                } else if (value.length > 128) {
-                    value = value.substr(0, 128) + '…';
-                }
-
-                if (key.length > 30) {
-                    key = key.substr(0, 30) + '…';
-                }
-
-                if (key === 'sendTime') {
-                    try {
-                        value = new Date(value).toISOString();
-                    } catch {
-                        // ignore
+            certs
+                .getContextForServername(
+                    opts.servername,
+                    httpsServerOptions,
+                    {
+                        source: 'API',
+                        ...opts.meta
+                    },
+                    {
+                        loggelf: message => loggelf(message)
                     }
-                }
-
-                message['_req_' + key] = value;
-            });
-
-            Object.keys(body).forEach(key => {
-                let value = body[key];
-                if (!body || !['id'].includes(key)) {
-                    return;
-                }
-                value = typeof value === 'string' ? value : util.inspect(value, false, 3).toString().trim();
-
-                if (value.length > 128) {
-                    value = value.substr(0, 128) + '…';
-                }
-
-                if (key.length > 30) {
-                    key = key.substr(0, 30) + '…';
-                }
-
-                message['_res_' + key] = value;
-            });
-
-            loggelf(message);
-
-            return data;
-        }
-    }
-};
-
-let certOptions = {};
-certs.loadTLSOptions(certOptions, 'api');
-
-if (config.api.secure && certOptions.key) {
-    let httpsServerOptions = {};
-
-    httpsServerOptions.key = certOptions.key;
-    httpsServerOptions.cert = tools.buildCertChain(certOptions.cert, certOptions.ca);
-
-    let defaultSecureContext = tls.createSecureContext(httpsServerOptions);
-
-    httpsServerOptions.SNICallback = (servername, cb) => {
-        const opts = {
-            servername,
-            meta: {}
+                )
+                .then(context => {
+                    cb(null, context || defaultSecureContext);
+                })
+                .catch(err => cb(err));
         };
 
-        certs
-            .getContextForServername(
-                opts.servername,
-                httpsServerOptions,
-                {
-                    source: 'API',
-                    ...opts.meta
-                },
-                {
-                    loggelf: message => loggelf(message)
-                }
-            )
-            .then(context => {
-                cb(null, context || defaultSecureContext);
-            })
-            .catch(err => cb(err));
-    };
-
-    serverOptions.httpsServerOptions = httpsServerOptions;
-}
-
-const server = restify.createServer(serverOptions);
-
-const cors = corsMiddleware({
-    origins: [].concat(config.api.cors.origins || ['*']),
-    allowHeaders: ['X-Access-Token', 'Authorization'],
-    allowCredentialsAllOrigins: true
-});
-
-server.pre(cors.preflight);
-server.use(cors.actual);
-
-// disable compression for EventSource response
-// this needs to be called before gzipResponse
-server.use(async (req, res) => {
-    if (res && req.route.path === '/users/:user/updates') {
-        req.headers['accept-encoding'] = '';
+        serverOptions.https = httpsServerOptions;
     }
-});
 
-server.use(
-    restify.plugins.queryParser({
-        allowDots: true,
-        mapParams: true
-    })
-);
-server.use(
-    restify.plugins.bodyParser({
-        maxBodySize: 0,
-        mapParams: true,
-        mapFiles: true,
-        overrideParams: false
-    })
-);
+    const app = fastify(serverOptions);
 
-// public files
-server.get(
-    { name: 'public_get', path: '/public/*', excludeRoute: true },
-    restify.plugins.serveStatic({
-        directory: Path.join(__dirname, 'public'),
-        default: 'index.html'
-    })
-);
+    // shared schema definitions, referenced from route response schemas via
+    // $ref and published to OpenAPI docs
+    for (const schema of sharedSchemas.values()) {
+        app.addSchema(schema);
+    }
 
-const metricsEnabled = metrics.enabled;
+    // OpenAPI generation from the route schemas
+    app.register(fastifySwagger, {
+        openapi: {
+            openapi: apiDocsConfig.openapiVersion || '3.0.0',
+            info: apiDocsConfig.info,
+            servers: apiDocsConfig.servers,
+            tags: apiDocsConfig.tags,
+            components: apiDocsConfig.components,
+            security: apiDocsConfig.security
+        },
+        refResolver: {
+            buildLocalReference(json, baseUri, fragment, i) {
+                return String(json.$id || `def-${i}`).replace(/^wd:/, '');
+            }
+        },
+        transformSpecification(swaggerObject) {
+            return stripInternalKeywords(swaggerObject);
+        }
+    });
 
-if (metricsEnabled) {
-    server.get({ name: 'metrics', path: '/metrics', excludeRoute: true }, async (req, res) => {
-        res.charSet('utf-8');
-        res.setHeader('Content-Type', metrics.contentType);
+    // ---- body parsing (restify bodyParser equivalents) ----
 
+    app.removeAllContentTypeParsers();
+
+    const jsonParser = (request, payload, done) => {
+        let data = payload;
+        if (Buffer.isBuffer(data)) {
+            data = data.toString('utf8');
+        }
+        if (!data || !data.trim()) {
+            // restify skipped parsing empty bodies
+            return done(null, undefined);
+        }
         try {
-            res.send(await metrics.getMetrics());
+            return done(null, JSON.parse(data));
         } catch (err) {
-            log.error('API', 'Failed to collect metrics: %s', err.message);
-            res.status(500);
-            res.send('error: metrics collection failed');
-        }
-    });
-}
-
-// Disable GZIP as it does not work with stream.pipe(res)
-//server.use(restify.plugins.gzipResponse());
-
-if (metricsEnabled) {
-    server.use(async (req, res) => {
-        let start = process.hrtime();
-        if (res && typeof res.once === 'function') {
-            res.once('finish', () => {
-                let route = (req.route && req.route.path) || 'unknown';
-                if (route === '/metrics') {
-                    return;
-                }
-                let diff = process.hrtime(start);
-                metrics.recordApiRequest(req.method, route, res.statusCode, diff[0] + diff[1] / 1e9);
-            });
-        }
-    });
-}
-
-server.use(async (req, res) => {
-    if (!res) {
-        return;
-    }
-
-    if (['public_get', 'public_post', 'acmeToken', 'metrics'].includes(req.route.name)) {
-        // skip token check for public pages
-        return;
-    }
-
-    let accessToken =
-        req.query.accessToken ||
-        req.headers['x-access-token'] ||
-        (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '').trim() : false) ||
-        false;
-
-    if (req.query.accessToken) {
-        // delete or it will conflict with Joi schemes
-        delete req.query.accessToken;
-    }
-
-    if (req.params.accessToken) {
-        // delete or it will conflict with Joi schemes
-        delete req.params.accessToken;
-    }
-
-    if (req.headers['x-access-token']) {
-        req.headers['x-access-token'] = '';
-    }
-
-    if (req.headers.authorization) {
-        req.headers.authorization = '';
-    }
-
-    let tokenRequired = false;
-
-    let fail = () => {
-        let error = new errors.ForbiddenError(
-            {
-                code: 'InvalidToken'
-            },
-            'Invalid accessToken value'
-        );
-        throw error;
-    };
-
-    req.validate = permission => {
-        if (!permission.granted) {
-            let err = new Error('Not enough privileges');
-            err.responseCode = 403;
-            err.code = 'MissingPrivileges';
-            throw err;
+            const parseError = new Error('Invalid JSON: ' + err.message);
+            parseError.responseCode = 400;
+            parseError.code = 'InvalidContent';
+            return done(parseError);
         }
     };
 
-    // hard coded master token
-    if (config.api.accessToken) {
-        tokenRequired = true;
-        if (config.api.accessToken === accessToken) {
-            req.role = 'root';
-            req.user = 'root';
-            return;
+    app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonParser);
+    // fastify matches the regex against the full header value including
+    // parameters, so 'application/report+json; charset=utf-8' must match too;
+    // the ^ anchor also keeps fastify from printing the FSTSEC001 warning
+    app.addContentTypeParser(/^application\/[a-z0-9._-]+\+json\b/i, { parseAs: 'buffer' }, jsonParser);
+
+    app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'buffer' }, (request, payload, done) => {
+        try {
+            return done(null, qs.parse(payload.toString('utf8')));
+        } catch (err) {
+            err.responseCode = 400;
+            return done(err);
         }
-    }
+    });
 
-    if (config.api.accessControl.enabled || accessToken) {
-        tokenRequired = true;
-        if (accessToken && accessToken.length === 40 && /^[a-fA-F0-9]{40}$/.test(accessToken)) {
-            let tokenData;
-            let tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+    // restify's bodyReader explicitly skipped application/octet-stream: the
+    // request stream stays unconsumed so handlers can pipe it themselves
+    // (POST /data/import does)
+    app.addContentTypeParser('application/octet-stream', (request, payload, done) => done(null, undefined));
 
-            try {
-                let key = 'tn:token:' + tokenHash;
-                tokenData = await db.redis.hgetall(key);
-            } catch (err) {
-                err.responseCode = 500;
-                err.code = 'InternalDatabaseError';
-                throw err;
-            }
-
-            if (tokenData && tokenData.user && tokenData.role && config.api.roles[tokenData.role]) {
-                let signData;
-                if ('authVersion' in tokenData) {
-                    // cast value to number
-                    tokenData.authVersion = Number(tokenData.authVersion) || 0;
-                    signData = {
-                        token: accessToken,
-                        user: tokenData.user,
-                        authVersion: tokenData.authVersion,
-                        role: tokenData.role
-                    };
-                } else {
-                    signData = {
-                        token: accessToken,
-                        user: tokenData.user,
-                        role: tokenData.role
-                    };
-                }
-
-                let signature = crypto.createHmac('sha256', config.api.accessControl.secret).update(JSON.stringify(signData)).digest('hex');
-
-                if (signature !== tokenData.s) {
-                    // rogue token or invalidated secret
-                    /*
-                        // do not delete just in case there is something wrong with the check
-                        try {
-                            await db.redis
-                                .multi()
-                                .del('tn:token:' + tokenHash)
-                                .exec();
-                        } catch (err) {
-                            // ignore
-                        }
-                        */
-                } else if (tokenData.ttl && !isNaN(tokenData.ttl) && Number(tokenData.ttl) > 0) {
-                    let tokenTTL = Number(tokenData.ttl);
-                    let tokenLifetime = config.api.accessControl.tokenLifetime || consts.ACCESS_TOKEN_MAX_LIFETIME;
-
-                    // check if token is not too old
-                    if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
-                        // token is still usable, increase session length
-                        try {
-                            await db.redis
-                                .multi()
-                                .expire('tn:token:' + tokenHash, tokenTTL)
-                                .exec();
-                        } catch (err) {
-                            // ignore
-                        }
-                        req.role = tokenData.role;
-                        req.user = tokenData.user;
-
-                        // make a reference to original method, otherwise might be overridden
-                        let setAuthToken = userHandler.setAuthToken.bind(userHandler);
-
-                        req.accessToken = {
-                            hash: tokenHash,
-                            user: tokenData.user,
-                            // if called then refreshes token data for current hash
-                            update: async () => setAuthToken(tokenData.user, accessToken)
-                        };
-                    } else {
-                        // expired token, clear it
-                        try {
-                            await db.redis
-                                .multi()
-                                .del('tn:token:' + tokenHash)
-                                .exec();
-                        } catch (err) {
-                            // ignore
-                        }
-                    }
-                } else {
-                    req.role = tokenData.role;
-                    req.user = tokenData.user;
-                }
-
-                if (req.params && req.params.user === 'me' && /^[0-9a-f]{24}$/i.test(req.user)) {
-                    req.params.user = req.user;
-                }
-
-                if (!req.role) {
-                    return fail();
-                }
-
-                if (/^[0-9a-f]{24}$/i.test(req.user)) {
-                    let tokenAuthVersion = Number(tokenData.authVersion) || 0;
-                    let userData = await db.users.collection('users').findOne(
-                        {
-                            _id: new ObjectId(req.user)
-                        },
-                        { projection: { authVersion: true } }
-                    );
-                    let userAuthVersion = Number(userData && userData.authVersion) || 0;
-                    if (!userData || tokenAuthVersion < userAuthVersion) {
-                        // unknown user or expired session
-                        try {
-                            /*
-                                // do not delete just in case there is something wrong with the check
-                                await db.redis
-                                    .multi()
-                                    .del('tn:token:' + tokenHash)
-                                    .exec();
-                                */
-                        } catch (err) {
-                            // ignore
-                        }
-                        return fail();
-                    }
-                }
-
-                // pass
-                return;
-            }
+    // restify's bodyParser handed multipart/form-data to formidable and mapped
+    // form fields and uploaded file contents into req.params (mapParams +
+    // mapFiles); keyValues mode replicates that: fields arrive as strings and
+    // files as Buffers under their field names (POST /users/:user/storage).
+    // Parts buffer in memory, so cap them at the largest payload any consumer
+    // accepts (storage uploads, wdMaxBytes MAX_ALLOWED_MESSAGE_SIZE)
+    app.register(fastifyMultipart, {
+        attachFieldsToBody: 'keyValues',
+        limits: {
+            fieldSize: consts.MAX_ALLOWED_MESSAGE_SIZE,
+            // one byte of headroom over the wdMaxBytes ceiling the routes
+            // declare: an oversized upload then fails request validation with
+            // the documented 400 InputValidationError instead of being cut off
+            // by the parser with a bare 413 FST_REQ_FILE_TOO_LARGE
+            fileSize: consts.MAX_ALLOWED_MESSAGE_SIZE + 1
         }
-    }
+    });
 
-    if (tokenRequired) {
-        // no valid token found
-        return fail();
-    }
-
-    // allow all
-    req.role = 'root';
-    req.user = 'root';
-});
-
-logger.token('user-ip', req => ((req.params && req.params.ip) || '').toString().substr(0, 40) || '-');
-logger.token('user-sess', req => (req.params && req.params.sess) || '-');
-
-logger.token('user', req => (req.user && req.user.toString()) || '-');
-logger.token('url', req => {
-    if (/\baccessToken=/.test(req.url)) {
-        return req.url.replace(/\baccessToken=[^&]+/g, 'accessToken=' + 'x'.repeat(6));
-    }
-    return req.url;
-});
-
-server.use(
-    logger(':remote-addr :user [:user-ip/:user-sess] :method :url :status :time-spent :append', {
-        stream: {
-            write: message => {
-                message = (message || '').toString();
-                if (message) {
-                    log.http('API', message.replace('\n', '').trim());
-                }
-            }
+    // everything else: Buffer for binary types, utf8 string for text/*
+    // (message/rfc822 uploads and similar raw payloads)
+    app.addContentTypeParser('*', { parseAs: 'buffer' }, (request, payload, done) => {
+        const contentType = (request.headers['content-type'] || '').toLowerCase();
+        if (/^text\//.test(contentType)) {
+            return done(null, payload.toString('utf8'));
         }
-    })
-);
+        done(null, payload);
+    });
+
+    return app;
+}
 
 module.exports = done => {
     if (!config.api.enabled) {
@@ -550,6 +273,359 @@ module.exports = done => {
         });
         gelf.emit('gelf.log', message);
     };
+
+    const app = buildServer();
+
+    // named route registry, served by the test-only /api-methods route and
+    // used by the test overview generator
+    const routeRegistry = {};
+
+    const corsOrigins = [].concat(config.api.cors.origins || ['*']);
+    app.register(fastifyCors, {
+        // `true` reflects the request Origin (and sets Vary: Origin) instead of
+        // sending a literal "*", which browsers reject outright when combined
+        // with credentials. restify-cors-middleware2 echoed the origin too
+        origin: corsOrigins.includes('*') ? true : corsOrigins,
+        methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        // restify-cors-middleware2 always merged its own defaults into the
+        // configured lists (src/constants.js), so the full set has to be
+        // spelled out here; without content-type every cross-origin JSON
+        // request fails preflight
+        allowedHeaders: [
+            'X-Access-Token',
+            'Authorization',
+            'Accept',
+            'Accept-Version',
+            'Content-Type',
+            'Request-Id',
+            'Origin',
+            'X-Api-Version',
+            'X-Request-Id',
+            'X-Requested-With'
+        ],
+        exposedHeaders: ['Api-Version', 'Content-Length', 'Content-Md5', 'Content-Type', 'Date', 'Request-Id', 'Response-Time'],
+        credentials: true
+    });
+
+    attachRequestDecorations(app);
+    attachReplyDecorations(app);
+    attachPayloadStash(app);
+    attachResponseHeaders(app, 'WildDuck API');
+    attachNativeRoutes(app, routeRegistry);
+
+    // public files (restify serveStatic joined the route path to the root
+    // directory, so the files live under public/public)
+    app.register(fastifyStatic, {
+        root: Path.join(__dirname, 'public', 'public'),
+        prefix: '/public/',
+        index: 'index.html'
+    });
+
+    const metricsEnabled = metrics.enabled;
+
+    if (metricsEnabled) {
+        app.get('/metrics', { config: { name: 'metrics', public: true } }, async (request, reply) => {
+            try {
+                // restify's text formatter replaced prom-client's content type
+                // (version param included) with plain text/plain
+                reply.header('Content-Type', 'text/plain; charset=utf-8');
+                return await metrics.getMetrics();
+            } catch (err) {
+                log.error('API', 'Failed to collect metrics: %s', err.message);
+                reply.status(500);
+                return 'error: metrics collection failed';
+            }
+        });
+    }
+
+    // ---- access token check (previously a restify server.use middleware) ----
+
+    app.addHook('onRequest', async request => {
+        if (request.is404) {
+            return;
+        }
+
+        const routeConfig = (request.routeOptions && request.routeOptions.config) || {};
+
+        // routes opt out of the token check with config.public; the static
+        // files under /public/ are matched by URL prefix instead
+        if (routeConfig.public || request.url.startsWith('/public/')) {
+            request.wdIsPublic = true;
+            return;
+        }
+
+        let accessToken =
+            (request.query && request.query.accessToken) ||
+            request.headers['x-access-token'] ||
+            (request.headers.authorization ? request.headers.authorization.replace(/^Bearer\s+/i, '').trim() : false) ||
+            false;
+
+        if (request.query && request.query.accessToken) {
+            // delete or the strict routes would reject it as an unknown key
+            delete request.query.accessToken;
+        }
+
+        if (request.headers['x-access-token']) {
+            request.headers['x-access-token'] = '';
+        }
+
+        if (request.headers.authorization) {
+            request.headers.authorization = '';
+        }
+
+        let tokenRequired = false;
+
+        let fail = () => {
+            let error = new Error('Invalid accessToken value');
+            error.responseCode = 403;
+            error.code = 'InvalidToken';
+            throw error;
+        };
+
+        // hard coded master token
+        if (config.api.accessToken) {
+            tokenRequired = true;
+            if (config.api.accessToken === accessToken) {
+                request.role = 'root';
+                request.user = 'root';
+                return;
+            }
+        }
+
+        if (config.api.accessControl.enabled || accessToken) {
+            tokenRequired = true;
+            if (accessToken && accessToken.length === 40 && /^[a-fA-F0-9]{40}$/.test(accessToken)) {
+                let tokenData;
+                let tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+                try {
+                    let key = 'tn:token:' + tokenHash;
+                    tokenData = await db.redis.hgetall(key);
+                } catch (err) {
+                    err.responseCode = 500;
+                    err.code = 'InternalDatabaseError';
+                    throw err;
+                }
+
+                if (tokenData && tokenData.user && tokenData.role && config.api.roles[tokenData.role]) {
+                    let signData;
+                    if ('authVersion' in tokenData) {
+                        // cast value to number
+                        tokenData.authVersion = Number(tokenData.authVersion) || 0;
+                        signData = {
+                            token: accessToken,
+                            user: tokenData.user,
+                            authVersion: tokenData.authVersion,
+                            role: tokenData.role
+                        };
+                    } else {
+                        signData = {
+                            token: accessToken,
+                            user: tokenData.user,
+                            role: tokenData.role
+                        };
+                    }
+
+                    let signature = crypto.createHmac('sha256', config.api.accessControl.secret).update(JSON.stringify(signData)).digest('hex');
+
+                    if (signature !== tokenData.s) {
+                        // rogue token or invalidated secret
+                        /*
+                            // do not delete just in case there is something wrong with the check
+                            try {
+                                await db.redis.del('tn:token:' + tokenHash);
+                            } catch (err) {
+                                // ignore
+                            }
+                            */
+                    } else if (tokenData.ttl && !isNaN(tokenData.ttl) && Number(tokenData.ttl) > 0) {
+                        let tokenTTL = Number(tokenData.ttl);
+                        let tokenLifetime = config.api.accessControl.tokenLifetime || consts.ACCESS_TOKEN_MAX_LIFETIME;
+
+                        // check if token is not too old
+                        if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
+                            // token is still usable, increase session length
+                            try {
+                                await db.redis.expire('tn:token:' + tokenHash, tokenTTL);
+                            } catch (err) {
+                                // ignore
+                            }
+                            request.role = tokenData.role;
+                            request.user = tokenData.user;
+
+                            // make a reference to original method, otherwise might be overridden
+                            let setAuthToken = userHandler.setAuthToken.bind(userHandler);
+
+                            request.accessToken = {
+                                hash: tokenHash,
+                                user: tokenData.user,
+                                // if called then refreshes token data for current hash
+                                update: async () => setAuthToken(tokenData.user, accessToken)
+                            };
+                        } else {
+                            // expired token, clear it
+                            try {
+                                await db.redis.del('tn:token:' + tokenHash);
+                            } catch (err) {
+                                // ignore
+                            }
+                        }
+                    } else {
+                        request.role = tokenData.role;
+                        request.user = tokenData.user;
+                    }
+
+                    if (!request.role) {
+                        return fail();
+                    }
+
+                    if (/^[0-9a-f]{24}$/i.test(request.user)) {
+                        let tokenAuthVersion = Number(tokenData.authVersion) || 0;
+                        let userData = await db.users.collection('users').findOne(
+                            {
+                                _id: new ObjectId(request.user)
+                            },
+                            { projection: { authVersion: true, disabled: true, suspended: true } }
+                        );
+                        let userAuthVersion = Number(userData && userData.authVersion) || 0;
+                        if (!userData || tokenAuthVersion < userAuthVersion) {
+                            // unknown user or expired session
+                            return fail();
+                        }
+                        if (userData.disabled || userData.suspended) {
+                            // locked out account, existing tokens must not keep working
+                            return fail();
+                        }
+                    }
+
+                    // pass
+                    return;
+                }
+            }
+        }
+
+        if (tokenRequired) {
+            // no valid token found
+            return fail();
+        }
+
+        // allow all
+        request.role = 'root';
+        request.user = 'root';
+    });
+
+    // a token redundantly included in the request body must never reach
+    // validation (it is not a declared field) nor the logs. The body is not
+    // parsed yet in onRequest, so this runs as an instance level preValidation
+    // hook, which fastify runs before the route's own params merge
+    app.addHook('preValidation', async request => {
+        if (request.is404 || request.wdIsPublic) {
+            return;
+        }
+        if (request.body && typeof request.body === 'object' && !Array.isArray(request.body) && !Buffer.isBuffer(request.body) && request.body.accessToken) {
+            delete request.body.accessToken;
+        }
+    });
+
+    // ---- metrics timing (previously a restify server.use middleware) ----
+
+    // ---- Gelf HTTP logging (previously done inside the restify JSON formatter) ----
+
+    app.addHook('onResponse', async (request, reply) => {
+        const body = reply.wdResponseBody;
+        if (!body || typeof body !== 'object') {
+            return;
+        }
+
+        // only documented API routes produce a gelf line; infra routes
+        // (metrics, the OpenAPI document, /api-methods) declare no
+        // validationObjs and are not API responses
+        const routeConfig = (request.routeOptions && request.routeOptions.config) || {};
+        if (!routeConfig.validationObjs) {
+            return;
+        }
+
+        // fastify has already computed the body size for content-length
+        const size = Number(reply.getHeader('content-length')) || 0;
+        const params = requestParams(request);
+
+        let path = (request.routeOptions && request.routeOptions.url) || maskUrl(request.url);
+
+        let message = {
+            short_message: 'HTTP [' + request.method + ' ' + path + '] ' + (body.success ? 'OK' : 'FAILED'),
+
+            _req_remoteAddress: request.headers['x-forwarded-for'] || request.raw.socket.remoteAddress,
+
+            _ip: ((params && params.ip) || '').toString().substr(0, 40) || '',
+            _sess: ((params && params.sess) || '').toString().substr(0, 40) || '',
+
+            _http_route: path,
+            _http_method: request.method,
+            _user: request.user,
+            _role: request.role,
+
+            _api_response: body.success ? 'success' : 'fail',
+
+            _error: body.error,
+            _code: body.code,
+
+            _size: size
+        };
+
+        Object.keys(params || {}).forEach(key => {
+            let value = params[key];
+
+            if (!value && value !== 0) {
+                // if falsy don't continue, allow 0 integer as value
+                return;
+            }
+
+            // cast value to string if not string
+            value = typeof value === 'string' ? value : util.inspect(value, INSPECT_OPTIONS).trim();
+
+            if (['password', 'existingPassword', 'accessToken'].includes(key)) {
+                value = '***';
+            } else if (value.length > 128) {
+                value = value.substr(0, 128) + '…';
+            }
+
+            if (key.length > 30) {
+                key = key.substr(0, 30) + '…';
+            }
+
+            if (key === 'sendTime') {
+                try {
+                    value = new Date(value).toISOString();
+                } catch {
+                    // ignore
+                }
+            }
+
+            message['_req_' + key] = value;
+        });
+
+        if (typeof body.id !== 'undefined') {
+            let value = typeof body.id === 'string' ? body.id : util.inspect(body.id, INSPECT_OPTIONS).trim();
+            message._res_id = value.length > 128 ? value.substr(0, 128) + '…' : value;
+        }
+
+        loggelf(message);
+    });
+
+    attachAccessLog(app, 'API', { includeUser: true, serverName: 'WildDuck API' });
+    attachErrorHandler(app, 'API');
+
+    app.setNotFoundHandler((request, reply) => {
+        const body = {
+            code: 'ResourceNotFound',
+            message: `${maskUrl(request.url)} does not exist`
+        };
+        reply.status(404);
+        reply.wdContentType = 'application/json';
+        return reply.send(body);
+    });
+
+    // ---- handlers and routes ----
 
     settingsHandler = new SettingsHandler({ db: db.database });
 
@@ -601,50 +677,66 @@ module.exports = done => {
         loggelf: message => loggelf(message)
     });
 
-    server.loggelf = (message, requiredKeys = []) => loggelf(message, requiredKeys);
+    // route modules read these off the fastify instance
+    app.decorate('loggelf', (message, requiredKeys = []) => loggelf(message, requiredKeys));
+    app.decorate(
+        'lock',
+        new Lock({
+            redis: db.redis,
+            namespace: 'mail'
+        })
+    );
 
-    server.lock = new Lock({
-        redis: db.redis,
-        namespace: 'mail'
+    // route modules load in a sibling plugin context so they boot after the
+    // swagger plugin (its onRoute hook only sees routes registered later)
+    app.register(async () => {
+        acmeRoutes(db, app);
+        usersRoutes(db, app, userHandler, settingsHandler);
+        addressesRoutes(db, app, userHandler, settingsHandler);
+        mailboxesRoutes(db, app, mailboxHandler);
+        messagesRoutes(db, app, messageHandler, userHandler, storageHandler, settingsHandler);
+        storageRoutes(db, app, storageHandler);
+        filtersRoutes(db, app, userHandler, settingsHandler);
+        domainaccessRoutes(db, app);
+        aspsRoutes(db, app, userHandler);
+        totpRoutes(db, app, userHandler);
+        custom2faRoutes(db, app, userHandler);
+        webauthnRoutes(db, app, userHandler);
+        updatesRoutes(db, app, notifier);
+        authRoutes(db, app, userHandler);
+        autoreplyRoutes(db, app);
+        submitRoutes(db, app, messageHandler, userHandler, settingsHandler);
+        auditRoutes(db, app, auditHandler);
+        domainaliasRoutes(db, app);
+        dkimRoutes(db, app);
+        certsRoutes(db, app);
+        webhooksRoutes(db, app);
+        settingsRoutes(db, app, settingsHandler);
+        healthRoutes(db, app, loggelf);
     });
 
-    acmeRoutes(db, server, { disableRedirect: true });
-    usersRoutes(db, server, userHandler, settingsHandler);
-    addressesRoutes(db, server, userHandler, settingsHandler);
-    mailboxesRoutes(db, server, mailboxHandler);
-    messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler);
-    storageRoutes(db, server, storageHandler);
-    filtersRoutes(db, server, userHandler, settingsHandler);
-    domainaccessRoutes(db, server);
-    aspsRoutes(db, server, userHandler);
-    totpRoutes(db, server, userHandler);
-    custom2faRoutes(db, server, userHandler);
-    webauthnRoutes(db, server, userHandler);
-    updatesRoutes(db, server, notifier);
-    authRoutes(db, server, userHandler);
-    autoreplyRoutes(db, server);
-    submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
-    auditRoutes(db, server, auditHandler);
-    domainaliasRoutes(db, server);
-    dkimRoutes(db, server);
-    certsRoutes(db, server);
-    webhooksRoutes(db, server);
-    settingsRoutes(db, server, settingsHandler);
-    healthRoutes(db, server, loggelf);
-
     if (process.env.NODE_ENV === 'test') {
-        server.get(
-            { name: 'api-methods', path: '/api-methods' },
-            tools.responseWrapper(async (req, res) => {
-                res.charSet('utf-8');
-
-                return res.json(server.router.getRoutes());
-            })
-        );
+        app.get('/api-methods', { config: { name: 'api-methods' } }, async () => routeRegistry);
     }
 
+    // the specification is static once the routes are registered, build once
+    let openApiDocsCache = null;
+    app.get(apiDocsConfig.docsPath || '/docs/api/openapidocs.json', { config: { name: 'openapidocs' }, schema: { hide: true } }, async () => {
+        if (!openApiDocsCache) {
+            openApiDocsCache = app.swagger();
+        }
+        return openApiDocsCache;
+    });
+
     if (process.env.GENERATE_API_DOCS === 'true') {
-        server.pre(restifyApiGenerate.restifyApiGenerate(server, restifyApiGenerateConfig));
+        app.ready(() => {
+            try {
+                fs.writeFileSync(Path.join(__dirname, 'docs', 'api', 'openapidocs.json'), JSON.stringify(app.swagger(), null, 4));
+                log.info('API', 'Generated OpenAPI docs to docs/api/openapidocs.json');
+            } catch (err) {
+                log.error('API', 'Failed to generate OpenAPI docs: %s', err.message);
+            }
+        });
     }
 
     if (process.env.REGENERATE_API_DOCS === 'true') {
@@ -656,29 +748,20 @@ module.exports = done => {
         })();
     }
 
-    server.on('error', err => {
-        if (!started) {
-            started = true;
-            return done(err);
+    app.listen({ port: config.api.port, host: config.api.host || '0.0.0.0' }, err => {
+        if (err) {
+            if (!started) {
+                started = true;
+                return done(err);
+            }
+            return log.error('API', err);
         }
-        log.error('API', err);
-    });
-
-    server.on('restifyError', (req, res, err, callback) => {
-        if (!started) {
-            started = true;
-            return done(err);
-        }
-        return callback();
-    });
-
-    server.listen(config.api.port, config.api.host, () => {
         if (started) {
-            return server.close();
+            return app.close();
         }
         started = true;
         metrics.setServiceUp('api', true);
         log.info('API', 'Server listening on %s:%s', config.api.host || '0.0.0.0', config.api.port);
-        done(null, server);
+        done(null, app);
     });
 };

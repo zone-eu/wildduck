@@ -2,13 +2,13 @@
 
 'use strict';
 
-const crypto = require('crypto');
 const supertest = require('supertest');
 const chai = require('chai');
 const { once } = require('events');
 const BSON = require('bson');
 const { ExportStream } = require('../../lib/export');
 const db = require('../../lib/db');
+const { createRoleToken } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -34,37 +34,6 @@ const createImportBuffer = async entries => {
     await once(exporter, 'end');
 
     return Buffer.concat(chunks);
-};
-
-const createRoleToken = async role => {
-    await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
-
-    const accessToken = crypto.randomBytes(20).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-    const tokenData = {
-        user: 'root',
-        role,
-        ttl: 3600,
-        created: Date.now().toString()
-    };
-
-    tokenData.s = crypto
-        .createHmac('sha256', config.api.accessControl.secret)
-        .update(
-            JSON.stringify({
-                token: accessToken,
-                user: tokenData.user,
-                role: tokenData.role
-            })
-        )
-        .digest('hex');
-
-    await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
-
-    return {
-        accessToken,
-        tokenHash
-    };
 };
 
 describe('API Users', function () {
