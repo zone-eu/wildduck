@@ -130,7 +130,7 @@ function base64UrlDecode(value) {
     return Buffer.from(input, 'base64');
 }
 
-describe.only('API WebAuthn', function () {
+describe('API WebAuthn', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     const password = 'webauthnsecretvalue';
