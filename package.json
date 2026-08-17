@@ -106,7 +106,7 @@
         "search-string": "4.1.0",
         "smtp-server": "3.19.2",
         "speakeasy": "2.0.0",
-        "undici": "7.28.0",
+        "undici": "7.29.0",
         "unix-crypt-td-js": "1.1.4",
         "unixcrypt": "1.2.0",
         "yargs": "17.7.2"
