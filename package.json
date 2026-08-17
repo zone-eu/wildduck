@@ -112,7 +112,7 @@
         "undici": "7.28.0",
         "unix-crypt-td-js": "1.1.4",
         "unixcrypt": "1.2.0",
-        "yargs": "18.0.0"
+        "yargs": "17.7.2"
     },
     "repository": {
         "type": "git",
