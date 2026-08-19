@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.50.0](https://github.com/zone-eu/wildduck/compare/v1.49.6...v1.50.0) (2026-08-19)
+
+
+### Features
+
+* **node-version:** fix workflows, raise nodejs min requirement ([#1144](https://github.com/zone-eu/wildduck/issues/1144)) ([fcd22d3](https://github.com/zone-eu/wildduck/commit/fcd22d3828e936d48bb5c6686f851cf8616964bc))
+
+
+### Bug Fixes
+
+* fix hasDrafts for non collapsed threads message listing view ([#1141](https://github.com/zone-eu/wildduck/issues/1141)) ([c4ce616](https://github.com/zone-eu/wildduck/commit/c4ce616acc04dd09032d9ef3a8329941e076ad8e))
+
 ## [1.49.6](https://github.com/zone-eu/wildduck/compare/v1.49.5...v1.49.6) (2026-08-19)
 
 
