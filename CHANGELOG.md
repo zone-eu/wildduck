@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.49.6](https://github.com/zone-eu/wildduck/compare/v1.49.5...v1.49.6) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api-collapseThreads:** ZMS-86: Message listing non-collapsed list return correct hasDrafts ([#1129](https://github.com/zone-eu/wildduck/issues/1129)) ([6a9874c](https://github.com/zone-eu/wildduck/commit/6a9874c539acbfb3ca46f05a34f3c5feb00b1735))
+* **api:** avoid moving full documents through the collapseThreads aggregation ([#1135](https://github.com/zone-eu/wildduck/issues/1135)) ([da1499d](https://github.com/zone-eu/wildduck/commit/da1499d834ba8b0d4af6fc152a20dc448ca2bd7e))
+* **audit:** reject store() when the GridFS upload stream errors ([#1130](https://github.com/zone-eu/wildduck/issues/1130)) ([a8d1c4f](https://github.com/zone-eu/wildduck/commit/a8d1c4f1b8b8f3aaca068d7e5ca28341ee53ce04))
+* bump deps ([#1139](https://github.com/zone-eu/wildduck/issues/1139)) ([cc172c7](https://github.com/zone-eu/wildduck/commit/cc172c74f51eb2245c23fdbd139757c8c82d22cb))
+* **deps:** pin yargs to 17.7.2, v18 is ESM only ([0ebb842](https://github.com/zone-eu/wildduck/commit/0ebb842c3bdb125463acd0ae4e4c482857bb941a))
+* ZMS-52: Add prometheus support ([#1093](https://github.com/zone-eu/wildduck/issues/1093)) ([5cce359](https://github.com/zone-eu/wildduck/commit/5cce359d2da8808eb4548c75bb944561c5dc33ba))
+
 ## [1.49.5](https://github.com/zone-eu/wildduck/compare/v1.49.4...v1.49.5) (2026-07-22)
 
 
