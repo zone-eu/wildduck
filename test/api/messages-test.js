@@ -923,7 +923,7 @@ describe('Messages tests', function () {
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 
-    it('should GET /users/:user/search expect success / collapseThreads controls the hasDrafts scope', async () => {
+    it('should GET /users/:user/search expect success / collapseThreads controls hasDrafts scope and non-collapsed results match the exact draft reference', async () => {
         const mailboxResponse = await server
             .post(`/users/${user}/mailboxes`)
             .send({ path: `/search-collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
@@ -954,6 +954,23 @@ describe('Messages tests', function () {
             })
             .expect(200);
 
+        // Keep the root in the References ancestry, but make only this reply the target of the next draft.
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        const draftReply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: true,
+                to: [{ address: 'search-collapse@example.com' }],
+                text: 'Draft reply to reply',
+                reference: {
+                    mailbox,
+                    id: reply.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
         const single = await server
             .post(`/users/${user}/mailboxes/${mailbox}/messages`)
             .send({
@@ -973,31 +990,36 @@ describe('Messages tests', function () {
             .send({})
             .expect(200);
 
-        expect(expandedPage.body.total).to.equal(2);
-        expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
-        expect(expandedPage.body.results[0].threadMessageCount).to.equal(2);
+        expect(expandedPage.body.total).to.equal(3);
+        expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([draftReply.body.message.id]);
+        expect(expandedPage.body.results[0].threadMessageCount).to.equal(3);
         expect(expandedPage.body.results[0]).to.not.have.property('hasDrafts');
 
         const expandedThread = await server
-            .get(`/users/${user}/search?thread=${thread}&includeHasDrafts=true&limit=2`)
+            .get(`/users/${user}/search?thread=${thread}&includeHasDrafts=true&limit=3`)
             .send({})
             .expect(200);
 
-        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id, root.body.message.id]);
-        expect(expandedThread.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
+        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([
+            draftReply.body.message.id,
+            reply.body.message.id,
+            root.body.message.id
+        ]);
+        expect(expandedThread.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true, false]);
         expect(expandedThread.body.results[0]).to.not.have.property('threadMessageCount');
 
         const expandedMailboxPage = await server
-            .get(`/users/${user}/mailboxes/${mailbox}/messages?includeHasDrafts=true&limit=3&order=desc`)
+            .get(`/users/${user}/mailboxes/${mailbox}/messages?includeHasDrafts=true&limit=4&order=desc`)
             .send({})
             .expect(200);
 
         expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([
             single.body.message.id,
+            draftReply.body.message.id,
             reply.body.message.id,
             root.body.message.id
         ]);
-        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false, true]);
+        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false, true, false]);
         expect(expandedMailboxPage.body.results[0]).to.not.have.property('threadMessageCount');
 
         const collapsedPage1 = await server
@@ -1028,8 +1050,8 @@ describe('Messages tests', function () {
             .send({})
             .expect(200);
 
-        expect(collapsedPage2.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
-        expect(collapsedPage2.body.results[0].threadMessageCount).to.equal(2);
+        expect(collapsedPage2.body.results.map(entry => entry.id)).to.deep.equal([draftReply.body.message.id]);
+        expect(collapsedPage2.body.results[0].threadMessageCount).to.equal(3);
         expect(collapsedPage2.body.results[0].hasDrafts).to.be.true;
         expect(collapsedPage2.body.previousCursor).to.be.a('string');
         expect(collapsedPage2.body.nextCursor).to.be.false;
