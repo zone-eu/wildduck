@@ -116,6 +116,6 @@
         "url": "git://github.com/zone-eu/wildduck.git"
     },
     "engines": {
-        "node": ">=16.0.0"
+        "node": ">=22.19.0"
     }
 }
