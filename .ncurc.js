@@ -19,6 +19,11 @@ module.exports = {
         'openpgp',
 
         // esm only since v18, breaks the CommonJS CLI scripts in bin/
-        'yargs'
+        'yargs',
+
+        // new major upgrade requires rewrite
+        'mongo-cursor-pagination',
+        'accesscontrol',
+        'ioredis'
     ]
 };

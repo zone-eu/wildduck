@@ -10,6 +10,7 @@ const expect = chai.expect;
 chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 const { ObjectId } = require('mongodb');
+const { ImapFlow } = require('imapflow');
 const { parseSearchQuery, getMongoDBQuery } = require('../../lib/search-query');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
@@ -259,6 +260,7 @@ describe('Messages tests', function () {
     let queryAttachmentMessageId;
     let queryFlaggedSeenAttachmentMessageId;
     let queryAltMailboxMessageId;
+    let testUsername;
     let testAddress;
 
     const queryFixture = {
@@ -335,7 +337,7 @@ describe('Messages tests', function () {
 
     before(async () => {
         const testUserTag = Date.now().toString(36);
-        const testUsername = `messagestestsuser-${testUserTag}`;
+        testUsername = `messagestestsuser-${testUserTag}`;
         testAddress = `${testUsername}@web.zone.test`;
         queryFixture.fromAddress = testAddress;
 
@@ -923,7 +925,7 @@ describe('Messages tests', function () {
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 
-    it('should GET /users/:user/search expect success / collapseThreads controls the hasDrafts scope', async () => {
+    it('should GET /users/:user/search expect success / collapseThreads controls hasDrafts scope and non-collapsed results match the exact draft reference', async () => {
         const mailboxResponse = await server
             .post(`/users/${user}/mailboxes`)
             .send({ path: `/search-collapse-threads-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
@@ -954,6 +956,23 @@ describe('Messages tests', function () {
             })
             .expect(200);
 
+        // Keep the root in the References ancestry, but make only this reply the target of the next draft.
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        const draftReply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                draft: true,
+                to: [{ address: 'search-collapse@example.com' }],
+                text: 'Draft reply to reply',
+                reference: {
+                    mailbox,
+                    id: reply.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
         const single = await server
             .post(`/users/${user}/mailboxes/${mailbox}/messages`)
             .send({
@@ -973,31 +992,36 @@ describe('Messages tests', function () {
             .send({})
             .expect(200);
 
-        expect(expandedPage.body.total).to.equal(2);
-        expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
-        expect(expandedPage.body.results[0].threadMessageCount).to.equal(2);
+        expect(expandedPage.body.total).to.equal(3);
+        expect(expandedPage.body.results.map(entry => entry.id)).to.deep.equal([draftReply.body.message.id]);
+        expect(expandedPage.body.results[0].threadMessageCount).to.equal(3);
         expect(expandedPage.body.results[0]).to.not.have.property('hasDrafts');
 
         const expandedThread = await server
-            .get(`/users/${user}/search?thread=${thread}&includeHasDrafts=true&limit=2`)
+            .get(`/users/${user}/search?thread=${thread}&includeHasDrafts=true&limit=3`)
             .send({})
             .expect(200);
 
-        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id, root.body.message.id]);
-        expect(expandedThread.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true]);
+        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([
+            draftReply.body.message.id,
+            reply.body.message.id,
+            root.body.message.id
+        ]);
+        expect(expandedThread.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true, false]);
         expect(expandedThread.body.results[0]).to.not.have.property('threadMessageCount');
 
         const expandedMailboxPage = await server
-            .get(`/users/${user}/mailboxes/${mailbox}/messages?includeHasDrafts=true&limit=3&order=desc`)
+            .get(`/users/${user}/mailboxes/${mailbox}/messages?includeHasDrafts=true&limit=4&order=desc`)
             .send({})
             .expect(200);
 
         expect(expandedMailboxPage.body.results.map(entry => entry.id)).to.deep.equal([
             single.body.message.id,
+            draftReply.body.message.id,
             reply.body.message.id,
             root.body.message.id
         ]);
-        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false, true]);
+        expect(expandedMailboxPage.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false, true, false]);
         expect(expandedMailboxPage.body.results[0]).to.not.have.property('threadMessageCount');
 
         const collapsedPage1 = await server
@@ -1028,8 +1052,8 @@ describe('Messages tests', function () {
             .send({})
             .expect(200);
 
-        expect(collapsedPage2.body.results.map(entry => entry.id)).to.deep.equal([reply.body.message.id]);
-        expect(collapsedPage2.body.results[0].threadMessageCount).to.equal(2);
+        expect(collapsedPage2.body.results.map(entry => entry.id)).to.deep.equal([draftReply.body.message.id]);
+        expect(collapsedPage2.body.results[0].threadMessageCount).to.equal(3);
         expect(collapsedPage2.body.results[0].hasDrafts).to.be.true;
         expect(collapsedPage2.body.previousCursor).to.be.a('string');
         expect(collapsedPage2.body.nextCursor).to.be.false;
@@ -1041,6 +1065,97 @@ describe('Messages tests', function () {
 
         expect(archivedRoot).to.exist;
         expect(archivedRoot).to.not.have.property('hasDrafts');
+    });
+
+    it('should GET /users/:user/search expect success / IMAP APPEND draft hasDrafts matches only the direct parent', async () => {
+        const mailboxPath = `imap-draft-reference-${Date.now().toString(36)}`;
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/${mailboxPath}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const mailbox = mailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                to: [{ address: 'imap-draft@example.com' }],
+                subject: 'IMAP Draft Thread',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({
+                to: [{ address: 'imap-draft@example.com' }],
+                text: 'Intermediate reply',
+                reference: {
+                    mailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        const rootData = await server.get(`/users/${user}/mailboxes/${mailbox}/messages/${root.body.message.id}`).send({}).expect(200);
+        const replyData = await server.get(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({}).expect(200);
+        const rawDraft = [
+            `From: ${testAddress}`,
+            'To: imap-draft@example.com',
+            'Subject: Re: IMAP Draft Thread',
+            `Message-ID: <imap-draft-${Date.now().toString(36)}@web.zone.test>`,
+            `In-Reply-To: ${replyData.body.messageId}`,
+            `References: ${rootData.body.messageId} ${replyData.body.messageId}`,
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            'Draft uploaded with IMAP APPEND'
+        ].join('\r\n');
+
+        const client = new ImapFlow({
+            host: '127.0.0.1',
+            port: config.imap.port,
+            secure: true,
+            auth: {
+                user: testUsername,
+                pass: 'secretpassword'
+            },
+            tls: {
+                rejectUnauthorized: false
+            },
+            logger: false
+        });
+
+        let appendResult;
+        try {
+            await client.connect();
+            appendResult = await client.append(mailboxPath, rawDraft, ['\\Draft']);
+        } finally {
+            if (client.usable) {
+                await client.logout();
+            } else {
+                client.close();
+            }
+        }
+
+        expect(appendResult.uid).to.be.a('number');
+
+        const appendedDraft = await server.get(`/users/${user}/mailboxes/${mailbox}/messages/${appendResult.uid}`).send({}).expect(200);
+        expect(appendedDraft.body).to.not.have.property('reference');
+
+        const expandedThread = await server
+            .get(`/users/${user}/search?thread=${rootData.body.thread}&includeHasDrafts=true&limit=3`)
+            .send({})
+            .expect(200);
+
+        expect(expandedThread.body.results.map(entry => entry.id)).to.deep.equal([
+            appendResult.uid,
+            reply.body.message.id,
+            root.body.message.id
+        ]);
+        expect(expandedThread.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, true, false]);
     });
 
     it('should GET /users/:user/search expect success / q supports subject and in keywords', async () => {
