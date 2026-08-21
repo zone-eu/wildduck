@@ -3,13 +3,15 @@
 'use strict';
 
 const { expect } = require('chai');
-const { parseListUnsubscribe } = require('../lib/list-headers');
+const { parseListId, parseListUnsubscribe } = require('../lib/list-headers');
 
 describe('#parseListUnsubscribe', function () {
     it('should return an empty list for missing or empty headers', function () {
         expect(parseListUnsubscribe()).to.deep.equal([]);
         expect(parseListUnsubscribe(null)).to.deep.equal([]);
         expect(parseListUnsubscribe('')).to.deep.equal([]);
+        expect(parseListUnsubscribe('   ')).to.deep.equal([]);
+        expect(parseListUnsubscribe([null, '', '   '])).to.deep.equal([]);
     });
 
     const validValues = [
@@ -87,14 +89,34 @@ describe('#parseListUnsubscribe', function () {
             ]
         },
         {
-            title: 'an HTTPS URI paired with an RFC 8058 one-click header',
-            value: '<https://example.com/unsubscribe?id=12345>',
-            expected: [{ address: 'https://example.com/unsubscribe?id=12345', name: '' }]
+            title: 'a folded comment',
+            value: '(Click here to\r\n unsubscribe) <mailto:unsub@example.com>',
+            expected: [{ address: 'mailto:unsub@example.com', name: 'Click here to unsubscribe' }]
         },
         {
             title: 'an FTP URI',
             value: '<ftp://example.com/unsub>',
             expected: [{ address: 'ftp://example.com/unsub', name: '' }]
+        },
+        {
+            title: 'a news URI (RFC 2369 example scheme)',
+            value: '<news:example.list>',
+            expected: [{ address: 'news:example.list', name: '' }]
+        },
+        {
+            title: 'an unregistered URI scheme',
+            value: '<htps://example.com/unsub>',
+            expected: [{ address: 'htps://example.com/unsub', name: '' }]
+        },
+        {
+            title: 'a URI with unencoded non-ASCII characters',
+            value: '<https://例え.jp/unsub>',
+            expected: [{ address: 'https://例え.jp/unsub', name: '' }]
+        },
+        {
+            title: 'a URI with an unescaped percent sign',
+            value: '<https://example.com/unsub?discount=100%>',
+            expected: [{ address: 'https://example.com/unsub?discount=100%', name: '' }]
         },
         {
             title: 'leading CFWS',
@@ -117,7 +139,64 @@ describe('#parseListUnsubscribe', function () {
         });
     }
 
-    const malformedValues = [
+    // malformed values where valid <URI> entries can still be extracted
+    const salvagedValues = [
+        {
+            title: 'URIs without a separating comma',
+            value: '<mailto:unsub@example.com> <https://example.com/unsub>',
+            expected: [
+                { address: 'mailto:unsub@example.com', name: '' },
+                { address: 'https://example.com/unsub', name: '' }
+            ]
+        },
+        {
+            title: 'a trailing comma',
+            value: '<mailto:unsub@example.com>,',
+            expected: [{ address: 'mailto:unsub@example.com', name: '' }]
+        },
+        {
+            title: 'a leading comma',
+            value: ',<mailto:unsub@example.com>',
+            expected: [{ address: 'mailto:unsub@example.com', name: '' }]
+        },
+        {
+            title: 'a double comma',
+            value: '<mailto:unsub@example.com>,,<https://example.com/unsub>',
+            expected: [
+                { address: 'mailto:unsub@example.com', name: '' },
+                { address: 'https://example.com/unsub', name: '' }
+            ]
+        },
+        {
+            title: 'display-name syntax',
+            value: 'Unsubscribe here <mailto:unsub@example.com>',
+            expected: [{ address: 'mailto:unsub@example.com', name: '' }]
+        },
+        {
+            title: 'a valid URI followed by an invalid one',
+            value: '<mailto:unsub@example.com>, <https://example.com/unsub?id=John Doe>',
+            expected: [{ address: 'mailto:unsub@example.com', name: '' }]
+        },
+        {
+            title: 'an unescaped closing angle bracket inside a query string',
+            value: '<https://example.com/unsub?id=123>456>',
+            expected: [{ address: 'https://example.com/unsub?id=123', name: '' }]
+        },
+        {
+            title: 'a display name and trailing junk around a punycode-like domain',
+            value: 'Unsub <mailto:x@xn--foo>, bogus',
+            expected: [{ address: 'mailto:x@xn--foo', name: '' }]
+        }
+    ];
+
+    for (const test of salvagedValues) {
+        it(`should salvage valid URIs from ${test.title}`, function () {
+            expect(parseListUnsubscribe(test.value)).to.deep.equal(test.expected);
+        });
+    }
+
+    // values without any valid URI, preserved as the display name with an empty address
+    const unparseableValues = [
         {
             title: 'an HTTPS URI without angle brackets',
             value: 'https://example.com/unsubscribe?id=12345'
@@ -129,10 +208,6 @@ describe('#parseListUnsubscribe', function () {
         {
             title: 'an email address without a mailto scheme',
             value: '<unsub@example.com>'
-        },
-        {
-            title: 'URIs without a separating comma',
-            value: '<mailto:unsub@example.com> <https://example.com/unsub>'
         },
         {
             title: 'an unescaped space inside a URI',
@@ -147,28 +222,12 @@ describe('#parseListUnsubscribe', function () {
             value: '< mailto:unsub@example.com >'
         },
         {
-            title: 'a trailing comma',
-            value: '<mailto:unsub@example.com>,'
-        },
-        {
-            title: 'a leading comma',
-            value: ',<mailto:unsub@example.com>'
-        },
-        {
-            title: 'a double comma',
-            value: '<mailto:unsub@example.com>,,<https://example.com/unsub>'
-        },
-        {
             title: 'RFC 5322 group syntax',
             value: 'Support Team: unsub@example.com;'
         },
         {
             title: 'RFC 5322 group syntax inside angle brackets',
             value: '<Support Team: unsub@example.com;>'
-        },
-        {
-            title: 'display-name syntax',
-            value: 'Unsubscribe here <mailto:unsub@example.com>'
         },
         {
             title: 'a missing closing angle bracket',
@@ -179,16 +238,8 @@ describe('#parseListUnsubscribe', function () {
             value: 'mailto:unsub@example.com>'
         },
         {
-            title: 'a misspelled URI scheme',
-            value: '<htps://example.com/unsub>'
-        },
-        {
             title: 'an unescaped opening angle bracket inside a query string',
             value: '<https://example.com/unsub?id=123<456>>'
-        },
-        {
-            title: 'an unescaped closing angle bracket inside a query string',
-            value: '<https://example.com/unsub?id=123>456>'
         },
         {
             title: 'two URIs separated by a semicolon inside one pair of angle brackets',
@@ -196,27 +247,29 @@ describe('#parseListUnsubscribe', function () {
         }
     ];
 
-    for (const test of malformedValues) {
-        it(`should preserve ${test.title} as an address`, function () {
+    for (const test of unparseableValues) {
+        it(`should preserve ${test.title} as the display name`, function () {
             expect(parseListUnsubscribe(test.value)).to.deep.equal([
                 {
-                    address: test.value,
-                    name: ''
+                    address: '',
+                    name: test.value
                 }
             ]);
         });
     }
 
     it('should parse repeated header values', function () {
-        expect(
-            parseListUnsubscribe([
-                '<https://example.com/unsub/first>, <mailto:unsub@example.com>',
-                '<https://example.com/unsub/second>'
-            ])
-        ).to.deep.equal([
+        expect(parseListUnsubscribe(['<https://example.com/unsub/first>, <mailto:unsub@example.com>', '<https://example.com/unsub/second>'])).to.deep.equal([
             { address: 'https://example.com/unsub/first', name: '' },
             { address: 'mailto:unsub@example.com', name: '' },
             { address: 'https://example.com/unsub/second', name: '' }
+        ]);
+    });
+
+    it('should handle repeated header values independently', function () {
+        expect(parseListUnsubscribe(['<https://example.com/unsub>', 'not a URI'])).to.deep.equal([
+            { address: 'https://example.com/unsub', name: '' },
+            { address: '', name: 'not a URI' }
         ]);
     });
 
@@ -229,6 +282,15 @@ describe('#parseListUnsubscribe', function () {
         ]);
     });
 
+    it('should decode encoded words in comments', function () {
+        expect(parseListUnsubscribe('(=?utf-8?q?T=C3=BChista?=) <mailto:unsub@example.com>')).to.deep.equal([
+            {
+                address: 'mailto:unsub@example.com',
+                name: 'Tühista'
+            }
+        ]);
+    });
+
     it('should accept header values provided as buffers', function () {
         expect(parseListUnsubscribe(Buffer.from('<https://example.com/unsub>'))).to.deep.equal([
             {
@@ -236,5 +298,64 @@ describe('#parseListUnsubscribe', function () {
                 name: ''
             }
         ]);
+    });
+});
+
+describe('#parseListId', function () {
+    it('should return false for missing or empty headers', function () {
+        expect(parseListId()).to.be.false;
+        expect(parseListId(null)).to.be.false;
+        expect(parseListId('')).to.be.false;
+        expect(parseListId('   ')).to.be.false;
+        expect(parseListId([])).to.be.false;
+    });
+
+    it('should parse a bare list id', function () {
+        expect(parseListId('<commonspace-users.host.com>')).to.deep.equal({
+            address: 'commonspace-users.host.com',
+            name: ''
+        });
+    });
+
+    it('should parse a quoted display name', function () {
+        expect(parseListId('"Commonspace users" <commonspace-users.host.com>')).to.deep.equal({
+            address: 'commonspace-users.host.com',
+            name: 'Commonspace users'
+        });
+    });
+
+    it('should parse an unquoted display name', function () {
+        expect(parseListId('Commonspace users <commonspace-users.host.com>')).to.deep.equal({
+            address: 'commonspace-users.host.com',
+            name: 'Commonspace users'
+        });
+    });
+
+    it('should parse a folded header value', function () {
+        expect(parseListId('"Commonspace users"\r\n <commonspace-users.host.com>')).to.deep.equal({
+            address: 'commonspace-users.host.com',
+            name: 'Commonspace users'
+        });
+    });
+
+    it('should use the first value of a repeated header', function () {
+        expect(parseListId(['<first-list.host.com>', '<second-list.host.com>'])).to.deep.equal({
+            address: 'first-list.host.com',
+            name: ''
+        });
+    });
+
+    it('should decode an encoded word display name', function () {
+        expect(parseListId('=?utf-8?q?Minu_=C3=BChing?= <commonspace-users.host.com>')).to.deep.equal({
+            address: 'commonspace-users.host.com',
+            name: 'Minu ühing'
+        });
+    });
+
+    it('should preserve a malformed value as the display name', function () {
+        expect(parseListId('mylist.example.com')).to.deep.equal({
+            address: '',
+            name: 'mylist.example.com'
+        });
     });
 });

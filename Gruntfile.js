@@ -41,6 +41,20 @@ module.exports = function (grunt) {
                 // pop3 tests (do not require server/db)
                 src: ['test/pop3-*-test.js']
             },
+            unit: {
+                options: {
+                    reporter: 'spec'
+                },
+                // wildduck unit tests (do not require server/db)
+                src: [
+                    'test/checkrangequery-test.js',
+                    'test/create-decipher-test.js',
+                    'test/filtering-tools-test.js',
+                    'test/hibp-tools-test.js',
+                    'test/list-headers-test.js',
+                    'test/tools-test.js'
+                ]
+            },
             api: {
                 options: {
                     reporter: 'spec'
@@ -82,6 +96,6 @@ module.exports = function (grunt) {
     // Tasks
     grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
     grunt.registerTask('testonly', ['shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
-    // proto: run all protocol-level tests (IMAP unit + POP3) without requiring MongoDB/Redis
-    grunt.registerTask('proto', ['mochaTest:imap-unit', 'mochaTest:pop3']);
+    // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
+    grunt.registerTask('proto', ['mochaTest:imap-unit', 'mochaTest:pop3', 'mochaTest:unit']);
 };
