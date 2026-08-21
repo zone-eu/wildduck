@@ -390,6 +390,57 @@ describe('FilterHandler recipient spam overrides', () => {
         expect(getSpamResult(result)).to.not.exist;
     });
 
+    it('should not let a spam override replace a filter mailbox destination', async () => {
+        const mailbox = new ObjectId();
+        const { addOptions, result } = await runCase({
+            overrideFlags: ['spam'],
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    query: {
+                        headers: {
+                            from: 'alice@example.com'
+                        }
+                    },
+                    action: {
+                        mailbox
+                    }
+                }
+            ]
+        });
+
+        expect(addOptions.mailbox).to.equal(mailbox);
+        expect(addOptions.path).to.not.exist;
+        expect(addOptions.specialUse).to.not.exist;
+        expect(getSpamResult(result)).to.not.exist;
+    });
+
+    it('should prefer a filter mailbox destination over a spam action', async () => {
+        const mailbox = new ObjectId();
+        const { addOptions, result } = await runCase({
+            filters: [
+                {
+                    _id: new ObjectId(),
+                    query: {
+                        headers: {
+                            from: 'alice@example.com'
+                        }
+                    },
+                    action: {
+                        mailbox,
+                        spam: true
+                    }
+                }
+            ]
+        });
+
+        expect(addOptions.mailbox).to.equal(mailbox);
+        expect(addOptions.path).to.not.exist;
+        expect(addOptions.specialUse).to.not.exist;
+        expect(getSpamResult(result)).to.not.exist;
+        expect(addOptions.prepared.mimeTree.header.some(header => /^WD-Mail-Classification:/i.test(header))).to.equal(false);
+    });
+
     it('should prefer ham when mixed with spam-like override flags', async () => {
         const { addOptions } = await runCase({
             overrideFlags: ['blacklist', 'ham']
