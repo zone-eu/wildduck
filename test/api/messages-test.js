@@ -590,6 +590,34 @@ describe('Messages tests', function () {
         queryThread = keywordMessageDetails.body.thread;
     });
 
+    it('should GET /users/:user/mailboxes/:mailbox/messages/:message salvage a malformed List-Unsubscribe value', async () => {
+        const listUnsubscribe = 'Unsubscribe here <mailto:unsub@example.com>';
+        const messageResponse = await server
+            .post(`/users/${user}/mailboxes/${testMailbox}/messages`)
+            .send({
+                draft: true,
+                headers: [{ key: 'List-Unsubscribe', value: listUnsubscribe }],
+                subject: 'malformed List-Unsubscribe header',
+                text: 'List-Unsubscribe parser integration test'
+            })
+            .expect(200);
+
+        const messageData = await server
+            .get(`/users/${user}/mailboxes/${testMailbox}/messages/${messageResponse.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(messageData.body.list.unsubscribe).to.deep.equal([
+            {
+                address: 'mailto:unsub@example.com',
+                name: ''
+            }
+        ]);
+
+        // remove the extra message so that later tests see an unchanged mailbox
+        await server.delete(`/users/${user}/mailboxes/${testMailbox}/messages/${messageResponse.body.message.id}`).expect(200);
+    });
+
     it('should POST /users/:user/mailboxes/:mailbox/messages/:message/submit expect failure / recipient pre-check counts all recipients', async () => {
         await server.put(`/users/${user}`).send({ recipients: 2 }).expect(200);
 
