@@ -16,7 +16,7 @@ const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 describe('API Users', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
-    let user, user2, forwarded;
+    let user, user2, forwarded, token, selfAlias;
 
     before(async () => {
         // ensure that we have an existing user account
@@ -130,12 +130,48 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body.token).to.exist;
 
-        let token = authResponse.body.token;
+        token = authResponse.body.token;
 
         const userListResponse = await server.get(`/addresses?accessToken=${token}`).expect(200);
         expect(userListResponse.body.success).to.be.true;
 
         expect(userListResponse.body.total).to.equal(3);
+    });
+
+    it('should POST /users/{user}/addresses reject a foreign domain with a user token', async () => {
+        const response = await server
+            .post(`/users/me/addresses?accessToken=${token}`)
+            .send({
+                address: 'unregistered@other-tenant.example'
+            })
+            .expect(403);
+
+        expect(response.body.code).to.equal('AddressDomainNotAllowed');
+    });
+
+    it('should POST /users/{user}/addresses reject wildcard addresses with a user token', async () => {
+        for (const address of ['*@example.com', '*@other-tenant.example', 'addressuser@*']) {
+            const response = await server
+                .post(`/users/me/addresses?accessToken=${token}`)
+                .send({
+                    address,
+                    allowWildcard: true
+                })
+                .expect(403);
+
+            expect(response.body.code).to.equal('WildcardNotPermitted');
+        }
+    });
+
+    it('should POST /users/{user}/addresses reject another user with a user token', async () => {
+        const response = await server
+            .post(`/users/${user2}/addresses?accessToken=${token}`)
+            .send({
+                address: 'another-user-alias.addrtest@example.com'
+            })
+            .expect(403);
+
+        expect(response.body.code).to.equal('MissingPrivileges');
     });
 
     it('should GET /users/{user}/addresses expect success', async () => {
@@ -156,6 +192,78 @@ describe('API Users', function () {
         const addressListResponse = await server.get(`/users/${'0'.repeat(24)}/addresses`).expect(404);
         expect(addressListResponse.body.code).to.be.equal('UserNotFound');
         expect(addressListResponse.body.error).to.be.equal('This user does not exist');
+    });
+
+    it('should POST /users/{user}/addresses allow an alias in an assigned domain with a user token', async () => {
+        const response = await server
+            .post(`/users/me/addresses?accessToken=${token}`)
+            .send({
+                address: 'self-service-alias.addrtest@example.com',
+                name: 'Self-service alias',
+                internalData: {
+                    restricted: true
+                }
+            })
+            .expect(200);
+
+        expect(response.body.success).to.be.true;
+        selfAlias = response.body.id;
+
+        const addressResponse = await server.get(`/users/${user}/addresses/${selfAlias}`).expect(200);
+        expect(addressResponse.body.address).to.equal('self-service-alias.addrtest@example.com');
+        expect(addressResponse.body.internalData).to.not.exist;
+    });
+
+    it('should PUT /users/{user}/addresses/{id} allow a rename in an assigned domain with a user token', async () => {
+        const response = await server
+            .put(`/users/me/addresses/${selfAlias}?accessToken=${token}`)
+            .send({
+                address: 'renamed-self-service-alias.addrtest@example.com'
+            })
+            .expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const addressResponse = await server.get(`/users/${user}/addresses/${selfAlias}`).expect(200);
+        expect(addressResponse.body.address).to.equal('renamed-self-service-alias.addrtest@example.com');
+    });
+
+    it('should PUT /users/{user}/addresses/{id} reject a foreign domain with a user token', async () => {
+        const response = await server
+            .put(`/users/me/addresses/${selfAlias}?accessToken=${token}`)
+            .send({
+                address: 'unregistered@other-tenant.example'
+            })
+            .expect(403);
+
+        expect(response.body.code).to.equal('AddressDomainNotAllowed');
+    });
+
+    it('should DELETE /users/{user}/addresses/{id} allow removing a self-service alias with a user token', async () => {
+        const response = await server.delete(`/users/me/addresses/${selfAlias}?accessToken=${token}`).expect(200);
+        expect(response.body.success).to.be.true;
+        selfAlias = false;
+    });
+
+    it('should PUT /users/{user}/addresses/{id} allow metadata update with a user token', async () => {
+        const addressListResponse = await server.get(`/users/me/addresses?accessToken=${token}`).expect(200);
+        const address = addressListResponse.body.results.find(entry => entry.address === 'user1.2.addrtest@example.com');
+
+        const response = await server
+            .put(`/users/me/addresses/${address.id}?accessToken=${token}`)
+            .send({
+                name: 'Updated by user',
+                internalData: {
+                    restricted: true
+                }
+            })
+            .expect(200);
+
+        expect(response.body.success).to.be.true;
+
+        const addressResponse = await server.get(`/users/${user}/addresses/${address.id}`).expect(200);
+        expect(addressResponse.body.name).to.equal('Updated by user');
+        expect(addressResponse.body.internalData).to.not.exist;
     });
 
     it('should PUT /users/{user}/addresses/{id} expect success', async () => {

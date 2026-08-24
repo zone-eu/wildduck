@@ -289,7 +289,7 @@
         },
 
         "addresses": {
-            "create:own": ["*", "!internalData"],
+            "create:own": ["*", "!allowWildcard", "!internalData"],
             "read:own": ["*", "!internalData"],
             "update:own": ["*", "!internalData"],
             "delete:own": ["*"]
