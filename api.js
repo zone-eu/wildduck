@@ -881,7 +881,7 @@ function createApp(options = {}) {
         mcpTokensRoutes(app, mcpTokenHandler);
 
         if (config.imap.acl && config.imap.acl.enabled) {
-            aclRoutes(db, app);
+            aclRoutes(db, app, notifier, loggelf);
             domaingroupsRoutes(db, app);
         }
     });
