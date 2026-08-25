@@ -4,9 +4,10 @@
 
 const http = require('http');
 const https = require('https');
+const { X509Certificate } = require('crypto');
 const chai = require('chai');
-const config = require('@zone-eu/wild-config');
 const prometheus = require('../prometheus');
+const certs = require('../lib/certs');
 const metrics = require('../lib/metrics');
 
 const expect = chai.expect;
@@ -20,6 +21,26 @@ function startServer(options) {
             resolve(server);
         });
     });
+}
+
+// start an enabled listener on a random port, secure is the only axis the tests vary
+function startMetrics(secure) {
+    return startServer({ enabled: true, host: '127.0.0.1', port: 0, secure: secure === true });
+}
+
+// certs.registerReload has no unregister path, so capture the registrations instead of keeping them
+async function captureRegisterReload(fn) {
+    let registered = [];
+    let registerReload = certs.registerReload;
+    certs.registerReload = (server, name, serverOptions) => registered.push({ server, name, serverOptions });
+
+    try {
+        await fn();
+    } finally {
+        certs.registerReload = registerReload;
+    }
+
+    return registered;
 }
 
 function closeServer(server) {
@@ -50,6 +71,7 @@ function request(server, options) {
                 let chunks = [];
                 let chunklen = 0;
                 let encrypted = !!res.socket.encrypted;
+                let peerCertificate = encrypted ? res.socket.getPeerCertificate() : false;
                 res.on('data', chunk => {
                     chunks.push(chunk);
                     chunklen += chunk.length;
@@ -60,6 +82,7 @@ function request(server, options) {
                         statusCode: res.statusCode,
                         headers: res.headers,
                         encrypted,
+                        peerCertificate,
                         body: Buffer.concat(chunks, chunklen).toString()
                     })
                 );
@@ -74,78 +97,112 @@ describe('Standalone Prometheus server', function () {
     this.timeout(10000);
 
     let server;
-    let apiEnabled;
-
-    beforeEach(() => {
-        apiEnabled = config.api.enabled;
-        config.api.enabled = false;
-    });
 
     afterEach(async () => {
-        config.api.enabled = apiEnabled;
         await closeServer(server);
         server = false;
     });
 
-    it('should serve metrics when the general API is disabled', async () => {
-        server = await startServer({
-            enabled: true,
-            host: '127.0.0.1',
-            port: 0,
-            secure: false
-        });
+    it('should not start a listener when metrics are disabled', async () => {
+        expect(await startServer({ enabled: false, host: '127.0.0.1', port: 0 })).to.equal(false);
+        // metrics collection is keyed off enabled === true, the listener must agree
+        expect(await startServer({ enabled: 'false', host: '127.0.0.1', port: 0 })).to.equal(false);
+    });
+
+    it('should serve metrics without depending on the API server', async () => {
+        // the listener is started from its own config section and never reads config.api
+        server = await startMetrics();
 
         const response = await request(server);
 
-        expect(config.api.enabled).to.equal(false);
         expect(response.statusCode).to.equal(200);
         expect(response.headers['content-type']).to.equal(metrics.contentType);
         expect(response.body).to.include('# HELP wildduck_info');
     });
 
-    it('should serve metrics over HTTPS', async () => {
-        server = await startServer({
-            enabled: true,
-            host: '127.0.0.1',
-            port: 0,
-            secure: true
-        });
+    it('should serve metrics over HTTPS using the metrics certificate', async () => {
+        server = await startMetrics(true);
 
         const response = await request(server, { secure: true });
+        const expectedCert = new X509Certificate(certs.get('metrics').cert);
 
         expect(response.statusCode).to.equal(200);
         expect(response.encrypted).to.equal(true);
+        expect(response.peerCertificate.raw.equals(expectedCert.raw)).to.equal(true);
         expect(response.headers['content-type']).to.equal(metrics.contentType);
         expect(response.body).to.include('# HELP wildduck_info');
     });
 
-    it('should expose only GET /metrics over HTTP', async () => {
-        server = await startServer({
-            enabled: true,
-            host: '127.0.0.1',
-            port: 0,
-            secure: false
-        });
+    it('should answer HEAD requests without a body', async () => {
+        server = await startMetrics();
+
+        const response = await request(server, { method: 'HEAD' });
+
+        expect(response.statusCode).to.equal(200);
+        expect(response.headers['content-type']).to.equal(metrics.contentType);
+        expect(response.body).to.equal('');
+    });
+
+    it('should ignore a trailing slash and a query string', async () => {
+        server = await startMetrics();
+
+        const trailingSlash = await request(server, { path: '/metrics/' });
+        const queryString = await request(server, { path: '/metrics?format=text' });
+
+        expect(trailingSlash.statusCode).to.equal(200);
+        expect(trailingSlash.body).to.include('# HELP wildduck_info');
+        expect(queryString.statusCode).to.equal(200);
+        expect(queryString.body).to.include('# HELP wildduck_info');
+    });
+
+    it('should reject unsupported methods and unknown paths', async () => {
+        server = await startMetrics();
 
         const unknownPath = await request(server, { path: '/health' });
         const unsupportedMethod = await request(server, { method: 'POST' });
 
         expect(unknownPath.statusCode).to.equal(404);
-        expect(unsupportedMethod.statusCode).to.equal(404);
+        expect(unsupportedMethod.statusCode).to.equal(405);
+        expect(unsupportedMethod.headers.allow).to.equal('GET, HEAD');
     });
 
     it('should return 404 for an undefined HTTPS path', async () => {
-        server = await startServer({
-            enabled: true,
-            host: '127.0.0.1',
-            port: 0,
-            secure: true
-        });
+        server = await startMetrics(true);
 
         const response = await request(server, { secure: true, path: '/health' });
 
-        expect(config.api.enabled).to.equal(false);
         expect(response.statusCode).to.equal(404);
         expect(response.encrypted).to.equal(true);
+    });
+
+    it('should register the HTTPS listener for certificate reloads', async () => {
+        const registered = await captureRegisterReload(async () => {
+            server = await startMetrics(true);
+        });
+
+        expect(registered.length).to.equal(1);
+        expect(registered[0].name).to.equal('metrics');
+        expect(registered[0].server).to.equal(server);
+        // the options the server was created with must survive a certificate swap
+        expect(Object.keys(registered[0].serverOptions)).to.include('cert');
+
+        // https.Server has no updateSecureContext, certs must fall back to setSecureContext
+        let updatedWith = false;
+        let setSecureContext = server.setSecureContext;
+        server.setSecureContext = certOptions => {
+            updatedWith = certOptions;
+        };
+        certs.applySecureContext(server, { key: 'key', cert: 'cert' });
+        server.setSecureContext = setSecureContext;
+
+        expect(updatedWith).to.deep.equal({ key: 'key', cert: 'cert' });
+    });
+
+    it('should not register a plain HTTP listener for certificate reloads', async () => {
+        const registered = await captureRegisterReload(async () => {
+            server = await startMetrics();
+        });
+
+        expect(registered.length).to.equal(0);
     });
 });

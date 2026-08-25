@@ -240,12 +240,10 @@ server.get(
     })
 );
 
-const metricsEnabled = metrics.enabled;
-
 // Disable GZIP as it does not work with stream.pipe(res)
 //server.use(restify.plugins.gzipResponse());
 
-if (metricsEnabled) {
+if (metrics.enabled) {
     server.use(async (req, res) => {
         let start = process.hrtime();
         if (res && typeof res.once === 'function') {

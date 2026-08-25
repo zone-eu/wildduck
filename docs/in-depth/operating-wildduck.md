@@ -27,6 +27,8 @@ secure = false
 collectCacheTtl = 10000
 ```
 
+> **Upgrading:** These settings used to live under `[api.metrics]` and were served from the API port. Move them to the top-level `[metrics]` section. The deprecated section is still honored, so an existing `[api.metrics] enabled = true` keeps metrics collection running, but it is logged as deprecated and cannot configure the new listener.
+
 The metrics listener does not depend on `api.enabled`. An IMAP-only or POP3-only deployment can expose its own metrics without enabling the REST API. When WildDuck roles run as separate deployments, enable the metrics listener in each deployment and configure Prometheus to scrape every listener; in-memory protocol counters are not shared through MongoDB or Redis.
 
 To serve metrics over HTTPS, enable TLS and configure a service-specific certificate. If the service-specific certificate is omitted, WildDuck falls back to the global TLS certificate and then to the bundled self-signed certificate.
@@ -41,6 +43,18 @@ secure = true
 [metrics.tls]
 key = "/path/to/server/key.pem"
 cert = "/path/to/server/cert.pem"
+```
+
+In a container, bind the listener to `0.0.0.0` and publish its port, otherwise the endpoint is only reachable from inside the container:
+
+```yaml
+services:
+    wildduck:
+        ports:
+            - "8081:8081"
+        environment:
+            APPCONF_metrics_enabled: "true"
+            APPCONF_metrics_host: 0.0.0.0
 ```
 
 `collectCacheTtl` is specified in milliseconds and defaults to 10 seconds. Set it to `0` to query MongoDB task counts and Redis-backed BullMQ job counts on every scrape. In cluster mode, one elected worker runs these backend collectors, and the cache limits repeated queries from frequent or concurrent scrapes.

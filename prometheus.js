@@ -2,39 +2,68 @@
 
 const http = require('http');
 const https = require('https');
-const config = require('@zone-eu/wild-config');
 const log = require('npmlog');
 const certs = require('./lib/certs');
 const metrics = require('./lib/metrics');
+const { metricsConfig } = require('./lib/metrics-config');
+
+const METRICS_PATH = '/metrics';
+const ALLOWED_METHODS = ['GET', 'HEAD'];
+
+/**
+ * Sends a plain text response.
+ *
+ * @param {http.ServerResponse} res HTTP response.
+ * @param {Number} statusCode HTTP status code.
+ * @param {String} body Response body.
+ * @param {Object} [headers] Additional response headers.
+ * @returns {void}
+ */
+function sendText(res, statusCode, body, headers) {
+    res.statusCode = statusCode;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    Object.keys(headers || {}).forEach(key => res.setHeader(key, headers[key]));
+    res.end(body);
+}
 
 /**
  * Handles a request to the standalone Prometheus endpoint.
  *
- * @param {Object} metricSource Metrics registry facade.
  * @param {http.IncomingMessage} req HTTP request.
  * @param {http.ServerResponse} res HTTP response.
  * @returns {Promise<void>}
  */
-async function handleRequest(metricSource, req, res) {
+async function handleRequest(req, res) {
     let path = (req.url || '').split('?').shift();
 
-    if (req.method !== 'GET' || path !== '/metrics') {
-        res.statusCode = 404;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.end('Not Found\n');
-        return;
+    // scrape configs and path rewriting proxies often add a trailing slash
+    if (path.length > 1 && path.at(-1) === '/') {
+        path = path.slice(0, -1);
+    }
+
+    if (path !== METRICS_PATH) {
+        return sendText(res, 404, 'Not Found\n');
+    }
+
+    if (!ALLOWED_METHODS.includes(req.method)) {
+        return sendText(res, 405, 'Method Not Allowed\n', { Allow: ALLOWED_METHODS.join(', ') });
+    }
+
+    if (req.method === 'HEAD') {
+        // node discards the body of a HEAD response, so there is nothing to collect it for
+        res.statusCode = 200;
+        res.setHeader('Content-Type', metrics.contentType);
+        return res.end();
     }
 
     try {
-        let output = await metricSource.getMetrics();
+        let output = await metrics.getMetrics();
         res.statusCode = 200;
-        res.setHeader('Content-Type', metricSource.contentType);
+        res.setHeader('Content-Type', metrics.contentType);
         res.end(output);
     } catch (err) {
         log.error('Metrics', 'Failed to collect metrics: %s', err.message);
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.end('error: metrics collection failed\n');
+        sendText(res, 500, 'error: metrics collection failed\n');
     }
 }
 
@@ -42,21 +71,16 @@ async function handleRequest(metricSource, req, res) {
  * Creates an HTTP or HTTPS server for Prometheus metrics.
  *
  * @param {Object} options Metrics listener configuration.
- * @param {Object} [metricSource] Metrics registry facade.
  * @returns {http.Server|https.Server} Metrics server.
  */
-function createServer(options, metricSource) {
-    options = options || {};
-    metricSource = metricSource || metrics;
-
+function createServer(options) {
     let listener = (req, res) => {
-        handleRequest(metricSource, req, res).catch(err => {
+        handleRequest(req, res).catch(err => {
             log.error('Metrics', 'Failed to handle request: %s', err.message);
-            if (!res.headersSent) {
-                res.statusCode = 500;
-                res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            if (res.headersSent) {
+                return res.end();
             }
-            res.end('error: metrics request failed\n');
+            sendText(res, 500, 'error: metrics request failed\n');
         });
     };
 
@@ -66,7 +90,13 @@ function createServer(options, metricSource) {
 
     let serverOptions = {};
     certs.loadTLSOptions(serverOptions, 'metrics');
-    return https.createServer(serverOptions, listener);
+
+    let server = https.createServer(serverOptions, listener);
+
+    // pick up renewed certificates on config reload, like the other TLS listeners do
+    certs.registerReload(server, 'metrics', serverOptions);
+
+    return server;
 }
 
 /**
@@ -79,8 +109,8 @@ function createServer(options, metricSource) {
 function start(options, done) {
     options = options || {};
 
-    if (!options.enabled) {
-        metrics.setServiceUp('metrics', false);
+    // must match how lib/metrics.js decides whether metrics are collected at all
+    if (options.enabled !== true) {
         return setImmediate(() => done(null, false));
     }
 
@@ -90,7 +120,6 @@ function start(options, done) {
     server.on('error', err => {
         if (!started) {
             started = true;
-            metrics.setServiceUp('metrics', false);
             return done(err);
         }
         log.error('Metrics', err);
@@ -101,13 +130,11 @@ function start(options, done) {
             return server.close();
         }
         started = true;
-        metrics.setServiceUp('metrics', true);
         let address = server.address();
         log.info('Metrics', '%s server listening on %s:%s', options.secure ? 'HTTPS' : 'HTTP', options.host || '0.0.0.0', address && address.port);
         done(null, server);
     });
 }
 
-module.exports = done => start(config.metrics, done);
-module.exports.createServer = createServer;
+module.exports = done => start(metricsConfig, done);
 module.exports.start = start;

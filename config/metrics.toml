@@ -1,4 +1,6 @@
 # Expose the unauthenticated Prometheus endpoint at /metrics
+# NB! These settings used to live under [api.metrics]. That section is deprecated
+# but still honored, see docs/in-depth/operating-wildduck.md
 enabled = false
 port = 8081
 # by default bind to localhost only

@@ -18,8 +18,10 @@ describe('Prometheus metrics', function () {
 
     it('should leave metrics disabled by default', () => {
         const configContents = Fs.readFileSync(Path.resolve(__dirname, '../../config/metrics.toml'), 'utf8');
+        // only look at the top-level keys, sub-tables like [tls] may define their own "enabled" key
+        const topLevelKeys = configContents.split(/^\s*\[/m).shift();
 
-        expect(configContents).to.match(/(?:^|\n)enabled\s*=\s*false(?:\n|$)/);
+        expect(topLevelKeys).to.match(/(?:^|\n)enabled\s*=\s*false(?:\n|$)/);
     });
 
     it('should bound protocol command and message source labels', async () => {
