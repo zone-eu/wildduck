@@ -1746,6 +1746,35 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should inherit grants when the owner creates a mailbox in a shared hierarchy', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 CREATE INBOX/ownersub', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+
+                    let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/ownersub"') >= 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
         it('should not modify the rights of the mailbox owner', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX testuser lr', 'T3 LOGOUT'];
 
