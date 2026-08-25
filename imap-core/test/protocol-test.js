@@ -6,6 +6,7 @@
 let config = require('@zone-eu/wild-config');
 //let testServer = require('./test-server.js');
 let testClient = require('./test-client.js');
+let supertest = require('supertest');
 let exec = require('child_process').exec;
 
 let chai = require('chai');
@@ -1580,6 +1581,168 @@ describe('IMAP Protocol integration tests', function () {
                     resp = resp.toString();
                     expect(/^\* STATUS INBOX \(UIDNEXT \d+ MESSAGES \d+ HIGHESTMODSEQ \d+\)$/m.test(resp)).to.be.true;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('ACL', function () {
+        let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+        beforeEach(async function () {
+            // create a second user to use as an ACL grantee
+            let response = await apiServer
+                .post('/users')
+                .send({
+                    username: 'seconduser',
+                    password: 'secondpass',
+                    name: 'Second User'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+        });
+
+        it('should list own rights with MYRIGHTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 MYRIGHTS INBOX', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^\* MYRIGHTS "?INBOX"? "?lrswipkxtea"?/m.test(resp.toString())).to.be.true;
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should update and list ACL entries', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL INBOX seconduser lr',
+                'T3 SETACL INBOX seconduser +sw',
+                'T4 SETACL INBOX seconduser -r',
+                'T5 GETACL INBOX',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^\* ACL "?INBOX"?/m.test(resp.toString())).to.be.true;
+                    expect(resp.toString().indexOf('"testuser" "lrswipkxtea"') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('"seconduser" "lsw"') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should remove ACL entries with DELETEACL', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 DELETEACL INBOX seconduser', 'T4 GETACL INBOX', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                    expect(resp.toString().indexOf('"seconduser"') < 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should list grantable rights with LISTRIGHTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LISTRIGHTS INBOX seconduser', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^\* LISTRIGHTS "?INBOX"? "?seconduser"? ""/m.test(resp.toString())).to.be.true;
+                    expect(resp.toString().indexOf('"" l r s w i p k x t e a') >= 0).to.be.true;
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not modify the rights of the mailbox owner', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX testuser lr', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should fail SETACL for an unknown identifier', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX nosuchuserhere lr', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should fail SETACL for invalid rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrq', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 BAD/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should hide missing mailboxes from MYRIGHTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 MYRIGHTS nosuchbox', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
                     done();
                 }
             );

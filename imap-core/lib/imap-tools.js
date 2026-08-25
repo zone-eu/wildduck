@@ -860,6 +860,11 @@ module.exports.sendCapabilityResponse = connection => {
 
         capabilities.push('MOVE');
 
+        if (connection._server.options.acl) {
+            capabilities.push('ACL');
+            capabilities.push('RIGHTS=kxten');
+        }
+
         if (connection._server.options.maxMessage) {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
@@ -880,6 +885,11 @@ module.exports.sendCapabilityResponse = connection => {
         capabilities.push('WITHIN');
 
         capabilities.push('MOVE');
+
+        if (connection._server.options.acl) {
+            capabilities.push('ACL');
+            capabilities.push('RIGHTS=kxten');
+        }
 
         if (connection._server.options.enableCompression) {
             capabilities.push('COMPRESS=DEFLATE');
