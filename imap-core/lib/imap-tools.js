@@ -919,7 +919,7 @@ module.exports.sendCapabilityResponse = connection => {
 
         if (connection._server.options.acl) {
             capabilities.push('ACL');
-            capabilities.push('RIGHTS=kxten');
+            capabilities.push('RIGHTS=kxte');
         }
 
         if (connection._server.options.maxMessage) {
@@ -945,7 +945,7 @@ module.exports.sendCapabilityResponse = connection => {
 
         if (connection._server.options.acl) {
             capabilities.push('ACL');
-            capabilities.push('RIGHTS=kxten');
+            capabilities.push('RIGHTS=kxte');
         }
 
         if (connection._server.options.enableCompression) {
