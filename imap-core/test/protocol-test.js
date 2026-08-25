@@ -1851,8 +1851,47 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
-        it('should not append to shared mailboxes', function (done) {
-            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswi', 'T3 LOGOUT'];
+        it('should append to shared mailboxes with the insert right and drop denied flags', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsi', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let message = Buffer.from('Subject: HELLO!\r\n\r\nWORLD!');
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 APPEND "Other Users/testuser/INBOX" (\\Seen \\Flagged) {' + message.length + '}\r\n' + message.toString('binary'),
+                        'T3 SELECT "Other Users/testuser/INBOX"',
+                        'T4 FETCH * (FLAGS)',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK \[APPENDUID /m.test(resp.toString())).to.be.true;
+                            // the "w" right is missing, so \Flagged was dropped and \Seen was kept
+                            let flagsLine = resp.toString().match(/^\* \d+ FETCH \(FLAGS \(([^)]*)\)\)/m);
+                            expect(flagsLine).to.exist;
+                            expect(flagsLine[1].indexOf('\\Seen') >= 0).to.be.true;
+                            expect(flagsLine[1].indexOf('\\Flagged') < 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not append to shared mailboxes without the insert right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
 
             testClient(
                 {
@@ -1875,7 +1914,187 @@ describe('IMAP Protocol integration tests', function () {
                             port
                         },
                         function (resp) {
-                            expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should copy messages out of a shared mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 SELECT "Other Users/testuser/INBOX"',
+                        'T3 COPY 1 INBOX',
+                        'T4 STATUS INBOX (MESSAGES)',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
+                            expect(/^\* STATUS "?INBOX"? \(MESSAGES 1\)/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should move messages between accounts as copy and expunge', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 SELECT "Other Users/testuser/INBOX"',
+                        'T3 MOVE 1 INBOX',
+                        'T4 STATUS INBOX (MESSAGES)',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
+                            expect(/^\* 1 EXPUNGE/m.test(resp.toString())).to.be.true;
+                            expect(/^\* STATUS "?INBOX"? \(MESSAGES 1\)/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should create inherited mailboxes in a shared hierarchy', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsk', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 CREATE "Other Users/testuser/INBOX/reports"',
+                        'T3 LIST "" "*"',
+                        'T4 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/reports"') >= 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should delete and rename shared mailboxes with the required rights', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE INBOX/old',
+                'T3 CREATE INBOX/temp',
+                'T4 SETACL INBOX seconduser lrk',
+                'T5 SETACL INBOX/old seconduser lrx',
+                'T6 SETACL INBOX/temp seconduser lrx',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 RENAME "Other Users/testuser/INBOX/old" "Other Users/testuser/INBOX/new"',
+                        'T3 DELETE "Other Users/testuser/INBOX/temp"',
+                        'T4 LIST "" "*"',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/new"') >= 0).to.be.true;
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/temp"') < 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should report the quota root of the mailbox owner', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 GETQUOTAROOT "Other Users/testuser/INBOX"',
+                        'T3 GETQUOTA "Other Users/testuser"',
+                        'T4 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('* QUOTAROOT "Other Users/testuser/INBOX" "Other Users/testuser"') >= 0).to.be.true;
+                            expect(/^\* QUOTA "Other Users\/testuser" \(STORAGE \d+ \d+\)/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
                             done();
                         }
                     );
