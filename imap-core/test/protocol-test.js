@@ -1992,6 +1992,49 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should attribute cross-account moves to the target owner and find them with TEXT search', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let message = Buffer.from('Subject: marker\r\n\r\nXBODYMARKERX');
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 APPEND "Other Users/testuser/INBOX" {' + message.length + '}\r\n' + message.toString('binary'),
+                        'T3 SELECT "Other Users/testuser/INBOX"',
+                        'T4 SEARCH TEXT XBODYMARKERX',
+                        'T5 MOVE * INBOX',
+                        'T6 SELECT INBOX',
+                        'T7 SEARCH TEXT XBODYMARKERX',
+                        'T8 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            // text search in the shared mailbox is scoped to the mailbox owner
+                            expect(/^\* SEARCH \d+$/m.test(resp.toString())).to.be.true;
+                            expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T5 OK/m.test(resp.toString())).to.be.true;
+                            // the moved message belongs to the new owner now, so their scoped search finds it
+                            expect(/^\* SEARCH 1$/m.test(resp.toString())).to.be.true;
+                            expect(/^T7 OK/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
         it('should create inherited mailboxes in a shared hierarchy', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsk', 'T3 LOGOUT'];
 
