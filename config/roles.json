@@ -236,6 +236,13 @@
             "delete:any": ["*"]
         },
 
+        "acl": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "webhooks": {
             "create:any": ["*"],
             "read:any": ["*"],
