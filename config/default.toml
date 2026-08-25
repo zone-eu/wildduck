@@ -87,6 +87,9 @@ connection = "lan"
 [api]
 # @include "api.toml"
 
+[metrics]
+# @include "metrics.toml"
+
 [sender]
 # @include "sender.toml"
 

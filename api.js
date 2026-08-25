@@ -242,21 +242,6 @@ server.get(
 
 const metricsEnabled = metrics.enabled;
 
-if (metricsEnabled) {
-    server.get({ name: 'metrics', path: '/metrics', excludeRoute: true }, async (req, res) => {
-        res.charSet('utf-8');
-        res.setHeader('Content-Type', metrics.contentType);
-
-        try {
-            res.send(await metrics.getMetrics());
-        } catch (err) {
-            log.error('API', 'Failed to collect metrics: %s', err.message);
-            res.status(500);
-            res.send('error: metrics collection failed');
-        }
-    });
-}
-
 // Disable GZIP as it does not work with stream.pipe(res)
 //server.use(restify.plugins.gzipResponse());
 
@@ -266,9 +251,6 @@ if (metricsEnabled) {
         if (res && typeof res.once === 'function') {
             res.once('finish', () => {
                 let route = (req.route && req.route.path) || 'unknown';
-                if (route === '/metrics') {
-                    return;
-                }
                 let diff = process.hrtime(start);
                 metrics.recordApiRequest(req.method, route, res.statusCode, diff[0] + diff[1] / 1e9);
             });
@@ -281,7 +263,7 @@ server.use(async (req, res) => {
         return;
     }
 
-    if (['public_get', 'public_post', 'acmeToken', 'metrics'].includes(req.route.name)) {
+    if (['public_get', 'public_post', 'acmeToken'].includes(req.route.name)) {
         // skip token check for public pages
         return;
     }

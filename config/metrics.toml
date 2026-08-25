@@ -1,0 +1,17 @@
+# Expose the unauthenticated Prometheus endpoint at /metrics
+enabled = false
+port = 8081
+# by default bind to localhost only
+host = "127.0.0.1"
+
+# Use true to serve /metrics over HTTPS
+secure = false
+
+# Cache MongoDB/Redis collector results for this many milliseconds; set to 0 to disable caching
+collectCacheTtl = 10000
+
+[tls]
+# If certificate path is not defined, use global or built-in self-signed certs
+#key="/path/to/server/key.pem"
+#cert="/path/to/server/cert.pem"
+#ca=["/path/to/server/ca1.pem", "/path/to/server/ca2.pem"]

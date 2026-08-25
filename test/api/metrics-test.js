@@ -10,16 +10,16 @@ const config = require('@zone-eu/wild-config');
 const metrics = require('../../lib/metrics');
 
 const expect = chai.expect;
-const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+const apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+const metricsServer = supertest.agent(`http://127.0.0.1:${config.metrics.port}`);
 
-describe('Metrics API', function () {
+describe('Prometheus metrics', function () {
     this.timeout(10000);
 
     it('should leave metrics disabled by default', () => {
-        const configContents = Fs.readFileSync(Path.resolve(__dirname, '../../config/api.toml'), 'utf8');
-        const metricsSection = (configContents.match(/\[metrics\]([\s\S]*?)(?=\n\[|$)/) || [])[1] || '';
+        const configContents = Fs.readFileSync(Path.resolve(__dirname, '../../config/metrics.toml'), 'utf8');
 
-        expect(metricsSection).to.match(/(?:^|\n)enabled\s*=\s*false(?:\n|$)/);
+        expect(configContents).to.match(/(?:^|\n)enabled\s*=\s*false(?:\n|$)/);
     });
 
     it('should bound protocol command and message source labels', async () => {
@@ -75,10 +75,10 @@ describe('Metrics API', function () {
         expect(oneUnreadyValues.find(entry => entry.labels.service === 'api').value).to.equal(0);
     });
 
-    it('should GET /metrics expect success without access token', async () => {
-        await server.get('/health').expect(200);
+    it('should expose metrics on the dedicated listener', async () => {
+        await apiServer.get('/health').expect(200);
 
-        const response = await server.get('/metrics').expect(200);
+        const response = await metricsServer.get('/metrics').expect(200);
 
         expect(response.headers['content-type']).to.match(/^text\/plain/);
         expect(response.text).to.include('# HELP wildduck_info');
@@ -87,8 +87,12 @@ describe('Metrics API', function () {
         expect(response.text).to.include('route="/health"');
     });
 
+    it('should not expose metrics on the general API listener', async () => {
+        await apiServer.get('/metrics').expect(404);
+    });
+
     it('should cache expensive collector queries', async () => {
-        expect(config.api.metrics.collectCacheTtl).to.equal(10000);
+        expect(config.metrics.collectCacheTtl).to.equal(10000);
 
         let taskQueries = 0;
         let queueQueries = 0;

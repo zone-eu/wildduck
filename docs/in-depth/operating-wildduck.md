@@ -8,20 +8,39 @@ WildDuck sends gelf-formatted log messages to a Graylog server. Set `log.gelf.en
 
 ## Prometheus metrics
 
-WildDuck exposes Prometheus metrics from the API service:
+WildDuck exposes Prometheus metrics from a dedicated HTTP service that runs independently of the general REST API:
 
 ```bash
-curl http://127.0.0.1:8080/metrics
+curl http://127.0.0.1:8081/metrics
 ```
 
-> **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Refreshing task and job counts queries MongoDB and Redis-backed BullMQ queues. In production, restrict access with the API bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
+> **Security:** The endpoint does not require an access token. It exposes operational data such as the WildDuck version, traffic and error rates, and queue depths. Refreshing task and job counts queries MongoDB and Redis-backed BullMQ queues. In production, restrict access with the metrics bind address, firewall rules, or a reverse proxy ACL, and use a sensible scrape interval.
 
-The endpoint is disabled by default. Enable it and configure the expensive collector cache in the API configuration:
+The endpoint is disabled by default. Enable it and configure its listener and expensive collector cache in the top-level metrics configuration:
 
 ```toml
 [metrics]
 enabled = true
+host = "127.0.0.1"
+port = 8081
+secure = false
 collectCacheTtl = 10000
+```
+
+The metrics listener does not depend on `api.enabled`. An IMAP-only or POP3-only deployment can expose its own metrics without enabling the REST API. When WildDuck roles run as separate deployments, enable the metrics listener in each deployment and configure Prometheus to scrape every listener; in-memory protocol counters are not shared through MongoDB or Redis.
+
+To serve metrics over HTTPS, enable TLS and configure a service-specific certificate. If the service-specific certificate is omitted, WildDuck falls back to the global TLS certificate and then to the bundled self-signed certificate.
+
+```toml
+[metrics]
+enabled = true
+host = "127.0.0.1"
+port = 8443
+secure = true
+
+[metrics.tls]
+key = "/path/to/server/key.pem"
+cert = "/path/to/server/cert.pem"
 ```
 
 `collectCacheTtl` is specified in milliseconds and defaults to 10 seconds. Set it to `0` to query MongoDB task counts and Redis-backed BullMQ job counts on every scrape. In cluster mode, one elected worker runs these backend collectors, and the cache limits repeated queries from frequent or concurrent scrapes.
@@ -32,7 +51,7 @@ Example Prometheus target:
 scrape_configs:
   - job_name: wildduck
     static_configs:
-      - targets: ['127.0.0.1:8080']
+      - targets: ['127.0.0.1:8081']
     metrics_path: "/metrics"
 ```
 
