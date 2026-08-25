@@ -78,6 +78,10 @@
             "description": "Domain aliases, so that mail for username@alias is delivered to username@domain."
         },
         {
+            "name": "DomainGroups",
+            "description": "Groups of domains that form one tenant. Users of domains in the same group may share mailboxes with each other."
+        },
+        {
             "name": "ACL",
             "description": "RFC 4314 access control lists: mailbox and account wide grants that share mailboxes with other users."
         },

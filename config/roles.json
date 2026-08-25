@@ -123,6 +123,13 @@
             "delete:any": ["*"]
         },
 
+        "domaingroups": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "webhooks": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -309,6 +316,13 @@
         },
 
         "domainaliases": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "domaingroups": {
             "create:any": ["*"],
             "read:any": ["*"],
             "update:any": ["*"],

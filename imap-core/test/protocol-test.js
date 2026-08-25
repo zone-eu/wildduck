@@ -1592,12 +1592,13 @@ describe('IMAP Protocol integration tests', function () {
         let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
         beforeEach(async function () {
-            // create a second user to use as an ACL grantee
+            // create a second user in the same tenant scope to use as an ACL grantee
             let response = await apiServer
                 .post('/users')
                 .send({
                     username: 'seconduser',
                     password: 'secondpass',
+                    address: 'seconduser@example.com',
                     name: 'Second User'
                 })
                 .expect(200);
@@ -2066,6 +2067,130 @@ describe('IMAP Protocol integration tests', function () {
                     );
                 }
             );
+        });
+
+        it('should not grant rights across tenant boundaries', function (done) {
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'outsider',
+                    password: 'outsiderpass',
+                    address: 'outsider@other-tenant.com',
+                    name: 'Outsider'
+                })
+                .expect(200)
+                .then(() => {
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX outsider lrs', 'T3 SETACL INBOX nosuchuserhere lrs', 'T4 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            // an out of scope user is answered exactly like an unknown one
+                            expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                })
+                .catch(done);
+        });
+
+        it('should grant rights within a domain group', function (done) {
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'outsider',
+                    password: 'outsiderpass',
+                    address: 'outsider@other-tenant.com',
+                    name: 'Outsider'
+                })
+                .expect(200)
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'example.com' }).expect(200))
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'other-tenant.com' }).expect(200))
+                .then(() => {
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX outsider lrs', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+
+                            let cmds = ['T1 LOGIN outsider outsiderpass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+                            testClient(
+                                {
+                                    commands: cmds,
+                                    secure: true,
+                                    port
+                                },
+                                function (resp) {
+                                    expect(resp.toString().indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                                    done();
+                                }
+                            );
+                        }
+                    );
+                })
+                .catch(done);
+        });
+
+        it('should hide grants when the domain group is removed', function (done) {
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'outsider',
+                    password: 'outsiderpass',
+                    address: 'outsider@other-tenant.com',
+                    name: 'Outsider'
+                })
+                .expect(200)
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'example.com' }).expect(200))
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'other-tenant.com' }).expect(200))
+                .then(() => {
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX outsider lrs', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+
+                            apiServer
+                                .delete('/domaingroups/other-tenant.com')
+                                .expect(200)
+                                .then(() => {
+                                    let cmds = ['T1 LOGIN outsider outsiderpass', 'T2 LIST "" "*"', 'T3 SELECT "Other Users/testuser/INBOX"', 'T4 LOGOUT'];
+
+                                    testClient(
+                                        {
+                                            commands: cmds,
+                                            secure: true,
+                                            port
+                                        },
+                                        function (resp) {
+                                            // the stale grant behaves as if it does not exist
+                                            expect(resp.toString().indexOf('Other Users/testuser') < 0).to.be.true;
+                                            expect(/^T3 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                                            done();
+                                        }
+                                    );
+                                })
+                                .catch(done);
+                        }
+                    );
+                })
+                .catch(done);
         });
 
         it('should report the quota root of the mailbox owner', function (done) {
