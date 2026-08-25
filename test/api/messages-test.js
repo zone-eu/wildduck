@@ -179,6 +179,7 @@ describe('Search query parser tests', function () {
             user,
             $and: [
                 {
+                    user,
                     $text: {
                         $search: 'foo'
                     }
@@ -229,6 +230,7 @@ describe('Search query parser tests', function () {
             user,
             $and: [
                 {
+                    user,
                     $text: {
                         $search: 'phrase'
                     }
@@ -240,6 +242,27 @@ describe('Search query parser tests', function () {
                 }
             ],
             searchable: true
+        });
+    });
+
+    it('should include text index prefix in mixed OR text branches', async () => {
+        const db = {
+            database: {
+                collection() {
+                    throw new Error('Unexpected database lookup');
+                }
+            }
+        };
+        const user = new ObjectId();
+        const query = await getMongoDBQuery(db, user, 'from:1.1.2021 OR to:31.12.2024 example', { useAndSearch: true });
+
+        expect(query.user).to.equal(user);
+        expect(query.searchable).to.be.true;
+        expect(query.$and[0].$or[1].$and[1]).to.deep.equal({
+            user,
+            $text: {
+                $search: '"example"'
+            }
         });
     });
 });
@@ -1496,6 +1519,18 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.include(queryFixture.subjectAttachment);
+    });
+
+    it('should GET /users/:user/search expect success / q supports mixed header and fulltext OR branches', async () => {
+        const q = 'from:1.1.2021 OR to:31.12.2024 example';
+        const search = await server
+            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&searchable=1&threadCounters=1&limit=100&order=desc&useAndSearch=1`)
+            .send({})
+            .expect(200);
+
+        expect(search.body.success).to.be.true;
+        expect(search.body.query).to.equal(q);
+        expect(search.body.results).to.be.an('array');
     });
 
     it('should GET /users/:user/search expect success / q supports OR between quoted from and to keywords', async () => {
