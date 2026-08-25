@@ -95,6 +95,8 @@ module.exports = {
                 notifications: [],
                 condstoreEnabled: this.condstoreEnabled,
                 readOnly: (command.command || '').toString().toUpperCase() === 'EXAMINE' ? true : false,
+                // rights string for shared mailboxes, false if no ACL restrictions apply
+                aclRights: typeof mailboxData.aclRights === 'string' ? mailboxData.aclRights : false,
                 mailbox: mailboxData._id,
                 path
             };

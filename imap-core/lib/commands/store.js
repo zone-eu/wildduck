@@ -116,6 +116,23 @@ module.exports = {
             return true;
         });
 
+        // RFC 4314: "s" gates \Seen, "t" gates \Deleted, "w" gates other flags. A STORE
+        // must only fail if none of the specified flags may be modified, otherwise the
+        // unauthorized flags are ignored
+        if (typeof this.selected.aclRights === 'string') {
+            let allowedFlags = flags.filter(flag => imapTools.checkAclRights(this.selected, imapTools.aclRightForFlag(flag)));
+
+            if (flags.length && !allowedFlags.length) {
+                return callback(null, {
+                    response: 'NO',
+                    code: 'NOPERM',
+                    message: 'Permission denied'
+                });
+            }
+
+            flags = allowedFlags;
+        }
+
         let messages = imapTools.getMessageRange(this.selected.uidList, range, false);
 
         let logdata = {
