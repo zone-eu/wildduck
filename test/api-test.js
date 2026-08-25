@@ -702,60 +702,61 @@ describe('API tests', function () {
                 .expect(200);
             expect(submitResponse.body.queueId).to.exist;
 
-            const sentMessageDataResponse = await server.get(
-                `/users/${userId}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`
-            );
+            const messageUrl = `/users/${userId}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`;
+            const outboundUrl = `/users/${userId}/outbound/${submitResponse.body.queueId}`;
+
+            const sentMessageDataResponse = await server.get(messageUrl).expect(200);
 
             expect(sentMessageDataResponse.body.outbound[0].queueId).to.equal(submitResponse.body.queueId);
 
             let updatedSendTime = new Date(Date.now() + 12 * 3600 * 1000).toISOString();
-            const updateResponse = await server
-                .put(`/users/${userId}/outbound/${submitResponse.body.queueId}`)
-                .send({ sendTime: updatedSendTime })
-                .expect(200);
+            const updateResponse = await server.put(outboundUrl).send({ sendTime: updatedSendTime }).expect(200);
             expect(updateResponse.body.success).to.be.true;
             expect(updateResponse.body.queueId).to.equal(submitResponse.body.queueId);
             expect(updateResponse.body.updated).to.equal(6);
 
-            const updatedMessageDataResponse = await server.get(
-                `/users/${userId}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`
-            );
+            const updatedMessageDataResponse = await server.get(messageUrl).expect(200);
             expect(updatedMessageDataResponse.body.outbound[0].entries).to.have.length(6);
             for (let entry of updatedMessageDataResponse.body.outbound[0].entries) {
                 expect(new Date(entry.queued).getTime()).to.equal(new Date(updatedSendTime).getTime());
             }
 
-            const postponeResponse = await server
-                .put(`/users/${userId}/outbound/${submitResponse.body.queueId}`)
-                .send({ sendTime })
-                .expect(200);
+            const postponeResponse = await server.put(outboundUrl).send({ sendTime }).expect(200);
             expect(postponeResponse.body.success).to.be.true;
             expect(postponeResponse.body.updated).to.equal(6);
 
-            const postponedMessageDataResponse = await server.get(
-                `/users/${userId}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`
-            );
+            const postponedMessageDataResponse = await server.get(messageUrl).expect(200);
             for (let entry of postponedMessageDataResponse.body.outbound[0].entries) {
                 expect(new Date(entry.queued).getTime()).to.equal(new Date(sendTime).getTime());
             }
 
-            let sendNow = new Date().toISOString();
-            const sendNowResponse = await server
-                .put(`/users/${userId}/outbound/${submitResponse.body.queueId}`)
-                .send({ sendTime: sendNow })
-                .expect(200);
+            // delivery times in the past are replaced with the current time
+            let sendNow = new Date(Date.now() - 3600 * 1000).toISOString();
+            const sendNowResponse = await server.put(outboundUrl).send({ sendTime: sendNow }).expect(200);
             expect(sendNowResponse.body.success).to.be.true;
             expect(sendNowResponse.body.updated).to.equal(6);
+            expect(new Date(sendNowResponse.body.sendTime).getTime()).to.be.greaterThan(new Date(sendNow).getTime());
 
-            const sendNowMessageDataResponse = await server.get(
-                `/users/${userId}/mailboxes/${submitResponse.body.message.mailbox}/messages/${submitResponse.body.message.id}`
-            );
+            const sendNowMessageDataResponse = await server.get(messageUrl).expect(200);
             for (let entry of sendNowMessageDataResponse.body.outbound[0].entries) {
-                expect(new Date(entry.queued).getTime()).to.equal(new Date(sendNow).getTime());
+                expect(new Date(entry.queued).getTime()).to.equal(new Date(sendNowResponse.body.sendTime).getTime());
             }
 
-            const deleteResponse = await server.delete(`/users/${userId}/outbound/${submitResponse.body.queueId}`).expect(200);
+            // updating the same delivery time again still counts the matching queue entries
+            const repeatResponse = await server.put(outboundUrl).send({ sendTime: sendNowResponse.body.sendTime }).expect(200);
+            expect(repeatResponse.body.updated).to.equal(6);
+
+            const deleteResponse = await server.delete(outboundUrl).expect(200);
             expect(deleteResponse.body.deleted).to.equal(6);
+        });
+
+        it('should PUT /users/{user}/outbound/{queueId} expect failure / unknown queue id', async () => {
+            const updateResponse = await server
+                .put(`/users/${userId}/outbound/ffffffffffffffffff`)
+                .send({ sendTime: new Date(Date.now() + 3600 * 1000).toISOString() })
+                .expect(404);
+            expect(updateResponse.body.success).to.be.false;
+            expect(updateResponse.body.code).to.equal('NoSuchQueueEntry');
         });
 
         it('should POST /users/{user}/mailboxes/{mailbox}/messages/{message}/submit expect failure / should create a draft message and fail submit', async () => {

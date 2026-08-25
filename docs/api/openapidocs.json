@@ -4341,7 +4341,7 @@
                     "Messages"
                 ],
                 "summary": "Update an Outbound Message",
-                "description": "Updates the delivery time of an outbound email that is still queued.",
+                "description": "Updates the delivery time of an outbound email that is still queued. Delivery times in the past are replaced with the current time. Queue entries that are already being delivered can not be updated.",
                 "operationId": "updateOutboundMessage",
                 "requestBody": {
                     "content": {
@@ -12197,6 +12197,11 @@
                     "queueId": {
                         "type": "string",
                         "description": "Outbound queue ID"
+                    },
+                    "sendTime": {
+                        "type": "string",
+                        "description": "Delivery time that was applied. Delivery times in the past are replaced with the current time",
+                        "format": "date-time"
                     },
                     "updated": {
                         "type": "number",
