@@ -35,9 +35,9 @@ describe('ACL rights helpers', function () {
         });
 
         it('should map obsolete RFC 2086 rights', function () {
-            expect(acl.normalizeRights('c')).to.equal('k');
+            expect(acl.normalizeRights('c')).to.equal('kx');
             expect(acl.normalizeRights('d')).to.equal('te');
-            expect(acl.normalizeRights('lrcd')).to.equal('lrkte');
+            expect(acl.normalizeRights('lrcd')).to.equal('lrkxte');
         });
 
         it('should lowercase and drop unknown rights', function () {
@@ -66,8 +66,23 @@ describe('ACL rights helpers', function () {
         });
 
         it('should normalize obsolete rights in updates', function () {
-            expect(acl.applyRights('', 'cd')).to.equal('kte');
+            expect(acl.applyRights('', 'cd')).to.equal('kxte');
             expect(acl.applyRights('lkte', '-d')).to.equal('lk');
+        });
+    });
+
+    describe('#formatResponseRights', function () {
+        it('should append the virtual rights when member rights are present', function () {
+            expect(acl.formatResponseRights('lrswipkxtea')).to.equal('lrswipkxteacd');
+            expect(acl.formatResponseRights('k')).to.equal('kc');
+            expect(acl.formatResponseRights('x')).to.equal('xc');
+            expect(acl.formatResponseRights('te')).to.equal('ted');
+            expect(acl.formatResponseRights('lrskx')).to.equal('lrskxc');
+        });
+
+        it('should not append virtual rights without member rights', function () {
+            expect(acl.formatResponseRights('lrs')).to.equal('lrs');
+            expect(acl.formatResponseRights('')).to.equal('');
         });
     });
 });
