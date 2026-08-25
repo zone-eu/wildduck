@@ -73,6 +73,7 @@ const healthRoutes = require('./lib/api/health');
 const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const aclRoutes = require('./lib/api/acl');
+const domaingroupsRoutes = require('./lib/api/domaingroups');
 const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
@@ -881,6 +882,7 @@ function createApp(options = {}) {
 
         if (config.imap.acl && config.imap.acl.enabled) {
             aclRoutes(db, app);
+            domaingroupsRoutes(db, app);
         }
     });
 

@@ -79,6 +79,28 @@ describe('ACL API tests', function () {
         expect(response.body.results[0].subscribed).to.be.true;
     });
 
+    it('should GET /users/{user}/acl expect success', async () => {
+        const response = await server.get(`/users/${owner}/acl`).expect(200);
+        expect(response.body.success).to.be.true;
+        expect(response.body.results.length).to.equal(1);
+        expect(response.body.results[0].mailbox).to.equal(inbox);
+        expect(response.body.results[0].path).to.equal('INBOX');
+        expect(response.body.results[0].user).to.equal(grantee);
+        expect(response.body.results[0].username).to.equal('aclgrantee');
+        expect(response.body.results[0].rights).to.equal('lrs');
+    });
+
+    it('should GET /users/{user}/acl/shared expect success', async () => {
+        const response = await server.get(`/users/${grantee}/acl/shared`).expect(200);
+        expect(response.body.success).to.be.true;
+        expect(response.body.results.length).to.equal(1);
+        expect(response.body.results[0].mailbox).to.equal(inbox);
+        expect(response.body.results[0].path).to.equal('Other Users/aclowner/INBOX');
+        expect(response.body.results[0].owner).to.equal(owner);
+        expect(response.body.results[0].ownerName).to.equal('aclowner');
+        expect(response.body.results[0].rights).to.equal('lrs');
+    });
+
     it('should PUT /users/{user}/mailboxes/{mailbox}/acl expect success / replace rights', async () => {
         let response = await server
             .put(`/users/${owner}/mailboxes/${inbox}/acl`)

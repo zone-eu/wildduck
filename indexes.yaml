@@ -286,6 +286,23 @@ indexes:
           key:
               owner: 1
 
+    # Indexes for the domaingroups collection (tenant scoping of ACL grants)
+
+    - collection: domaingroups
+      type: users
+      index:
+          name: domaingroup_domain
+          unique: true
+          key:
+              domain: 1
+
+    - collection: domaingroups
+      type: users
+      index:
+          name: domaingroup_group
+          key:
+              group: 1
+
     # Indexes for the messages collection
     - collection: messages
       index:
