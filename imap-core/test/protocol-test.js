@@ -1722,6 +1722,30 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should reject uppercase rights and reserved identifiers', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL INBOX seconduser lrS',
+                'T3 SETACL INBOX anyone lr',
+                'T4 SETACL INBOX -seconduser lr',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 BAD/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    expect(/^T4 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should not modify the rights of the mailbox owner', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX testuser lr', 'T3 LOGOUT'];
 
