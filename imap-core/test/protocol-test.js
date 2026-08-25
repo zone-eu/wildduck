@@ -1686,6 +1686,42 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should select shared mailboxes read-only without write rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 SELECT "Other Users/testuser/INBOX"',
+                        'T3 STORE 1 +FLAGS (\\Seen)',
+                        'T4 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            // none of "i", "e" or the shared flag rights is granted
+                            expect(/^T2 OK \[READ-ONLY\]/m.test(resp.toString())).to.be.true;
+                            expect(resp.toString().indexOf('[PERMANENTFLAGS ()]') >= 0).to.be.true;
+                            // STORE is ignored in a read-only mailbox
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
         it('should not modify the rights of the mailbox owner', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX testuser lr', 'T3 LOGOUT'];
 
@@ -1840,7 +1876,10 @@ describe('IMAP Protocol integration tests', function () {
                         },
                         function (resp) {
                             expect(/^\* MYRIGHTS "?Other Users\/testuser\/INBOX"? "?lrs"?/m.test(resp.toString())).to.be.true;
-                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            // "s" is a shared flag right, so the mailbox is selected read-write
+                            expect(/^T3 OK \[READ-WRITE\]/m.test(resp.toString())).to.be.true;
+                            // PERMANENTFLAGS reflects the rights: only \Seen, no keywords
+                            expect(resp.toString().indexOf('[PERMANENTFLAGS (\\Seen)]') >= 0).to.be.true;
                             expect(/^T4 OK/m.test(resp.toString())).to.be.true;
                             expect(/^T5 OK/m.test(resp.toString())).to.be.true;
                             expect(/^T6 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
