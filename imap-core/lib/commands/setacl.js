@@ -40,7 +40,8 @@ module.exports = {
             return callback(new Error('Invalid arguments for SETACL'));
         }
 
-        if (!/^[+-]?[lrswipkxteacd]*$/i.test(rights)) {
+        if (!/^[+-]?[lrswipkxteacd]*$/.test(rights)) {
+            // RFC 4314: uppercase rights are not allowed
             return callback(new Error('Invalid rights argument for SETACL'));
         }
 

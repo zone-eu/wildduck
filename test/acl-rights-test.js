@@ -16,7 +16,6 @@ describe('ACL rights helpers', function () {
             expect(acl.validateRightsUpdate('-te')).to.be.true;
             expect(acl.validateRightsUpdate('cd')).to.be.true;
             expect(acl.validateRightsUpdate('')).to.be.true;
-            expect(acl.validateRightsUpdate('LRS')).to.be.true;
         });
 
         it('should reject invalid rights strings', function () {
@@ -24,6 +23,9 @@ describe('ACL rights helpers', function () {
             expect(acl.validateRightsUpdate('l r')).to.be.false;
             expect(acl.validateRightsUpdate('lr9')).to.be.false;
             expect(acl.validateRightsUpdate('+-lr')).to.be.false;
+            // RFC 4314: uppercase rights are not allowed
+            expect(acl.validateRightsUpdate('LRS')).to.be.false;
+            expect(acl.validateRightsUpdate('lrS')).to.be.false;
         });
     });
 
