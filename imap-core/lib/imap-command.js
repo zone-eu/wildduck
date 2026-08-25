@@ -68,7 +68,12 @@ const commands = new Map([
     ['SETQUOTA', require('./commands/setquota')],
     ['GETQUOTA', require('./commands/getquota')],
     ['COMPRESS', require('./commands/compress')],
-    ['XAPPLEPUSHSERVICE', require('./commands/xapplepushservice')]
+    ['XAPPLEPUSHSERVICE', require('./commands/xapplepushservice')],
+    ['SETACL', require('./commands/setacl')],
+    ['DELETEACL', require('./commands/deleteacl')],
+    ['GETACL', require('./commands/getacl')],
+    ['LISTRIGHTS', require('./commands/listrights')],
+    ['MYRIGHTS', require('./commands/myrights')]
     /*eslint-enable global-require*/
 ]);
 

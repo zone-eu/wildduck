@@ -74,6 +74,13 @@
             "delete:any": ["*"]
         },
 
+        "acl": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "autoreplies": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -390,6 +397,13 @@
             "delete:any": ["*"]
         },
 
+        "acl": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "autoreplies": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -509,6 +523,13 @@
         },
 
         "mailboxes": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "acl": {
             "create:own": ["*"],
             "read:own": ["*"],
             "update:own": ["*"],

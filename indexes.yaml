@@ -264,6 +264,28 @@ indexes:
               user: 1
               slot: 1
 
+    # Indexes for the mailboxacls collection (RFC 4314 ACL grants for shared mailboxes)
+
+    - collection: mailboxacls
+      index:
+          name: mailbox_user
+          unique: true
+          key:
+              mailbox: 1
+              user: 1
+
+    - collection: mailboxacls
+      index:
+          name: acl_grantee
+          key:
+              user: 1
+
+    - collection: mailboxacls
+      index:
+          name: acl_owner
+          key:
+              owner: 1
+
     # Indexes for the messages collection
     - collection: messages
       index:
