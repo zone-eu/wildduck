@@ -88,13 +88,21 @@ module.exports = {
                 });
             }
 
+            let readOnly = (command.command || '').toString().toUpperCase() === 'EXAMINE';
+            if (typeof mailboxData.aclRights === 'string' && !/[iestw]/.test(mailboxData.aclRights)) {
+                // RFC 4314 section 5.2: without the "i", "e" or any shared flag right
+                // the mailbox must be selected read-only. All flags are shared between
+                // the users of a mailbox, so the shared flag rights are "s", "w" and "t"
+                readOnly = true;
+            }
+
             // Set current state as selected
             this.session.selected = this.selected = {
                 modifyIndex: mailboxData.modifyIndex,
                 uidList: mailboxData.uidList,
                 notifications: [],
                 condstoreEnabled: this.condstoreEnabled,
-                readOnly: (command.command || '').toString().toUpperCase() === 'EXAMINE' ? true : false,
+                readOnly,
                 // rights string for shared mailboxes, false if no ACL restrictions apply
                 aclRights: typeof mailboxData.aclRights === 'string' ? mailboxData.aclRights : false,
                 mailbox: mailboxData._id,
@@ -105,6 +113,15 @@ module.exports = {
             // a keyword registered before STORE validated keywords can hold a value that is not an
             // atom, and RFC 3501 9 has no other form for a flag, so it is left out of the list
             let flagList = imapTools.systemFlagsFormatted.concat((mailboxData.flags || []).filter(flag => imapTools.isEmittableFlag(flag)));
+
+            // RFC 4314 section 5.1.1: PERMANENTFLAGS must reflect the rights of the
+            // user, FLAGS itself stays complete
+            let permanentFlagList = flagList;
+            let canSetKeywords = true;
+            if (typeof mailboxData.aclRights === 'string') {
+                permanentFlagList = flagList.filter(flag => imapTools.checkAclRights(this.selected, imapTools.aclRightForFlag(flag)));
+                canSetKeywords = imapTools.checkAclRights(this.selected, imapTools.ACL_RIGHTS.WRITE);
+            }
 
             // * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
             this.send(
@@ -134,15 +151,19 @@ module.exports = {
                                     type: 'atom',
                                     value: 'PERMANENTFLAGS'
                                 },
-                                flagList
+                                permanentFlagList
                                     .map(flag => ({
                                         type: 'atom',
                                         value: flag
                                     }))
-                                    .concat({
-                                        type: 'text',
-                                        value: '\\*'
-                                    })
+                                    .concat(
+                                        canSetKeywords
+                                            ? {
+                                                  type: 'text',
+                                                  value: '\\*'
+                                              }
+                                            : []
+                                    )
                             ]
                         },
                         {
