@@ -1615,7 +1615,7 @@ describe('IMAP Protocol integration tests', function () {
                     port
                 },
                 function (resp) {
-                    expect(/^\* MYRIGHTS "?INBOX"? "?lrswipkxtea"?/m.test(resp.toString())).to.be.true;
+                    expect(/^\* MYRIGHTS "?INBOX"? "?lrswipkxteacd"?/m.test(resp.toString())).to.be.true;
                     expect(/^T2 OK/m.test(resp.toString())).to.be.true;
                     done();
                 }
@@ -1643,7 +1643,7 @@ describe('IMAP Protocol integration tests', function () {
                     expect(/^T3 OK/m.test(resp.toString())).to.be.true;
                     expect(/^T4 OK/m.test(resp.toString())).to.be.true;
                     expect(/^\* ACL "?INBOX"?/m.test(resp.toString())).to.be.true;
-                    expect(resp.toString().indexOf('"testuser" "lrswipkxtea"') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('"testuser" "lrswipkxteacd"') >= 0).to.be.true;
                     expect(resp.toString().indexOf('"seconduser" "lsw"') >= 0).to.be.true;
                     done();
                 }
@@ -1679,7 +1679,7 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     expect(/^\* LISTRIGHTS "?INBOX"? "?seconduser"? ""/m.test(resp.toString())).to.be.true;
-                    expect(resp.toString().indexOf('"" l r s w i p k x t e a') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('"" l r s w i p k x t e a c d') >= 0).to.be.true;
                     expect(/^T2 OK/m.test(resp.toString())).to.be.true;
                     done();
                 }

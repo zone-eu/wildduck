@@ -127,7 +127,7 @@ describe('ACL API tests', function () {
         expect(response.body.success).to.be.true;
 
         response = await server.get(`/users/${owner}/mailboxes/${inbox}/acl`).expect(200);
-        expect(response.body.results[0].rights).to.equal('kte');
+        expect(response.body.results[0].rights).to.equal('kxte');
     });
 
     it('should PUT /users/{user}/mailboxes/{mailbox}/acl expect failure / unknown identifier', async () => {
