@@ -396,7 +396,8 @@ describe('IMAP Protocol integration tests', function () {
                     port
                 },
                 function (resp) {
-                    expect(/^\* NAMESPACE \(\("" "\/"\)\) NIL NIL$/m.test(resp.toString())).to.be.true;
+                    // the second entry is the shared namespace when ACL support is enabled
+                    expect(/^\* NAMESPACE \(\("" "\/"\)\) (\(\("[^"]+\/" "\/"\)\)|NIL) NIL$/m.test(resp.toString())).to.be.true;
                     expect(/^T2 OK/m.test(resp.toString())).to.be.true;
                     done();
                 }
@@ -1744,6 +1745,175 @@ describe('IMAP Protocol integration tests', function () {
                 function (resp) {
                     expect(/^T2 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
                     done();
+                }
+            );
+        });
+
+        it('should announce the shared namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 NAMESPACE', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('* NAMESPACE (("" "/")) (("Other Users/" "/")) NIL') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should list shared mailboxes under the shared namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                            expect(/^\* LIST \([^)]*\\Noselect[^)]*\) "\/" "Other Users"/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not list shared mailboxes without rights', function (done) {
+            let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 SELECT "Other Users/testuser/INBOX"', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('Other Users/testuser') < 0).to.be.true;
+                    expect(/^T3 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should open shared mailboxes with the granted rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 MYRIGHTS "Other Users/testuser/INBOX"',
+                        'T3 SELECT "Other Users/testuser/INBOX"',
+                        'T4 FETCH 1 (FLAGS)',
+                        'T5 STORE 1 +FLAGS (\\Seen)',
+                        'T6 STORE 1 +FLAGS (\\Flagged)',
+                        'T7 EXPUNGE',
+                        'T8 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^\* MYRIGHTS "?Other Users\/testuser\/INBOX"? "?lrs"?/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T5 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T6 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                            expect(/^T7 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not append to shared mailboxes', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswi', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let message = Buffer.from('Subject: HELLO!\r\n\r\nWORLD!');
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 APPEND "Other Users/testuser/INBOX" {' + message.length + '}\r\n' + message.toString('binary'),
+                        'T3 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should manage subscriptions of shared mailboxes', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 LSUB "" "*"',
+                        'T3 UNSUBSCRIBE "Other Users/testuser/INBOX"',
+                        'T4 LSUB "" "*"',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            // listed by the first LSUB, gone from the second one
+                            expect(resp.toString().split('"Other Users/testuser/INBOX"').length - 1).to.equal(1);
+                            done();
+                        }
+                    );
                 }
             );
         });

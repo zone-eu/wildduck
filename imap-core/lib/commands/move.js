@@ -39,6 +39,16 @@ module.exports = {
             return callback(new Error('Invalid sequence set for ' + cmd));
         }
 
+        // moving away from a shared mailbox deletes and expunges the source messages,
+        // so the "t" and "e" rights are needed
+        if (!imapTools.checkAclRights(this.selected, [imapTools.ACL_RIGHTS.DELETE_MESSAGES, imapTools.ACL_RIGHTS.EXPUNGE])) {
+            return callback(null, {
+                response: 'NO',
+                code: 'NOPERM',
+                message: 'Permission denied'
+            });
+        }
+
         let messages = imapTools.getMessageRange(this.selected.uidList, range, cmd === 'UID MOVE');
 
         let logdata = {

@@ -27,6 +27,63 @@ module.exports.getSocketTimeout = connection => {
 module.exports.systemFlagsFormatted = ['\\Answered', '\\Flagged', '\\Draft', '\\Deleted', '\\Seen'];
 module.exports.systemFlags = ['\\answered', '\\flagged', '\\draft', '\\deleted', '\\seen'];
 
+// Hierarchy prefix of the RFC 4314 shared namespace for mailboxes of other users
+module.exports.SHARED_NAMESPACE_PREFIX = 'Other Users';
+
+// Rights defined by RFC 4314 section 2.1, in the canonical order of the specification.
+// Use these names instead of the raw rights characters
+module.exports.ACL_RIGHTS = {
+    LOOKUP: 'l', // mailbox is visible to LIST/LSUB, SUBSCRIBE mailbox
+    READ: 'r', // SELECT the mailbox, perform STATUS
+    SEEN: 's', // keep seen/unseen information across sessions
+    WRITE: 'w', // set or clear flags other than \Seen and \Deleted
+    INSERT: 'i', // perform APPEND, COPY into mailbox
+    POST: 'p', // send mail to submission address (not enforced by IMAP itself)
+    CREATE: 'k', // CREATE new sub-mailboxes
+    DELETE_MAILBOX: 'x', // DELETE mailbox, old mailbox name in RENAME
+    DELETE_MESSAGES: 't', // set or clear the \Deleted flag
+    EXPUNGE: 'e', // perform EXPUNGE, expunge as part of CLOSE
+    ADMINISTER: 'a' // perform SETACL/DELETEACL/GETACL/LISTRIGHTS
+};
+
+/**
+ * Returns the RFC 4314 right that gates modifying a message flag: "s" for \Seen,
+ * "t" for \Deleted and "w" for all other flags
+ *
+ * @param {String} flag Message flag
+ * @returns {String} Required right character
+ */
+module.exports.aclRightForFlag = flag => {
+    switch ((flag || '').toLowerCase().trim()) {
+        case '\\seen':
+            return module.exports.ACL_RIGHTS.SEEN;
+        case '\\deleted':
+            return module.exports.ACL_RIGHTS.DELETE_MESSAGES;
+        default:
+            return module.exports.ACL_RIGHTS.WRITE;
+    }
+};
+
+/**
+ * Checks if the selected mailbox state allows all listed RFC 4314 rights. Personal
+ * mailboxes have no rights restrictions and always pass
+ *
+ * @param {Object} selected Selected mailbox state of a connection
+ * @param {String|Array} rights Rights that all must be held
+ * @returns {Boolean} true if the operation is allowed
+ */
+module.exports.checkAclRights = (selected, rights) => {
+    if (!selected || typeof selected.aclRights !== 'string') {
+        // no ACL restrictions apply
+        return true;
+    }
+    return []
+        .concat(rights || [])
+        .join('')
+        .split('')
+        .every(right => selected.aclRights.indexOf(right) >= 0);
+};
+
 const utf7encode = str => iconv.encode(str, 'utf-7-imap').toString();
 const utf7decode = str => iconv.decode(Buffer.from(str), 'utf-7-imap').toString();
 
