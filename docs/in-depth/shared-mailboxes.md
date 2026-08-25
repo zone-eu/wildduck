@@ -8,7 +8,7 @@ WildDuck supports sharing mailboxes between users of the same server through the
 enabled = true
 ```
 
-When enabled the IMAP server advertises the `ACL` and `RIGHTS=kxten` capabilities, the NAMESPACE response
+When enabled the IMAP server advertises the `ACL` and `RIGHTS=kxte` capabilities, the NAMESPACE response
 includes a shared namespace and mailboxes other users have shared appear under the `Other Users/<username>/`
 hierarchy prefix.
 
@@ -31,8 +31,9 @@ modified or removed.
 | `e`   | expunge         | EXPUNGE, also as part of CLOSE and MOVE                           |
 | `a`   | administer      | SETACL, DELETEACL, GETACL, LISTRIGHTS                             |
 
-The obsolete [RFC2086](https://tools.ietf.org/html/rfc2086) virtual rights are accepted in SETACL input:
-`c` maps to `k` and `d` maps to `te`.
+The obsolete [RFC2086](https://tools.ietf.org/html/rfc2086) virtual rights are supported for compatibility:
+in SETACL input `c` expands to `kx` and `d` expands to `te`, and ACL, MYRIGHTS and LISTRIGHTS responses
+include the virtual `c` and `d` rights whenever a member right of theirs is present.
 
 ACL identifiers are usernames of existing users on the same server. Group identifiers, `anyone` and negative
 rights are not supported. Users without any rights for a mailbox can not detect its existence: such mailboxes
@@ -114,6 +115,14 @@ which usernames exist on the server.
     state of the grantee, stored on the ACL entry.
 -   **Revocation disconnects.** Removing rights from a user kicks their active sessions out of the mailbox, as
     does deleting a shared mailbox.
+-   **MOVE between mailboxes of the same owner keeps flags.** [RFC6851](https://tools.ietf.org/html/rfc6851)
+    defines MOVE as flag preserving; the RFC 4314 flag dropping rules apply to COPY, APPEND and to moves that
+    cross accounts (which are internally a copy).
+-   **CREATE in a shared hierarchy requires the immediate parent** to exist with the `k` right. This is
+    stricter than RFC 4314, which only requires rights on the nearest existing parent.
+-   **A personal folder literally named `Other Users/...`** becomes unreachable while ACL support is enabled,
+    as the shared namespace takes over the prefix. Rename such folders before enabling.
 -   **POP3 is unaffected.** POP3 only ever exposes the INBOX of the authenticated user.
 -   Changes made through the HTTP API notify the sessions of the mailbox owner but not of other users sharing
-    the mailbox; changes made over IMAP notify everyone.
+    the mailbox; changes made over IMAP notify everyone. Haraka and ZoneMTA hosts must run this fork's library
+    version, otherwise users of shared mailboxes do not receive real time notifications for incoming mail.
