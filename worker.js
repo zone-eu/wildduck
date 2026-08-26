@@ -5,6 +5,7 @@ const log = require('npmlog');
 const imap = require('./imap');
 const pop3 = require('./pop3');
 const lmtp = require('./lmtp');
+const prometheus = require('./prometheus');
 const api = require('./api');
 const acme = require('./acme');
 const tasks = require('./tasks');
@@ -17,107 +18,93 @@ const errors = require('./lib/errors');
 // preload certificate files
 require('./lib/certs');
 
+// Services are started in the listed order. The metrics listener comes first so that a later
+// service failing to start is still visible through wildduck_service_up before the process exits.
+// A failure to connect to the database happens before any of this and is not observable this way.
+const SERVICES = [
+    ['Prometheus metrics server', prometheus],
+    ['task runner', tasks.start],
+    ['webhook runner', webhooks.start],
+    ['indexer process', indexer.start],
+    ['IMAP server', imap],
+    ['POP3 server', pop3],
+    ['LMTP server', lmtp],
+    ['API server', api],
+    ['ACME server', acme]
+];
+
+/**
+ * Logs a fatal startup error and exits once the error has had a chance to be reported.
+ *
+ * @param {String} message Error description.
+ * @param {Error} err Error object.
+ * @returns {void}
+ */
+function fail(message, err) {
+    log.error('App', '%s. %s', message, err.message);
+    errors.notify(err);
+    setTimeout(() => process.exit(1), 3000);
+}
+
+/**
+ * Starts the listed services one after another.
+ *
+ * @param {Array} services List of [name, start] entries.
+ * @param {Function} callback Called once every service has started.
+ * @returns {void}
+ */
+function startServices(services, callback) {
+    let pos = 0;
+
+    let startNext = () => {
+        if (pos >= services.length) {
+            return callback();
+        }
+
+        let [name, start] = services[pos++];
+
+        start(err => {
+            if (err) {
+                return fail(`Failed to start ${name}`, err);
+            }
+            startNext();
+        });
+    };
+
+    startNext();
+}
+
 // Initialize database connection
 db.connect(err => {
     if (err) {
-        log.error('Db', 'Failed to setup database connection');
-        errors.notify(err);
-        return setTimeout(() => process.exit(1), 3000);
+        return fail('Failed to setup database connection', err);
     }
 
-    tasks.start(err => {
-        if (err) {
-            log.error('App', 'Failed to start task runner. %s', err.message);
-            errors.notify(err);
-            return setTimeout(() => process.exit(1), 3000);
+    startServices(SERVICES, () => {
+        // downgrade user and group if needed
+        if (config.group) {
+            try {
+                process.setgid(config.group);
+                log.info('App', 'Changed group to "%s" (%s)', config.group, process.getgid());
+            } catch (E) {
+                return fail(`Failed to change group to "${config.group}"`, E);
+            }
         }
 
-        webhooks.start(err => {
-            if (err) {
-                log.error('App', 'Failed to start webhook runner. %s', err.message);
-                errors.notify(err);
-                return setTimeout(() => process.exit(1), 3000);
+        if (config.user) {
+            try {
+                process.setuid(config.user);
+                log.info('App', 'Changed user to "%s" (%s)', config.user, process.getuid());
+            } catch (E) {
+                return fail(`Failed to change user to "${config.user}"`, E);
             }
+        }
 
-            indexer.start(err => {
-                if (err) {
-                    log.error('App', 'Failed to start indexer process. %s', err.message);
-                    errors.notify(err);
-                    return setTimeout(() => process.exit(1), 3000);
-                }
-
-                // Start IMAP server
-                imap(err => {
-                    if (err) {
-                        log.error('App', 'Failed to start IMAP server. %s', err.message);
-                        errors.notify(err);
-                        return setTimeout(() => process.exit(1), 3000);
-                    }
-                    // Start POP3 server
-                    pop3(err => {
-                        if (err) {
-                            log.error('App', 'Failed to start POP3 server');
-                            errors.notify(err);
-                            return setTimeout(() => process.exit(1), 3000);
-                        }
-                        // Start LMTP maildrop server
-                        lmtp(err => {
-                            if (err) {
-                                log.error('App', 'Failed to start LMTP server');
-                                errors.notify(err);
-                                return setTimeout(() => process.exit(1), 3000);
-                            }
-
-                            // Start HTTP API server
-                            api(err => {
-                                if (err) {
-                                    log.error('App', 'Failed to start API server');
-                                    errors.notify(err);
-                                    return setTimeout(() => process.exit(1), 3000);
-                                }
-
-                                // Start HTTP ACME server
-                                acme(err => {
-                                    if (err) {
-                                        log.error('App', 'Failed to start ACME server');
-                                        errors.notify(err);
-                                        return setTimeout(() => process.exit(1), 3000);
-                                    }
-
-                                    // downgrade user and group if needed
-                                    if (config.group) {
-                                        try {
-                                            process.setgid(config.group);
-                                            log.info('App', 'Changed group to "%s" (%s)', config.group, process.getgid());
-                                        } catch (E) {
-                                            log.error('App', 'Failed to change group to "%s" (%s)', config.group, E.message);
-                                            errors.notify(E);
-                                            return setTimeout(() => process.exit(1), 3000);
-                                        }
-                                    }
-                                    if (config.user) {
-                                        try {
-                                            process.setuid(config.user);
-                                            log.info('App', 'Changed user to "%s" (%s)', config.user, process.getuid());
-                                        } catch (E) {
-                                            log.error('App', 'Failed to change user to "%s" (%s)', config.user, E.message);
-                                            errors.notify(E);
-                                            return setTimeout(() => process.exit(1), 3000);
-                                        }
-                                    }
-
-                                    plugins.init('receiver');
-                                    plugins.handler.load(() => {
-                                        log.verbose('Plugins', 'Plugins loaded');
-                                        plugins.handler.runHooks('init', [], () => {
-                                            log.info('App', 'All servers started, ready to process some mail');
-                                        });
-                                    });
-                                });
-                            });
-                        });
-                    });
-                });
+        plugins.init('receiver');
+        plugins.handler.load(() => {
+            log.verbose('Plugins', 'Plugins loaded');
+            plugins.handler.runHooks('init', [], () => {
+                log.info('App', 'All servers started, ready to process some mail');
             });
         });
     });

@@ -47,12 +47,14 @@ module.exports = function (grunt) {
                 },
                 // wildduck unit tests (do not require server/db)
                 src: [
+                    'test/certs-test.js',
                     'test/checkrangequery-test.js',
                     'test/create-decipher-test.js',
                     'test/filtering-tools-test.js',
                     'test/hibp-tools-test.js',
                     'test/list-headers-test.js',
-                    'test/maildropper-test.js',
+                    'test/metrics-config-test.js',
+                    'test/prometheus-test.js',
                     'test/tools-test.js'
                 ]
             },
