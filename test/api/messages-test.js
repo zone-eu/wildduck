@@ -12,10 +12,20 @@ const config = require('@zone-eu/wild-config');
 const { ObjectId } = require('mongodb');
 const { ImapFlow } = require('imapflow');
 const { parseSearchQuery, getMongoDBQuery } = require('../../lib/search-query');
+const { prepareSearchFilter } = require('../../lib/prepare-search-filter');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 describe('Search query parser tests', function () {
+    const noDbLookup = {
+        database: {
+            collection() {
+                throw new Error('Unexpected database lookup');
+            }
+        }
+    };
+    const headerMatch = (key, regex) => ({ headers: { $elemMatch: { key, value: { $regex: regex, $options: 'i' } } } });
+
     it('should parse quoted multi-word text as an exact phrase only when quoted', () => {
         const unquoted = parseSearchQuery('phrase here');
         const quoted = parseSearchQuery('"phrase here"');
@@ -242,6 +252,138 @@ describe('Search query parser tests', function () {
             searchable: true
         });
     });
+
+    it('should tag every OR branch wrapping a $text clause with the user id', async () => {
+        const user = new ObjectId();
+
+        // MongoDB only plans an $or holding a $text clause when every branch of that $or
+        // is index backed, and the text index is prefixed with `user`
+        expect(await getMongoDBQuery(noDbLookup, user, 'from:1.1.2021 OR to:31.12.2024 example', { useAndSearch: true })).to.deep.equal({
+            user,
+            $and: [
+                {
+                    $or: [
+                        {
+                            user,
+                            ...headerMatch('from', '1\\.1\\.2021')
+                        },
+                        {
+                            user,
+                            $and: [
+                                {
+                                    $or: [headerMatch('to', '31\\.12\\.2024'), headerMatch('cc', '31\\.12\\.2024'), headerMatch('bcc', '31\\.12\\.2024')]
+                                },
+                                {
+                                    $text: {
+                                        $search: '"example"'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            searchable: true
+        });
+    });
+
+    it('should tag OR branches on every level between the root and a $text clause', async () => {
+        const user = new ObjectId();
+        const query = await getMongoDBQuery(noDbLookup, user, 'from:sender (example OR to:rcpt) OR subject:topic', { useAndSearch: true });
+
+        const outer = query.$and[0].$or;
+        expect(outer.every(branch => branch.user === user)).to.be.true;
+
+        const inner = outer.find(branch => branch.$and).$and.find(branch => branch.$or).$or;
+        expect(inner.every(branch => branch.user === user)).to.be.true;
+        expect(inner.some(branch => branch.$text)).to.be.true;
+    });
+
+    it('should not tag OR branches when the query has no $text clause', async () => {
+        const user = new ObjectId();
+        const query = await getMongoDBQuery(noDbLookup, user, 'from:sender OR subject:topic');
+
+        expect(query.$and[0].$or.every(branch => !('user' in branch))).to.be.true;
+    });
+
+    it('should emit a single $text clause and fall back to regex for the rest', async () => {
+        const user = new ObjectId();
+        const countTextClauses = value => {
+            if (!value || typeof value !== 'object') {
+                return 0;
+            }
+            if (Array.isArray(value)) {
+                return value.reduce((sum, entry) => sum + countTextClauses(entry), 0);
+            }
+            return Object.entries(value).reduce((sum, [key, entry]) => sum + (key === '$text' ? 1 : countTextClauses(entry)), 0);
+        };
+
+        // MongoDB rejects a query holding more than one $text expression
+        for (let q of ['from:sender first OR to:rcpt second', 'first OR from:sender OR second', 'first second OR third fourth']) {
+            expect(countTextClauses(await getMongoDBQuery(noDbLookup, user, q, { useAndSearch: true }))).to.equal(1);
+        }
+    });
+
+    it('should keep AND semantics when a merged text clause falls back to regex', async () => {
+        const user = new ObjectId();
+        const query = await getMongoDBQuery(noDbLookup, user, 'first second OR third fourth', { useAndSearch: true });
+        const fallback = query.$and[0].$or[1].$and[0];
+
+        // `third fourth` was an AND of two terms before losing the $text slot
+        expect(fallback.$and).to.have.lengthOf(2);
+        expect(fallback.$or).to.be.undefined;
+    });
+
+    it('should keep negated terms excluding when a merged text clause falls back to regex', async () => {
+        const user = new ObjectId();
+        const losingBranch = async q => (await getMongoDBQuery(noDbLookup, user, q)).$and[0].$or[1].$and[0];
+
+        // $text applies a negated term as an exclusion even in OR mode, so `gamma -delta`
+        // means gamma AND NOT delta, not gamma OR NOT delta
+        const negated = await losingBranch('alpha beta OR gamma -delta');
+        expect(negated.$and).to.have.lengthOf(2);
+        expect(negated.$and[1].$nor).to.not.be.undefined;
+
+        // without a negated term the merged OR terms stay ORed
+        const plain = await losingBranch('alpha beta OR gamma delta');
+        expect(plain.$or).to.have.lengthOf(2);
+        expect(plain.$and).to.be.undefined;
+    });
+
+    it('should tag the $text branch of an or.* search filter with the user id', async () => {
+        const user = new ObjectId();
+        const db = {
+            ...noDbLookup,
+            users: {
+                collection() {
+                    return {
+                        findOne() {
+                            return Promise.resolve({ _id: user, username: 'searchuser', address: 'searchuser@example.com' });
+                        }
+                    };
+                }
+            }
+        };
+
+        const { filter } = await prepareSearchFilter(db, user, { or: { query: 'example', from: 'sender' }, useAndSearch: true });
+
+        expect(filter).to.deep.equal({
+            user,
+            searchable: true,
+            $or: [
+                {
+                    user,
+                    $text: {
+                        $search: '"example"'
+                    }
+                },
+                {
+                    user,
+                    ...headerMatch('from', 'sender')
+                }
+            ]
+        });
+    });
 });
 
 describe('Messages tests', function () {
@@ -302,9 +444,9 @@ describe('Messages tests', function () {
         altFromAddress: 'search.query.alt-from@web.zone.test'
     };
 
-    const searchQ = async q => {
+    const searchQ = async (q, params = {}) => {
         const search = await server
-            .get(`/users/${user}/search?q=${encodeURIComponent(q)}&limit=50`)
+            .get(`/users/${user}/search?${new URLSearchParams({ q, limit: 50, ...params })}`)
             .send({})
             .expect(200);
 
@@ -314,6 +456,7 @@ describe('Messages tests', function () {
         return search.body;
     };
 
+    const postQueryMessage = message => server.post(`/users/${user}/mailboxes/${queryMailbox}/messages`).send(message).expect(200);
     const getSubjects = body => body.results.map(entry => entry.subject);
     const getIds = body => body.results.map(entry => entry.id);
     const ensureMoreThanSearchableMailboxThreshold = async () => {
@@ -1496,6 +1639,101 @@ describe('Messages tests', function () {
 
         expect(getSubjects(search)).to.include(queryFixture.subjectKeyword);
         expect(getSubjects(search)).to.include(queryFixture.subjectAttachment);
+    });
+
+    it('should GET /users/:user/search expect success / q supports mixed header and fulltext OR branches', async () => {
+        const suffix = Date.now().toString(36);
+        const senderAddress = `search.query.mixed-from-${suffix}@web.zone.test`;
+        const recipientAddress = `search.query.mixed-to-${suffix}@to.com`;
+        const bodyToken = `searchquerymixedbody${suffix}`;
+        const fromSubject = 'Search Query Mixed OR From Marker';
+        const toSubject = 'Search Query Mixed OR To Marker';
+        const decoySubject = 'Search Query Mixed OR Decoy Marker';
+
+        // matches the header branch only
+        await postQueryMessage({
+            date: new Date('2021-01-10T10:00:00.000Z'),
+            from: { address: senderAddress },
+            to: [{ address: queryFixture.otherAddress }],
+            subject: fromSubject,
+            text: 'mixed or from side'
+        });
+
+        // matches the recipient and fulltext branch
+        await postQueryMessage({
+            date: new Date('2021-01-10T11:00:00.000Z'),
+            from: { address: queryFixture.otherAddress },
+            to: [{ address: recipientAddress }],
+            subject: toSubject,
+            text: `mixed or to side ${bodyToken}`
+        });
+
+        // matches the recipient but not the fulltext term, so the AND branch must reject it
+        await postQueryMessage({
+            date: new Date('2021-01-10T12:00:00.000Z'),
+            from: { address: queryFixture.otherAddress },
+            to: [{ address: recipientAddress }],
+            subject: decoySubject,
+            text: 'mixed or decoy side'
+        });
+
+        const q = `from:${senderAddress} OR to:${recipientAddress} ${bodyToken}`;
+
+        // the same query has to plan both with and without the searchable mailbox filter
+        for (let params of [{ useAndSearch: 1 }, { useAndSearch: 1, searchable: 1 }]) {
+            const search = await searchQ(q, params);
+            const subjects = getSubjects(search);
+
+            expect(subjects).to.include(fromSubject);
+            expect(subjects).to.include(toSubject);
+            expect(subjects).to.not.include(decoySubject);
+            expect(subjects).to.not.include(queryFixture.subjectKeyword);
+        }
+    });
+
+    it('should GET /users/:user/search expect success / q supports fulltext terms in more than one OR branch', async () => {
+        const suffix = Date.now().toString(36);
+        const senderAddress = `search.query.multi-from-${suffix}@web.zone.test`;
+        const recipientAddress = `search.query.multi-to-${suffix}@to.com`;
+        const firstToken = `searchquerymultifirst${suffix}`;
+        const secondToken = `searchquerymultisecond${suffix}`;
+        const firstSubject = 'Search Query Multi Text OR First Marker';
+        const secondSubject = 'Search Query Multi Text OR Second Marker';
+        const decoySubject = 'Search Query Multi Text OR Decoy Marker';
+
+        await postQueryMessage({
+            date: new Date('2021-01-11T10:00:00.000Z'),
+            from: { address: senderAddress },
+            to: [{ address: queryFixture.otherAddress }],
+            subject: firstSubject,
+            text: `multi text first side ${firstToken}`
+        });
+
+        await postQueryMessage({
+            date: new Date('2021-01-11T11:00:00.000Z'),
+            from: { address: queryFixture.otherAddress },
+            to: [{ address: recipientAddress }],
+            subject: secondSubject,
+            text: `multi text second side ${secondToken}`
+        });
+
+        // right sender, wrong fulltext term
+        await postQueryMessage({
+            date: new Date('2021-01-11T12:00:00.000Z'),
+            from: { address: senderAddress },
+            to: [{ address: queryFixture.otherAddress }],
+            subject: decoySubject,
+            text: `multi text decoy side ${secondToken}`
+        });
+
+        // MongoDB only accepts a single $text expression, the second term falls back to regex
+        const q = `from:${senderAddress} ${firstToken} OR to:${recipientAddress} ${secondToken}`;
+        const search = await searchQ(q, { useAndSearch: 1, searchable: 1 });
+        const subjects = getSubjects(search);
+
+        expect(subjects).to.include(firstSubject);
+        expect(subjects).to.include(secondSubject);
+        expect(subjects).to.not.include(decoySubject);
     });
 
     it('should GET /users/:user/search expect success / q supports OR between quoted from and to keywords', async () => {
