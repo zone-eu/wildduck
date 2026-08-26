@@ -120,6 +120,33 @@ indexes:
           key:
               expires: 1
 
+    # Indexes for dedicated MCP personal access tokens
+
+    - collection: mcptokens
+      type: users # index applies to users database
+      index:
+          name: mcp_token_hash
+          unique: true
+          key:
+              hash: 1
+
+    - collection: mcptokens
+      type: users # index applies to users database
+      index:
+          name: mcp_tokens_user_created
+          key:
+              user: 1
+              created: -1
+              _id: -1
+
+    - collection: mcptokens
+      type: users # index applies to users database
+      index:
+          name: mcp_token_autoexpire
+          expireAfterSeconds: 0
+          key:
+              expires: 1
+
     # Indexes for the authentication log collection
     - collection: authlog
       type: users # index applies to users database

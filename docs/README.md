@@ -11,6 +11,7 @@ WildDuck has been enhanced with several new features for improved connection man
 
 - **[Connection Management](in-depth/connection-management.md)** - Advanced onConnect and onClose handlers for IMAP and POP3 servers, enabling custom connection filtering, rate limiting, and monitoring
 - **[CONDSTORE Extension](in-depth/condstore-extension.md)** - Full RFC 4551 CONDSTORE implementation for efficient email synchronization with conditional STORE operations
+- **[Read-only MCP service](in-depth/mcp.md)** - Stateless, bearer-authenticated mailbox access for remote MCP clients
 - **Smart POP3 Timeout Handling** - Automatic timeout reset during active command processing to prevent unexpected disconnections
 
 ## Contact

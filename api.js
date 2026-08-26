@@ -50,7 +50,10 @@ const certsRoutes = require('./lib/api/certs');
 const webhooksRoutes = require('./lib/api/webhooks');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
+const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
+const McpTokenHandler = require('./lib/mcp-token-handler');
+const MailReadHandler = require('./lib/mail-read-handler');
 
 const { RestifyApiGenerate } = require('restifyapigenerate');
 const Joi = require('joi');
@@ -63,6 +66,8 @@ let messageHandler;
 let storageHandler;
 let auditHandler;
 let settingsHandler;
+let mcpTokenHandler;
+let mailReadHandler;
 let notifier;
 let loggelf;
 
@@ -532,6 +537,16 @@ module.exports = done => {
     };
 
     settingsHandler = new SettingsHandler({ db: db.database });
+    mcpTokenHandler = new McpTokenHandler({ users: db.users });
+    mailReadHandler = new MailReadHandler({
+        database: db.database,
+        users: db.users,
+        redis: db.redis,
+        senderDb: db.senderDb,
+        senderCollection: config.sender.collection,
+        settingsHandler,
+        maxResults: 250
+    });
 
     notifier = new ImapNotifier({
         database: db.database,
@@ -591,8 +606,8 @@ module.exports = done => {
     acmeRoutes(db, server, { disableRedirect: true });
     usersRoutes(db, server, userHandler, settingsHandler);
     addressesRoutes(db, server, userHandler, settingsHandler);
-    mailboxesRoutes(db, server, mailboxHandler);
-    messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler);
+    mailboxesRoutes(db, server, mailboxHandler, mailReadHandler);
+    messagesRoutes(db, server, messageHandler, userHandler, storageHandler, settingsHandler, mailReadHandler);
     storageRoutes(db, server, storageHandler);
     filtersRoutes(db, server, userHandler, settingsHandler);
     domainaccessRoutes(db, server);
@@ -611,6 +626,7 @@ module.exports = done => {
     webhooksRoutes(db, server);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
+    mcpTokensRoutes(server, mcpTokenHandler);
 
     if (process.env.NODE_ENV === 'test') {
         server.get(

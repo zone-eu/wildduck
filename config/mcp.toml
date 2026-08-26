@@ -1,0 +1,29 @@
+# Read-only Model Context Protocol service
+enabled = true
+port = 8082
+# by default bind to localhost only
+host = "127.0.0.1"
+path = "/mcp"
+
+# Use true to serve MCP over HTTPS
+secure = false
+
+# DNS rebinding protection. Entries are hostnames without ports.
+allowedHosts = ["127.0.0.1", "localhost", "[::1]"]
+
+# Browser Origin values must match one of these entries exactly. Requests from
+# CLI clients without an Origin header are accepted.
+allowedOrigins = ["http://127.0.0.1:8082", "http://localhost:8082"]
+
+# Maximum JSON request body size (1 MiB)
+maxRequestSize = 1048576
+
+# Maximum list/search page size and maximum returned body characters
+maxResults = 50
+maxBodyChars = 50000
+
+[tls]
+# If certificate paths are not defined, use global or built-in self-signed certs
+#key="/path/to/server/key.pem"
+#cert="/path/to/server/cert.pem"
+#ca=["/path/to/server/ca1.pem", "/path/to/server/ca2.pem"]

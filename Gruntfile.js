@@ -53,7 +53,11 @@ module.exports = function (grunt) {
                     'test/filtering-tools-test.js',
                     'test/hibp-tools-test.js',
                     'test/list-headers-test.js',
+                    'test/mail-read-handler-test.js',
+                    'test/mcp-cli-test.js',
                     'test/metrics-config-test.js',
+                    'test/mcp-test.js',
+                    'test/mcp-token-handler-test.js',
                     'test/prometheus-test.js',
                     'test/tools-test.js'
                 ]
