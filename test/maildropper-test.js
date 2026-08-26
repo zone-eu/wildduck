@@ -192,6 +192,17 @@ describe('Maildropper', function () {
         expect(headerLines.some(line => line.key === 'from')).to.be.true;
     });
 
+    it('marks submitted queue entries in the internal update result', async function () {
+        const maildropper = createMaildropper(submittedQueueFile([]), {
+            updateMany: async () => ({ matchedCount: 1, modifiedCount: 1 }),
+            updateOne: async () => ({ matchedCount: 1, modifiedCount: 1 })
+        });
+
+        const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+
+        expect(result.submitted).to.be.true;
+    });
+
     it('adds a Date header to a submitted message that does not have one', async function () {
         const sendTime = new Date('2026-08-25T12:00:00.000Z');
         const queueFile = submittedQueueFile([{ key: 'from', line: 'From: sender@example.com' }]);
@@ -226,6 +237,7 @@ describe('Maildropper', function () {
         const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
 
         expect(result.success).to.be.true;
+        expect(result).not.to.have.property('submitted');
     });
 
     it('does not allow removing a queue entry that is not linked to any user', async function () {

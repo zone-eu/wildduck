@@ -708,24 +708,34 @@ describe('API tests', function () {
             const sentMessageDataResponse = await server.get(messageUrl).expect(200);
 
             expect(sentMessageDataResponse.body.outbound[0].queueId).to.equal(submitResponse.body.queueId);
+            expect(new Date(sentMessageDataResponse.body.date).getTime()).to.equal(new Date(sendTime).getTime());
 
             let updatedSendTime = new Date(Date.now() + 12 * 3600 * 1000).toISOString();
             const updateResponse = await server.put(outboundUrl).send({ sendTime: updatedSendTime }).expect(200);
             expect(updateResponse.body.success).to.be.true;
             expect(updateResponse.body.queueId).to.equal(submitResponse.body.queueId);
             expect(updateResponse.body.updated).to.equal(6);
+            expect(updateResponse.body).not.to.have.property('submitted');
 
             const updatedMessageDataResponse = await server.get(messageUrl).expect(200);
+            expect(new Date(updatedMessageDataResponse.body.date).getTime()).to.equal(new Date(updatedSendTime).getTime());
             expect(updatedMessageDataResponse.body.outbound[0].entries).to.have.length(6);
             for (let entry of updatedMessageDataResponse.body.outbound[0].entries) {
                 expect(new Date(entry.queued).getTime()).to.equal(new Date(updatedSendTime).getTime());
             }
+
+            const updatedMessageSourceResponse = await server.get(`${messageUrl}/message.eml`).expect(200);
+            const updatedMessageSource = updatedMessageSourceResponse.text || updatedMessageSourceResponse.body.toString();
+            const updatedSourceDate = updatedMessageSource.match(/^Date:\s*(.+)$/im);
+            expect(updatedSourceDate).to.exist;
+            expect(new Date(updatedSourceDate[1]).getTime()).to.equal(Math.floor(new Date(updatedSendTime).getTime() / 1000) * 1000);
 
             const postponeResponse = await server.put(outboundUrl).send({ sendTime }).expect(200);
             expect(postponeResponse.body.success).to.be.true;
             expect(postponeResponse.body.updated).to.equal(6);
 
             const postponedMessageDataResponse = await server.get(messageUrl).expect(200);
+            expect(new Date(postponedMessageDataResponse.body.date).getTime()).to.equal(new Date(sendTime).getTime());
             for (let entry of postponedMessageDataResponse.body.outbound[0].entries) {
                 expect(new Date(entry.queued).getTime()).to.equal(new Date(sendTime).getTime());
             }
@@ -738,6 +748,7 @@ describe('API tests', function () {
             expect(new Date(sendNowResponse.body.sendTime).getTime()).to.be.greaterThan(new Date(sendNow).getTime());
 
             const sendNowMessageDataResponse = await server.get(messageUrl).expect(200);
+            expect(new Date(sendNowMessageDataResponse.body.date).getTime()).to.equal(new Date(sendNowResponse.body.sendTime).getTime());
             for (let entry of sendNowMessageDataResponse.body.outbound[0].entries) {
                 expect(new Date(entry.queued).getTime()).to.equal(new Date(sendNowResponse.body.sendTime).getTime());
             }

@@ -251,6 +251,17 @@ indexes:
 
     - collection: messages
       index:
+          # Queue IDs are selective, so keep this index to one key and exclude ordinary received messages.
+          # The matching document provides mailbox and uid for the shard-targeted notified update.
+          name: outbound_message
+          key:
+              outbound: 1
+          partialFilterExpression:
+              outbound:
+                  $exists: true
+
+    - collection: messages
+      index:
           # use also as sharding key
           name: mailbox_uid
           key:
