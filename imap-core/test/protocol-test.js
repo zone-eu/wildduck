@@ -225,6 +225,40 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should fail authentication for a shared account', function (done) {
+            let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'sharedaccount',
+                    password: false,
+                    address: 'sharedaccount@example.com',
+                    name: 'Shared Account',
+                    shared: true
+                })
+                .expect(200)
+                .then(response => {
+                    expect(response.body.success).to.be.true;
+                    // even an administratively set password must not allow shared accounts to log in
+                    return apiServer.put(`/users/${response.body.id}`).send({ password: 'sharedpass' }).expect(200);
+                })
+                .then(() => {
+                    let cmds = ['T1 LOGIN sharedaccount sharedpass', 'T2 LOGOUT'];
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T1 NO/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                })
+                .catch(done);
+        });
     });
 
     describe('AUTHENTICATE PLAIN', function () {
