@@ -27,8 +27,11 @@ module.exports.getSocketTimeout = connection => {
 module.exports.systemFlagsFormatted = ['\\Answered', '\\Flagged', '\\Draft', '\\Deleted', '\\Seen'];
 module.exports.systemFlags = ['\\answered', '\\flagged', '\\draft', '\\deleted', '\\seen'];
 
-// Hierarchy prefix of the RFC 4314 shared namespace for mailboxes of other users
-module.exports.SHARED_NAMESPACE_PREFIX = 'Other Users';
+// Hierarchy prefix of the RFC 2342 "Other Users" namespace for mailboxes of other users
+module.exports.OTHER_USERS_NAMESPACE_PREFIX = 'Other Users';
+
+// Hierarchy prefix of the RFC 2342 shared namespace for mailboxes of shared accounts (team mailboxes)
+module.exports.SHARED_NAMESPACE_PREFIX = 'Shared';
 
 // Rights defined by RFC 4314 section 2.1, in the canonical order of the specification.
 // Use these names instead of the raw rights characters

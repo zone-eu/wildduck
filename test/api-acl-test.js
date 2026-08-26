@@ -170,4 +170,68 @@ describe('ACL API tests', function () {
         response = await server.get(`/users/${owner}/mailboxes/${inbox}/acl`).expect(200);
         expect(response.body.results.length).to.equal(0);
     });
+
+    describe('shared accounts', function () {
+        let team, teamInbox;
+
+        before(async () => {
+            let response = await server
+                .post('/users')
+                .send({
+                    username: 'aclteam',
+                    password: false,
+                    address: 'aclteam@example.com',
+                    name: 'acl team',
+                    shared: true
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            team = response.body.id;
+
+            response = await server.get(`/users/${team}/mailboxes`).expect(200);
+            expect(response.body.success).to.be.true;
+            teamInbox = response.body.results.find(mailboxData => mailboxData.path === 'INBOX').id;
+        });
+
+        after(async () => {
+            if (team) {
+                const response = await server.delete(`/users/${team}`).expect(200);
+                expect(response.body.success).to.be.true;
+            }
+        });
+
+        it('should PUT /users/{user}/mailboxes/{mailbox}/acl expect success / shared account as owner', async () => {
+            const response = await server
+                .put(`/users/${team}/mailboxes/${teamInbox}/acl`)
+                .send({
+                    identifier: 'aclgrantee',
+                    rights: 'lrs'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            expect(response.body.id).to.equal(grantee);
+        });
+
+        it('should GET /users/{user}/acl/shared expect success / shared namespace path', async () => {
+            const response = await server.get(`/users/${grantee}/acl/shared`).expect(200);
+            expect(response.body.success).to.be.true;
+
+            const entry = response.body.results.find(entryData => entryData.owner === team);
+            expect(entry).to.exist;
+            expect(entry.path).to.equal('Shared/aclteam/INBOX');
+            expect(entry.ownerName).to.equal('aclteam');
+            expect(entry.rights).to.equal('lrs');
+        });
+
+        it('should PUT /users/{user}/mailboxes/{mailbox}/acl expect failure / shared account as grantee', async () => {
+            const response = await server
+                .put(`/users/${owner}/mailboxes/${inbox}/acl`)
+                .send({
+                    identifier: 'aclteam',
+                    rights: 'lrs'
+                })
+                .expect(404);
+            expect(response.body.code).to.equal('UserNotFound');
+        });
+    });
 });

@@ -430,8 +430,8 @@ describe('IMAP Protocol integration tests', function () {
                     port
                 },
                 function (resp) {
-                    // the second entry is the shared namespace when ACL support is enabled
-                    expect(/^\* NAMESPACE \(\("" "\/"\)\) (\(\("[^"]+\/" "\/"\)\)|NIL) NIL$/m.test(resp.toString())).to.be.true;
+                    // the second and third entries are the grant based namespaces when ACL support is enabled
+                    expect(/^\* NAMESPACE \(\("" "\/"\)\) (\(\("[^"]+\/" "\/"\)\)|NIL) (\(\("[^"]+\/" "\/"\)\)|NIL)$/m.test(resp.toString())).to.be.true;
                     expect(/^T2 OK/m.test(resp.toString())).to.be.true;
                     done();
                 }
@@ -1883,7 +1883,7 @@ describe('IMAP Protocol integration tests', function () {
                     port
                 },
                 function (resp) {
-                    expect(resp.toString().indexOf('* NAMESPACE (("" "/")) (("Other Users/" "/")) NIL') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('* NAMESPACE (("" "/")) (("Other Users/" "/")) (("Shared/" "/"))') >= 0).to.be.true;
                     done();
                 }
             );
@@ -2427,6 +2427,163 @@ describe('IMAP Protocol integration tests', function () {
                             done();
                         }
                     );
+                }
+            );
+        });
+
+        it('should not expose mailboxes of regular users under the shared namespace prefix', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 SELECT "Shared/testuser/INBOX"', 'T4 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                            expect(resp.toString().indexOf('Shared/testuser') < 0).to.be.true;
+                            expect(/^T3 NO/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+    });
+
+    describe('Shared namespace', function () {
+        let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+        beforeEach(async function () {
+            // create a shared account (team mailbox) in the same tenant scope and grant
+            // testuser full rights on its INBOX over the REST API, as shared accounts
+            // can not log in to manage grants themselves
+            let response = await apiServer
+                .post('/users')
+                .send({
+                    username: 'supportteam',
+                    password: false,
+                    address: 'supportteam@example.com',
+                    name: 'Support Team',
+                    shared: true
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            let team = response.body.id;
+
+            response = await apiServer.get(`/users/${team}/mailboxes`).expect(200);
+            expect(response.body.success).to.be.true;
+            let inbox = response.body.results.find(mailboxData => mailboxData.path === 'INBOX').id;
+
+            response = await apiServer
+                .put(`/users/${team}/mailboxes/${inbox}/acl`)
+                .send({
+                    identifier: 'testuser',
+                    rights: 'lrswipkxtea'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+        });
+
+        it('should list team mailboxes under the shared namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('"Shared/supportteam/INBOX"') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('Other Users/supportteam') < 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should select team mailboxes with the granted rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT "Shared/supportteam/INBOX"', 'T3 MYRIGHTS "Shared/supportteam/INBOX"', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^\* MYRIGHTS "?Shared\/supportteam\/INBOX"? "?lrswipkxteacd"?/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not resolve team mailboxes under the other users namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT "Other Users/supportteam/INBOX"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report the quota root of a team mailbox in the shared namespace', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 GETQUOTAROOT "Shared/supportteam/INBOX"',
+                'T3 GETQUOTA "Shared/supportteam"',
+                'T4 GETQUOTA "Other Users/supportteam"',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('* QUOTAROOT "Shared/supportteam/INBOX" "Shared/supportteam"') >= 0).to.be.true;
+                    expect(/^\* QUOTA "Shared\/supportteam" \(STORAGE \d+ \d+\)/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                    // the quota root of a team mailbox does not exist in the other users namespace
+                    expect(/^T4 NO/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should reject shared accounts as ACL grantees', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX supportteam lr', 'T3 LISTRIGHTS INBOX supportteam', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 NO/m.test(resp.toString())).to.be.true;
+                    done();
                 }
             );
         });
