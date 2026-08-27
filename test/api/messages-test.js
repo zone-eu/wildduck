@@ -2391,6 +2391,151 @@ describe('Messages tests', function () {
         expect(singleThread.body.previousCursor).to.be.false;
     });
 
+    it('should PUT and DELETE /users/:user/mailboxes/:mailbox/messages expect success / updateThread affects only the current mailbox thread', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/update-thread-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const threadMailbox = mailboxResponse.body.id;
+
+        const otherMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/update-thread-other-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const otherMailbox = otherMailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${threadMailbox}/messages`)
+            .send({
+                date: new Date('2026-03-01T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'update.thread@example.com' }],
+                subject: 'Update Thread Root',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${threadMailbox}/messages`)
+            .send({
+                date: new Date('2026-03-02T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'update.thread@example.com' }],
+                text: 'Reply message',
+                reference: {
+                    mailbox: threadMailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const unrelated = await server
+            .post(`/users/${user}/mailboxes/${threadMailbox}/messages`)
+            .send({
+                date: new Date('2026-03-03T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'update.thread@example.com' }],
+                subject: 'Unrelated message',
+                text: 'Unrelated message'
+            })
+            .expect(200);
+
+        const otherMailboxReply = await server
+            .post(`/users/${user}/mailboxes/${otherMailbox}/messages`)
+            .send({
+                date: new Date('2026-03-04T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'update.thread@example.com' }],
+                text: 'Reply in another mailbox',
+                reference: {
+                    mailbox: threadMailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const updateResponse = await server
+            .put(`/users/${user}/mailboxes/${threadMailbox}/messages/${reply.body.message.id}`)
+            .send({
+                updateThread: true,
+                seen: true,
+                flagged: true
+            })
+            .expect(200);
+
+        expect(updateResponse.body.updated).to.equal(2);
+
+        const currentMailboxListing = await server
+            .get(`/users/${user}/mailboxes/${threadMailbox}/messages?limit=10&order=asc`)
+            .send({})
+            .expect(200);
+        const currentMessages = new Map(currentMailboxListing.body.results.map(messageData => [messageData.id, messageData]));
+
+        expect(currentMessages.get(root.body.message.id).seen).to.be.true;
+        expect(currentMessages.get(root.body.message.id).flagged).to.be.true;
+        expect(currentMessages.get(reply.body.message.id).seen).to.be.true;
+        expect(currentMessages.get(reply.body.message.id).flagged).to.be.true;
+        expect(currentMessages.get(unrelated.body.message.id).seen).to.be.false;
+        expect(currentMessages.get(unrelated.body.message.id).flagged).to.be.false;
+
+        const otherMailboxMessage = await server
+            .get(`/users/${user}/mailboxes/${otherMailbox}/messages/${otherMailboxReply.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(otherMailboxMessage.body.thread).to.equal(currentMessages.get(root.body.message.id).thread);
+        expect(otherMailboxMessage.body.seen).to.be.false;
+        expect(otherMailboxMessage.body.flagged).to.be.false;
+
+        const deleteResponse = await server
+            .put(`/users/${user}/mailboxes/${threadMailbox}/messages`)
+            .send({
+                message: root.body.message.id.toString(),
+                updateThread: true,
+                deleted: true
+            })
+            .expect(200);
+
+        expect(deleteResponse.body.updated).to.equal(2);
+
+        const deletedListing = await server
+            .get(`/users/${user}/mailboxes/${threadMailbox}/messages?limit=10&order=asc`)
+            .send({})
+            .expect(200);
+        const deletedMessages = new Map(deletedListing.body.results.map(messageData => [messageData.id, messageData]));
+
+        expect(deletedMessages.get(root.body.message.id).deleted).to.be.true;
+        expect(deletedMessages.get(reply.body.message.id).deleted).to.be.true;
+        expect(deletedMessages.get(unrelated.body.message.id).deleted).to.be.false;
+
+        const unchangedOtherMailboxMessage = await server
+            .get(`/users/${user}/mailboxes/${otherMailbox}/messages/${otherMailboxReply.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(unchangedOtherMailboxMessage.body.deleted).to.be.false;
+
+        const physicalDeleteResponse = await server
+            .delete(`/users/${user}/mailboxes/${threadMailbox}/messages/${root.body.message.id}?updateThread=true`)
+            .send({})
+            .expect(200);
+
+        expect(physicalDeleteResponse.body.success).to.be.true;
+
+        await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages/${root.body.message.id}`).send({}).expect(404);
+        await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages/${reply.body.message.id}`).send({}).expect(404);
+        await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages/${unrelated.body.message.id}`).send({}).expect(200);
+
+        const remainingOtherMailboxMessage = await server
+            .get(`/users/${user}/mailboxes/${otherMailbox}/messages/${otherMailboxReply.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(remainingOtherMailboxMessage.body.deleted).to.be.false;
+    });
+
     it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / move lots of messages to trash, should not timeout', async () => {
         const performanceMessages = [];
         // add even more messages

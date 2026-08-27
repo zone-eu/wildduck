@@ -2898,6 +2898,11 @@
                                         "type": "string",
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -3821,6 +3826,11 @@
                                         "type": "string",
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -3945,6 +3955,16 @@
                         "required": true,
                         "schema": {
                             "type": "number"
+                        }
+                    },
+                    {
+                        "name": "updateThread",
+                        "in": "query",
+                        "description": "If true, deletes all messages in the selected message thread in this Mailbox",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
