@@ -9128,6 +9128,13 @@
                     }
                 }
             }
+        },
+        "/api-methods": {
+            "get": {
+                "operationId": "api-methods",
+                "parameters": [],
+                "responses": {}
+            }
         }
     },
     "components": {
@@ -12207,9 +12214,13 @@
                         "type": "number",
                         "description": "Count of updated queue entries"
                     },
-                    "code": {
-                        "type": "string",
-                        "description": "Error code if the request failed"
+                    "dateUpdated": {
+                        "type": "boolean",
+                        "description": "If true then the Date header of the queued message was set to the new delivery time. Only messages submitted by the user are rewritten, forwards and autoreplies keep the Date value of the original message"
+                    },
+                    "storedUpdated": {
+                        "type": "number",
+                        "description": "Count of stored copies of the message, eg. in the Sent Mail folder, that were updated"
                     }
                 },
                 "required": [

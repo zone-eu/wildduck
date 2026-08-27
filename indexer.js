@@ -106,6 +106,13 @@ class Indexer {
                     modseq: entry.modseq,
                     user: entry.user.toString()
                 };
+                // a rescheduled message has its Date header rewritten, which also changes its stored size
+                if (entry.hdate) {
+                    payload.hdate = entry.hdate.toISOString();
+                }
+                if (typeof entry.size === 'number') {
+                    payload.size = entry.size;
+                }
                 break;
         }
 
@@ -505,6 +512,12 @@ function indexingJob(esclient) {
                                         ctx._source.flags = params.flags;
                                         ctx._source.unseen = params.unseen;
                                         ctx._source.modseq = params.modseq;
+                                        if (params.hdate != null) {
+                                            ctx._source.hdate = params.hdate;
+                                        }
+                                        if (params.size != null) {
+                                            ctx._source.size = params.size;
+                                        }
                                     }
                                 `,
                                 params: {
@@ -512,7 +525,11 @@ function indexingJob(esclient) {
                                     draft: data.flags.includes('\\Draft'),
                                     flagged: data.flags.includes('\\Flagged'),
                                     flags: data.flags || [],
-                                    unseen: !data.flags.includes('\\Seen')
+                                    unseen: !data.flags.includes('\\Seen'),
+                                    // only set when the message content changed, eg. a queued message was rescheduled
+                                    hdate: data.hdate || null,
+
+                                    size: typeof data.size === 'number' ? data.size : null
                                 }
                             }
                         };

@@ -715,7 +715,9 @@ describe('API tests', function () {
             expect(updateResponse.body.success).to.be.true;
             expect(updateResponse.body.queueId).to.equal(submitResponse.body.queueId);
             expect(updateResponse.body.updated).to.equal(6);
-            expect(updateResponse.body).not.to.have.property('submitted');
+            expect(updateResponse.body.dateUpdated).to.be.true;
+            // the copy in the Sent Mail folder was re-dated as well
+            expect(updateResponse.body.storedUpdated).to.equal(1);
 
             const updatedMessageDataResponse = await server.get(messageUrl).expect(200);
             expect(new Date(updatedMessageDataResponse.body.date).getTime()).to.equal(new Date(updatedSendTime).getTime());
@@ -729,6 +731,9 @@ describe('API tests', function () {
             const updatedSourceDate = updatedMessageSource.match(/^Date:\s*(.+)$/im);
             expect(updatedSourceDate).to.exist;
             expect(new Date(updatedSourceDate[1]).getTime()).to.equal(Math.floor(new Date(updatedSendTime).getTime() / 1000) * 1000);
+
+            // the stored size is what IMAP reports as RFC822.SIZE, it has to match the rebuilt message
+            expect(updatedMessageDataResponse.body.size).to.equal(Buffer.byteLength(updatedMessageSource, 'binary'));
 
             const postponeResponse = await server.put(outboundUrl).send({ sendTime }).expect(200);
             expect(postponeResponse.body.success).to.be.true;
@@ -768,6 +773,69 @@ describe('API tests', function () {
                 .expect(404);
             expect(updateResponse.body.success).to.be.false;
             expect(updateResponse.body.code).to.equal('NoSuchQueueEntry');
+            expect(updateResponse.body.error).to.be.a('string').and.not.empty;
+        });
+
+        it('should PUT /users/{user}/outbound/{queueId} expect failure / delivery time past the queue expiry', async () => {
+            const message = {
+                from: { name: 'test tester1', address: 'testuser1@example.com' },
+                to: [{ name: 'test tester2', address: 'testuser2@example.com' }],
+                draft: true,
+                subject: 'expiring send time',
+                text: 'Hello hello world!'
+            };
+
+            const response = await server.post(`/users/${userId}/mailboxes/${inbox}/messages`).send(message).expect(200);
+            const submitResponse = await server.post(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}/submit`).send({}).expect(200);
+
+            const outboundUrl = `/users/${userId}/outbound/${submitResponse.body.queueId}`;
+
+            // the MTA drops queue entries that are older than consts.MAX_QUEUE_TIME without a bounce
+            const tooLate = new Date(Date.now() + 31 * 24 * 3600 * 1000).toISOString();
+            const updateResponse = await server.put(outboundUrl).send({ sendTime: tooLate }).expect(400);
+            expect(updateResponse.body.success).to.be.false;
+            expect(updateResponse.body.code).to.equal('SendTimeTooLate');
+            expect(updateResponse.body.error).to.be.a('string').and.not.empty;
+
+            await server.delete(outboundUrl).expect(200);
+        });
+
+        it('should PUT /users/{user}/outbound/{queueId} expect failure / queue entry of another user', async () => {
+            const otherUserResponse = await server
+                .post('/users')
+                .send({
+                    username: 'outboundstranger',
+                    password: 'secretvalue',
+                    address: 'outboundstranger@example.com',
+                    name: 'outbound stranger'
+                })
+                .expect(200);
+            const otherUserId = otherUserResponse.body.id;
+
+            const message = {
+                from: { name: 'test tester1', address: 'testuser1@example.com' },
+                to: [{ name: 'test tester2', address: 'testuser2@example.com' }],
+                draft: true,
+                subject: 'not yours',
+                text: 'Hello hello world!'
+            };
+
+            const response = await server.post(`/users/${userId}/mailboxes/${inbox}/messages`).send(message).expect(200);
+            const submitResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}/submit`)
+                .send({ sendTime: new Date(Date.now() + 24 * 3600 * 1000).toISOString() })
+                .expect(200);
+
+            const updateResponse = await server
+                .put(`/users/${otherUserId}/outbound/${submitResponse.body.queueId}`)
+                .send({ sendTime: new Date(Date.now() + 3600 * 1000).toISOString() })
+                .expect(403);
+            expect(updateResponse.body.success).to.be.false;
+            expect(updateResponse.body.code).to.equal('NotEnoughPrivileges');
+            expect(updateResponse.body.error).to.be.a('string').and.not.empty;
+
+            await server.delete(`/users/${userId}/outbound/${submitResponse.body.queueId}`).expect(200);
+            await server.delete(`/users/${otherUserId}`).expect(200);
         });
 
         it('should POST /users/{user}/mailboxes/{mailbox}/messages/{message}/submit expect failure / should create a draft message and fail submit', async () => {
