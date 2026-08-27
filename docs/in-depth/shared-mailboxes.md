@@ -8,9 +8,10 @@ WildDuck supports sharing mailboxes between users of the same server through the
 enabled = true
 ```
 
-When enabled the IMAP server advertises the `ACL` and `RIGHTS=kxte` capabilities, the NAMESPACE response
-includes a shared namespace and mailboxes other users have shared appear under the `Other Users/<username>/`
-hierarchy prefix.
+When enabled the IMAP server advertises the `ACL` and `RIGHTS=kxte` capabilities and the NAMESPACE response
+announces all three [RFC2342](https://tools.ietf.org/html/rfc2342) namespaces. Mailboxes other users have
+shared appear under the `Other Users/<username>/` hierarchy prefix, mailboxes of shared accounts (team
+mailboxes) under the `Shared/<username>/` prefix.
 
 ## Rights
 
@@ -67,6 +68,29 @@ enable or disable the feature: with ACL disabled existing grants stay dormant, a
 support ignore grants entirely, so mixed version deployments fail closed (sharing is unavailable, never wrongly
 granted).
 
+## Team mailboxes
+
+A team mailbox is a mailbox of a shared account: a regular account flagged with `shared` at creation
+(`POST /users` with `{"shared": true}`) that can never authenticate, on any protocol and with any
+credential. Shared accounts require an email address, can not have a password and the flag can not be
+changed later. Everything else works like for any other account: mail sent to the addresses of the
+account is delivered into its INBOX, quota, encryption and retention apply as usual and the account is
+removed with the regular user deletion, which also removes every grant it was involved in.
+
+Mailboxes of shared accounts are exposed under the `Shared/<username>/` prefix instead of
+`Other Users/<username>/` and report the quota root `Shared/<username>`. The namespace always matches
+the kind of the account: a team mailbox can not be reached through the other users namespace and vice
+versa, mismatched paths behave exactly like missing mailboxes.
+
+Since nobody can log in as the account itself, the first grant of a fresh team mailbox is seeded over
+the HTTP API (`PUT /users/{user}/mailboxes/{mailbox}/acl`). Users holding the `a` right manage further
+grants over IMAP as usual. Shared accounts can not be grantees: granting rights _to_ a shared account
+is rejected exactly like granting to an unknown user.
+
+Sending mail _as_ the team address is not part of the IMAP ACL feature: message submission policy is
+enforced by the outbound MTA (ZoneMTA), which validates the From: address against the addresses of the
+authenticated user.
+
 ## Tenant separation
 
 WildDuck deployments commonly host unrelated customers on one server. Sharing is therefore scoped by tenant,
@@ -96,8 +120,9 @@ which usernames exist on the server.
     for everyone using the mailbox. Withhold the `s` right to keep a user's reading from changing seen state:
     without `s` fetching message content does not set `\Seen`.
 -   **Quota follows the owner.** Messages appended, copied or moved into a shared mailbox are checked against and
-    charged to the quota of the mailbox owner. Shared mailboxes report the quota root `Other Users/<username>`,
-    which can be queried with GETQUOTA by any user holding at least one grant from that owner.
+    charged to the quota of the mailbox owner. Shared mailboxes report the quota root `Other Users/<username>`
+    (`Shared/<username>` for team mailboxes), which can be queried with GETQUOTA by any user holding at least
+    one grant from that owner.
 -   **Encryption follows the owner, and only ever uses public keys.** Messages stored into a shared mailbox of a
     user with `encryptMessages` enabled are encrypted with the owner's public key. Messages that are already
     encrypted (PGP or S/MIME, whether by WildDuck or by the original sender) are transferred byte for byte: the
@@ -120,8 +145,8 @@ which usernames exist on the server.
     cross accounts (which are internally a copy).
 -   **CREATE in a shared hierarchy requires the immediate parent** to exist with the `k` right. This is
     stricter than RFC 4314, which only requires rights on the nearest existing parent.
--   **A personal folder literally named `Other Users/...`** becomes unreachable while ACL support is enabled,
-    as the shared namespace takes over the prefix. Rename such folders before enabling.
+-   **Personal folders literally named `Other Users/...` or `Shared/...`** become unreachable while ACL
+    support is enabled, as the namespace prefixes take over. Rename such folders before enabling.
 -   **POP3 is unaffected.** POP3 only ever exposes the INBOX of the authenticated user.
 -   Changes made through the HTTP API notify the sessions of the mailbox owner but not of other users sharing
     the mailbox; changes made over IMAP notify everyone. Haraka and ZoneMTA hosts must run this fork's library
