@@ -233,5 +233,16 @@ describe('ACL API tests', function () {
                 .expect(404);
             expect(response.body.code).to.equal('UserNotFound');
         });
+
+        it('should DELETE /users/{user} expect success / deleted shared account disappears from shared listings', async () => {
+            const response = await server.delete(`/users/${team}`).expect(200);
+            expect(response.body.success).to.be.true;
+
+            const sharedResponse = await server.get(`/users/${grantee}/acl/shared`).expect(200);
+            expect(sharedResponse.body.success).to.be.true;
+            expect(sharedResponse.body.results.find(entryData => entryData.owner === team)).to.not.exist;
+
+            team = false;
+        });
     });
 });
