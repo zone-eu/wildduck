@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.50.1](https://github.com/zone-eu/wildduck/compare/v1.50.0...v1.50.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **api-list-unsubscribe:** fix list-unsubscribe header parser for get message endpoints ([#1146](https://github.com/zone-eu/wildduck/issues/1146)) ([30d3894](https://github.com/zone-eu/wildduck/commit/30d38942ff065181df743904f02029869c9977b1))
+* **api-put-queue:** ZMS-87 add endpoint to update message in queue ([#1150](https://github.com/zone-eu/wildduck/issues/1150)) ([58ee055](https://github.com/zone-eu/wildduck/commit/58ee05541946fda93e6a25db9df75ac03c8464b3))
+* **api-search:** ZMS-94: keep $text queries plannable inside OR branches ([#1152](https://github.com/zone-eu/wildduck/issues/1152)) ([a7ba203](https://github.com/zone-eu/wildduck/commit/a7ba203465e15cbf7a1559861081dbb537b0727c))
+* fix filter handler overrides and filter precedence ([#1147](https://github.com/zone-eu/wildduck/issues/1147)) ([515b467](https://github.com/zone-eu/wildduck/commit/515b467b0d20734b07ff85894bdb120f63631ade))
+* **prometheus:** ZMS-93: Add prometheus as separate service so it is separate from general API ([#1151](https://github.com/zone-eu/wildduck/issues/1151)) ([1a6d3ca](https://github.com/zone-eu/wildduck/commit/1a6d3caad73248e58ec6f3c8b02bd8167c6b9acf))
+* ZMS-99: when updating message with collapseThreads true also update all messages in thread ([#1153](https://github.com/zone-eu/wildduck/issues/1153)) ([d927208](https://github.com/zone-eu/wildduck/commit/d927208bc45719c4ccae53fca2f7388b60c3decc))
+
 ## [1.50.0](https://github.com/zone-eu/wildduck/compare/v1.49.6...v1.50.0) (2026-08-19)
 
 
