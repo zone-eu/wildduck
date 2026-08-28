@@ -2467,10 +2467,7 @@ describe('Messages tests', function () {
 
         expect(updateResponse.body.updated).to.equal(2);
 
-        const currentMailboxListing = await server
-            .get(`/users/${user}/mailboxes/${threadMailbox}/messages?limit=10&order=asc`)
-            .send({})
-            .expect(200);
+        const currentMailboxListing = await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages?limit=10&order=asc`).send({}).expect(200);
         const currentMessages = new Map(currentMailboxListing.body.results.map(messageData => [messageData.id, messageData]));
 
         expect(currentMessages.get(root.body.message.id).seen).to.be.true;
@@ -2500,10 +2497,7 @@ describe('Messages tests', function () {
 
         expect(deleteResponse.body.updated).to.equal(2);
 
-        const deletedListing = await server
-            .get(`/users/${user}/mailboxes/${threadMailbox}/messages?limit=10&order=asc`)
-            .send({})
-            .expect(200);
+        const deletedListing = await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages?limit=10&order=asc`).send({}).expect(200);
         const deletedMessages = new Map(deletedListing.body.results.map(messageData => [messageData.id, messageData]));
 
         expect(deletedMessages.get(root.body.message.id).deleted).to.be.true;
@@ -2523,6 +2517,8 @@ describe('Messages tests', function () {
             .expect(200);
 
         expect(physicalDeleteResponse.body.success).to.be.true;
+        expect(physicalDeleteResponse.body.deleted).to.equal(2);
+        expect(physicalDeleteResponse.body.errors).to.equal(0);
 
         await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages/${root.body.message.id}`).send({}).expect(404);
         await server.get(`/users/${user}/mailboxes/${threadMailbox}/messages/${reply.body.message.id}`).send({}).expect(404);
@@ -2534,6 +2530,196 @@ describe('Messages tests', function () {
             .expect(200);
 
         expect(remainingOtherMailboxMessage.body.deleted).to.be.false;
+    });
+
+    it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / updateThread moves the entire thread', async () => {
+        const sourceMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/move-thread-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const sourceMailbox = sourceMailboxResponse.body.id;
+
+        const targetMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/move-thread-target-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const targetMailbox = targetMailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${sourceMailbox}/messages`)
+            .send({
+                date: new Date('2026-04-01T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'move.thread@example.com' }],
+                subject: 'Move Thread Root',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${sourceMailbox}/messages`)
+            .send({
+                date: new Date('2026-04-02T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'move.thread@example.com' }],
+                text: 'Reply message',
+                reference: {
+                    mailbox: sourceMailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const unrelated = await server
+            .post(`/users/${user}/mailboxes/${sourceMailbox}/messages`)
+            .send({
+                date: new Date('2026-04-03T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'move.thread@example.com' }],
+                subject: 'Unrelated move message',
+                text: 'Unrelated message'
+            })
+            .expect(200);
+
+        // move by pointing at the reply only, the root must follow along
+        const moveResponse = await server
+            .put(`/users/${user}/mailboxes/${sourceMailbox}/messages/${reply.body.message.id}`)
+            .send({
+                updateThread: true,
+                moveTo: targetMailbox
+            })
+            .expect(200);
+
+        expect(moveResponse.body.success).to.be.true;
+        expect(moveResponse.body.mailbox).to.equal(targetMailbox);
+        expect(moveResponse.body.id.length).to.equal(2);
+        expect(moveResponse.body.id.map(entry => entry[0]).sort((a, b) => a - b)).to.deep.equal(
+            [root.body.message.id, reply.body.message.id].sort((a, b) => a - b)
+        );
+
+        const sourceListing = await server.get(`/users/${user}/mailboxes/${sourceMailbox}/messages?limit=10&order=asc`).send({}).expect(200);
+        expect(sourceListing.body.results.map(entry => entry.id)).to.deep.equal([unrelated.body.message.id]);
+
+        const targetListing = await server.get(`/users/${user}/mailboxes/${targetMailbox}/messages?limit=10&order=asc`).send({}).expect(200);
+        expect(targetListing.body.results.length).to.equal(2);
+
+        const movedUids = new Map(moveResponse.body.id);
+        for (const [sourceUid, destinationUid] of movedUids) {
+            expect(sourceUid).to.be.a('number');
+            const movedMessage = await server.get(`/users/${user}/mailboxes/${targetMailbox}/messages/${destinationUid}`).send({}).expect(200);
+            expect(movedMessage.body.success).to.be.true;
+        }
+    });
+
+    it('should DELETE /users/:user/mailboxes/:mailbox/messages/:message expect success / updateThread keeps pulled in drafts restorable', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/delete-thread-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const draftMailbox = mailboxResponse.body.id;
+
+        const root = await server
+            .post(`/users/${user}/mailboxes/${draftMailbox}/messages`)
+            .send({
+                date: new Date('2026-05-01T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'delete.thread@example.com' }],
+                subject: 'Delete Thread Root',
+                text: 'Root message'
+            })
+            .expect(200);
+
+        // uploading with a reference always marks the message as a draft
+        const draftReply = await server
+            .post(`/users/${user}/mailboxes/${draftMailbox}/messages`)
+            .send({
+                date: new Date('2026-05-02T00:00:00.000Z'),
+                unseen: true,
+                to: [{ address: 'delete.thread@example.com' }],
+                text: 'Unsent reply',
+                reference: {
+                    mailbox: draftMailbox,
+                    id: root.body.message.id,
+                    action: 'reply'
+                }
+            })
+            .expect(200);
+
+        const draftMessage = await server.get(`/users/${user}/mailboxes/${draftMailbox}/messages/${draftReply.body.message.id}`).send({}).expect(200);
+        expect(draftMessage.body.draft).to.be.true;
+        const thread = draftMessage.body.thread;
+
+        const deleteResponse = await server
+            .delete(`/users/${user}/mailboxes/${draftMailbox}/messages/${root.body.message.id}?updateThread=true`)
+            .send({})
+            .expect(200);
+
+        expect(deleteResponse.body.deleted).to.equal(2);
+        expect(deleteResponse.body.errors).to.equal(0);
+
+        const archived = await server.get(`/users/${user}/archived/messages?limit=250`).send({}).expect(200);
+        const archivedThread = archived.body.results.filter(entry => entry.thread === thread);
+
+        // the draft was not asked for by uid, deleting it as a thread sibling must not destroy it
+        expect(archivedThread.length).to.equal(2);
+        expect(archivedThread.some(entry => entry.draft)).to.be.true;
+    });
+
+    it('should DELETE /users/:user/mailboxes/:mailbox/messages/:message expect success / a directly deleted draft is not archived', async () => {
+        const mailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/delete-draft-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+            .expect(200);
+        const draftMailbox = mailboxResponse.body.id;
+
+        const draft = await server
+            .post(`/users/${user}/mailboxes/${draftMailbox}/messages`)
+            .send({
+                date: new Date('2026-06-01T00:00:00.000Z'),
+                draft: true,
+                unseen: true,
+                to: [{ address: 'delete.draft@example.com' }],
+                subject: 'Standalone Draft',
+                text: 'Standalone draft'
+            })
+            .expect(200);
+
+        const draftMessage = await server.get(`/users/${user}/mailboxes/${draftMailbox}/messages/${draft.body.message.id}`).send({}).expect(200);
+        const thread = draftMessage.body.thread;
+
+        const deleteResponse = await server.delete(`/users/${user}/mailboxes/${draftMailbox}/messages/${draft.body.message.id}`).send({}).expect(200);
+
+        expect(deleteResponse.body.deleted).to.equal(1);
+        expect(deleteResponse.body.errors).to.equal(0);
+
+        const archived = await server.get(`/users/${user}/archived/messages?limit=250`).send({}).expect(200);
+        expect(archived.body.results.filter(entry => entry.thread === thread).length).to.equal(0);
+    });
+
+    it('should DELETE /users/:user/mailboxes/:mailbox/messages/:message expect failure / unknown message with updateThread', async () => {
+        const response = await server.delete(`/users/${user}/mailboxes/${testMailbox}/messages/1000000?updateThread=true`).send({}).expect(404);
+
+        expect(response.body.error).to.exist;
+        expect(response.body.code).to.equal('MessageNotFound');
+    });
+
+    it('should DELETE /users/:user/mailboxes/:mailbox/messages/:message expect failure / unknown mailbox', async () => {
+        const response = await server.delete(`/users/${user}/mailboxes/${new ObjectId().toString()}/messages/1`).send({}).expect(404);
+
+        expect(response.body.code).to.equal('NoSuchMailbox');
+    });
+
+    it('should PUT /users/:user/mailboxes/:mailbox/messages expect failure / updateThread with per message values', async () => {
+        for (const payload of [{ metaData: { tag: 'value' } }, { expires: new Date('2030-01-01T00:00:00.000Z') }, { draft: true }]) {
+            const response = await server
+                .put(`/users/${user}/mailboxes/${testMailbox}/messages/1`)
+                .send(Object.assign({ updateThread: true, seen: true }, payload))
+                .expect(400);
+
+            expect(response.body.code).to.equal('InputValidationError');
+            expect(response.body.error).to.include('updateThread');
+        }
     });
 
     it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / move lots of messages to trash, should not timeout', async () => {

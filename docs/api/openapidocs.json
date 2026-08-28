@@ -2900,7 +2900,7 @@
                                     },
                                     "updateThread": {
                                         "type": "boolean",
-                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
                                         "default": false
                                     },
                                     "seen": {
@@ -3828,7 +3828,7 @@
                                     },
                                     "updateThread": {
                                         "type": "boolean",
-                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
                                         "default": false
                                     },
                                     "seen": {
@@ -3992,7 +3992,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SuccessResponse"
+                                    "$ref": "#/components/schemas/DeleteMessageResponse"
                                 }
                             }
                         }
@@ -4371,7 +4371,7 @@
                     "Archive"
                 ],
                 "summary": "List archived messages",
-                "description": "Lists archived (recently deleted) messages for the user. Drafts are not archived.",
+                "description": "Lists archived (recently deleted) messages for the user. Drafts deleted directly are not archived.",
                 "operationId": "getArchivedMessages",
                 "parameters": [
                     {
@@ -11986,6 +11986,27 @@
                     "references",
                     "answered",
                     "forwarded"
+                ]
+            },
+            "DeleteMessageResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "deleted": {
+                        "type": "number",
+                        "description": "Indicates the count of deleted messages"
+                    },
+                    "errors": {
+                        "type": "number",
+                        "description": "Indicates the count of errors during the delete"
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "Forwarded": {
