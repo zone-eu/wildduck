@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.48.2"
+        "version": "1.50.0"
     },
     "servers": [
         {
@@ -2789,6 +2789,26 @@
                         }
                     },
                     {
+                        "name": "includeHasDrafts",
+                        "in": "query",
+                        "description": "If true, then calculates and includes hasDrafts in the response. This comes with some overhead",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "collapseThreads",
+                        "in": "query",
+                        "description": "If true, then returns only the newest or oldest message from each thread, depending on the order argument",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "limit",
                         "in": "query",
                         "description": "How many records to return",
@@ -2909,6 +2929,11 @@
                                     "flagged": {
                                         "type": "boolean",
                                         "description": "State of the \\Flagged flag"
+                                    },
+                                    "markHam": {
+                                        "type": "boolean",
+                                        "description": "If true then emits the marked.ham webhook for matched messages. Setting flagged=true also emits marked.ham",
+                                        "default": false
                                     },
                                     "draft": {
                                         "type": "boolean",
@@ -3474,6 +3499,26 @@
                         }
                     },
                     {
+                        "name": "includeHasDrafts",
+                        "in": "query",
+                        "description": "If true, then calculates and includes hasDrafts in the response. This comes with some overhead",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "collapseThreads",
+                        "in": "query",
+                        "description": "If true, then returns only the newest or oldest matching message from each thread, depending on the order argument",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "limit",
                         "in": "query",
                         "description": "How many records to return",
@@ -3832,6 +3877,11 @@
                                     "flagged": {
                                         "type": "boolean",
                                         "description": "State of the \\Flagged flag"
+                                    },
+                                    "markHam": {
+                                        "type": "boolean",
+                                        "description": "If true then emits the marked.ham webhook for matched messages. Setting flagged=true also emits marked.ham",
+                                        "default": false
                                     },
                                     "draft": {
                                         "type": "boolean",
@@ -4286,6 +4336,84 @@
             }
         },
         "/users/{user}/outbound/{queueId}": {
+            "put": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Update an Outbound Message",
+                "description": "Updates the delivery time of an outbound email that is still queued. Delivery times in the past are replaced with the current time. Queue entries that are already being delivered can not be updated.",
+                "operationId": "updateOutboundMessage",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sendTime": {
+                                        "type": "string",
+                                        "description": "New delivery time for the queued message",
+                                        "format": "date-time"
+                                    }
+                                },
+                                "required": [
+                                    "sendTime"
+                                ]
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "queueId",
+                        "in": "path",
+                        "description": "Outbound queue ID of the message",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UpdateOutboundMessageResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "tags": [
                     "Messages"
@@ -7416,7 +7544,7 @@
                                     },
                                     "isDraft": {
                                         "type": "boolean",
-                                        "description": "Is the message a draft or not",
+                                        "description": "If true then stores the message as a draft without queueing delivery",
                                         "default": false
                                     },
                                     "draft": {
@@ -8999,6 +9127,13 @@
                         }
                     }
                 }
+            }
+        },
+        "/api-methods": {
+            "get": {
+                "operationId": "api-methods",
+                "parameters": [],
+                "responses": {}
             }
         }
     },
@@ -12056,6 +12191,40 @@
                 "required": [
                     "success",
                     "queueId"
+                ]
+            },
+            "UpdateOutboundMessageResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "queueId": {
+                        "type": "string",
+                        "description": "Outbound queue ID"
+                    },
+                    "sendTime": {
+                        "type": "string",
+                        "description": "Delivery time that was applied. Delivery times in the past are replaced with the current time",
+                        "format": "date-time"
+                    },
+                    "updated": {
+                        "type": "number",
+                        "description": "Count of updated queue entries"
+                    },
+                    "dateUpdated": {
+                        "type": "boolean",
+                        "description": "If true then the Date header of the queued message was set to the new delivery time. Only messages submitted by the user are rewritten, forwards and autoreplies keep the Date value of the original message"
+                    },
+                    "storedUpdated": {
+                        "type": "number",
+                        "description": "Count of stored copies of the message, eg. in the Sent Mail folder, that were updated"
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "GetArchivedMessagesResponse": {
