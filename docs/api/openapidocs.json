@@ -2918,6 +2918,11 @@
                                         "type": "string",
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -3866,6 +3871,11 @@
                                         "type": "string",
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -3998,6 +4008,16 @@
                         }
                     },
                     {
+                        "name": "updateThread",
+                        "in": "query",
+                        "description": "If true, deletes all messages in the selected message thread in this Mailbox",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "sess",
                         "in": "query",
                         "description": "Session identifier for the logs",
@@ -4022,7 +4042,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SuccessResponse"
+                                    "$ref": "#/components/schemas/DeleteMessageResponse"
                                 }
                             }
                         }
@@ -4479,7 +4499,7 @@
                     "Archive"
                 ],
                 "summary": "List archived messages",
-                "description": "Lists archived (recently deleted) messages for the user. Drafts are not archived.",
+                "description": "Lists archived (recently deleted) messages for the user. Drafts deleted directly are not archived.",
                 "operationId": "getArchivedMessages",
                 "parameters": [
                     {
@@ -12101,6 +12121,27 @@
                     "references",
                     "answered",
                     "forwarded"
+                ]
+            },
+            "DeleteMessageResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "deleted": {
+                        "type": "number",
+                        "description": "Indicates the count of deleted messages"
+                    },
+                    "errors": {
+                        "type": "number",
+                        "description": "Indicates the count of errors during the delete"
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "Forwarded": {
