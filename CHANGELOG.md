@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.50.2](https://github.com/zone-eu/wildduck/compare/v1.50.1...v1.50.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* htmlToText add it into try catch block to fix maximum call stack exceeded on big html messages ([#1155](https://github.com/zone-eu/wildduck/issues/1155)) ([4986803](https://github.com/zone-eu/wildduck/commit/4986803b33425a3685e3c089b23e3807a2055cde))
+
 ## [1.50.1](https://github.com/zone-eu/wildduck/compare/v1.50.0...v1.50.1) (2026-08-28)
 
 
