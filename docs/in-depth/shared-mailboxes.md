@@ -56,17 +56,54 @@ empty rights string removes the entry.
 
 Over the HTTP API with the `acl` role resource:
 
--   `GET /users/{user}/acl` – list every grant the user has given on their mailboxes
--   `GET /users/{user}/acl/shared` – list every mailbox shared with the user, with the rights held and the
-    path in the shared namespace
+-   `GET /users/{user}/acl` – list every folder grant the user has given on their mailboxes
+-   `GET /users/{user}/acl/shared` – list everything shared with the user (folder grants and account wide
+    grants), with the rights held and the path in the shared namespace
+-   `GET /users/{user}/acl/account` – list the account wide grants on the user's account
 -   `GET /users/{user}/mailboxes/{mailbox}/acl` – list grants of a mailbox
--   `PUT /users/{user}/mailboxes/{mailbox}/acl` – create or replace a grant (`{"identifier": "kati", "rights": "lrs"}`)
--   `DELETE /users/{user}/mailboxes/{mailbox}/acl/{grantee}` – remove a grant
+-   `PUT /users/{user}/mailboxes/{mailbox}/acl` – create or replace a folder grant (`{"identifier": "kati", "rights": "lrs"}`)
+-   `PUT /users/{user}/acl/account` – create or replace an account wide grant (`{"identifier": "kati", "rights": "lrs"}`)
+-   `DELETE /users/{user}/mailboxes/{mailbox}/acl/{grantee}` – remove a folder grant
+-   `DELETE /users/{user}/acl/account/{grantee}` – remove an account wide grant
 
-Grants are stored in the `mailboxacls` collection, keyed by mailbox and grantee. No data migration is needed to
-enable or disable the feature: with ACL disabled existing grants stay dormant, and nodes running without ACL
-support ignore grants entirely, so mixed version deployments fail closed (sharing is unavailable, never wrongly
-granted).
+Grants are stored in the `acls` collection. Each grant targets a resource identified by `type` and `resource`:
+a `type` of `mailbox` with the mailbox id as `resource` is a folder grant, while a null `resource` is an
+account wide grant (see below). The `type` field leaves room for future resource kinds. No data migration is
+needed to enable or disable the feature: with ACL disabled existing grants stay dormant, and nodes running
+without ACL support ignore grants entirely, so mixed version deployments fail closed (sharing is unavailable,
+never wrongly granted).
+
+## Account wide grants
+
+A grant can cover a single folder or an entire account. An **account wide grant** is set on the account node
+itself — the namespace entry `Other Users/<username>` (or `Shared/<username>` for a team account), without a
+trailing folder — and makes every mailbox of that account visible and accessible to the grantee, including
+mailboxes created later. This is the natural way to express membership of a shared account: grant once, and the
+member sees the whole account.
+
+A folder grant always wins over the account wide grant for its own mailbox, so a single folder can be widened
+or narrowed independently — for example everyone inherits full account access while `Sent Mail` is made read
+only for one member with a folder grant of `lr`. Because rights are positive only, a folder grant can reduce a
+folder below the account default (down to hiding it, by withholding the `l` right) but can not deny it entirely
+while the account wide grant stands.
+
+Account wide grants use the same commands as folder grants, addressed to the account node:
+
+```
+C: A1 SETACL "Other Users/andris" kati lrswipkxtea
+C: A2 GETACL "Other Users/andris"
+S: * ACL "Other Users/andris" "andris" "lrswipkxteacd" "kati" "lrswipkxteacd"
+C: A3 MYRIGHTS "Other Users/andris"
+C: A4 DELETEACL "Other Users/andris" kati
+```
+
+The account node is not a selectable mailbox; it only answers the ACL commands, gated on the account level `a`
+right (its disclosure follows the same rules as a mailbox: without any account wide grant the node is
+nonexistent, without `a` it is `NOPERM`). An account owner always holds all rights on their own account node,
+so a regular user manages who may access their account through `Other Users/<their own username>`; a team
+account can not log in, so its account wide grants are managed over the HTTP API (`PUT /users/{team}/acl/account`)
+or over IMAP by a user that already holds the account level `a` right. With the account create right `k`, a
+grantee may create top level folders directly under the account.
 
 ## Team mailboxes
 
@@ -82,10 +119,11 @@ Mailboxes of shared accounts are exposed under the `Shared/<username>/` prefix i
 the kind of the account: a team mailbox can not be reached through the other users namespace and vice
 versa, mismatched paths behave exactly like missing mailboxes.
 
-Since nobody can log in as the account itself, the first grant of a fresh team mailbox is seeded over
-the HTTP API (`PUT /users/{user}/mailboxes/{mailbox}/acl`). Users holding the `a` right manage further
-grants over IMAP as usual. Shared accounts can not be grantees: granting rights _to_ a shared account
-is rejected exactly like granting to an unknown user.
+Since nobody can log in as the account itself, grants for a fresh team mailbox are seeded over the HTTP
+API: an account wide grant (`PUT /users/{team}/acl/account`) to make a member see the whole team account,
+or a single folder grant (`PUT /users/{team}/mailboxes/{mailbox}/acl`). Users holding the `a` right then
+manage further grants over IMAP as usual, including on the account node. Shared accounts can not be
+grantees: granting rights _to_ a shared account is rejected exactly like granting to an unknown user.
 
 Sending mail _as_ the team address is not part of the IMAP ACL feature: message submission policy is
 enforced by the outbound MTA (ZoneMTA), which validates the From: address against the addresses of the
@@ -134,17 +172,25 @@ which usernames exist on the server.
 -   **Flags are filtered by rights.** STORE ignores flag changes the user has no right for and only fails when
     nothing is permitted. Replacing the flag list preserves flag classes the user may not modify. APPEND and COPY
     silently drop flags the user has no right to set in the target mailbox.
--   **Created sub-mailboxes inherit grants.** A mailbox created inside a shared hierarchy belongs to the account
-    owner and inherits all ACL entries of its parent.
--   **Subscriptions are personal.** SUBSCRIBE and UNSUBSCRIBE of a shared mailbox only affect the subscription
-    state of the grantee, stored on the ACL entry.
+-   **Folder grants override account wide grants.** For any mailbox the folder grant, if present, is
+    authoritative; otherwise the owner's account wide grant applies. Folders reached only through an account
+    wide grant are covered live, so mailboxes created later need no inheritance copy to stay visible.
+-   **Created sub-mailboxes inherit folder grants.** A mailbox created inside a shared hierarchy belongs to the
+    account owner and inherits the explicit folder grants of its parent (it is additionally covered by any
+    account wide grant, as every mailbox of the owner is).
+-   **Subscriptions are personal.** SUBSCRIBE and UNSUBSCRIBE of a folder shared by a folder grant affect only
+    the grantee's subscription, stored on the grant. Folders reached through an account wide grant share that
+    grant's single subscription state, so they are subscribed or unsubscribed as a set, not individually.
 -   **Revocation disconnects.** Removing rights from a user kicks their active sessions out of the mailbox, as
-    does deleting a shared mailbox.
+    does deleting a shared mailbox. Narrowing or removing an account wide grant kicks the grantee from every
+    mailbox of the owner.
 -   **MOVE between mailboxes of the same owner keeps flags.** [RFC6851](https://tools.ietf.org/html/rfc6851)
     defines MOVE as flag preserving; the RFC 4314 flag dropping rules apply to COPY, APPEND and to moves that
     cross accounts (which are internally a copy).
--   **CREATE in a shared hierarchy requires the immediate parent** to exist with the `k` right. This is
-    stricter than RFC 4314, which only requires rights on the nearest existing parent.
+-   **CREATE in a shared hierarchy requires the immediate parent** to exist with the `k` right, except at the
+    top level of an account namespace, where a folder is authorized instead by the account wide `k` right on
+    the owner. This is stricter than RFC 4314 for sub-folders, which only requires rights on the nearest
+    existing parent.
 -   **Personal folders literally named `Other Users/...` or `Shared/...`** become unreachable while ACL
     support is enabled, as the namespace prefixes take over. Rename such folders before enabling.
 -   **POP3 is unaffected.** POP3 only ever exposes the INBOX of the authenticated user.
