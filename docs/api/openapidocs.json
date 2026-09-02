@@ -143,6 +143,15 @@
                     },
                     {
                         "schema": {
+                            "type": "boolean"
+                        },
+                        "in": "query",
+                        "name": "shared",
+                        "required": false,
+                        "description": "If true then only lists shared accounts (team mailboxes), if false then only regular accounts"
+                    },
+                    {
+                        "schema": {
                             "type": "string",
                             "maxLength": 1024,
                             "minLength": 1
@@ -356,6 +365,10 @@
                                                     "suspended": {
                                                         "type": "boolean",
                                                         "description": "If true then user can not authenticate"
+                                                    },
+                                                    "shared": {
+                                                        "type": "boolean",
+                                                        "description": "If true then this is a shared account (a team mailbox) that can never authenticate"
                                                     }
                                                 }
                                             },
@@ -424,6 +437,11 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "If true then do not autogenerate missing email address for the User. Only needed if you want to create a user account that does not have any email address associated"
+                                    },
+                                    "shared": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "If true then the account is a shared account (a team mailbox) that can never authenticate. Requires an email address, can not have a password and the flag can not be changed later"
                                     },
                                     "language": {
                                         "type": "string",
@@ -999,6 +1017,10 @@
                                         "suspended": {
                                             "type": "boolean",
                                             "description": "If true then the user can not authenticate"
+                                        },
+                                        "shared": {
+                                            "type": "boolean",
+                                            "description": "If true then this is a shared account (a team mailbox) that can never authenticate"
                                         },
                                         "lastPwnedCheck": {
                                             "description": "Date when the last check of password against the Pwned passwords list was done"
@@ -17826,6 +17848,1068 @@
                     }
                 }
             }
+        },
+        "/users/{user}/acl": {
+            "get": {
+                "operationId": "getUserAcl",
+                "summary": "List ACL entries of all Mailboxes of a User",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Lists every grant the user has given on their mailboxes.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetUserAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "description": "ACL entries of the mailboxes of this user",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "GetUserAclResult",
+                                                "properties": {
+                                                    "mailbox": {
+                                                        "type": "string",
+                                                        "description": "Mailbox ID"
+                                                    },
+                                                    "path": {
+                                                        "type": "string",
+                                                        "description": "Mailbox path"
+                                                    },
+                                                    "user": {
+                                                        "type": "string",
+                                                        "description": "Grantee user ID"
+                                                    },
+                                                    "username": {
+                                                        "type": "string",
+                                                        "description": "Grantee username"
+                                                    },
+                                                    "rights": {
+                                                        "type": "string",
+                                                        "description": "RFC 4314 rights characters"
+                                                    },
+                                                    "subscribed": {
+                                                        "type": "boolean",
+                                                        "description": "Grantee subscription status for this mailbox"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Time the entry was created"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "mailbox",
+                                                    "path",
+                                                    "user",
+                                                    "username",
+                                                    "rights",
+                                                    "subscribed"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/acl/shared": {
+            "get": {
+                "operationId": "getUserSharedMailboxes",
+                "summary": "List Mailboxes shared with a User",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Lists every mailbox other users have granted to the user, with the rights held and the path in the shared namespace.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetUserSharedMailboxesResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "description": "Mailboxes and accounts shared with this user",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "GetUserSharedMailboxesResult",
+                                                "properties": {
+                                                    "mailbox": {
+                                                        "type": "string",
+                                                        "description": "Mailbox ID, or null for an account wide grant",
+                                                        "nullable": true
+                                                    },
+                                                    "account": {
+                                                        "type": "boolean",
+                                                        "description": "True for an account wide grant covering every mailbox of the owner"
+                                                    },
+                                                    "path": {
+                                                        "type": "string",
+                                                        "description": "Path in the shared namespace (the account node for an account wide grant)"
+                                                    },
+                                                    "owner": {
+                                                        "type": "string",
+                                                        "description": "Owner user ID"
+                                                    },
+                                                    "ownerName": {
+                                                        "type": "string",
+                                                        "description": "Owner username"
+                                                    },
+                                                    "rights": {
+                                                        "type": "string",
+                                                        "description": "RFC 4314 rights characters held by the user"
+                                                    },
+                                                    "subscribed": {
+                                                        "type": "boolean",
+                                                        "description": "Subscription status of the user for this mailbox"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Time the entry was created"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "mailbox",
+                                                    "path",
+                                                    "owner",
+                                                    "ownerName",
+                                                    "rights",
+                                                    "subscribed"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mailboxes/{mailbox}/acl": {
+            "get": {
+                "operationId": "getMailboxAcl",
+                "summary": "List ACL entries of a Mailbox",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Lists the users this mailbox is shared with and the rights each of them holds.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "mailbox",
+                        "required": true,
+                        "description": "ID of the Mailbox"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetMailboxAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "description": "ACL entries of this mailbox",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "GetMailboxAclResult",
+                                                "properties": {
+                                                    "user": {
+                                                        "type": "string",
+                                                        "description": "Grantee user ID"
+                                                    },
+                                                    "username": {
+                                                        "type": "string",
+                                                        "description": "Grantee username"
+                                                    },
+                                                    "rights": {
+                                                        "type": "string",
+                                                        "description": "RFC 4314 rights characters"
+                                                    },
+                                                    "subscribed": {
+                                                        "type": "boolean",
+                                                        "description": "Grantee subscription status for this mailbox"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Time the entry was created"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "user",
+                                                    "username",
+                                                    "rights",
+                                                    "subscribed"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "operationId": "updateMailboxAcl",
+                "summary": "Set ACL entry for a Mailbox",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Creates or updates the rights another user of this server holds for the mailbox. Rights are replaced, not merged.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "identifier": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256,
+                                        "description": "Username of the user the rights are granted to"
+                                    },
+                                    "rights": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 16,
+                                        "pattern": "^[lrswipkxteacd]+$",
+                                        "description": "RFC 4314 rights characters granted to the user, lowercase only"
+                                    }
+                                },
+                                "required": [
+                                    "identifier",
+                                    "rights"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "mailbox",
+                        "required": true,
+                        "description": "ID of the Mailbox"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "UpdateMailboxAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Grantee user ID"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mailboxes/{mailbox}/acl/{grantee}": {
+            "delete": {
+                "operationId": "deleteMailboxAcl",
+                "summary": "Delete ACL entry of a Mailbox",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Removes all rights the grantee holds for this mailbox.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "mailbox",
+                        "required": true,
+                        "description": "ID of the Mailbox"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "grantee",
+                        "required": true,
+                        "description": "Grantee user ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteMailboxAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/acl/account": {
+            "get": {
+                "operationId": "getAccountAcl",
+                "summary": "List account wide ACL entries",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Lists the account wide grants on this account. Each grant gives the grantee access to every mailbox of the account unless a mailbox grant narrows a specific folder.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetAccountAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "description": "Account wide ACL entries of this account",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "GetAccountAclResult",
+                                                "properties": {
+                                                    "user": {
+                                                        "type": "string",
+                                                        "description": "Grantee user ID"
+                                                    },
+                                                    "username": {
+                                                        "type": "string",
+                                                        "description": "Grantee username"
+                                                    },
+                                                    "rights": {
+                                                        "type": "string",
+                                                        "description": "RFC 4314 rights characters"
+                                                    },
+                                                    "subscribed": {
+                                                        "type": "boolean",
+                                                        "description": "Grantee subscription status for this account"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Time the entry was created"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "user",
+                                                    "username",
+                                                    "rights",
+                                                    "subscribed"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "operationId": "updateAccountAcl",
+                "summary": "Set account wide ACL entry",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Creates or updates the account wide rights another user of this server holds for this account. This is how access to a shared (team) account, which can not log in to grant itself, is bootstrapped. Rights are replaced, not merged.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "identifier": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256,
+                                        "description": "Username of the user the rights are granted to"
+                                    },
+                                    "rights": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 16,
+                                        "pattern": "^[lrswipkxteacd]+$",
+                                        "description": "RFC 4314 rights characters granted to the user, lowercase only"
+                                    }
+                                },
+                                "required": [
+                                    "identifier",
+                                    "rights"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "UpdateAccountAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Grantee user ID"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/acl/account/{grantee}": {
+            "delete": {
+                "operationId": "deleteAccountAcl",
+                "summary": "Delete account wide ACL entry",
+                "tags": [
+                    "ACL"
+                ],
+                "description": "Removes the account wide rights the grantee holds for this account. Mailbox grants of the grantee are not affected.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "grantee",
+                        "required": true,
+                        "description": "Grantee user ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteAccountAclResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/domaingroups": {
+            "get": {
+                "operationId": "getDomainGroups",
+                "summary": "List Domain Group entries",
+                "tags": [
+                    "DomainGroups"
+                ],
+                "description": "Lists the domains assigned to domain groups, optionally limited to one group.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                        },
+                        "in": "query",
+                        "name": "group",
+                        "required": false,
+                        "description": "Only list domains of this group"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetDomainGroupsResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "description": "Domain Group entries",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "GetDomainGroupsResult",
+                                                "properties": {
+                                                    "domain": {
+                                                        "type": "string",
+                                                        "description": "Domain name"
+                                                    },
+                                                    "group": {
+                                                        "type": "string",
+                                                        "description": "Name of the domain group"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "domain",
+                                                    "group"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "createDomainGroup",
+                "summary": "Add a Domain to a Domain Group",
+                "tags": [
+                    "DomainGroups"
+                ],
+                "description": "Users of domains in the same group may share mailboxes with each other. A domain can belong to one group only.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "domain": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Domain name"
+                                    },
+                                    "group": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 128,
+                                        "description": "Name of the domain group. Users of domains in the same group may share mailboxes with each other"
+                                    }
+                                },
+                                "required": [
+                                    "domain",
+                                    "group"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "CreateDomainGroupResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/domaingroups/{domain}": {
+            "delete": {
+                "operationId": "deleteDomainGroup",
+                "summary": "Remove a Domain from its Domain Group",
+                "tags": [
+                    "DomainGroups"
+                ],
+                "description": "Removes the domain from its group. Grants that now cross a tenant boundary stop resolving immediately.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "path",
+                        "name": "domain",
+                        "required": true,
+                        "description": "Domain name"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteDomainGroupResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "servers": [
@@ -17902,6 +18986,14 @@
         {
             "name": "DomainAliases",
             "description": "Domain aliases, so that mail for username@alias is delivered to username@domain."
+        },
+        {
+            "name": "DomainGroups",
+            "description": "Groups of domains that form one tenant. Users of domains in the same group may share mailboxes with each other."
+        },
+        {
+            "name": "ACL",
+            "description": "RFC 4314 access control lists: mailbox and account wide grants that share mailboxes with other users."
         },
         {
             "name": "DKIM",
