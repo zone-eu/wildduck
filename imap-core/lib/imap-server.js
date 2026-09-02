@@ -58,7 +58,11 @@ class IMAPServer extends EventEmitter {
                 socket.setKeepAlive(true, 5 * 1000);
                 this._handleProxy(socket, (err, socketOptions) => {
                     if (err) {
-                        // ignore, should not happen
+                        // PROXY header could not be read (client dropped the
+                        // connection or sent garbage). The socket is already
+                        // closing/closed and guarded against late errors in
+                        // _handleProxy; just don't proceed to connect().
+                        return;
                     }
                     if (this.options.secured) {
                         return this.connect(socket, socketOptions);
@@ -75,7 +79,9 @@ class IMAPServer extends EventEmitter {
             this.server = net.createServer(this.options, socket =>
                 this._handleProxy(socket, (err, socketOptions) => {
                     if (err) {
-                        // ignore, should not happen
+                        // socket already closing/closed and guarded in
+                        // _handleProxy; just don't proceed to connect()
+                        return;
                     }
                     socket.setKeepAlive(true, 5 * 1000);
                     this.connect(socket, socketOptions);
@@ -251,13 +257,85 @@ class IMAPServer extends EventEmitter {
 
         let chunks = [];
         let chunklen = 0;
-        let socketReader = () => {
+        let finished = false;
+
+        let onError;
+        let onClose;
+        let onEnd;
+        let socketReader;
+
+        let cleanup = () => {
+            socket.removeListener('readable', socketReader);
+            socket.removeListener('error', onError);
+            socket.removeListener('close', onClose);
+            socket.removeListener('end', onEnd);
+        };
+
+        let done = (err, opts) => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            if (err) {
+                // The socket is already closing/closed (RST/FIN seen, or we
+                // issued socket.end() with a diagnostic). Attach a no-op 'error'
+                // handler BEFORE removing ours, so the socket is never left
+                // without one — a late in-flight error (e.g. EPIPE while
+                // flushing "* BAD") must not surface as an uncaughtException.
+                socket.on('error', () => {
+                    // ignore
+                });
+            }
+            cleanup();
+            callback(err, opts);
+        };
+
+        onError = err => {
+            // client may close the connection (RST/FIN) before sending the
+            // PROXY header; surface the error through the callback instead of
+            // letting it bubble up as an uncaught exception
+            this.logger.info(
+                {
+                    tnx: 'proxy',
+                    cid: socketOptions.id,
+                    err
+                },
+                '[%s] PROXY socket error before header was received: %s',
+                socketOptions.id,
+                err.message
+            );
+            done(err);
+        };
+
+        onClose = () => {
+            // socket closed before a full PROXY header arrived
+            done(new Error('Socket closed before PROXY header was received'));
+        };
+
+        onEnd = () => {
+            // client half-closed (FIN) before a full PROXY header arrived; with
+            // allowHalfOpen the socket emits 'end' but never 'close', so without
+            // this the connection would linger until socketTimeout
+            done(new Error('Socket ended before PROXY header was received'));
+        };
+
+        // reject a malformed/non-PROXY header: deliver the diagnostic to the
+        // client (best effort) and surface the failure through the single done()
+        let rejectInvalid = message => {
+            try {
+                socket.end('* BAD Invalid PROXY header\r\n');
+            } catch (E) {
+                // ignore
+            }
+            return done(new Error(message || 'Invalid PROXY header'));
+        };
+
+        socketReader = () => {
             let chunk;
             while ((chunk = socket.read()) !== null) {
                 for (let i = 0, len = chunk.length; i < len; i++) {
                     let chr = chunk[i];
                     if (chr === 0x0a) {
-                        socket.removeListener('readable', socketReader);
                         chunks.push(chunk.slice(0, i + 1));
                         chunklen += i + 1;
                         let remainder = chunk.slice(i + 1);
@@ -270,12 +348,7 @@ class IMAPServer extends EventEmitter {
                         let params = (header || '').toString().split(' ');
                         let commandName = params.shift().toUpperCase();
                         if (commandName !== 'PROXY') {
-                            try {
-                                socket.end('* BAD Invalid PROXY header\r\n');
-                            } catch (E) {
-                                // ignore
-                            }
-                            return;
+                            return rejectInvalid();
                         }
 
                         if (params[1]) {
@@ -303,14 +376,18 @@ class IMAPServer extends EventEmitter {
                             }
                         }
 
-                        return callback(null, socketOptions);
+                        return done(null, socketOptions);
                     }
                 }
                 chunks.push(chunk);
                 chunklen += chunk.length;
             }
         };
+
         socket.on('readable', socketReader);
+        socket.on('error', onError);
+        socket.on('close', onClose);
+        socket.on('end', onEnd);
     }
 
     _upgrade(socket, callback) {
