@@ -266,9 +266,10 @@ indexes:
 
     # Indexes for the acls collection (RFC 4314 ACL grants for shared mailboxes).
     # A grant targets a resource identified by (type, resource): type "mailbox" with
-    # the mailbox id as resource is a folder grant, type "account" with a null resource
-    # is an account wide grant inherited by every mailbox of the owner. The type field
-    # leaves room for future resource kinds (eg. calendars, address books).
+    # the mailbox id as resource is a folder grant, while a null resource is an account
+    # wide grant inherited live by every mailbox of the owner. The type field leaves
+    # room for future resource kinds (eg. "calendar", "addressbook") whose grants would
+    # follow the same pattern (a specific id, or null for the whole account).
 
     - collection: acls
       index:
