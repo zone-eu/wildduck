@@ -2589,6 +2589,162 @@ describe('IMAP Protocol integration tests', function () {
         });
     });
 
+    describe('Account wide ACL', function () {
+        let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+        beforeEach(async function () {
+            // a second user in the same tenant scope, used as the account grantee. The
+            // account owner bootstraps grants through its own "Other Users/<self>" node
+            let response = await apiServer
+                .post('/users')
+                .send({
+                    username: 'seconduser',
+                    password: 'secondpass',
+                    address: 'seconduser@example.com',
+                    name: 'Second User'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+        });
+
+        it('should manage account wide grants on the account node', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL "Other Users/testuser" seconduser lrswipkxtea',
+                'T3 GETACL "Other Users/testuser"',
+                'T4 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function (resp) {
+                resp = resp.toString();
+                expect(/^T2 OK/m.test(resp)).to.be.true;
+                expect(resp.indexOf('"Other Users/testuser" "testuser" "lrswipkxteacd"') >= 0).to.be.true;
+                expect(resp.indexOf('"seconduser" "lrswipkxteacd"') >= 0).to.be.true;
+                done();
+            });
+        });
+
+        it('should report account wide rights with MYRIGHTS on the account node', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrs', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 MYRIGHTS "Other Users/testuser"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(resp.toString().indexOf('* MYRIGHTS "Other Users/testuser" "lrs"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should make every owner mailbox visible through an account grant', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 SETACL "Other Users/testuser" seconduser lrs', 'T4 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 SELECT "Other Users/testuser/Projects"', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // both the INBOX and the created folder are visible without a folder grant
+                    expect(resp.indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                    expect(resp.indexOf('"Other Users/testuser/Projects"') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should let a folder grant override the account grant', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Projects',
+                'T3 SETACL "Other Users/testuser" seconduser lrswipkxtea',
+                'T4 SETACL "Other Users/testuser/Projects" seconduser lr',
+                'T5 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 MYRIGHTS "Other Users/testuser/Projects"',
+                    'T3 MYRIGHTS "Other Users/testuser/INBOX"',
+                    'T4 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // the folder grant narrows Projects while INBOX keeps the account rights
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/Projects" "lr"') >= 0).to.be.true;
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/INBOX" "lrswipkxteacd"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should create a top level folder with the account create right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrswipkxtea', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/newtop"', 'T3 SELECT "Other Users/testuser/newtop"', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should refuse a top level folder without the account create right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrs', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/nope"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should remove an account grant with DELETEACL', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL "Other Users/testuser" seconduser lrs',
+                'T3 DELETEACL "Other Users/testuser" seconduser',
+                'T4 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should not disclose the account node without a grant', function (done) {
+            let cmds = ['T1 LOGIN seconduser secondpass', 'T2 GETACL "Other Users/testuser"', 'T3 SELECT "Other Users/testuser"', 'T4 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function (resp) {
+                resp = resp.toString();
+                expect(/^T2 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                expect(/^T3 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                done();
+            });
+        });
+
+        it('should refuse GETACL on the account node without the administer right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lr', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 GETACL "Other Users/testuser"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+    });
+
     describe('ENABLE', function () {
         it('should not enable anything', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 ENABLE X-TEST', 'T3 LOGOUT'];
