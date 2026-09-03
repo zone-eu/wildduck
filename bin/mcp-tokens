@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+
+/* eslint no-console: 0 */
+
+'use strict';
+
+const pathlib = require('path');
+process.env.NODE_CONFIG_DIR = pathlib.join(__dirname, '..', 'config');
+
+const util = require('util');
+const yargs = require('yargs/yargs');
+const db = require('../lib/db');
+const McpTokenHandler = require('../lib/mcp-token-handler');
+const UserHandler = require('../lib/user-handler');
+const tools = require('../lib/tools');
+
+const dbconnect = util.promisify(db.connect);
+
+async function connect() {
+    await dbconnect();
+    // The CLI resolves users by address, so it needs the canonical resolver
+    let userHandler = new UserHandler({ database: db.database, users: db.users, redis: db.redis });
+    return new McpTokenHandler({ users: db.users, redis: db.redis, counters: userHandler.counters, userHandler });
+}
+
+function print(value) {
+    process.stdout.write(JSON.stringify(value, false, 2) + '\n');
+}
+
+function fail(err) {
+    console.error('%s: %s', err.code || 'Error', err.message);
+    process.exit(1);
+}
+
+function buildParser(args, dependencies) {
+    dependencies = dependencies || {};
+    let connectHandler = dependencies.connect || connect;
+    let output = dependencies.print || print;
+
+    return yargs(args)
+        .scriptName('mcp-tokens')
+        .usage('Usage: $0 <command> [options]')
+        .command(
+            'create <user>',
+            'Create a read-only MCP personal access token',
+            command =>
+                command
+                    .positional('user', {
+                        describe: 'User ID, username, or email address',
+                        type: 'string'
+                    })
+                    .option('description', {
+                        alias: 'd',
+                        describe: 'Human-readable token description',
+                        type: 'string',
+                        demandOption: true,
+                        coerce(value) {
+                            value = value.trim();
+                            if (!value) {
+                                throw new Error('Description must not be empty');
+                            }
+                            return value;
+                        }
+                    })
+                    .option('expires', {
+                        alias: 'e',
+                        describe: 'Optional fixed ISO expiration time in the future',
+                        type: 'string'
+                    }),
+            async argv => {
+                let handler = await connectHandler();
+                let user = await handler.resolveUser(argv.user);
+                let entry = await handler.create(user._id, {
+                    description: argv.description,
+                    expires: argv.expires
+                });
+                output({ user: user._id.toString(), ...entry });
+            }
+        )
+        .command(
+            'list <user>',
+            'List MCP token metadata for a user',
+            command =>
+                command.positional('user', {
+                    describe: 'User ID, username, or email address',
+                    type: 'string'
+                }),
+            async argv => {
+                let handler = await connectHandler();
+                let user = await handler.resolveUser(argv.user);
+                output({
+                    user: user._id.toString(),
+                    results: await handler.list(user._id)
+                });
+            }
+        )
+        .command(
+            'revoke <user> <token>',
+            'Revoke an MCP token by record ID',
+            command =>
+                command
+                    .positional('user', {
+                        describe: 'User ID, username, or email address',
+                        type: 'string'
+                    })
+                    .positional('token', {
+                        describe: 'MCP token record ID',
+                        type: 'string'
+                    }),
+            async argv => {
+                let handler = await connectHandler();
+                let user = await handler.resolveUser(argv.user);
+                if (!tools.isId(argv.token)) {
+                    let err = new Error('Invalid MCP token record ID');
+                    err.code = 'InputValidationError';
+                    throw err;
+                }
+                await handler.revoke(user._id, argv.token);
+                output({ success: true, user: user._id.toString(), id: argv.token.toLowerCase() });
+            }
+        )
+        .demandCommand(1)
+        .strict()
+        .exitProcess(false)
+        .fail((message, err) => {
+            throw err || new Error(message);
+        })
+        .help();
+}
+
+if (require.main === module) {
+    Promise.resolve()
+        .then(() => buildParser(process.argv.slice(2)).parseAsync())
+        .then(() => process.exit())
+        .catch(fail);
+}
+
+module.exports = { buildParser };

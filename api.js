@@ -50,7 +50,14 @@ const certsRoutes = require('./lib/api/certs');
 const webhooksRoutes = require('./lib/api/webhooks');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
+const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
+const McpTokenHandler = require('./lib/mcp-token-handler');
+
+// The only routes an MCP credential may reach, by route name. Every one is a GET that a tool
+// in lib/mcp-tools.js dispatches to; the method is checked separately so the list cannot
+// accidentally admit a mutating route that reuses a name.
+const MCP_ROUTES = new Set(['getuser', 'getuseraddresses', 'getmailboxes', 'getmailbox', 'getmessages', 'getmessage', 'searchmessages']);
 
 const { RestifyApiGenerate } = require('restifyapigenerate');
 const Joi = require('joi');
@@ -63,6 +70,7 @@ let messageHandler;
 let storageHandler;
 let auditHandler;
 let settingsHandler;
+let mcpTokenHandler;
 let notifier;
 let loggelf;
 
@@ -321,6 +329,45 @@ server.use(async (req, res) => {
         }
     }
 
+    // Dedicated MCP tokens resolve to the access level stored on the token record, so what an
+    // agent may do is decided by config/roles.json like every other role. These are only ever
+    // presented by the MCP service over the private network; they are not API access tokens
+    // and carry none of their privileges.
+    if (accessToken && McpTokenHandler.isToken(accessToken)) {
+        tokenRequired = true;
+
+        // A role alone is too coarse to describe what an agent may reach. `read:own` on
+        // messages and users also covers the raw RFC822 source, the archive, the address
+        // register, the journal stream and PUT /users/:user/logout, which is a state change
+        // guarded by readOwn('users'). So the credential is additionally pinned to the exact
+        // routes the MCP tools dispatch to: adding a route under an existing grant cannot
+        // widen what an agent token reaches, and the read-only promise belongs to the
+        // credential rather than to the client that happens to be using it.
+        if (req.method !== 'GET' || !MCP_ROUTES.has(((req.route && req.route.name) || '').toLowerCase())) {
+            return fail();
+        }
+
+        let authenticated;
+        try {
+            // No address is passed, so no failure is counted here. The failure budget belongs
+            // to the MCP listener, which is the surface a guess can actually be aimed at; this
+            // caller has already authenticated there, and `req.params.ip` is supplied by the
+            // caller, so keying a limiter on it would let one dodge or poison another's budget.
+            authenticated = await mcpTokenHandler.authenticate(accessToken);
+        } catch (err) {
+            return fail();
+        }
+
+        req.role = authenticated.role;
+        req.user = authenticated.user._id.toString();
+
+        if (req.params && req.params.user === 'me') {
+            req.params.user = req.user;
+        }
+
+        return;
+    }
+
     if (config.api.accessControl.enabled || accessToken) {
         tokenRequired = true;
         if (accessToken && accessToken.length === 40 && /^[a-fA-F0-9]{40}$/.test(accessToken)) {
@@ -564,6 +611,16 @@ module.exports = done => {
         loggelf: message => loggelf(message)
     });
 
+    // Built after userHandler so an MCP token presented here reaches the same authlog it would
+    // through the MCP listener. Without the binding this path authenticated silently, and the
+    // user saw a different history depending on which listener the token hit.
+    mcpTokenHandler = new McpTokenHandler({
+        users: db.users,
+        redis: db.redis,
+        counters: userHandler.counters,
+        logAuthEvent: userHandler.logAuthEvent.bind(userHandler)
+    });
+
     mailboxHandler = new MailboxHandler({
         database: db.database,
         users: db.users,
@@ -611,6 +668,7 @@ module.exports = done => {
     webhooksRoutes(db, server);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
+    mcpTokensRoutes(server, mcpTokenHandler);
 
     if (process.env.NODE_ENV === 'test') {
         server.get(
