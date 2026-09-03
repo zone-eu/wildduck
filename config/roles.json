@@ -499,6 +499,7 @@
                 "date",
                 "idate",
                 "size",
+                "contentType",
                 "seen",
                 "deleted",
                 "flagged",

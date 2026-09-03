@@ -101,7 +101,18 @@ function getBearerToken(req) {
     return match ? match[1] : false;
 }
 
-async function readJsonBody(req, maxSize) {
+/**
+ * Reads the request body, refusing anything over the configured size.
+ *
+ * The body is consumed here whether or not the request has a use for one, because the protocol
+ * handler reads the stream itself and buffers all of it before answering. Leaving the stream
+ * untouched for a method that carries no payload would hand that method an unbounded read.
+ *
+ * @param {Object} req Node request.
+ * @param {Number} maxSize Maximum body size in bytes.
+ * @returns {Promise<Buffer>} Body.
+ */
+async function readBody(req, maxSize) {
     if (req.headers['content-encoding'] && req.headers['content-encoding'].toString().toLowerCase() !== 'identity') {
         let err = new Error('Content encoding is not supported');
         err.statusCode = 415;
@@ -129,8 +140,12 @@ async function readJsonBody(req, maxSize) {
         chunks.push(chunk);
     }
 
+    return Buffer.concat(chunks, size);
+}
+
+function parseJsonBody(body) {
     try {
-        return JSON.parse(Buffer.concat(chunks, size).toString());
+        return JSON.parse(body.toString());
     } catch (err) {
         let parseError = new Error('Malformed JSON request');
         parseError.statusCode = 400;
@@ -170,6 +185,13 @@ function createDependencies(options, dependencies) {
  * trusted proxy. Otherwise any caller could spend someone else's rate limit budget, or dodge
  * their own, by setting a header.
  *
+ * Even then it is the last entry that is used, not the first. A proxy appends the address it
+ * saw to whatever the client sent (nginx's `$proxy_add_x_forwarded_for` is exactly that), so
+ * everything to the left of the final entry is client-supplied text: reading the first entry
+ * would let a caller mint a fresh failure budget per request by prepending a new address.
+ * `trustProxy` therefore describes a single trusted hop; behind two chained proxies the
+ * address resolves to the inner one, which shares a budget rather than dodging it.
+ *
  * @param {Object} req Node request.
  * @param {Object} options Service configuration.
  * @returns {String} Remote address.
@@ -178,7 +200,13 @@ function remoteAddress(req, options) {
     if (options.trustProxy) {
         let forwarded = req.headers['x-forwarded-for'];
         if (typeof forwarded === 'string' && forwarded) {
-            return forwarded.split(',')[0].trim();
+            let entries = forwarded
+                .split(',')
+                .map(entry => entry.trim())
+                .filter(entry => entry);
+            if (entries.length) {
+                return entries[entries.length - 1];
+            }
         }
     }
     return (req.socket && req.socket.remoteAddress) || '';
@@ -348,9 +376,17 @@ function createRequestListener(options, dependencies) {
         };
 
         let parsedBody;
-        if (req.method === 'POST') {
+        if (req.method !== 'GET') {
             try {
-                parsedBody = await readJsonBody(req, maxRequestSize);
+                // Only POST carries a JSON-RPC message. A DELETE body is read to keep it under
+                // the cap and to leave the stream consumed, then discarded unparsed. GET is
+                // skipped because a web-standard Request carries no body for it, so the
+                // protocol handler never reads one and an unread body stays in the socket
+                // buffer under backpressure.
+                let body = await readBody(req, maxRequestSize);
+                if (req.method === 'POST') {
+                    parsedBody = parseJsonBody(body);
+                }
             } catch (err) {
                 if (err.statusCode === 413) {
                     return sendText(res, 413, 'Payload Too Large\n');

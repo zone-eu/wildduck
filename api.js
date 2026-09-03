@@ -53,11 +53,60 @@ const healthRoutes = require('./lib/api/health');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
+const roles = require('./lib/roles');
 
-// The only routes an MCP credential may reach, by route name. Every one is a GET that a tool
-// in lib/mcp-tools.js dispatches to; the method is checked separately so the list cannot
-// accidentally admit a mutating route that reuses a name.
-const MCP_ROUTES = new Set(['getuser', 'getuseraddresses', 'getmailboxes', 'getmailbox', 'getmessages', 'getmessage', 'searchmessages']);
+// The only routes an MCP credential may reach, by route name, mapped to the resource whose
+// field allowlist shapes the response. Every one is a GET that a tool in lib/mcp-tools.js
+// dispatches to; the method is checked separately so the list cannot accidentally admit a
+// mutating route that reuses a name.
+const MCP_ROUTES = new Map([
+    ['getuser', 'users'],
+    ['getuseraddresses', 'addresses'],
+    ['getmailboxes', 'mailboxes'],
+    ['getmailbox', 'mailboxes'],
+    ['getmessages', 'messages'],
+    ['getmessage', 'messages'],
+    ['searchmessages', 'messages']
+]);
+
+/**
+ * Applies an access level's field allowlist to whatever a route is about to answer.
+ *
+ * config/roles.json is meant to be the single declaration of what an agent may see, so the
+ * allowlist is enforced here, at the exit of the API, rather than in the MCP service that
+ * usually calls it. A response filtered by the client would still have travelled: the
+ * credential itself has to be bounded, whatever presents it. Most routes filter their own
+ * output already, but the message and mailbox routes do not, and adding a filter call to each
+ * of them would leave the next one to remember.
+ *
+ * The wrapper goes on `res.send` rather than on `res.json`, because restify's `json()` is a
+ * content type plus a call to `send()`: wrapping the one they share leaves no second way out.
+ * Only a successful JSON body is rewritten. An error body carries no resource fields and would
+ * be emptied by the filter, and a stream or a buffer is not a resource at all.
+ *
+ * @param {Object} req Request being served.
+ * @param {Object} res Response to wrap.
+ * @param {String} resource Resource name as used in config/roles.json.
+ */
+function filterResponseFields(req, res, resource) {
+    let permission = roles.can(req.role).readOwn(resource);
+    if (!permission.granted) {
+        return;
+    }
+
+    let send = res.send.bind(res);
+    res.send = (...args) => {
+        let index = args.findIndex(arg => arg && typeof arg === 'object' && arg.success === true && !Buffer.isBuffer(arg));
+        if (index >= 0) {
+            let body = args[index];
+            args[index] = Array.isArray(body.results)
+                ? // a listing keeps its envelope: totals and cursors are not resource fields
+                  Object.assign({}, body, { results: permission.filter(body.results) })
+                : Object.assign({ success: true }, permission.filter(body));
+        }
+        return send(...args);
+    };
+}
 
 const { RestifyApiGenerate } = require('restifyapigenerate');
 const Joi = require('joi');
@@ -343,7 +392,8 @@ server.use(async (req, res) => {
         // routes the MCP tools dispatch to: adding a route under an existing grant cannot
         // widen what an agent token reaches, and the read-only promise belongs to the
         // credential rather than to the client that happens to be using it.
-        if (req.method !== 'GET' || !MCP_ROUTES.has(((req.route && req.route.name) || '').toLowerCase())) {
+        let mcpResource = MCP_ROUTES.get(((req.route && req.route.name) || '').toLowerCase());
+        if (req.method !== 'GET' || !mcpResource) {
             return fail();
         }
 
@@ -364,6 +414,8 @@ server.use(async (req, res) => {
         if (req.params && req.params.user === 'me') {
             req.params.user = req.user;
         }
+
+        filterResponseFields(req, res, mcpResource);
 
         return;
     }

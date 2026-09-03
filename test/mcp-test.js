@@ -53,6 +53,9 @@ function createReader() {
         async resolveMailbox() {
             return { id: MAILBOX_ID, path: 'INBOX', specialUse: null };
         },
+        async mailboxId() {
+            return MAILBOX_ID;
+        },
         async listMessages() {
             return { total: 0, nextCursor: null, messages: [] };
         },
@@ -98,12 +101,15 @@ function createReader() {
 
 function createDependencies() {
     let calls = [];
+    let addresses = [];
     let reader = createReader();
     return {
         calls,
+        addresses,
         tokenHandler: {
-            async authenticate(token) {
+            async authenticate(token, meta) {
                 calls.push(token);
+                addresses.push((meta && meta.ip) || false);
                 if (token !== TOKEN) {
                     let err = new Error('Invalid token');
                     err.code = 'InvalidMcpToken';
@@ -445,6 +451,41 @@ describe('Read-only MCP service', function () {
         expect(JSON.parse(malformed.body).error.code).to.equal(-32700);
         expect(oversized.statusCode).to.equal(413);
         expect(started.dependencies.calls).to.deep.equal([TOKEN, TOKEN]);
+    });
+
+    it('caps a request body on every method that carries one', async () => {
+        let started = await startMcp(false, { maxRequestSize: 16 });
+        server = started.server;
+        let headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+
+        // The protocol handler reads the stream itself and buffers all of it before answering,
+        // so a method left out of the cap is an unbounded read for any token holder
+        let oversizedDelete = await request(server, { method: 'DELETE', headers, body: 'x'.repeat(4096) });
+        expect(oversizedDelete.statusCode).to.equal(413);
+
+        // a body within the cap is still handed to the protocol handler
+        let smallDelete = await request(server, { method: 'DELETE', headers });
+        expect(smallDelete.statusCode).to.not.equal(413);
+    });
+
+    it('takes the proxied address from the last forwarded entry, and only when trusted', async () => {
+        let started = await startMcp(false, { trustProxy: true });
+        server = started.server;
+        let bearer = { Authorization: `Bearer ${'c'.repeat(40)}`, 'Content-Type': 'application/json' };
+
+        // A proxy appends the address it saw, so everything before the final entry is text the
+        // client sent. Reading the first entry would hand a caller a fresh failure budget per
+        // request just by prepending an address.
+        await request(server, { headers: { ...bearer, 'X-Forwarded-For': '9.9.9.9, 198.51.100.7' }, body: {} });
+        await request(server, { headers: { ...bearer, 'X-Forwarded-For': '198.51.100.8' }, body: {} });
+        expect(started.dependencies.addresses).to.deep.equal(['198.51.100.7', '198.51.100.8']);
+
+        await closeServer(server);
+        let untrusted = await startMcp(false, { trustProxy: false });
+        server = untrusted.server;
+
+        await request(server, { headers: { ...bearer, 'X-Forwarded-For': '9.9.9.9' }, body: {} });
+        expect(untrusted.dependencies.addresses[0]).to.not.equal('9.9.9.9');
     });
 
     it('serves HTTPS and registers MCP certificate reload and SNI lookup', async () => {

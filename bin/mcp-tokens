@@ -18,9 +18,17 @@ const dbconnect = util.promisify(db.connect);
 
 async function connect() {
     await dbconnect();
-    // The CLI resolves users by address, so it needs the canonical resolver
+    // The CLI resolves users by address, so it needs the canonical resolver. Its auth logger is
+    // reused as well, so a token minted from a shell shows up in the user's own history exactly
+    // as one minted over REST does.
     let userHandler = new UserHandler({ database: db.database, users: db.users, redis: db.redis });
-    return new McpTokenHandler({ users: db.users, redis: db.redis, counters: userHandler.counters, userHandler });
+    return new McpTokenHandler({
+        users: db.users,
+        redis: db.redis,
+        counters: userHandler.counters,
+        logAuthEvent: userHandler.logAuthEvent.bind(userHandler),
+        userHandler
+    });
 }
 
 function print(value) {

@@ -3,6 +3,7 @@
 const chai = require('chai');
 const { ObjectId } = require('mongodb');
 const McpTokenHandler = require('../lib/mcp-token-handler');
+const consts = require('../lib/consts');
 const roles = require('../lib/roles');
 
 const expect = chai.expect;
@@ -27,6 +28,10 @@ class TokenCollection {
         return this.entries.find(entry => (!query.hash || entry.hash === query.hash) && (!query._id || matchesId(entry._id, query._id))) || null;
     }
 
+    async countDocuments(query) {
+        return this.entries.filter(entry => matchesId(entry.user, query.user)).length;
+    }
+
     find(query, options) {
         let values = this.entries.filter(entry => matchesId(entry.user, query.user));
         return {
@@ -43,11 +48,11 @@ class TokenCollection {
         };
     }
 
-    async deleteOne(query) {
+    async findOneAndDelete(query) {
         let index = this.entries.findIndex(entry => matchesId(entry._id, query._id) && matchesId(entry.user, query.user));
-        if (index < 0) return { deletedCount: 0 };
-        this.entries.splice(index, 1);
-        return { deletedCount: 1 };
+        if (index < 0) return { value: null };
+        let [value] = this.entries.splice(index, 1);
+        return { value };
     }
 
     async updateOne(query, update) {
@@ -332,6 +337,75 @@ describe('MCP token handler', () => {
         // the level on the record is what authentication resolves, not a constant
         let authenticated = await fixture.handler.authenticate(created.token);
         expect(authenticated.role).to.equal('mcp:read');
+    });
+
+    it('caps how many tokens one user may hold', async () => {
+        let fixture = createFixture();
+
+        for (let index = 0; index < consts.MAX_MCP_TOKEN_COUNT; index++) {
+            await fixture.handler.create(fixture.user._id, { description: `Agent ${index}` });
+        }
+
+        // every token is a live read credential for the whole mailbox, so the set is bounded
+        let err = await expectCode(fixture.handler.create(fixture.user._id, { description: 'One too many' }), 'TooMany');
+        expect(err.responseCode).to.equal(403);
+        expect(err.details).to.deep.equal({ count: consts.MAX_MCP_TOKEN_COUNT, allowed: consts.MAX_MCP_TOKEN_COUNT });
+        expect(fixture.tokens.entries).to.have.length(consts.MAX_MCP_TOKEN_COUNT);
+
+        // and revoking one makes room again
+        await fixture.handler.revoke(fixture.user._id, fixture.tokens.entries[0]._id);
+        await fixture.handler.create(fixture.user._id, { description: 'Replacement' });
+        expect(fixture.tokens.entries).to.have.length(consts.MAX_MCP_TOKEN_COUNT);
+    });
+
+    it('records minting and revoking in the auth log', async () => {
+        let fixture = createFixture();
+
+        let created = await fixture.handler.create(fixture.user._id, { description: 'Codex', sess: 'sess-1', ip: '198.51.100.7' });
+        expect(fixture.authlog.pop()).to.include({
+            user: fixture.user._id.toString(),
+            action: 'create mcp token',
+            aname: 'Codex',
+            result: 'success',
+            protocol: 'mcp',
+            sess: 'sess-1',
+            ip: '198.51.100.7'
+        });
+
+        await fixture.handler.revoke(fixture.user._id, created.id, { sess: 'sess-2', ip: '198.51.100.8' });
+        expect(fixture.authlog.pop()).to.include({
+            user: fixture.user._id.toString(),
+            action: 'delete mcp token',
+            aname: 'Codex',
+            result: 'success',
+            protocol: 'mcp',
+            sess: 'sess-2',
+            ip: '198.51.100.8'
+        });
+
+        // a revocation that deleted nothing is an error, and logs nothing
+        fixture.authlog.length = 0;
+        await expectCode(fixture.handler.revoke(fixture.user._id, created.id), 'McpTokenNotFound');
+        expect(fixture.authlog).to.have.length(0);
+    });
+
+    it('does not restore tokens retired by a suspension', async () => {
+        let fixture = createFixture();
+        let created = await fixture.handler.create(fixture.user._id, { description: 'Codex' });
+
+        // UserHandler bumps authVersion when an account is suspended and does not lower it on
+        // release, so a suspension permanently retires the tokens that existed before it. The
+        // user has to mint new ones, which is deliberate for a long-lived agent credential.
+        fixture.user.suspended = true;
+        fixture.user.authVersion++;
+        await expectCode(fixture.handler.authenticate(created.token), 'InvalidMcpToken');
+
+        fixture.user.suspended = false;
+        await expectCode(fixture.handler.authenticate(created.token), 'InvalidMcpToken');
+        expect(fixture.authlog.pop()).to.include({ result: 'stale' });
+
+        let reminted = await fixture.handler.create(fixture.user._id, { description: 'Codex again' });
+        expect((await fixture.handler.authenticate(reminted.token)).role).to.equal('mcp:read');
     });
 
     it('does not expose database failures as invalid credentials', async () => {

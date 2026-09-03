@@ -2,7 +2,6 @@
 
 const chai = require('chai');
 const McpApiClient = require('../lib/mcp-api-client');
-const { filterFields } = require('../lib/mcp-api-client');
 
 const expect = chai.expect;
 
@@ -67,24 +66,23 @@ describe('MCP API client', () => {
         expect(calls[0].url).to.not.include('unseen=');
     });
 
-    it('applies the access level field allowlist from config/roles.json', async () => {
+    it('reports the listing envelope the tools page with', async () => {
+        // The access level's field allowlist is applied by the API, so the reader carries rows
+        // through as they arrive; what it owns is the envelope the tool layer pages with
         let { reader } = createClient(async () => ({
             body: {
                 success: true,
-                total: 1,
-                results: [{ id: 1, mailbox: MAILBOX_ID, thread: 'th', subject: 'hi', user: 'LEAK', outbound: 'LEAK', metaData: 'LEAK' }]
+                total: 3,
+                nextCursor: 'next-page',
+                previousCursor: null,
+                results: [{ id: 1, mailbox: MAILBOX_ID, thread: 'th', subject: 'hi' }]
             }
         }));
 
         let result = await reader.listMessages({ mailbox: MAILBOX_ID });
 
+        expect(result).to.include({ total: 3, nextCursor: 'next-page', previousCursor: null });
         expect(result.messages[0]).to.include({ id: 1, subject: 'hi' });
-        expect(result.messages[0]).to.not.have.any.keys('user', 'outbound', 'metaData');
-    });
-
-    it('refuses a resource the access level cannot read at all', () => {
-        expect(() => filterFields('mcp:read', 'filters', { id: 1 })).to.throw(/privileges/i);
-        expect(filterFields('mcp:read', 'mailboxes', { id: 'a', path: 'INBOX', secret: 'LEAK' })).to.deep.equal({ id: 'a', path: 'INBOX' });
     });
 
     it('carries the API status and error code through instead of flattening them', async () => {
@@ -113,7 +111,7 @@ describe('MCP API client', () => {
             if (path && path !== 'INBOX') {
                 return { status: 404, body: { error: 'This mailbox does not exist', code: 'NoSuchMailbox' } };
             }
-            return { body: { success: true, id: MAILBOX_ID, path: 'INBOX', specialUse: null, secret: 'LEAK' } };
+            return { body: { success: true, id: MAILBOX_ID, path: 'INBOX', specialUse: null } };
         });
 
         // a path goes to the resolve form, which matches exactly
@@ -129,12 +127,21 @@ describe('MCP API client', () => {
         // one request per resolution, not a listing of every folder the user has
         expect(calls).to.have.length(2);
 
-        // the access level's field allowlist applies here too
-        expect(await reader.resolveMailbox('INBOX')).to.not.have.property('secret');
-
         // a prefix must not resolve, or an agent could read a mailbox the user did not name
         await expectCode(reader.resolveMailbox('INB'), 'NoSuchMailbox');
         await expectCode(reader.resolveMailbox(''), 'InputValidationError');
+    });
+
+    it('spends no request resolving a mailbox that is already an id', async () => {
+        let { reader, calls } = createClient(async () => ({ body: { success: true, id: MAILBOX_ID, path: 'INBOX' } }));
+
+        expect(await reader.mailboxId(MAILBOX_ID.toUpperCase())).to.equal(MAILBOX_ID);
+        expect(calls).to.have.length(0);
+
+        // a path still costs the one lookup that turns it into an id
+        expect(await reader.mailboxId('INBOX')).to.equal(MAILBOX_ID);
+        expect(calls).to.have.length(1);
+        expect(calls[0].url).to.include('/mailboxes/resolve');
     });
 
     it('builds the account view from the user and address listings', async () => {
@@ -144,8 +151,8 @@ describe('MCP API client', () => {
                     body: {
                         success: true,
                         results: [
-                            { id: 'a1', address: 'alice@example.com', main: true },
-                            { id: 'a2', address: 'alias@example.com', main: false }
+                            { id: 'a1', address: 'alice@example.com', name: 'Alice', main: true },
+                            { id: 'a2', address: 'alias@example.com', main: false, tags: ['LEAK'] }
                         ]
                     }
                 };
@@ -166,6 +173,8 @@ describe('MCP API client', () => {
 
         expect(account).to.include({ id: USER_ID, username: 'alice', primaryAddress: 'alice@example.com' });
         expect(account.quota).to.deep.equal({ allowed: 100, used: 10 });
-        expect(account.aliases.map(entry => entry.address)).to.deep.equal(['alias@example.com']);
+        // aliases are the one value that comes from an API listing, so they are rebuilt to the
+        // shape the tool declares rather than passed along
+        expect(account.aliases).to.deep.equal([{ address: 'alias@example.com', name: undefined }]);
     });
 });

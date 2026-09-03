@@ -6,7 +6,7 @@ module.exports = function (grunt) {
     // Project configuration.
     grunt.initConfig({
         eslint: {
-            all: ['lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'Gruntfile.js']
+            all: ['*.js', 'lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'bin/*']
         },
 
         mochaTest: {

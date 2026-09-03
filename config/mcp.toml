@@ -15,8 +15,10 @@ path = "/mcp"
 secure = false
 
 # Internal WildDuck API this service reads through. Must not be a public address: it is reached
-# over the private network with the caller's own MCP token.
-apiUrl = "http://127.0.0.1:8080"
+# over the private network with the caller's own MCP token. Left unset it follows the [api]
+# configuration, so moving the API port cannot leave MCP pointed at whatever answers on the old
+# one. Set it only when the API is reached at some other address.
+#apiUrl = "http://127.0.0.1:8080"
 # How long to wait for one API request, in milliseconds
 apiTimeout = 30000
 
@@ -30,10 +32,12 @@ allowedOrigins = ["http://127.0.0.1:8082", "http://localhost:8082"]
 
 # Set to true only when the listener is behind a reverse proxy that sets X-Forwarded-For.
 # While false the socket address is used, so a caller cannot spend or dodge a rate limit by
-# setting a header.
+# setting a header. While true the last entry of the header is used, which is the address the
+# nearest proxy saw; anything before it is whatever the client sent. Assumes a single trusted
+# hop.
 trustProxy = false
 
-# Maximum JSON request body size (1 MiB)
+# Maximum request body size, applied to every method that carries one (1 MiB)
 maxRequestSize = 1048576
 
 # Maximum list/search page size and maximum returned body characters. Both are additionally

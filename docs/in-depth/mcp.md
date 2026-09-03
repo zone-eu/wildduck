@@ -21,9 +21,11 @@ maxResults = 50
 maxBodyChars = 50000
 ```
 
-`apiUrl` points at the internal API and must not be a public address. `allowedHosts` contains hostnames without ports and protects the listener from DNS-rebinding requests; behind a reverse proxy it must list the public hostname, because the `Host` header is whatever the proxy sets. `allowedOrigins` contains exact browser `Origin` values. Command-line clients normally send no Origin header and remain valid.
+`apiUrl` points at the internal API and must not be a public address. Leave it unset to follow the `[api]` configuration, so moving the API port cannot leave MCP pointed at whatever answers on the old one. `allowedHosts` contains hostnames without ports and protects the listener from DNS-rebinding requests; behind a reverse proxy it must list the public hostname, because the `Host` header is whatever the proxy sets. `allowedOrigins` contains exact browser `Origin` values. Command-line clients normally send no Origin header and remain valid.
 
-Set `trustProxy = true` only when the listener sits behind a reverse proxy that sets `X-Forwarded-For`. While it is false the socket address is used, so a caller cannot spend or dodge a rate limit by setting a header.
+`maxRequestSize` applies to every method that carries a body.
+
+Set `trustProxy = true` only when the listener sits behind a reverse proxy that sets `X-Forwarded-For`. While it is false the socket address is used, so a caller cannot spend or dodge a rate limit by setting a header. While it is true the last entry of the header is used, not the first: a proxy appends the address it saw to whatever the client sent, so everything before the final entry is client-supplied text. The setting therefore describes one trusted hop; behind two chained proxies the address resolves to the inner one, which shares a rate limit budget rather than dodging it.
 
 Only the configured path is served. WildDuck accepts `POST`, `GET` and `DELETE` plus CORS preflight requests; everything else answers 404. The stateless transport does not require sticky sessions when WildDuck runs with multiple workers.
 
@@ -117,11 +119,13 @@ The create command and `POST` return the plaintext token once. Save it immediate
 
 Users may manage their own tokens. Root, manager and webmail roles may manage tokens for any user. The `mcp:read` role itself has no grant here, so an MCP token can never mint another MCP token.
 
-Password or authentication-version changes invalidate every existing token, and disabled, suspended or expired accounts cannot authenticate. A token that appears in the listing may therefore already be dead; the listing records what was issued, not what still works. A user can also be denied the service entirely by adding `mcp` to their `disabledScopes`.
+Password or authentication-version changes invalidate every existing token, and disabled, suspended or expired accounts cannot authenticate. Suspending an account raises its authentication version and releasing it does not lower it again, so a suspension permanently retires the tokens issued before it and the user has to mint new ones. A token that appears in the listing may therefore already be dead; the listing records what was issued, not what still works. A user can also be denied the service entirely by adding `mcp` to their `disabledScopes`, and deleting a user deletes their tokens immediately rather than at the end of the deletion grace period.
+
+One user may hold up to `MAX_MCP_TOKEN_COUNT` tokens. Minting and revoking are recorded in the user's own `authlog` as `create mcp token` and `delete mcp token`, and published as the `mcptoken.created` and `mcptoken.deleted` webhook events.
 
 ### Access level
 
-Every token stores an access level, resolved into `req.role` when it authenticates. Only `mcp:read` exists today, granting read access to that user's own account, addresses, mailboxes and messages, and nothing else. The level is defined in `config/roles.json` like every other role, including the field allowlist applied to every response, so what an agent may see is declared in one place and enforced from it.
+Every token stores an access level, resolved into `req.role` when it authenticates. Only `mcp:read` exists today, granting read access to that user's own account, addresses, mailboxes and messages, and nothing else. The level is defined in `config/roles.json` like every other role, including the field allowlist, so what an agent may see is declared in one place. The allowlist is applied by the API on the way out, not only by the MCP service, so the credential is bounded by it whatever client presents it.
 
 ## Client configuration
 
@@ -162,13 +166,13 @@ Avoid putting the plaintext token in a tracked configuration file or in shell hi
 
 A token is only shown the tools its access level can call, so an agent never plans around a call that would answer 403. Every tool is annotated read-only.
 
-List and search default to 20 results and never return more than `MCP_MAX_RESULTS`. Bodies are capped at `MCP_MAX_BODY_CHARS`; a capped body reports `hasMore`, and `get_message_text` reads on from an offset. HTML is returned only when `body_format` is `html` or `both`, and it is sanitized through an allowlist: only structural and text markup survives, only a few attributes on it, and only the `http`, `https`, `mailto` and `cid` schemes in those attributes. Scripts, event handlers, styling, forms, media elements and foreign parsing contexts such as `svg` and `math` are removed outright, and an image keeps a source only when it names a `cid:` attachment of the same message. Relative and protocol-relative references count as remote, since the consumer resolves them against its own base.
+List and search default to 20 results, or to `maxResults` when that is lower, and never return more than `MCP_MAX_RESULTS`. `search_messages` takes read state as a boolean, where false means read rather than unfiltered; the filters the REST search route has no negative form for, `has_attachments`, `flagged` and `searchable`, accept only `true`, so an argument that would silently match every message is refused rather than ignored. Bodies are capped at `MCP_MAX_BODY_CHARS`; a capped body reports `hasMore`, and `get_message_text` reads on from an offset. HTML is returned only when `body_format` is `html` or `both`, and it is sanitized through an allowlist: only structural and text markup survives, only a few attributes on it, and only the `http`, `https`, `mailto` and `cid` schemes in those attributes. Scripts, event handlers, styling, forms, media elements and foreign parsing contexts such as `svg` and `math` are removed outright, and an image keeps a source only when it names a `cid:` attachment of the same message. Relative and protocol-relative references count as remote, since the consumer resolves them against its own base.
 
 The effect is that reading a message cannot execute anything and cannot tell the sender it was opened. This is about the result being inert data; it does nothing about prompt injection, which no sanitizer can fix.
 
 Arguments are strict. No tool accepts a user or account argument, because the token is the binding; an argument the schema does not declare is refused rather than quietly dropped.
 
-MCP reads do not mark messages as seen and do not update flags, counters, modification indexes or notification streams. The service does not expose raw EML, arbitrary headers or metadata, attachment content, forwarding targets, draft storage references, outbound queue state, BIMI images, resources, prompts or write tools.
+MCP reads do not mark messages as seen and do not update flags, counters, modification indexes or notification streams. That is a property of the credential rather than of the client: the API refuses `markAsSeen` from a level that holds no write grant, so a token cannot change message state even through the routes its tools use. The service does not expose raw EML, arbitrary headers or metadata, attachment content, forwarding targets, draft storage references, outbound queue state, BIMI images, resources, prompts or write tools.
 
 Mail content is untrusted data. The server instructions tell clients not to follow links, fetch URLs, execute commands, disclose secrets or interpret instructions found in messages. This is a mitigation and not a control: the words in a message are attacker-controlled, and read-only access is what bounds the damage.
 
@@ -180,6 +184,7 @@ Mail content is untrusted data. The server instructions tell clients not to foll
 | Tool calls per token               | `MCP_TOOL_CALLS` / `MCP_TOOL_WINDOW`    | 600 per 60s |
 | List and search page size          | `MCP_MAX_RESULTS`                       | 50          |
 | Body characters per call           | `MCP_MAX_BODY_CHARS`                    | 50000       |
+| Tokens per user                    | `MAX_MCP_TOKEN_COUNT`                   | 50          |
 
 Only failed authentications are counted, so a working client never approaches that limit.
 

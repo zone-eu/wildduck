@@ -21,6 +21,9 @@ function createReader(overrides = {}) {
         async resolveMailbox() {
             return { id: MAILBOX_ID, path: 'INBOX' };
         },
+        async mailboxId() {
+            return MAILBOX_ID;
+        },
         async listMessages() {
             return { total: 0, nextCursor: null, messages: [] };
         },
@@ -92,6 +95,49 @@ describe('MCP tools', () => {
 
         expect(limit.safeParse(consts.MCP_MAX_RESULTS).success).to.equal(true);
         expect(limit.safeParse(consts.MCP_MAX_RESULTS + 1).success).to.equal(false);
+    });
+
+    it('applies a lowered page size to the default as well as to the maximum', () => {
+        let { tools } = register(createReader(), { maxResults: 5 });
+
+        // zod does not check a default against the field's own maximum, so a default left at 20
+        // would advertise a page size of 5 and then quietly ask the API for 20 on every call
+        // that names no limit, which is the call an agent actually makes
+        for (let name of ['list_messages', 'search_messages']) {
+            let schema = tools.get(name).config.inputSchema;
+            expect(schema.parse({ mailbox: 'INBOX' }).limit, name).to.equal(5);
+            expect(schema.safeParse({ mailbox: 'INBOX', limit: 6 }).success, name).to.equal(false);
+        }
+    });
+
+    it('declares the search state filters as flags, since the API has no negative form', async () => {
+        let queries = [];
+        let { tools } = register(
+            createReader({
+                async searchMessages(query) {
+                    queries.push(query);
+                    return { total: 0, nextCursor: null, messages: [] };
+                }
+            })
+        );
+        let schema = tools.get('search_messages').config.inputSchema;
+        let search = args => tools.get('search_messages').handler(schema.parse(args));
+
+        // The REST route matches on a true value and ignores anything else, so a false value
+        // here would look like a negative filter and hand back the whole mailbox instead
+        for (let flag of ['has_attachments', 'flagged', 'searchable']) {
+            expect(schema.safeParse({ [flag]: true }).success, flag).to.equal(true);
+            expect(schema.safeParse({ [flag]: false }).success, flag).to.equal(false);
+        }
+
+        // read state is the one filter with a form for each side, so it stays a real boolean
+        // and false means read rather than unfiltered
+        await search({ unseen: true });
+        expect(queries.pop()).to.include({ unseen: true, seen: undefined });
+        await search({ unseen: false });
+        expect(queries.pop()).to.include({ unseen: undefined, seen: true });
+        await search({ query: 'invoice' });
+        expect(queries.pop()).to.include({ unseen: undefined, seen: undefined });
     });
 
     it('spends the rate limit budget before doing any work', async () => {
