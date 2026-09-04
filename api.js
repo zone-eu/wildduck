@@ -101,7 +101,14 @@ function filterResponseFields(req, res, resource) {
 
     let send = res.send.bind(res);
     res.send = (...args) => {
-        let index = args.findIndex(arg => arg && typeof arg === 'object' && arg.success === true && !Buffer.isBuffer(arg));
+        // Any plain object body that is not an error carries resource fields. Matched on the
+        // absence of an error rather than the presence of `success`, so a route whose body
+        // does not carry that flag, or whose own filter has already stripped it, is filtered
+        // too: a control that quietly passes a shape it did not expect is not one to leave for
+        // whoever adds the next route. An error body has no resource fields and the filter
+        // would empty it. The prototype test keeps buffers and streams out, since those are
+        // not resources either and picking keys off one would destroy the response.
+        let index = args.findIndex(arg => arg && typeof arg === 'object' && Object.getPrototypeOf(arg) === Object.prototype && !arg.error);
         if (index >= 0) {
             let body = args[index];
             args[index] = Array.isArray(body.results)
@@ -330,6 +337,12 @@ server.use(async (req, res) => {
         return;
     }
 
+    // Where a credential arrived, resolved before the carriers are cleared below. The merge
+    // itself is unchanged, and deliberately loose, because that is what every other credential
+    // kind has always been read with.
+    let bearerToken = McpTokenHandler.getBearerToken(req.headers.authorization);
+    let misplacedMcpToken = McpTokenHandler.isToken(req.query.accessToken) || McpTokenHandler.isToken(req.headers['x-access-token']);
+
     let accessToken =
         req.query.accessToken ||
         req.headers['x-access-token'] ||
@@ -385,11 +398,24 @@ server.use(async (req, res) => {
         }
     }
 
+    // An MCP token is a bearer credential and nothing else. A wdmcp_ value in a query string or
+    // an X-Access-Token header has already been written somewhere a credential does not belong,
+    // since a URL reaches proxy logs, browser history and referrer headers, so the request is
+    // refused even when the same token is also presented correctly. Serving it would teach a
+    // client that the unsafe carrier works.
+    if (misplacedMcpToken) {
+        return fail();
+    }
+
     // Dedicated MCP tokens resolve to the access level stored on the token record, so what an
     // agent may do is decided by config/roles.json like every other role. These are only ever
     // presented by the MCP service over the private network; they are not API access tokens
     // and carry none of their privileges.
-    if (accessToken && McpTokenHandler.isToken(accessToken)) {
+    //
+    // The bearer value has to be the one the merge selected as well, so that a token presented
+    // alongside an ordinary access token cannot shadow it: precedence between carriers is the
+    // same for every credential kind, and this branch does not get its own.
+    if (accessToken === bearerToken && McpTokenHandler.isToken(bearerToken)) {
         tokenRequired = true;
 
         // A role alone is too coarse to describe what an agent may reach. `read:own` on
@@ -410,7 +436,9 @@ server.use(async (req, res) => {
             // to the MCP listener, which is the surface a guess can actually be aimed at; this
             // caller has already authenticated there, and `req.params.ip` is supplied by the
             // caller, so keying a limiter on it would let one dodge or poison another's budget.
-            authenticated = await mcpTokenHandler.authenticate(accessToken);
+            // Every MCP token holder reaches this listener from the same socket, so a budget
+            // here would also let one of them spend everyone else's.
+            authenticated = await mcpTokenHandler.authenticate(bearerToken);
         } catch (err) {
             return fail();
         }
@@ -672,14 +700,20 @@ module.exports = done => {
         loggelf: message => loggelf(message)
     });
 
-    // Built after userHandler so an MCP token presented here reaches the same authlog it would
-    // through the MCP listener. Without the binding this path authenticated silently, and the
+    // Built after userHandler so a failed MCP authentication here reaches the same authlog it
+    // would through the MCP listener. Without the binding this path failed silently, and the
     // user saw a different history depending on which listener the token hit.
+    //
+    // Successes are left to the MCP listener, which is the hop that sees the client. This one
+    // re-checks the same credential on each request that listener makes on a caller's behalf,
+    // so recording them here would name the internal address and add two awaited round trips
+    // to every one of those requests.
     mcpTokenHandler = new McpTokenHandler({
         users: db.users,
         redis: db.redis,
         counters: userHandler.counters,
-        logAuthEvent: userHandler.logAuthEvent.bind(userHandler)
+        logAuthEvent: userHandler.logAuthEvent.bind(userHandler),
+        logSuccessfulAuth: false
     });
 
     mailboxHandler = new MailboxHandler({

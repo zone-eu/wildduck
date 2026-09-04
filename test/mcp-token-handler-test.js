@@ -114,6 +114,7 @@ function createFixture(options = {}) {
         users: database,
         userHandler,
         counters: options.counters,
+        logSuccessfulAuth: options.logSuccessfulAuth,
         logAuthEvent: async (user, entry) => {
             authlog.push({ user: user && user.toString(), ...entry });
             return true;
@@ -186,9 +187,19 @@ describe('MCP token handler', () => {
 
         expect(first.user).to.equal(fixture.user);
         expect(second.tokenId.toString()).to.equal(created.id);
-        expect(fixture.tokens.updates).to.have.length(2);
-        expect(fixture.tokens.updates[0].query.$or).to.be.an('array').with.length(2);
         expect(fixture.tokens.entries[0].used).to.be.instanceOf(Date);
+
+        // A token in constant use costs one write, not one per request: the interval is
+        // checked against the value the lookup already returned, so the second authentication
+        // sends no write command at all rather than one that matches nothing.
+        expect(fixture.tokens.updates).to.have.length(1);
+        // the query keeps the same condition, because two hops can reach this at once
+        expect(fixture.tokens.updates[0].query.$or).to.be.an('array').with.length(2);
+
+        // and once the stored value is old enough, the write is issued again
+        fixture.tokens.entries[0].used = new Date(Date.now() - 2 * McpTokenHandler.LAST_USE_UPDATE_INTERVAL);
+        await fixture.handler.authenticate(created.token);
+        expect(fixture.tokens.updates).to.have.length(2);
     });
 
     it('immediately rejects revocation, expiration, authVersion changes, and unavailable users', async () => {
@@ -315,6 +326,39 @@ describe('MCP token handler', () => {
         fixture.authlog.length = 0;
         await expectCode(fixture.handler.authenticate(McpTokenHandler.generateToken()), 'InvalidMcpToken');
         expect(fixture.authlog).to.have.length(0);
+    });
+
+    it('leaves the success unlogged for a handler that does not face the client', async () => {
+        // The API holds one of these to re-check a credential on every request it serves for a
+        // tool. The listener that saw the client has already logged that authentication with
+        // the client address, so a second entry would name the internal one and cost two
+        // awaited round trips on each of those requests.
+        let fixture = createFixture({ logSuccessfulAuth: false });
+        let created = await fixture.handler.create(fixture.user._id, { description: 'Codex' });
+        fixture.authlog.length = 0;
+
+        await fixture.handler.authenticate(created.token);
+        expect(fixture.authlog).to.have.length(0);
+
+        // the last-use timestamp still moves, so a credential presented only here is not silent
+        expect(fixture.tokens.entries[0].used).to.be.instanceOf(Date);
+
+        // and a failure is still recorded, since nothing upstream has logged one
+        fixture.user.suspended = true;
+        await expectCode(fixture.handler.authenticate(created.token), 'InvalidMcpToken');
+        expect(fixture.authlog.pop()).to.include({ result: 'suspended', protocol: 'MCP' });
+    });
+
+    it('reads a bearer credential the same way at both listeners', () => {
+        // The API accepts an access token from several carriers and strips `Bearer` as an
+        // optional prefix. An MCP token is a bearer credential, so both hops resolve one
+        // through here rather than each deciding what the scheme means.
+        expect(McpTokenHandler.getBearerToken('Bearer wdmcp_1abc')).to.equal('wdmcp_1abc');
+        expect(McpTokenHandler.getBearerToken('bearer wdmcp_1abc')).to.equal('wdmcp_1abc');
+
+        for (let header of ['wdmcp_1abc', 'Basic wdmcp_1abc', 'Bearer ', '', undefined, ['Bearer wdmcp_1abc']]) {
+            expect(McpTokenHandler.getBearerToken(header), JSON.stringify(header)).to.equal(false);
+        }
     });
 
     it('refuses a token when the user has the mcp scope disabled', async () => {

@@ -451,6 +451,46 @@ describe('Read-only MCP service', function () {
         expect(JSON.parse(malformed.body).error.code).to.equal(-32700);
         expect(oversized.statusCode).to.equal(413);
         expect(started.dependencies.calls).to.deep.equal([TOKEN, TOKEN]);
+
+        // An oversized body is refused unread, and Node keeps a connection alive by reading
+        // whatever is left of it, so the refusal has to close instead. The malformed one was
+        // read in full and stays on keep-alive.
+        expect(oversized.headers.connection).to.equal('close');
+        expect(malformed.headers.connection).to.not.equal('close');
+
+        let encoded = await request(server, {
+            headers: { ...headers, 'Content-Encoding': 'gzip' },
+            body: '{}'
+        });
+        expect(encoded.statusCode).to.equal(415);
+        // its body is within the cap, so draining it is bounded and the connection lives
+        expect(encoded.headers.connection).to.not.equal('close');
+    });
+
+    it('bounds what a refusal reads, on every check that answers before the body is', async () => {
+        let started = await startMcp(false, { maxRequestSize: 16 });
+        server = started.server;
+
+        // None of these reach readBody, so none of them has applied the cap, and all but the
+        // last run before the caller has authenticated at all. Left on keep-alive, each one
+        // would have Node read the whole declared body before the socket served anything else.
+        let body = 'x'.repeat(4096);
+        let refusals = [
+            await request(server, { path: '/elsewhere', body }),
+            await request(server, { headers: { Host: 'evil.example' }, body }),
+            await request(server, { headers: { Origin: 'https://evil.example' }, body }),
+            await request(server, { method: 'PUT', body }),
+            await request(server, { headers: { Authorization: `Bearer ${'c'.repeat(40)}` }, body })
+        ];
+
+        expect(refusals.map(refusal => refusal.statusCode)).to.deep.equal([404, 403, 403, 405, 401]);
+        expect(refusals.map(refusal => refusal.headers.connection)).to.deep.equal(Array(5).fill('close'));
+
+        // a body the cap already bounds is cheap to drain, so a misaddressed request still
+        // gets its answer without paying for a reconnect
+        let small = await request(server, { path: '/elsewhere', body: 'xx' });
+        expect(small.statusCode).to.equal(404);
+        expect(small.headers.connection).to.not.equal('close');
     });
 
     it('caps a request body on every method that carries one', async () => {
@@ -462,6 +502,7 @@ describe('Read-only MCP service', function () {
         // so a method left out of the cap is an unbounded read for any token holder
         let oversizedDelete = await request(server, { method: 'DELETE', headers, body: 'x'.repeat(4096) });
         expect(oversizedDelete.statusCode).to.equal(413);
+        expect(oversizedDelete.headers.connection).to.equal('close');
 
         // a body within the cap is still handed to the protocol handler
         let smallDelete = await request(server, { method: 'DELETE', headers });

@@ -56,6 +56,11 @@ describe('MCP service integration', function () {
     let token;
     let uid;
 
+    // Every request that presents the MCP credential goes through here, so the account it is
+    // scoped to and how the token is carried are each stated once. `init` is open because what
+    // carries the credential is itself something the API has an opinion about.
+    let authed = (path, init) => fetch(`${API}/users/${user.id}${path}`, { headers: { Authorization: `Bearer ${token.token}` }, ...init });
+
     before(async () => {
         await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
 
@@ -239,12 +244,6 @@ describe('MCP service integration', function () {
         // The role alone would admit these: read:own on messages and users also covers the raw
         // RFC822 source, the archive, the address register and PUT /logout, which is a state
         // change. The credential is pinned to the tool routes so none of them is reachable.
-        let call = (method, path) =>
-            fetch(`${API}/users/${user.id}${path}`, {
-                method,
-                headers: { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json' }
-            });
-
         for (let [method, path] of [
             ['GET', `/mailboxes/${inbox.id}/messages/${uid}/message.eml`],
             ['GET', '/archived/messages'],
@@ -254,19 +253,61 @@ describe('MCP service integration', function () {
             ['PUT', '/logout'],
             ['DELETE', `/mailboxes/${inbox.id}/messages/${uid}`]
         ]) {
-            let res = await call(method, path);
+            let res = await authed(path, { method });
             expect(res.status, `${method} ${path}`).to.equal(403);
         }
 
         // and the routes the tools do use still work
-        expect((await call('GET', '/mailboxes')).status).to.equal(200);
+        expect((await authed('/mailboxes')).status).to.equal(200);
+    });
+
+    it('accepts the credential only as a bearer token', async () => {
+        // The API takes an access token from a query string and an X-Access-Token header as
+        // readily as from Authorization, and strips `Bearer` as an optional prefix. An MCP
+        // token is a bearer credential, because a credential in a URL is copied into proxy
+        // logs, browser history and referrer headers.
+        let carriers = [
+            { headers: {}, path: `/mailboxes?accessToken=${encodeURIComponent(token.token)}` },
+            { headers: { 'X-Access-Token': token.token } },
+            { headers: { Authorization: token.token } },
+            // refused even alongside a correct presentation, so that nothing learns the
+            // unsafe carrier works
+            { path: `/mailboxes?accessToken=${encodeURIComponent(token.token)}` }
+        ];
+
+        for (let { headers, path } of carriers) {
+            let res = await authed(path || '/mailboxes', headers ? { headers } : {});
+            expect(res.status, JSON.stringify(headers || path)).to.equal(403);
+        }
+
+        expect((await authed('/mailboxes')).status).to.equal(200);
+    });
+
+    it('does not record a second success for the API hop behind a tool call', async () => {
+        let mcpEvents = async () =>
+            (await api('GET', `/users/${user.id}/authlog`)).results
+                .filter(entry => entry.protocol === 'MCP')
+                .reduce((sum, entry) => sum + (entry.events || 1), 0);
+
+        let before = await mcpEvents();
+
+        // one tool call is one MCP authentication plus the API requests it makes on the
+        // caller's behalf. Only the listener that saw the client records a success; the API
+        // re-check would otherwise add an entry naming the internal address, and two awaited
+        // round trips to every one of those requests.
+        await client.callTool({ name: 'get_account', arguments: {} });
+
+        expect(await mcpEvents()).to.equal(before + 1);
+
+        let entries = (await api('GET', `/users/${user.id}/authlog`)).results.filter(entry => entry.protocol === 'MCP');
+        expect(entries.every(entry => entry.ip)).to.equal(true);
     });
 
     it('applies the field allowlist in the API, not only in the MCP service', async () => {
         // config/roles.json is meant to be the declaration of what an agent may see, so it has
         // to bound the credential rather than the client: a token used against the API directly
         // must not read a field its level does not grant.
-        let call = path => fetch(`${API}/users/${user.id}${path}`, { headers: { Authorization: `Bearer ${token.token}` } }).then(res => res.json());
+        let call = path => authed(path).then(res => res.json());
 
         let message = await call(`/mailboxes/${inbox.id}/messages/${uid}`);
         expect(message.success).to.equal(true);
@@ -293,9 +334,7 @@ describe('MCP service integration', function () {
         // markAsSeen is a write: it updates the message, the journal and the notification
         // stream. The route is one the credential may reach, and the method is GET, so nothing
         // but a write grant stands between a read-only credential and message state.
-        let res = await fetch(`${API}/users/${user.id}/mailboxes/${inbox.id}/messages/${uid}?markAsSeen=true`, {
-            headers: { Authorization: `Bearer ${token.token}` }
-        });
+        let res = await authed(`/mailboxes/${inbox.id}/messages/${uid}?markAsSeen=true`);
 
         expect(res.status).to.equal(403);
 
