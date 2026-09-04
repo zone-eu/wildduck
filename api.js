@@ -87,11 +87,16 @@ const MCP_ROUTES = new Map([
  * @param {Object} req Request being served.
  * @param {Object} res Response to wrap.
  * @param {String} resource Resource name as used in config/roles.json.
+ * @returns {Boolean} False when the level has no read grant for the resource, so the caller can
+ *   refuse the request rather than answer it unfiltered.
  */
 function filterResponseFields(req, res, resource) {
     let permission = roles.can(req.role).readOwn(resource);
     if (!permission.granted) {
-        return;
+        // A route whose resource the level cannot read has no allowlist to apply, so there is
+        // nothing to filter with. Reported rather than skipped: a silent pass here would make
+        // the next entry added to MCP_ROUTES answer unfiltered.
+        return false;
     }
 
     let send = res.send.bind(res);
@@ -101,11 +106,13 @@ function filterResponseFields(req, res, resource) {
             let body = args[index];
             args[index] = Array.isArray(body.results)
                 ? // a listing keeps its envelope: totals and cursors are not resource fields
-                  Object.assign({}, body, { results: permission.filter(body.results) })
-                : Object.assign({ success: true }, permission.filter(body));
+                  Object.assign({}, body, { results: roles.filterFields(permission, body.results) })
+                : Object.assign({ success: true }, roles.filterFields(permission, body));
         }
         return send(...args);
     };
+
+    return true;
 }
 
 const { RestifyApiGenerate } = require('restifyapigenerate');
@@ -415,7 +422,9 @@ server.use(async (req, res) => {
             req.params.user = req.user;
         }
 
-        filterResponseFields(req, res, mcpResource);
+        if (!filterResponseFields(req, res, mcpResource)) {
+            return fail();
+        }
 
         return;
     }
