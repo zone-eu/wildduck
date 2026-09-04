@@ -98,12 +98,24 @@ describe('MCP HTML sanitizer', () => {
         expect(webSafeHtml('<blockquote>quoted</blockquote><pre>code block</pre>')).to.include('<blockquote>quoted</blockquote>');
     });
 
-    it('keeps a cid reference, which names an attachment of this same message', () => {
+    it('keeps a reference to an attachment of this same message, in either spelling', () => {
         let output = webSafeHtml('<img src="cid:ATT00001" alt="chart">');
 
         expect(output).to.include('cid:ATT00001');
         // the alt text is the part an agent can actually read
         expect(output).to.include('alt="chart"');
+
+        // What a stored body actually carries: WildDuck rewrites a cid: reference to this form
+        // when it indexes the message, so a rule that only knew about cid: would drop the
+        // inline image reference from every message read through the API
+        let stored = webSafeHtml('<img src="attachment:ATT00001" alt="Northbank" width="120">');
+
+        expect(stored).to.include('attachment:ATT00001');
+        expect(stored).to.include('alt="Northbank"');
+
+        // and the identifier is the one the attachment metadata reports, so the two can be
+        // matched without resolving anything
+        expect(webSafeHtml('<a href="attachment:ATT00002">invoice.pdf</a>')).to.include('attachment:ATT00002');
     });
 
     it('accepts the array of parts the API returns, and survives unusable input', () => {
