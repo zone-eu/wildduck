@@ -99,23 +99,15 @@ function filterResponseFields(req, res, resource) {
         return false;
     }
 
+    // The allowlist is applied to whatever the route is about to answer, by resource. Which
+    // bodies carry resource fields, and how they are reduced, lives in roles.filterResponseBody
+    // so it is unit tested; only the restify-specific choice of which argument is the body stays
+    // here. restify's send is send([code], [body], [headers]), so the body is the first argument
+    // unless that is the numeric status code, and a positional headers object is never touched.
     let send = res.send.bind(res);
     res.send = (...args) => {
-        // Any plain object body that is not an error carries resource fields. Matched on the
-        // absence of an error rather than the presence of `success`, so a route whose body
-        // does not carry that flag, or whose own filter has already stripped it, is filtered
-        // too: a control that quietly passes a shape it did not expect is not one to leave for
-        // whoever adds the next route. An error body has no resource fields and the filter
-        // would empty it. The prototype test keeps buffers and streams out, since those are
-        // not resources either and picking keys off one would destroy the response.
-        let index = args.findIndex(arg => arg && typeof arg === 'object' && Object.getPrototypeOf(arg) === Object.prototype && !arg.error);
-        if (index >= 0) {
-            let body = args[index];
-            args[index] = Array.isArray(body.results)
-                ? // a listing keeps its envelope: totals and cursors are not resource fields
-                  Object.assign({}, body, { results: roles.filterFields(permission, body.results) })
-                : Object.assign({ success: true }, roles.filterFields(permission, body));
-        }
+        let index = typeof args[0] === 'number' ? 1 : 0;
+        args[index] = roles.filterResponseBody(permission, args[index]);
         return send(...args);
     };
 
@@ -388,6 +380,17 @@ server.use(async (req, res) => {
         }
     };
 
+    // An MCP token is a bearer credential and nothing else. A wdmcp_ value in a query string or
+    // an X-Access-Token header has already been written somewhere a credential does not belong,
+    // since a URL reaches proxy logs, browser history and referrer headers, so the request is
+    // refused even when the same token is also presented correctly. Serving it would teach a
+    // client that the unsafe carrier works. Refused ahead of every other credential, including
+    // the master token, so no combination of carriers can serve a request that also carried a
+    // wdmcp_ value where one does not belong.
+    if (misplacedMcpToken) {
+        return fail();
+    }
+
     // hard coded master token
     if (config.api.accessToken) {
         tokenRequired = true;
@@ -396,15 +399,6 @@ server.use(async (req, res) => {
             req.user = 'root';
             return;
         }
-    }
-
-    // An MCP token is a bearer credential and nothing else. A wdmcp_ value in a query string or
-    // an X-Access-Token header has already been written somewhere a credential does not belong,
-    // since a URL reaches proxy logs, browser history and referrer headers, so the request is
-    // refused even when the same token is also presented correctly. Serving it would teach a
-    // client that the unsafe carrier works.
-    if (misplacedMcpToken) {
-        return fail();
     }
 
     // Dedicated MCP tokens resolve to the access level stored on the token record, so what an

@@ -4,6 +4,7 @@
 
 const http = require('http');
 const https = require('https');
+const { EventEmitter } = require('events');
 const { X509Certificate } = require('crypto');
 const chai = require('chai');
 const { Client, StreamableHTTPClientTransport } = require('@modelcontextprotocol/client');
@@ -439,7 +440,7 @@ describe('Read-only MCP service', function () {
         expect(started.dependencies.calls).to.deep.equal([]);
     });
 
-    it('rejects malformed and oversized request bodies after reloading authentication', async () => {
+    it('delivers a refusal for a malformed or oversized body, and drains the oversized one', async () => {
         let started = await startMcp(false, { maxRequestSize: 16 });
         server = started.server;
         let headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
@@ -452,10 +453,10 @@ describe('Read-only MCP service', function () {
         expect(oversized.statusCode).to.equal(413);
         expect(started.dependencies.calls).to.deep.equal([TOKEN, TOKEN]);
 
-        // An oversized body is refused unread, and Node keeps a connection alive by reading
-        // whatever is left of it, so the refusal has to close instead. The malformed one was
-        // read in full and stays on keep-alive.
-        expect(oversized.headers.connection).to.equal('close');
+        // Both answers reach the client on a reusable connection: the malformed body was read
+        // in full, and the oversized one is taken off the wire before the refusal is sent, so
+        // neither has to tear the socket down.
+        expect(oversized.headers.connection).to.not.equal('close');
         expect(malformed.headers.connection).to.not.equal('close');
 
         let encoded = await request(server, {
@@ -467,14 +468,28 @@ describe('Read-only MCP service', function () {
         expect(encoded.headers.connection).to.not.equal('close');
     });
 
-    it('bounds what a refusal reads, on every check that answers before the body is', async () => {
+    it('delivers the refusal for an oversized body larger than the socket buffer', async () => {
+        let started = await startMcp(false, { maxRequestSize: 1024 });
+        server = started.server;
+        let headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+
+        // The body is far larger than the socket receive buffer and is refused unread. Answering
+        // it with a close before it was off the wire reached the client as a reset rather than
+        // the 413; draining it first delivers the status. 512 KB is well past the buffer and
+        // well within the drain bound.
+        let oversized = await request(server, { headers, body: 'x'.repeat(512 * 1024) });
+        expect(oversized.statusCode).to.equal(413);
+    });
+
+    it('delivers each early refusal to the client after draining a bounded body', async () => {
         let started = await startMcp(false, { maxRequestSize: 16 });
         server = started.server;
 
-        // None of these reach readBody, so none of them has applied the cap, and all but the
-        // last run before the caller has authenticated at all. Left on keep-alive, each one
-        // would have Node read the whole declared body before the socket served anything else.
-        let body = 'x'.repeat(4096);
+        // None of these reach readBody, and all but the last run before the caller has
+        // authenticated. Each is answered after its body is drained, so the client reads the
+        // status on a connection it can reuse rather than a reset. The bodies are larger than
+        // the socket buffer, which is where an undrained refusal would have reset instead.
+        let body = 'x'.repeat(64 * 1024);
         let refusals = [
             await request(server, { path: '/elsewhere', body }),
             await request(server, { headers: { Host: 'evil.example' }, body }),
@@ -484,25 +499,22 @@ describe('Read-only MCP service', function () {
         ];
 
         expect(refusals.map(refusal => refusal.statusCode)).to.deep.equal([404, 403, 403, 405, 401]);
-        expect(refusals.map(refusal => refusal.headers.connection)).to.deep.equal(Array(5).fill('close'));
+        refusals.forEach(refusal => expect(refusal.headers.connection).to.not.equal('close'));
 
-        // a body the cap already bounds is cheap to drain, so a misaddressed request still
-        // gets its answer without paying for a reconnect
         let small = await request(server, { path: '/elsewhere', body: 'xx' });
         expect(small.statusCode).to.equal(404);
         expect(small.headers.connection).to.not.equal('close');
     });
 
-    it('caps a request body on every method that carries one', async () => {
+    it('drains and answers an oversized body on every method that carries one', async () => {
         let started = await startMcp(false, { maxRequestSize: 16 });
         server = started.server;
         let headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
 
-        // The protocol handler reads the stream itself and buffers all of it before answering,
-        // so a method left out of the cap is an unbounded read for any token holder
-        let oversizedDelete = await request(server, { method: 'DELETE', headers, body: 'x'.repeat(4096) });
+        // A DELETE body is read too, so an oversized one is refused and drained just like a POST
+        let oversizedDelete = await request(server, { method: 'DELETE', headers, body: 'x'.repeat(64 * 1024) });
         expect(oversizedDelete.statusCode).to.equal(413);
-        expect(oversizedDelete.headers.connection).to.equal('close');
+        expect(oversizedDelete.headers.connection).to.not.equal('close');
 
         // a body within the cap is still handed to the protocol handler
         let smallDelete = await request(server, { method: 'DELETE', headers });
@@ -558,5 +570,57 @@ describe('Read-only MCP service', function () {
             certs.registerReload = registerReload;
             certs.getContextForServername = getContextForServername;
         }
+    });
+});
+
+describe('MCP request draining', () => {
+    // A fake request stream: an EventEmitter with the few flags and the resume() the drain reads.
+    function fakeRequest(props) {
+        let req = new EventEmitter();
+        req.complete = false;
+        req.destroyed = false;
+        req.readable = true;
+        req.resume = () => false;
+        return Object.assign(req, props);
+    }
+
+    it('resolves true when the body ends within the bound', async () => {
+        let req = fakeRequest();
+        let result = mcp.drainUnusedBody(req, 1024, 1000);
+        req.emit('data', Buffer.alloc(100));
+        req.emit('end');
+        expect(await result).to.equal(true);
+        // its listeners are removed once it settles, so a later event cannot resolve it twice
+        expect(req.listenerCount('data')).to.equal(0);
+        expect(req.listenerCount('end')).to.equal(0);
+    });
+
+    it('resolves false when the body overruns the byte bound', async () => {
+        let req = fakeRequest();
+        let result = mcp.drainUnusedBody(req, 128, 1000);
+        req.emit('data', Buffer.alloc(64));
+        req.emit('data', Buffer.alloc(128));
+        expect(await result).to.equal(false);
+        expect(req.listenerCount('data')).to.equal(0);
+    });
+
+    it('resolves false when the body overruns the time bound', async () => {
+        let req = fakeRequest();
+        // never ends and stays under the byte bound, so only the timeout can settle it
+        let result = mcp.drainUnusedBody(req, 1024, 20);
+        req.emit('data', Buffer.alloc(8));
+        expect(await result).to.equal(false);
+    });
+
+    it('resolves true immediately for a request whose body is already read', async () => {
+        let req = fakeRequest({ complete: true });
+        expect(await mcp.drainUnusedBody(req, 1024, 1000)).to.equal(true);
+        // it never has to touch the stream
+        expect(req.listenerCount('data')).to.equal(0);
+    });
+
+    it('resolves false immediately for a stream that is already gone', async () => {
+        expect(await mcp.drainUnusedBody(fakeRequest({ destroyed: true }), 1024, 1000)).to.equal(false);
+        expect(await mcp.drainUnusedBody(fakeRequest({ readable: false }), 1024, 1000)).to.equal(false);
     });
 });

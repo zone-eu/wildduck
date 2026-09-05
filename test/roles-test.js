@@ -91,4 +91,47 @@ describe('Roles', () => {
             expect(roles.filterFields(permission, [null, 'text'])).to.deep.equal([null, 'text']);
         });
     });
+
+    describe('#filterResponseBody', () => {
+        let permission = () => roles.can('mcp:read').readOwn('messages');
+
+        it('should reduce a plain success body to the granted fields', () => {
+            let body = roles.filterResponseBody(permission(), Object.assign({ success: true }, MESSAGE));
+
+            expect(body).to.include({ success: true, id: 1, subject: 'Quarterly invoice' });
+            expect(body).to.not.have.any.keys('user', 'metaData', 'headers', 'envelope');
+        });
+
+        it('should leave an error body alone even when its error value is falsy', () => {
+            // an error reported through an empty message, or through success:false with no error
+            // key, must not be rewritten into a success body
+            for (let errorBody of [
+                { error: '', code: 'X' },
+                { error: null, code: 'X' },
+                { success: false, code: 'X' }
+            ]) {
+                let body = roles.filterResponseBody(permission(), errorBody);
+                expect(body).to.equal(errorBody);
+                expect(body).to.not.have.property('success', true);
+            }
+        });
+
+        it('should filter only the results of a listing and keep its envelope', () => {
+            let listing = { success: true, total: 2, nextCursor: 'abc', results: [MESSAGE, Object.assign({}, MESSAGE, { id: 2 })] };
+            let body = roles.filterResponseBody(permission(), listing);
+
+            expect(body).to.include({ success: true, total: 2, nextCursor: 'abc' });
+            expect(body.results).to.have.length(2);
+            body.results.forEach(result => expect(result).to.not.have.any.keys('user', 'metaData', 'headers'));
+        });
+
+        it('should leave a value that is not a resource body untouched', () => {
+            // a buffer or a stream is not a resource, and picking keys off one would destroy the
+            // response; a missing body is nothing to filter
+            let buffer = Buffer.from('raw');
+            expect(roles.filterResponseBody(permission(), buffer)).to.equal(buffer);
+            expect(roles.filterResponseBody(permission(), undefined)).to.equal(undefined);
+            expect(roles.filterResponseBody(permission(), null)).to.equal(null);
+        });
+    });
 });
