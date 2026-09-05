@@ -90,6 +90,9 @@ connection = "lan"
 [metrics]
 # @include "metrics.toml"
 
+[mcp]
+# @include "mcp.toml"
+
 [sender]
 # @include "sender.toml"
 

@@ -6,7 +6,7 @@ module.exports = function (grunt) {
     // Project configuration.
     grunt.initConfig({
         eslint: {
-            all: ['lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'Gruntfile.js']
+            all: ['*.js', 'lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'bin/*']
         },
 
         mochaTest: {
@@ -55,8 +55,15 @@ module.exports = function (grunt) {
                     'test/list-headers-test.js',
                     'test/maildropper-test.js',
                     'test/message-handler-update-test.js',
+                    'test/mcp-api-client-test.js',
+                    'test/mcp-cli-test.js',
+                    'test/mcp-html-test.js',
+                    'test/mcp-test.js',
+                    'test/mcp-token-handler-test.js',
+                    'test/mcp-tools-test.js',
                     'test/metrics-config-test.js',
                     'test/prometheus-test.js',
+                    'test/roles-test.js',
                     'test/tools-test.js'
                 ]
             },

@@ -50,7 +50,69 @@ const certsRoutes = require('./lib/api/certs');
 const webhooksRoutes = require('./lib/api/webhooks');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
+const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
+const McpTokenHandler = require('./lib/mcp-token-handler');
+const roles = require('./lib/roles');
+
+// The only routes an MCP credential may reach, by route name, mapped to the resource whose
+// field allowlist shapes the response. Every one is a GET that a tool in lib/mcp-tools.js
+// dispatches to; the method is checked separately so the list cannot accidentally admit a
+// mutating route that reuses a name.
+const MCP_ROUTES = new Map([
+    ['getuser', 'users'],
+    ['getuseraddresses', 'addresses'],
+    ['getmailboxes', 'mailboxes'],
+    ['getmailbox', 'mailboxes'],
+    ['getmessages', 'messages'],
+    ['getmessage', 'messages'],
+    ['searchmessages', 'messages']
+]);
+
+/**
+ * Applies an access level's field allowlist to whatever a route is about to answer.
+ *
+ * config/roles.json is meant to be the single declaration of what an agent may see, so the
+ * allowlist is enforced here, at the exit of the API, rather than in the MCP service that
+ * usually calls it. A response filtered by the client would still have travelled: the
+ * credential itself has to be bounded, whatever presents it. Most routes filter their own
+ * output already, but the message and mailbox routes do not, and adding a filter call to each
+ * of them would leave the next one to remember.
+ *
+ * The wrapper goes on `res.send` rather than on `res.json`, because restify's `json()` is a
+ * content type plus a call to `send()`: wrapping the one they share leaves no second way out.
+ * Only a successful JSON body is rewritten. An error body carries no resource fields and would
+ * be emptied by the filter, and a stream or a buffer is not a resource at all.
+ *
+ * @param {Object} req Request being served.
+ * @param {Object} res Response to wrap.
+ * @param {String} resource Resource name as used in config/roles.json.
+ * @returns {Boolean} False when the level has no read grant for the resource, so the caller can
+ *   refuse the request rather than answer it unfiltered.
+ */
+function filterResponseFields(req, res, resource) {
+    let permission = roles.can(req.role).readOwn(resource);
+    if (!permission.granted) {
+        // A route whose resource the level cannot read has no allowlist to apply, so there is
+        // nothing to filter with. Reported rather than skipped: a silent pass here would make
+        // the next entry added to MCP_ROUTES answer unfiltered.
+        return false;
+    }
+
+    // The allowlist is applied to whatever the route is about to answer, by resource. Which
+    // bodies carry resource fields, and how they are reduced, lives in roles.filterResponseBody
+    // so it is unit tested; only the restify-specific choice of which argument is the body stays
+    // here. restify's send is send([code], [body], [headers]), so the body is the first argument
+    // unless that is the numeric status code, and a positional headers object is never touched.
+    let send = res.send.bind(res);
+    res.send = (...args) => {
+        let index = typeof args[0] === 'number' ? 1 : 0;
+        args[index] = roles.filterResponseBody(permission, args[index]);
+        return send(...args);
+    };
+
+    return true;
+}
 
 const { RestifyApiGenerate } = require('restifyapigenerate');
 const Joi = require('joi');
@@ -63,6 +125,7 @@ let messageHandler;
 let storageHandler;
 let auditHandler;
 let settingsHandler;
+let mcpTokenHandler;
 let notifier;
 let loggelf;
 
@@ -266,6 +329,12 @@ server.use(async (req, res) => {
         return;
     }
 
+    // Where a credential arrived, resolved before the carriers are cleared below. The merge
+    // itself is unchanged, and deliberately loose, because that is what every other credential
+    // kind has always been read with.
+    let bearerToken = McpTokenHandler.getBearerToken(req.headers.authorization);
+    let misplacedMcpToken = McpTokenHandler.isToken(req.query.accessToken) || McpTokenHandler.isToken(req.headers['x-access-token']);
+
     let accessToken =
         req.query.accessToken ||
         req.headers['x-access-token'] ||
@@ -311,6 +380,17 @@ server.use(async (req, res) => {
         }
     };
 
+    // An MCP token is a bearer credential and nothing else. A wdmcp_ value in a query string or
+    // an X-Access-Token header has already been written somewhere a credential does not belong,
+    // since a URL reaches proxy logs, browser history and referrer headers, so the request is
+    // refused even when the same token is also presented correctly. Serving it would teach a
+    // client that the unsafe carrier works. Refused ahead of every other credential, including
+    // the master token, so no combination of carriers can serve a request that also carried a
+    // wdmcp_ value where one does not belong.
+    if (misplacedMcpToken) {
+        return fail();
+    }
+
     // hard coded master token
     if (config.api.accessToken) {
         tokenRequired = true;
@@ -319,6 +399,56 @@ server.use(async (req, res) => {
             req.user = 'root';
             return;
         }
+    }
+
+    // Dedicated MCP tokens resolve to the access level stored on the token record, so what an
+    // agent may do is decided by config/roles.json like every other role. These are only ever
+    // presented by the MCP service over the private network; they are not API access tokens
+    // and carry none of their privileges.
+    //
+    // The bearer value has to be the one the merge selected as well, so that a token presented
+    // alongside an ordinary access token cannot shadow it: precedence between carriers is the
+    // same for every credential kind, and this branch does not get its own.
+    if (accessToken === bearerToken && McpTokenHandler.isToken(bearerToken)) {
+        tokenRequired = true;
+
+        // A role alone is too coarse to describe what an agent may reach. `read:own` on
+        // messages and users also covers the raw RFC822 source, the archive, the address
+        // register, the journal stream and PUT /users/:user/logout, which is a state change
+        // guarded by readOwn('users'). So the credential is additionally pinned to the exact
+        // routes the MCP tools dispatch to: adding a route under an existing grant cannot
+        // widen what an agent token reaches, and the read-only promise belongs to the
+        // credential rather than to the client that happens to be using it.
+        let mcpResource = MCP_ROUTES.get(((req.route && req.route.name) || '').toLowerCase());
+        if (req.method !== 'GET' || !mcpResource) {
+            return fail();
+        }
+
+        let authenticated;
+        try {
+            // No address is passed, so no failure is counted here. The failure budget belongs
+            // to the MCP listener, which is the surface a guess can actually be aimed at; this
+            // caller has already authenticated there, and `req.params.ip` is supplied by the
+            // caller, so keying a limiter on it would let one dodge or poison another's budget.
+            // Every MCP token holder reaches this listener from the same socket, so a budget
+            // here would also let one of them spend everyone else's.
+            authenticated = await mcpTokenHandler.authenticate(bearerToken);
+        } catch (err) {
+            return fail();
+        }
+
+        req.role = authenticated.role;
+        req.user = authenticated.user._id.toString();
+
+        if (req.params && req.params.user === 'me') {
+            req.params.user = req.user;
+        }
+
+        if (!filterResponseFields(req, res, mcpResource)) {
+            return fail();
+        }
+
+        return;
     }
 
     if (config.api.accessControl.enabled || accessToken) {
@@ -564,6 +694,22 @@ module.exports = done => {
         loggelf: message => loggelf(message)
     });
 
+    // Built after userHandler so a failed MCP authentication here reaches the same authlog it
+    // would through the MCP listener. Without the binding this path failed silently, and the
+    // user saw a different history depending on which listener the token hit.
+    //
+    // Successes are left to the MCP listener, which is the hop that sees the client. This one
+    // re-checks the same credential on each request that listener makes on a caller's behalf,
+    // so recording them here would name the internal address and add two awaited round trips
+    // to every one of those requests.
+    mcpTokenHandler = new McpTokenHandler({
+        users: db.users,
+        redis: db.redis,
+        counters: userHandler.counters,
+        logAuthEvent: userHandler.logAuthEvent.bind(userHandler),
+        logSuccessfulAuth: false
+    });
+
     mailboxHandler = new MailboxHandler({
         database: db.database,
         users: db.users,
@@ -611,6 +757,7 @@ module.exports = done => {
     webhooksRoutes(db, server);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
+    mcpTokensRoutes(server, mcpTokenHandler);
 
     if (process.env.NODE_ENV === 'test') {
         server.get(
