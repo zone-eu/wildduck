@@ -277,16 +277,20 @@ class IMAPServer extends EventEmitter {
             }
             finished = true;
             if (err) {
-                // The socket is already closing/closed (RST/FIN seen, or we
-                // issued socket.end() with a diagnostic). Attach a no-op 'error'
-                // handler BEFORE removing ours, so the socket is never left
-                // without one — a late in-flight error (e.g. EPIPE while
-                // flushing "* BAD") must not surface as an uncaughtException.
+                // Attach a no-op 'error' handler BEFORE removing ours, so the
+                // socket is never left without one — a late in-flight error
+                // (e.g. EPIPE while flushing "* BAD") must not surface as an
+                // uncaughtException.
                 socket.on('error', () => {
                     // ignore
                 });
             }
             cleanup();
+            if (err) {
+                // no connection object owns this socket, so a peer that
+                // half-closed or keeps its side open would leak it
+                socket.destroy();
+            }
             callback(err, opts);
         };
 
@@ -315,7 +319,7 @@ class IMAPServer extends EventEmitter {
         onEnd = () => {
             // client half-closed (FIN) before a full PROXY header arrived; with
             // allowHalfOpen the socket emits 'end' but never 'close', so without
-            // this the connection would linger until socketTimeout
+            // this the connection would linger indefinitely
             done(new Error('Socket ended before PROXY header was received'));
         };
 
@@ -351,7 +355,14 @@ class IMAPServer extends EventEmitter {
                             return rejectInvalid();
                         }
 
-                        if (params[1]) {
+                        // "PROXY TCP4|TCP6 <src ip> <dst ip> <src port> <dst port>", or
+                        // "PROXY UNKNOWN" with no address info (trailing fields are ignored)
+                        let proto = (params[0] || '').toUpperCase();
+                        if (proto !== 'UNKNOWN') {
+                            if ((proto !== 'TCP4' && proto !== 'TCP6') || !params[1] || !params[2] || !params[3] || !params[4]) {
+                                return rejectInvalid();
+                            }
+
                             socketOptions.remoteAddress = params[1].trim().toLowerCase();
 
                             socketOptions.ignore = this.options.ignoredHosts && this.options.ignoredHosts.includes(socketOptions.remoteAddress);
@@ -371,9 +382,7 @@ class IMAPServer extends EventEmitter {
                                 );
                             }
 
-                            if (params[3]) {
-                                socketOptions.remotePort = Number(params[3].trim()) || socketOptions.remotePort;
-                            }
+                            socketOptions.remotePort = Number(params[3].trim()) || socketOptions.remotePort;
                         }
 
                         return done(null, socketOptions);
