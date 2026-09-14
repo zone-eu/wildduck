@@ -116,6 +116,15 @@
             "delete:any": ["*"]
         },
 
+        "pushsubscriptions": {
+            "read:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "pushnotifications": {
+            "create:any": ["*"]
+        },
+
         "settings": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -211,6 +220,15 @@
             "read:any": ["*"],
             "update:any": ["*"],
             "delete:any": ["*"]
+        },
+
+        "pushsubscriptions": {
+            "read:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "pushnotifications": {
+            "create:any": ["*"]
         }
     },
 
@@ -406,6 +424,11 @@
 
         "webhooks": {
             "read:own": ["*"]
+        },
+
+        "pushsubscriptions": {
+            "read:own": ["*", "!deviceToken"],
+            "delete:own": ["*"]
         }
     },
 
