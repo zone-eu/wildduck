@@ -2769,7 +2769,7 @@ describe('Messages tests', function () {
     });
 });
 
-describe('Collapsed thread seen state', function () {
+describe('Collapsed thread state', function () {
     this.timeout(20000); // eslint-disable-line no-invalid-this
 
     let user;
@@ -2809,8 +2809,8 @@ describe('Collapsed thread seen state', function () {
         root = await append(mailbox, 1, { subject: 'Thread with an unseen middle message' });
         middle = await append(mailbox, 2, { unseen: true, reference: { mailbox, id: root, action: 'reply' } });
         latest = await append(mailbox, 3, { draft: true, reference: { mailbox, id: middle, action: 'reply' } });
-        // This unread message must not affect a listing restricted to the inbox.
-        await append(drafts, 4, { unseen: true, reference: { mailbox, id: root, action: 'reply' } });
+        // Thread metadata includes messages in other mailboxes.
+        await append(drafts, 4, { unseen: true, flagged: true, reference: { mailbox, id: root, action: 'reply' } });
         single = await append(mailbox, 5, { subject: 'Separate seen thread' });
     });
 
@@ -2839,9 +2839,11 @@ describe('Collapsed thread seen state', function () {
             const thread = response.body.results.find(entry => entry.id === (order === 'asc' ? root : latest));
             expect(thread).to.exist;
             expect(thread.seen).to.be.false;
+            expect(thread.flagged).to.be.true;
             expect(thread.hasDrafts).to.be.true;
             expect(thread).to.not.have.property('threadMessageCount');
             expect(response.body.results.find(entry => entry.id === single).seen).to.be.true;
+            expect(response.body.results.find(entry => entry.id === single).flagged).to.be.false;
         });
     }
 
@@ -2855,6 +2857,7 @@ describe('Collapsed thread seen state', function () {
         const next = await server.get(path).query({ ...query, next: first.body.nextCursor }).expect(200);
         expect(next.body.results[0].id).to.equal(latest);
         expect(next.body.results[0].seen).to.be.false;
+        expect(next.body.results[0].flagged).to.be.true;
         expect(next.body.results[0].threadMessageCount).to.equal(4);
         expect(next.body.results[0]).to.not.have.property('hasDrafts');
         expect(next.body.nextCursor).to.be.false;
@@ -2871,6 +2874,7 @@ describe('Collapsed thread seen state', function () {
 
         expect(response.body.results.map(entry => entry.id)).to.deep.equal([root, middle, latest, single]);
         expect(response.body.results.map(entry => entry.seen)).to.deep.equal([true, false, true, true]);
+        expect(response.body.results.map(entry => entry.flagged)).to.deep.equal([false, false, false, false]);
         expect(response.body.results.map(entry => entry.hasDrafts)).to.deep.equal([true, true, false, false]);
     });
 
@@ -2884,12 +2888,12 @@ describe('Collapsed thread seen state', function () {
                     .expect(200);
 
                 expect(response.body.results.map(entry => entry.id)).to.deep.equal(unseen ? [middle] : [single, latest]);
-                expect(response.body.results.every(entry => entry.seen === !unseen), `${path}, unseen=${unseen}`).to.be.true;
+                expect(response.body.results.map(entry => entry.seen), `${path}, unseen=${unseen}`).to.deep.equal(unseen ? [false] : [true, false]);
             }
         }
     });
 
-    it('should GET /users/:user/search expect success / marking the middle message seen clears unread state only in its mailbox', async () => {
+    it('should GET /users/:user/search expect success / unread thread state includes messages in other mailboxes', async () => {
         await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${middle}`).send({ seen: true }).expect(200);
 
         for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
@@ -2899,11 +2903,13 @@ describe('Collapsed thread seen state', function () {
                 .expect(200);
 
             expect(response.body.results.map(entry => entry.id)).to.deep.equal([single, latest]);
-            expect(response.body.results.every(entry => entry.seen)).to.be.true;
+            expect(response.body.results.map(entry => entry.seen)).to.deep.equal([true, false]);
+            expect(response.body.results.map(entry => entry.flagged)).to.deep.equal([false, true]);
             expect(response.body.results[1].hasDrafts).to.be.true;
         }
 
         const response = await server.get(`/users/${user}/search`).query({ collapseThreads: true, includeHasDrafts: true }).expect(200);
         expect(response.body.results.find(entry => entry.id !== single).seen).to.be.false;
+        expect(response.body.results.find(entry => entry.id !== single).flagged).to.be.true;
     });
 });
