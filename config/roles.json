@@ -33,6 +33,12 @@
             "delete:any": ["*"]
         },
 
+        "mcptokens": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "messages": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -152,6 +158,12 @@
             "delete:any": ["*"]
         },
 
+        "mcptokens": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "autoreplies": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -221,6 +233,12 @@
         },
 
         "asps": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "mcptokens": {
             "create:any": ["*"],
             "read:any": ["*"],
             "delete:any": ["*"]
@@ -338,6 +356,12 @@
             "delete:own": ["*"]
         },
 
+        "mcptokens": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "delete:own": ["*"]
+        },
+
         "messages": {
             "create:own": ["*"],
             "read:own": ["*"],
@@ -444,6 +468,52 @@
     "downloader": {
         "messages": {
             "read:any": ["*"]
+        }
+    },
+
+    "mcp:read": {
+        "users": {
+            "read:own": ["id", "username", "name", "address", "limits"]
+        },
+
+        "addresses": {
+            "read:own": ["id", "name", "address"]
+        },
+
+        "mailboxes": {
+            "read:own": ["id", "name", "path", "specialUse", "subscribed", "hidden", "total", "unseen", "size"]
+        },
+
+        "messages": {
+            "read:own": [
+                "id",
+                "mailbox",
+                "thread",
+                "from",
+                "replyTo",
+                "to",
+                "cc",
+                "bcc",
+                "messageId",
+                "subject",
+                "date",
+                "idate",
+                "size",
+                "contentType",
+                "seen",
+                "deleted",
+                "flagged",
+                "draft",
+                "answered",
+                "forwarded",
+                "references",
+                "intro",
+                "text",
+                "html",
+                "attachments",
+                "attachmentsList",
+                "encrypted"
+            ]
         }
     }
 }

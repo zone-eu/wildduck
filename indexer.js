@@ -14,6 +14,7 @@ const libmime = require('libmime');
 const punycode = require('punycode.js');
 const { getClient } = require('./lib/elasticsearch');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const metrics = require('./lib/metrics');
 
 let loggelf;
 let processlock;
@@ -70,6 +71,7 @@ class Indexer {
 
         if (!entry.user) {
             // nothing to do here
+            metrics.recordSearchIndexerChange(entry && entry.command, 'ignored');
             return;
         }
 
@@ -104,6 +106,13 @@ class Indexer {
                     modseq: entry.modseq,
                     user: entry.user.toString()
                 };
+                // a rescheduled message has its Date header rewritten, which also changes its stored size
+                if (entry.hdate) {
+                    payload.hdate = entry.hdate.toISOString();
+                }
+                if (typeof entry.size === 'number') {
+                    payload.size = entry.size;
+                }
                 break;
         }
 
@@ -113,20 +122,29 @@ class Indexer {
 
             if (!hasFeatureFlag) {
                 log.silly('Indexer', `Feature flag not set, skipping user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
+                metrics.recordSearchIndexerChange(entry.command, 'skipped');
                 return;
             } else {
                 log.verbose('Indexer', `Feature flag set, processing user=%s command=%s message=%s`, entry.user, entry.command, entry.message);
             }
 
-            await liveIndexingQueue.add('journal', payload, {
-                removeOnComplete: 100,
-                removeOnFail: 100,
-                attempts: 5,
-                backoff: {
-                    type: 'exponential',
-                    delay: 2000
-                }
-            });
+            try {
+                await liveIndexingQueue.add('journal', payload, {
+                    removeOnComplete: 100,
+                    removeOnFail: 100,
+                    attempts: 5,
+                    backoff: {
+                        type: 'exponential',
+                        delay: 2000
+                    }
+                });
+                metrics.recordSearchIndexerChange(entry.command, 'queued');
+            } catch (err) {
+                metrics.recordSearchIndexerChange(entry.command, 'error');
+                throw err;
+            }
+        } else {
+            metrics.recordSearchIndexerChange(entry.command, 'ignored');
         }
     }
 
@@ -221,6 +239,7 @@ async function renewLock() {
         log.error('Indexer', 'Failed to get lock process=%s err=%s', processId, err.message);
         isCurrentWorker = false;
     }
+    metrics.setSearchIndexerLockOwner(isCurrentWorker);
 
     if (!isCurrentWorker) {
         await indexer.stop();
@@ -493,6 +512,12 @@ function indexingJob(esclient) {
                                         ctx._source.flags = params.flags;
                                         ctx._source.unseen = params.unseen;
                                         ctx._source.modseq = params.modseq;
+                                        if (params.hdate != null) {
+                                            ctx._source.hdate = params.hdate;
+                                        }
+                                        if (params.size != null) {
+                                            ctx._source.size = params.size;
+                                        }
                                     }
                                 `,
                                 params: {
@@ -500,7 +525,11 @@ function indexingJob(esclient) {
                                     draft: data.flags.includes('\\Draft'),
                                     flagged: data.flags.includes('\\Flagged'),
                                     flags: data.flags || [],
-                                    unseen: !data.flags.includes('\\Seen')
+                                    unseen: !data.flags.includes('\\Seen'),
+                                    // only set when the message content changed, eg. a queued message was rescheduled
+                                    hdate: data.hdate || null,
+
+                                    size: typeof data.size === 'number' ? data.size : null
                                 }
                             }
                         };
@@ -540,16 +569,19 @@ function indexingJob(esclient) {
             }
 
             // loggelf({ _msg: 'hello world' });
+            metrics.recordSearchIndexerChange(data.action, 'success');
         } catch (err) {
             if (err.meta && err.meta.body && err.meta.body.result === 'not_found') {
                 // missing document, ignore
                 log.error('Indexing', 'Failed to process indexing request, document not found message=%s', err.meta.body._id);
+                metrics.recordSearchIndexerChange(job && job.data && job.data.action, 'missing');
                 return;
             }
 
             log.error('Indexing', err);
 
             const data = job.data;
+            metrics.recordSearchIndexerChange(data && data.action, 'error');
             loggelf({
                 short_message: '[INDEXER]',
                 _mail_action: `indexer_${data.action}`,
@@ -569,6 +601,7 @@ function indexingJob(esclient) {
 
 module.exports.start = callback => {
     if (!config.elasticsearch || !config.elasticsearch.indexer || !config.elasticsearch.indexer.enabled) {
+        metrics.setServiceUp('search_indexer', false);
         return setImmediate(() => callback(null, false));
     }
 
@@ -620,6 +653,7 @@ module.exports.start = callback => {
         }
 
         liveIndexingQueue = new Queue('live_indexing', db.queueConf);
+        metrics.registerBullQueue('live_indexing', liveIndexingQueue);
 
         processlock = counters(db.redis).processlock;
 
@@ -640,6 +674,7 @@ module.exports.start = callback => {
                 db.queueConf
             )
         );
+        metrics.trackBullWorker('live_indexing', queueWorkers.liveIndexing);
 
         queueWorkers.backlogIndexing = new Worker(
             'backlog_indexing',
@@ -651,7 +686,9 @@ module.exports.start = callback => {
                 db.queueConf
             )
         );
+        metrics.trackBullWorker('backlog_indexing', queueWorkers.backlogIndexing);
 
+        metrics.setServiceUp('search_indexer', true);
         callback();
     });
 };

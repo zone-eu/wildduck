@@ -16,6 +16,14 @@ module.exports = {
         'grunt-eslint',
 
         // temporary lock to v5, openpgp v6 is "module" by default, but should be backwards compatible
-        'openpgp'
+        'openpgp',
+
+        // esm only since v18, breaks the CommonJS CLI scripts in bin/
+        'yargs',
+
+        // new major upgrade requires rewrite
+        'mongo-cursor-pagination',
+        'accesscontrol',
+        'ioredis'
     ]
 };

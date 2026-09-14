@@ -3,6 +3,9 @@
 const imapHandler = require('../handler/imap-handler');
 const imapTools = require('../imap-tools');
 
+// Max IMAP number is an unsigned 32-bit value
+const MAX_IMAP_NUMBER = 0xffffffff;
+
 module.exports = {
     state: 'Selected',
 
@@ -48,6 +51,7 @@ module.exports = {
             _mail_action: 'search',
             _user: this.session.user.id.toString(),
             _mailbox: this.selected.mailbox,
+            _mailbox_path: this.selected.path,
             _sess: this.id,
             _query: JSON.stringify(parsed.query),
             _terms: JSON.stringify(parsed.terms)
@@ -149,6 +153,10 @@ module.exports = {
 function isFixedRange(value) {
     value = (value || '').toString();
     return value.indexOf(':') >= 0 && value.indexOf(',') < 0;
+}
+
+function getWithinTargetDate(interval) {
+    return new Date(Math.floor(Date.now() / 1000) * 1000 - interval * 1000);
 }
 
 function parseQueryTerms(terms, uidList) {
@@ -279,6 +287,24 @@ function parseQueryTerms(terms, uidList) {
                     throw new Error('Invalid MODSEQ argument');
                 }
                 response.value = Number(curTerm[curTerm.length - 1]) || 0;
+                break;
+
+            case 'older':
+            case 'younger':
+                {
+                    let interval = (curTerm[1] || '').toString();
+                    if (!/^[1-9]\d*$/.test(interval)) {
+                        throw new Error('Invalid interval argument for ' + term.toUpperCase());
+                    }
+                    interval = Number(interval);
+                    if (!Number.isSafeInteger(interval) || interval > MAX_IMAP_NUMBER) {
+                        throw new Error('Invalid interval argument for ' + term.toUpperCase());
+                    }
+
+                    response.key = 'internaldate';
+                    response.operator = curTerm[0] === 'older' ? '<=' : '>=';
+                    response.value = getWithinTargetDate(interval);
+                }
                 break;
 
             default:

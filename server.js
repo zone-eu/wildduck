@@ -41,6 +41,7 @@ const fs = require('fs');
 const log = require('npmlog');
 const packageData = require('./package.json');
 const { init: initElasticSearch } = require('./lib/elasticsearch');
+const metrics = require('./lib/metrics');
 
 log.level = config.log.level;
 
@@ -129,6 +130,8 @@ if (!processCount || processCount <= 1) {
     let cluster = require('cluster');
 
     if (cluster.isMaster) {
+        metrics.initClusterMaster();
+
         printLogo();
 
         if (config.ident) {

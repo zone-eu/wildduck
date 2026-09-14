@@ -1,5 +1,142 @@
 # Changelog
 
+## [1.51.1](https://github.com/zone-eu/wildduck/compare/v1.51.0...v1.51.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* bump deps ([#1167](https://github.com/zone-eu/wildduck/issues/1167)) ([614ab26](https://github.com/zone-eu/wildduck/commit/614ab2677d3a808b8a6df90eb9c6d0f803a6fee9))
+* ZMS-101: fix seen value for get message listing endpoint when threads are collapsed ([#1168](https://github.com/zone-eu/wildduck/issues/1168)) ([8e27f3e](https://github.com/zone-eu/wildduck/commit/8e27f3e7aa0c29882bca6f2df386bc2df8d480cc))
+
+## [1.51.0](https://github.com/zone-eu/wildduck/compare/v1.50.2...v1.51.0) (2026-09-06)
+
+
+### Features
+
+* **mcp:** ZMS-96: add read-only MCP service ([#1161](https://github.com/zone-eu/wildduck/issues/1161)) ([990b4f0](https://github.com/zone-eu/wildduck/commit/990b4f00a1b2952e31e3fc622a9a45ad94dbf8de))
+
+## [1.50.2](https://github.com/zone-eu/wildduck/compare/v1.50.1...v1.50.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* htmlToText add it into try catch block to fix maximum call stack exceeded on big html messages ([#1155](https://github.com/zone-eu/wildduck/issues/1155)) ([4986803](https://github.com/zone-eu/wildduck/commit/4986803b33425a3685e3c089b23e3807a2055cde))
+
+## [1.50.1](https://github.com/zone-eu/wildduck/compare/v1.50.0...v1.50.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **api-list-unsubscribe:** fix list-unsubscribe header parser for get message endpoints ([#1146](https://github.com/zone-eu/wildduck/issues/1146)) ([30d3894](https://github.com/zone-eu/wildduck/commit/30d38942ff065181df743904f02029869c9977b1))
+* **api-put-queue:** ZMS-87 add endpoint to update message in queue ([#1150](https://github.com/zone-eu/wildduck/issues/1150)) ([58ee055](https://github.com/zone-eu/wildduck/commit/58ee05541946fda93e6a25db9df75ac03c8464b3))
+* **api-search:** ZMS-94: keep $text queries plannable inside OR branches ([#1152](https://github.com/zone-eu/wildduck/issues/1152)) ([a7ba203](https://github.com/zone-eu/wildduck/commit/a7ba203465e15cbf7a1559861081dbb537b0727c))
+* fix filter handler overrides and filter precedence ([#1147](https://github.com/zone-eu/wildduck/issues/1147)) ([515b467](https://github.com/zone-eu/wildduck/commit/515b467b0d20734b07ff85894bdb120f63631ade))
+* **prometheus:** ZMS-93: Add prometheus as separate service so it is separate from general API ([#1151](https://github.com/zone-eu/wildduck/issues/1151)) ([1a6d3ca](https://github.com/zone-eu/wildduck/commit/1a6d3caad73248e58ec6f3c8b02bd8167c6b9acf))
+* ZMS-99: when updating message with collapseThreads true also update all messages in thread ([#1153](https://github.com/zone-eu/wildduck/issues/1153)) ([d927208](https://github.com/zone-eu/wildduck/commit/d927208bc45719c4ccae53fca2f7388b60c3decc))
+
+## [1.50.0](https://github.com/zone-eu/wildduck/compare/v1.49.6...v1.50.0) (2026-08-19)
+
+
+### Features
+
+* **node-version:** fix workflows, raise nodejs min requirement ([#1144](https://github.com/zone-eu/wildduck/issues/1144)) ([fcd22d3](https://github.com/zone-eu/wildduck/commit/fcd22d3828e936d48bb5c6686f851cf8616964bc))
+
+
+### Bug Fixes
+
+* fix hasDrafts for non collapsed threads message listing view ([#1141](https://github.com/zone-eu/wildduck/issues/1141)) ([c4ce616](https://github.com/zone-eu/wildduck/commit/c4ce616acc04dd09032d9ef3a8329941e076ad8e))
+
+## [1.49.6](https://github.com/zone-eu/wildduck/compare/v1.49.5...v1.49.6) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api-collapseThreads:** ZMS-86: Message listing non-collapsed list return correct hasDrafts ([#1129](https://github.com/zone-eu/wildduck/issues/1129)) ([6a9874c](https://github.com/zone-eu/wildduck/commit/6a9874c539acbfb3ca46f05a34f3c5feb00b1735))
+* **api:** avoid moving full documents through the collapseThreads aggregation ([#1135](https://github.com/zone-eu/wildduck/issues/1135)) ([da1499d](https://github.com/zone-eu/wildduck/commit/da1499d834ba8b0d4af6fc152a20dc448ca2bd7e))
+* **audit:** reject store() when the GridFS upload stream errors ([#1130](https://github.com/zone-eu/wildduck/issues/1130)) ([a8d1c4f](https://github.com/zone-eu/wildduck/commit/a8d1c4f1b8b8f3aaca068d7e5ca28341ee53ce04))
+* bump deps ([#1139](https://github.com/zone-eu/wildduck/issues/1139)) ([cc172c7](https://github.com/zone-eu/wildduck/commit/cc172c74f51eb2245c23fdbd139757c8c82d22cb))
+* **deps:** pin yargs to 17.7.2, v18 is ESM only ([0ebb842](https://github.com/zone-eu/wildduck/commit/0ebb842c3bdb125463acd0ae4e4c482857bb941a))
+* ZMS-52: Add prometheus support ([#1093](https://github.com/zone-eu/wildduck/issues/1093)) ([5cce359](https://github.com/zone-eu/wildduck/commit/5cce359d2da8808eb4548c75bb944561c5dc33ba))
+
+## [1.49.5](https://github.com/zone-eu/wildduck/compare/v1.49.4...v1.49.5) (2026-07-22)
+
+
+### Bug Fixes
+
+* bump deps ([#1120](https://github.com/zone-eu/wildduck/issues/1120)) ([f5c2e77](https://github.com/zone-eu/wildduck/commit/f5c2e77738b137b2f28373aa7f8d5d12f09b4d4b))
+* ZMS-70: Change auth ratelimit order ([#1122](https://github.com/zone-eu/wildduck/issues/1122)) ([59c7b7b](https://github.com/zone-eu/wildduck/commit/59c7b7b7b0402e8a4d96331b6f270ad50957f26e))
+* ZMS-71: Fix possible user negative quota ([#1121](https://github.com/zone-eu/wildduck/issues/1121)) ([e28eff2](https://github.com/zone-eu/wildduck/commit/e28eff250b99f256e8dfd2d5dc558733e8c93a14))
+* ZMS-77: Emit marked.ham webhook when starring or explicitly marking ham a message ([#1111](https://github.com/zone-eu/wildduck/issues/1111)) ([084d540](https://github.com/zone-eu/wildduck/commit/084d5406f8d9d5acd2065030b80adb1964e6a3af))
+* ZMS-78: Improve logging  ([#1108](https://github.com/zone-eu/wildduck/issues/1108)) ([c87f46b](https://github.com/zone-eu/wildduck/commit/c87f46b82f19737d603ad710dd2ca462d19d2037))
+* ZMS-79: q param search fixes ([#1109](https://github.com/zone-eu/wildduck/issues/1109)) ([cadf456](https://github.com/zone-eu/wildduck/commit/cadf456266c490f0d479554d2d91a46bc2ec02bd))
+* ZMS-80: Add collapseThreads options to list messages in a mailbox ([#1110](https://github.com/zone-eu/wildduck/issues/1110)) ([e60aaeb](https://github.com/zone-eu/wildduck/commit/e60aaeba7196b50cb81fbc09c8ddca157dbc886e))
+* ZMS-84: tools.normalizeDomain, convert punycode to utf8 even if punycode in the middle of domain, add test ([#1123](https://github.com/zone-eu/wildduck/issues/1123)) ([a7f3e17](https://github.com/zone-eu/wildduck/commit/a7f3e172fd93cf42b62979ca6e6e68b9433152a7))
+
+## [1.49.4](https://github.com/zone-eu/wildduck/compare/v1.49.3...v1.49.4) (2026-06-11)
+
+
+### Bug Fixes
+
+* ZMS-76: Harden release and docker workflows ([#1105](https://github.com/zone-eu/wildduck/issues/1105)) ([2b66e59](https://github.com/zone-eu/wildduck/commit/2b66e5911a663d8963bc5893f47d9e42f83603e3))
+
+## [1.49.3](https://github.com/zone-eu/wildduck/compare/v1.49.2...v1.49.3) (2026-06-10)
+
+
+### Bug Fixes
+
+* ZMS-67: Fix classification header addition in filter-handler ([#1102](https://github.com/zone-eu/wildduck/issues/1102)) ([f12e66d](https://github.com/zone-eu/wildduck/commit/f12e66d3bece3e76cddb1770b5ece77b44c3924a))
+
+## [1.49.2](https://github.com/zone-eu/wildduck/compare/v1.49.1...v1.49.2) (2026-06-10)
+
+
+### Bug Fixes
+
+* ZMS-67: Filter handler add header rewrite logic and classification ([#1095](https://github.com/zone-eu/wildduck/issues/1095)) ([ac1989d](https://github.com/zone-eu/wildduck/commit/ac1989d239142ade7f1a0056ebb64c83e8fadf4d))
+* ZMS-75: fix submit endpoint ([#1100](https://github.com/zone-eu/wildduck/issues/1100)) ([27d3078](https://github.com/zone-eu/wildduck/commit/27d307869b8978a42c12b8888b4a759ed6c5671f))
+
+## [1.49.1](https://github.com/zone-eu/wildduck/compare/v1.49.0...v1.49.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* ZMS-73: Fix webauth flow handling of twofactornonce ([#1096](https://github.com/zone-eu/wildduck/issues/1096)) ([03507ab](https://github.com/zone-eu/wildduck/commit/03507ab2ce91ef9cbd8686c1d25642c0b17d3010))
+
+## [1.49.0](https://github.com/zone-eu/wildduck/compare/v1.48.2...v1.49.0) (2026-06-04)
+
+
+### Features
+
+* ZMS-54: Require 2fa to be verified (if enabled) to retrieve user session ([#1082](https://github.com/zone-eu/wildduck/issues/1082)) ([21f9616](https://github.com/zone-eu/wildduck/commit/21f961685cf9a8094221064ae63f652a83368db5))
+
+
+### Bug Fixes
+
+* Collapse large non-contiguous uid sets into ranged queries ([#1089](https://github.com/zone-eu/wildduck/issues/1089)) ([9450d1b](https://github.com/zone-eu/wildduck/commit/9450d1bfe53eb3b9df23024589b4293581ddb77f))
+* Duplicate References and In-Reply-To onto encrypted envelope for thread visibility ([#1087](https://github.com/zone-eu/wildduck/issues/1087)) ([8ace1b3](https://github.com/zone-eu/wildduck/commit/8ace1b3858e1f8429974f29f7b07df877eee963a))
+* Expose isMessageEncrypted/isEncryptedContentType as static helpers and use them for encryption-state detection ([#1086](https://github.com/zone-eu/wildduck/issues/1086)) ([ac21021](https://github.com/zone-eu/wildduck/commit/ac210210e74b5a67ebceac92b9c58cf4d05f809c))
+* Improve encrypted message logging ([#1085](https://github.com/zone-eu/wildduck/issues/1085)) ([fea6dad](https://github.com/zone-eu/wildduck/commit/fea6dad4aa65b72c4ed78c9bd1d41688e4a3518f))
+* update docs ([#1081](https://github.com/zone-eu/wildduck/issues/1081)) ([a752f74](https://github.com/zone-eu/wildduck/commit/a752f744c5f01a3da7b974cc8d257ca7696c281c))
+* ZMS-35: Add WITHIN capability support ([#1073](https://github.com/zone-eu/wildduck/issues/1073)) ([0ac2cfa](https://github.com/zone-eu/wildduck/commit/0ac2cfab4599ac83fb5315ceda049916620bd308))
+* ZMS-54-2: Add strict2fa setting ([#1083](https://github.com/zone-eu/wildduck/issues/1083)) ([67bbe8e](https://github.com/zone-eu/wildduck/commit/67bbe8ede432de046c1316164066a8c74976fb86))
+* ZMS-54: Require 2fa to be verified (if enabled) to retrieve user session ([#1063](https://github.com/zone-eu/wildduck/issues/1063)) ([c90bdb7](https://github.com/zone-eu/wildduck/commit/c90bdb7d7f5682e08caa541ff256a92a800089ef))
+* ZMS-64: Add support for phrase search for mailboxes in q param search ([#1079](https://github.com/zone-eu/wildduck/issues/1079)) ([e40ba06](https://github.com/zone-eu/wildduck/commit/e40ba0646aa19db03783c148ee1cb4110528bf1b))
+* ZMS-66: fix migrations task ([#1092](https://github.com/zone-eu/wildduck/issues/1092)) ([c4710a5](https://github.com/zone-eu/wildduck/commit/c4710a55e703df1a3d100e8106404cf45dc9cad7))
+* ZMS-66: Migrations runner improvements ([#1084](https://github.com/zone-eu/wildduck/issues/1084)) ([af6db2c](https://github.com/zone-eu/wildduck/commit/af6db2cdf2f79a0ae905e4d1abf9f269efde20cf))
+* ZMS-68: Fix notifications, fix encrypted message accounting, improve encryption-on-copy IMAP behaviour, fix IMAP UID behaviour in edge cases, fix plaintext footer not being removed on encryption ([#1088](https://github.com/zone-eu/wildduck/issues/1088)) ([4be3347](https://github.com/zone-eu/wildduck/commit/4be3347526c089cd8aca2f3750735d9238b2ef12))
+* ZMS-72: Added authenticated endpoint ([#1091](https://github.com/zone-eu/wildduck/issues/1091)) ([dedf6e6](https://github.com/zone-eu/wildduck/commit/dedf6e625ce6aed397fa9e0f640c238580cdad6e))
+
+## [1.48.2](https://github.com/zone-eu/wildduck/compare/v1.48.1...v1.48.2) (2026-05-25)
+
+
+### Bug Fixes
+
+* bump deps ([#1077](https://github.com/zone-eu/wildduck/issues/1077)) ([8c48b79](https://github.com/zone-eu/wildduck/commit/8c48b79c0eb0964f5e1268859f965f59bfe92ddb))
+* put user remove existingPassword check ([#1074](https://github.com/zone-eu/wildduck/issues/1074)) ([076dd38](https://github.com/zone-eu/wildduck/commit/076dd3835e49133758bf9019bc69225f38c8c8f6))
+* ZMS-53: Make search based on q param equal to general search ([#1057](https://github.com/zone-eu/wildduck/issues/1057)) ([fbe678a](https://github.com/zone-eu/wildduck/commit/fbe678ab373d2abcd3e63431a775daaddec50aac))
+* ZMS-62: Add support for spam level overrides in Filter handler ([#1072](https://github.com/zone-eu/wildduck/issues/1072)) ([173a733](https://github.com/zone-eu/wildduck/commit/173a7332e81ccae44c100f278d6412a45258b19f))
+* ZMS-64: Improve q param search ([#1076](https://github.com/zone-eu/wildduck/issues/1076)) ([f697d44](https://github.com/zone-eu/wildduck/commit/f697d44cf56a7644f36455f060f765be555a7868))
+* ZMS-65: Remove unnecessary stack logs from authfail gelf logs ([#1075](https://github.com/zone-eu/wildduck/issues/1075)) ([2ea3093](https://github.com/zone-eu/wildduck/commit/2ea3093e34d6059e1a548286e5e0d90043d55c15))
+
 ## [1.48.1](https://github.com/zone-eu/wildduck/compare/v1.48.0...v1.48.1) (2026-05-11)
 
 

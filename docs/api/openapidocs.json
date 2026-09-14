@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.48.1"
+        "version": "1.51.1"
     },
     "servers": [
         {
@@ -371,10 +371,11 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "metaData": {
                                         "type": "object",
@@ -747,10 +748,11 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "disabled": {
                                         "type": "boolean",
@@ -2900,6 +2902,26 @@
                         }
                     },
                     {
+                        "name": "includeHasDrafts",
+                        "in": "query",
+                        "description": "If true, then calculates and includes hasDrafts in the response. This comes with some overhead",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "collapseThreads",
+                        "in": "query",
+                        "description": "If true, then returns only the newest or oldest message from each thread, depending on the order argument",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "limit",
                         "in": "query",
                         "description": "How many records to return",
@@ -2967,17 +2989,11 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response or true to return all headers",
+                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
                         "required": false,
                         "schema": {
-                            "oneOf": [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "boolean"
-                                }
-                            ]
+                            "type": "boolean",
+                            "default": false
                         }
                     }
                 ],
@@ -3015,6 +3031,11 @@
                                         "type": "string",
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -3026,6 +3047,11 @@
                                     "flagged": {
                                         "type": "boolean",
                                         "description": "State of the \\Flagged flag"
+                                    },
+                                    "markHam": {
+                                        "type": "boolean",
+                                        "description": "If true then emits the marked.ham webhook for matched messages. Setting flagged=true also emits marked.ham",
+                                        "default": false
                                     },
                                     "draft": {
                                         "type": "boolean",
@@ -3573,12 +3599,11 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response",
+                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
                         "required": false,
-                        "example": "List-ID, MIME-Version",
                         "schema": {
-                            "type": "string",
-                            "example": "List-ID, MIME-Version"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -3622,6 +3647,26 @@
                         "name": "threadCounters",
                         "in": "query",
                         "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "includeHasDrafts",
+                        "in": "query",
+                        "description": "If true, then calculates and includes hasDrafts in the response. This comes with some overhead",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "collapseThreads",
+                        "in": "query",
+                        "description": "If true, then returns only the newest or oldest matching message from each thread, depending on the order argument",
                         "required": false,
                         "schema": {
                             "type": "boolean",
@@ -3799,9 +3844,9 @@
                                         "default": false
                                     },
                                     "includeHeaders": {
-                                        "type": "string",
-                                        "description": "Comma separated list of header keys to include in the response",
-                                        "example": "List-ID, MIME-Version"
+                                        "type": "boolean",
+                                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
+                                        "default": false
                                     },
                                     "metaData": {
                                         "type": "boolean",
@@ -4001,6 +4046,11 @@
                                         "type": "string",
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -4012,6 +4062,11 @@
                                     "flagged": {
                                         "type": "boolean",
                                         "description": "State of the \\Flagged flag"
+                                    },
+                                    "markHam": {
+                                        "type": "boolean",
+                                        "description": "If true then emits the marked.ham webhook for matched messages. Setting flagged=true also emits marked.ham",
+                                        "default": false
                                     },
                                     "draft": {
                                         "type": "boolean",
@@ -4149,6 +4204,16 @@
                         }
                     },
                     {
+                        "name": "updateThread",
+                        "in": "query",
+                        "description": "If true, deletes all messages in the selected message thread in this Mailbox",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
                         "name": "sess",
                         "in": "query",
                         "description": "Session identifier for the logs",
@@ -4173,7 +4238,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SuccessResponse"
+                                    "$ref": "#/components/schemas/DeleteMessageResponse"
                                 }
                             }
                         }
@@ -4487,6 +4552,84 @@
             }
         },
         "/users/{user}/outbound/{queueId}": {
+            "put": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Update an Outbound Message",
+                "description": "Updates the delivery time of an outbound email that is still queued. Delivery times in the past are replaced with the current time. Queue entries that are already being delivered can not be updated.",
+                "operationId": "updateOutboundMessage",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sendTime": {
+                                        "type": "string",
+                                        "description": "New delivery time for the queued message",
+                                        "format": "date-time"
+                                    }
+                                },
+                                "required": [
+                                    "sendTime"
+                                ]
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "queueId",
+                        "in": "path",
+                        "description": "Outbound queue ID of the message",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UpdateOutboundMessageResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "tags": [
                     "Messages"
@@ -4552,7 +4695,7 @@
                     "Archive"
                 ],
                 "summary": "List archived messages",
-                "description": "Lists archived (recently deleted) messages for the user. Drafts are not archived.",
+                "description": "Lists archived (recently deleted) messages for the user. Drafts deleted directly are not archived.",
                 "operationId": "getArchivedMessages",
                 "parameters": [
                     {
@@ -4634,12 +4777,11 @@
                     {
                         "name": "includeHeaders",
                         "in": "query",
-                        "description": "Comma separated list of header keys to include in the response",
+                        "description": "If true, then includes all message headers in the response. If false, then includes only From, Sender, To, Cc, Bcc, Content-Type and References headers",
                         "required": false,
-                        "example": "List-ID, MIME-Version",
                         "schema": {
-                            "type": "string",
-                            "example": "List-ID, MIME-Version"
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -6271,7 +6413,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/SuccessResponse"
+                                    "$ref": "#/components/schemas/ValidateTOTPTokenResponse"
                                 }
                             }
                         }
@@ -6733,6 +6875,10 @@
                                         "type": "string",
                                         "description": "Relaying party ID. Domain"
                                     },
+                                    "twoFactorNonce": {
+                                        "type": "string",
+                                        "description": "Short-lived nonce returned by /authenticate"
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -6812,6 +6958,10 @@
                                     "rpId": {
                                         "type": "string",
                                         "description": "Relaying party ID. Domain"
+                                    },
+                                    "twoFactorNonce": {
+                                        "type": "string",
+                                        "description": "Short-lived nonce returned by /authenticate"
                                     },
                                     "token": {
                                         "type": "boolean",
@@ -7246,6 +7396,47 @@
                 }
             }
         },
+        "/authenticated": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Validates the user authentication status",
+                "operationId": "isUserAuthenticated",
+                "parameters": [
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetIsUserAuthenticatedResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/autoreply": {
             "put": {
                 "tags": [
@@ -7569,7 +7760,7 @@
                                     },
                                     "isDraft": {
                                         "type": "boolean",
-                                        "description": "Is the message a draft or not",
+                                        "description": "If true then stores the message as a draft without queueing delivery",
                                         "default": false
                                     },
                                     "draft": {
@@ -9153,6 +9344,198 @@
                     }
                 }
             }
+        },
+        "/users/{user}/mcp-tokens": {
+            "post": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "Create MCP Access Token",
+                "description": "Creates a read-only MCP personal access token. The plaintext token is returned only by this response.",
+                "operationId": "createMcpToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Human-readable token description"
+                                    },
+                                    "expires": {
+                                        "type": "string",
+                                        "description": "Optional fixed expiration time in the future",
+                                        "format": "date-time"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "description": "Access level to grant. Only the read level exists today.",
+                                        "enum": [
+                                            "mcp:read"
+                                        ],
+                                        "default": "mcp:read"
+                                    }
+                                },
+                                "required": [
+                                    "description"
+                                ]
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateMcpTokenResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "List MCP Access Tokens",
+                "description": "Lists MCP token metadata without token hashes or plaintext secrets.",
+                "operationId": "getMcpTokens",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetMcpTokensResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mcp-tokens/{token}": {
+            "delete": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "Revoke MCP Access Token",
+                "description": "Immediately revokes an MCP access token by its record ID.",
+                "operationId": "deleteMcpToken",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "description": "ID of the MCP access token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -9795,7 +10178,8 @@
                             "enum": [
                                 "imap",
                                 "pop3",
-                                "smtp"
+                                "smtp",
+                                "mcp"
                             ]
                         },
                         "description": "Disabled scopes for this user"
@@ -11199,7 +11583,7 @@
                     },
                     "headers": {
                         "type": "object",
-                        "description": "Header object keys requested with the includeHeaders argument",
+                        "description": "All parsed message headers. Included when includeHeaders is true",
                         "properties": {}
                     }
                 },
@@ -12182,6 +12566,27 @@
                     "forwarded"
                 ]
             },
+            "DeleteMessageResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "deleted": {
+                        "type": "number",
+                        "description": "Indicates the count of deleted messages"
+                    },
+                    "errors": {
+                        "type": "number",
+                        "description": "Indicates the count of errors during the delete"
+                    }
+                },
+                "required": [
+                    "success"
+                ]
+            },
             "Forwarded": {
                 "type": "object",
                 "properties": {
@@ -12270,6 +12675,40 @@
                 "required": [
                     "success",
                     "queueId"
+                ]
+            },
+            "UpdateOutboundMessageResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "queueId": {
+                        "type": "string",
+                        "description": "Outbound queue ID"
+                    },
+                    "sendTime": {
+                        "type": "string",
+                        "description": "Delivery time that was applied. Delivery times in the past are replaced with the current time",
+                        "format": "date-time"
+                    },
+                    "updated": {
+                        "type": "number",
+                        "description": "Count of updated queue entries"
+                    },
+                    "dateUpdated": {
+                        "type": "boolean",
+                        "description": "If true then the Date header of the queued message was set to the new delivery time. Only messages submitted by the user are rewritten, forwards and autoreplies keep the Date value of the original message"
+                    },
+                    "storedUpdated": {
+                        "type": "number",
+                        "description": "Count of stored copies of the message, eg. in the Sent Mail folder, that were updated"
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "GetArchivedMessagesResponse": {
@@ -13204,6 +13643,23 @@
                     "qrcode"
                 ]
             },
+            "ValidateTOTPTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "User auth token returned when this check completes a pending 2FA login"
+                    }
+                },
+                "required": [
+                    "success"
+                ]
+            },
             "GetWebAuthNResponse": {
                 "type": "object",
                 "properties": {
@@ -13626,7 +14082,11 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If access token was requested then this is the value to use as access token when making API requests on behalf of logged in user."
+                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the value to use as access token when making API requests on behalf of logged in user."
+                    },
+                    "twoFactorNonce": {
+                        "type": "string",
+                        "description": "Short-lived nonce for completing 2FA authentication"
                     },
                     "totpNonce": {
                         "type": "string",
@@ -13932,6 +14392,27 @@
                     "last",
                     "events",
                     "expires"
+                ]
+            },
+            "GetIsUserAuthenticatedResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "sess": {
+                        "type": "string",
+                        "description": "Session identifier for the logs"
+                    },
+                    "ip": {
+                        "type": "string",
+                        "description": "IP address for the logs "
+                    }
+                },
+                "required": [
+                    "success"
                 ]
             },
             "UpdateAutoreplyResponse": {
@@ -15073,6 +15554,136 @@
                     "success",
                     "version",
                     "message"
+                ]
+            },
+            "CreateMcpTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the MCP access token"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable token description"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Access level of the token. Only the read level exists today; treat this as an open set.",
+                        "enum": [
+                            "mcp:read"
+                        ]
+                    },
+                    "audience": {
+                        "type": "string",
+                        "description": "Fixed MCP token audience",
+                        "enum": [
+                            "mcp"
+                        ]
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Token creation time",
+                        "format": "date-time"
+                    },
+                    "expires": {
+                        "type": "string",
+                        "description": "Fixed expiration time, if configured",
+                        "format": "date-time"
+                    },
+                    "lastUse": {
+                        "type": "string",
+                        "description": "Most recent rate-limited token-use timestamp",
+                        "format": "date-time"
+                    },
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "Plaintext bearer token. This value is returned only once."
+                    }
+                },
+                "required": [
+                    "id",
+                    "description",
+                    "role",
+                    "audience",
+                    "created",
+                    "success",
+                    "token"
+                ]
+            },
+            "McpTokenMetadata": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the MCP access token"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable token description"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Access level of the token. Only the read level exists today; treat this as an open set.",
+                        "enum": [
+                            "mcp:read"
+                        ]
+                    },
+                    "audience": {
+                        "type": "string",
+                        "description": "Fixed MCP token audience",
+                        "enum": [
+                            "mcp"
+                        ]
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Token creation time",
+                        "format": "date-time"
+                    },
+                    "expires": {
+                        "type": "string",
+                        "description": "Fixed expiration time, if configured",
+                        "format": "date-time"
+                    },
+                    "lastUse": {
+                        "type": "string",
+                        "description": "Most recent rate-limited token-use timestamp",
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "id",
+                    "description",
+                    "role",
+                    "audience",
+                    "created"
+                ]
+            },
+            "GetMcpTokensResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/McpTokenMetadata"
+                        },
+                        "description": "MCP token metadata"
+                    }
+                },
+                "required": [
+                    "success",
+                    "results"
                 ]
             }
         },

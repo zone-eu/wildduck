@@ -120,6 +120,33 @@ indexes:
           key:
               expires: 1
 
+    # Indexes for dedicated MCP personal access tokens
+
+    - collection: mcptokens
+      type: users # index applies to users database
+      index:
+          name: mcp_token_hash
+          unique: true
+          key:
+              hash: 1
+
+    - collection: mcptokens
+      type: users # index applies to users database
+      index:
+          name: mcp_tokens_user_created
+          key:
+              user: 1
+              created: -1
+              _id: -1
+
+    - collection: mcptokens
+      type: users # index applies to users database
+      index:
+          name: mcp_token_autoexpire
+          expireAfterSeconds: 0
+          key:
+              expires: 1
+
     # Indexes for the authentication log collection
     - collection: authlog
       type: users # index applies to users database
@@ -251,6 +278,17 @@ indexes:
 
     - collection: messages
       index:
+          # Queue IDs are selective, so keep this index to one key and exclude ordinary received messages.
+          # The matching document provides mailbox and uid for the shard-targeted notified update.
+          name: outbound_message
+          key:
+              outbound: 1
+          partialFilterExpression:
+              outbound:
+                  $exists: true
+
+    - collection: messages
+      index:
           # use also as sharding key
           name: mailbox_uid
           key:
@@ -296,6 +334,21 @@ indexes:
               mailbox: 1
               idate: -1
               _id: -1
+
+    - collection: messages
+      index:
+          # covers the collapseThreads listing and count aggregations. The trailing
+          # thread key makes the id-only grouping a covered query, uid is included
+          # so that on sharded clusters the SHARDING_FILTER stage can run off index
+          # entries instead of forcing a fetch of every document. Supersedes
+          # by_idate_reverse_uid, which shares this prefix and can be dropped
+          name: by_idate_reverse_thread
+          key:
+              mailbox: 1
+              idate: -1
+              _id: -1
+              thread: 1
+              uid: 1
 
     - collection: messages
       index:
@@ -442,6 +495,14 @@ indexes:
           key:
               user: 1
               _id: -1
+
+    - collection: archived
+      index:
+          # backs the threadCounters lookup on archived message listings
+          name: user_messages_by_thread
+          key:
+              user: 1
+              thread: 1
 
     - collection: archived
       index:
@@ -605,10 +666,21 @@ indexes:
 
     - collection: tasks
       index:
-          name: task_user
+          name: task_data_user
           key:
               task: 1
-              user: 1
+              data.user: 1
+
+    - collection: tasks
+      index:
+          name: clear_folder_task
+          unique: true
+          partialFilterExpression:
+              task: clear-folder
+          key:
+              task: 1
+              data.user: 1
+              data.mailbox: 1
 
     - collection: certs
       index:

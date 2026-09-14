@@ -422,6 +422,10 @@ class IMAPConnection extends EventEmitter {
     }
 
     _finishClose() {
+        if (this._closed) {
+            return;
+        }
+
         this._closed = true;
         this._closing = false;
 
@@ -434,6 +438,8 @@ class IMAPConnection extends EventEmitter {
             this.id,
             this.clientHostname
         );
+
+        this.emit('close');
     }
 
     /**

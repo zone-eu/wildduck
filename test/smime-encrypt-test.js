@@ -645,40 +645,40 @@ describe('S/MIME encryption', function () {
     // isMessageEncrypted tests
     describe('isMessageEncrypted', function () {
         it('should detect multipart/encrypted', function () {
-            expect(handler.isMessageEncrypted('multipart/encrypted; protocol="application/pgp-encrypted"; boundary="abc"')).to.be.true;
+            expect(MessageHandler.isMessageEncrypted('multipart/encrypted; protocol="application/pgp-encrypted"; boundary="abc"')).to.be.true;
         });
 
         it('should detect multipart/encrypted case-insensitively', function () {
-            expect(handler.isMessageEncrypted('Multipart/Encrypted; protocol="application/pgp-encrypted"')).to.be.true;
+            expect(MessageHandler.isMessageEncrypted('Multipart/Encrypted; protocol="application/pgp-encrypted"')).to.be.true;
         });
 
         it('should detect S/MIME enveloped-data', function () {
-            expect(handler.isMessageEncrypted('application/pkcs7-mime; smime-type=enveloped-data; name=smime.p7m')).to.be.true;
+            expect(MessageHandler.isMessageEncrypted('application/pkcs7-mime; smime-type=enveloped-data; name=smime.p7m')).to.be.true;
         });
 
         it('should detect S/MIME authEnveloped-data', function () {
-            expect(handler.isMessageEncrypted('application/pkcs7-mime; smime-type=authEnveloped-data; name=smime.p7m')).to.be.true;
+            expect(MessageHandler.isMessageEncrypted('application/pkcs7-mime; smime-type=authEnveloped-data; name=smime.p7m')).to.be.true;
         });
 
         it('should detect S/MIME case-insensitively', function () {
-            expect(handler.isMessageEncrypted('Application/PKCS7-Mime; SMIME-TYPE=AuthEnveloped-Data')).to.be.true;
+            expect(MessageHandler.isMessageEncrypted('Application/PKCS7-Mime; SMIME-TYPE=AuthEnveloped-Data')).to.be.true;
         });
 
         it('should not detect signed-data as encrypted', function () {
-            expect(handler.isMessageEncrypted('application/pkcs7-mime; smime-type=signed-data; name=smime.p7m')).to.be.false;
+            expect(MessageHandler.isMessageEncrypted('application/pkcs7-mime; smime-type=signed-data; name=smime.p7m')).to.be.false;
         });
 
         it('should not detect plain text/plain', function () {
-            expect(handler.isMessageEncrypted('text/plain; charset=UTF-8')).to.be.false;
+            expect(MessageHandler.isMessageEncrypted('text/plain; charset=UTF-8')).to.be.false;
         });
 
         it('should return false for empty string', function () {
-            expect(handler.isMessageEncrypted('')).to.be.false;
+            expect(MessageHandler.isMessageEncrypted('')).to.be.false;
         });
 
         it('should return false for null/undefined', function () {
-            expect(handler.isMessageEncrypted(null)).to.be.false;
-            expect(handler.isMessageEncrypted(undefined)).to.be.false;
+            expect(MessageHandler.isMessageEncrypted(null)).to.be.false;
+            expect(MessageHandler.isMessageEncrypted(undefined)).to.be.false;
         });
     });
 
@@ -895,7 +895,7 @@ describe('S/MIME encryption', function () {
                 '\r\nbody'
             );
             let ct = handler._getContentType(raw);
-            expect(handler.isMessageEncrypted(ct)).to.be.true;
+            expect(MessageHandler.isMessageEncrypted(ct)).to.be.true;
         });
 
         it('should return empty string for Buffer with no header block', function () {
@@ -1057,7 +1057,7 @@ describe('S/MIME encryption', function () {
         });
 
         it('should skip already-encrypted messages during COPY/MOVE', function () {
-            let isAlreadyEncrypted = handler.isMessageEncrypted('application/pkcs7-mime; smime-type=enveloped-data');
+            let isAlreadyEncrypted = MessageHandler.isMessageEncrypted('application/pkcs7-mime; smime-type=enveloped-data');
             expect(isAlreadyEncrypted).to.be.true;
 
             // Even with encryption enabled, already-encrypted messages should be skipped

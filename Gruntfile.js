@@ -6,7 +6,7 @@ module.exports = function (grunt) {
     // Project configuration.
     grunt.initConfig({
         eslint: {
-            all: ['lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'Gruntfile.js']
+            all: ['*.js', 'lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'bin/*']
         },
 
         mochaTest: {
@@ -40,6 +40,32 @@ module.exports = function (grunt) {
                 },
                 // pop3 tests (do not require server/db)
                 src: ['test/pop3-*-test.js']
+            },
+            unit: {
+                options: {
+                    reporter: 'spec'
+                },
+                // wildduck unit tests (do not require server/db)
+                src: [
+                    'test/certs-test.js',
+                    'test/checkrangequery-test.js',
+                    'test/create-decipher-test.js',
+                    'test/filtering-tools-test.js',
+                    'test/hibp-tools-test.js',
+                    'test/list-headers-test.js',
+                    'test/maildropper-test.js',
+                    'test/message-handler-update-test.js',
+                    'test/mcp-api-client-test.js',
+                    'test/mcp-cli-test.js',
+                    'test/mcp-html-test.js',
+                    'test/mcp-test.js',
+                    'test/mcp-token-handler-test.js',
+                    'test/mcp-tools-test.js',
+                    'test/metrics-config-test.js',
+                    'test/prometheus-test.js',
+                    'test/roles-test.js',
+                    'test/tools-test.js'
+                ]
             },
             api: {
                 options: {
@@ -82,6 +108,6 @@ module.exports = function (grunt) {
     // Tasks
     grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
     grunt.registerTask('testonly', ['shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
-    // proto: run all protocol-level tests (IMAP unit + POP3) without requiring MongoDB/Redis
-    grunt.registerTask('proto', ['mochaTest:imap-unit', 'mochaTest:pop3']);
+    // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
+    grunt.registerTask('proto', ['mochaTest:imap-unit', 'mochaTest:pop3', 'mochaTest:unit']);
 };

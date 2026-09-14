@@ -141,6 +141,7 @@ module.exports = {
             _path: path,
             _user: this.session.user.id.toString(),
             _mailbox: this.selected.mailbox,
+            _mailbox_path: this.selected.path,
             _sess: this.id,
             _flags: flags.join(', '),
             _internaldate: internaldate,

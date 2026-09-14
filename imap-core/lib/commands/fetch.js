@@ -277,6 +277,7 @@ module.exports = {
             _mail_action: 'fetch',
             _user: this.session.user.id.toString(),
             _mailbox: this.selected.mailbox.toString(),
+            _mailbox_path: this.selected.path,
             _sess: this.id,
             _mark_seen: markAsSeen ? 'yes' : 'no',
             _is_uid: isUid ? 'yes' : 'no',
