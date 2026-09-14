@@ -218,6 +218,19 @@ describe('#parseQueryTerms', function () {
         ]);
     });
 
+    it('should decode a UTF-8 KEYWORD atom', function () {
+        const keyword = 'čau-😀';
+        const wireKeyword = Buffer.from(keyword).toString('binary');
+
+        expect(parseQueryTerms(['KEYWORD', wireKeyword], uidList).query).to.deep.equal([
+            {
+                key: 'flag',
+                value: keyword,
+                exists: true
+            }
+        ]);
+    });
+
     it('should handle LARGER', function () {
         expect(parseQueryTerms('LARGER 123'.split(' '), uidList).query).to.deep.equal([
             {

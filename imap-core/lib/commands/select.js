@@ -110,7 +110,8 @@ module.exports = {
                     attributes: [
                         flagList.map(flag => ({
                             type: 'atom',
-                            value: flag
+                            value: Buffer.from((flag ?? '').toString()),
+                            allow8Bit: true
                         }))
                     ]
                 })
@@ -133,7 +134,8 @@ module.exports = {
                                 flagList
                                     .map(flag => ({
                                         type: 'atom',
-                                        value: flag
+                                        value: Buffer.from((flag ?? '').toString()),
+                                        allow8Bit: true
                                     }))
                                     .concat({
                                         type: 'text',

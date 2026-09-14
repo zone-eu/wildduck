@@ -1103,6 +1103,36 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should round-trip a Unicode flag without introducing response control bytes', function (done) {
+            const keyword = 'safe\u010a\u010d-čau-😀';
+            const wireKeyword = Buffer.from(keyword).toString('binary');
+            const cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                `T3 STORE 1 FLAGS (${wireKeyword})`,
+                'T4 FETCH 1 (FLAGS BODY[])',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                response => {
+                    const responseText = response.toString();
+                    expect(responseText).to.include(`* 1 FETCH (FLAGS (${keyword}))\r\n`);
+                    expect(responseText).to.include(`* 1 FETCH (FLAGS (\\Seen ${keyword}) BODY[] {`);
+                    expect(response.indexOf(Buffer.from(keyword))).to.be.at.least(0);
+                    expect(response.indexOf(Buffer.from(keyword, 'binary'))).to.equal(-1);
+                    expect(/^T3 OK/m.test(responseText)).to.be.true;
+                    expect(/^T4 OK/m.test(responseText)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should add flags', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1:* +FLAGS (MyFlag1 MyFlag2)', 'T4 LOGOUT'];
 

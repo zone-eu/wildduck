@@ -102,6 +102,8 @@ module.exports = {
                     // fix flag case
                     flags[i] = flags[i].toLowerCase().replace(/^\\./, c => c.toUpperCase());
                 }
+            } else {
+                flags[i] = Buffer.from(flags[i], 'binary').toString();
             }
             if (flags[i].length > 255) {
                 return callback(new Error('Too long value for a flag'));

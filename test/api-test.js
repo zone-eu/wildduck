@@ -1270,6 +1270,72 @@ describe('API tests', function () {
 
             await expectCounter(createExpectedCounter(0, 0));
         });
+
+        it('should DELETE /users/{user}/mailboxes/{mailbox} expect success and invalidate account counters', async () => {
+            const keyword = `deleted-mailbox-${Date.now()}`;
+            const readCounters = async () => {
+                const [keywordResponse, flaggedResponse] = await Promise.all([
+                    server.get(`/users/${userId}/keyword-counters/${keyword}`).expect(200),
+                    server.get(`/users/${userId}/flagged-counter`).expect(200)
+                ]);
+                return {
+                    keyword: keywordResponse.body,
+                    flagged: flaggedResponse.body
+                };
+            };
+            const waitForCounters = async expected => {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    const counters = await readCounters();
+                    if (
+                        counters.keyword.total === expected.keyword.total &&
+                        counters.keyword.unseen === expected.keyword.unseen &&
+                        counters.flagged.total === expected.flagged.total &&
+                        counters.flagged.unseen === expected.flagged.unseen
+                    ) {
+                        return counters;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                throw new Error('Deleted mailbox counters did not reach expected values in time');
+            };
+            const baseline = await readCounters();
+            const mailboxResponse = await server
+                .post(`/users/${userId}/mailboxes`)
+                .send({ path: `Counter deletion ${Date.now()}` })
+                .expect(200);
+            const mailbox = mailboxResponse.body.id;
+
+            await server
+                .post(`/users/${userId}/mailboxes/${mailbox}/messages`)
+                .send({
+                    from: { name: 'Counter Tester', address: 'counter-delete@example.com' },
+                    subject: 'mailbox deletion counters',
+                    text: 'mailbox deletion counters',
+                    unseen: true,
+                    flagged: true,
+                    keywords: [keyword]
+                })
+                .expect(200);
+
+            await waitForCounters({
+                keyword: {
+                    total: baseline.keyword.total + 1,
+                    unseen: baseline.keyword.unseen + 1
+                },
+                flagged: {
+                    total: baseline.flagged.total + 1,
+                    unseen: baseline.flagged.unseen + 1
+                }
+            });
+
+            await server.delete(`/users/${userId}/mailboxes/${mailbox}`).expect(200);
+
+            const afterDeletion = await waitForCounters(baseline);
+            expect(afterDeletion.keyword.total).to.equal(baseline.keyword.total);
+            expect(afterDeletion.keyword.unseen).to.equal(baseline.keyword.unseen);
+            expect(afterDeletion.flagged.total).to.equal(baseline.flagged.total);
+            expect(afterDeletion.flagged.unseen).to.equal(baseline.flagged.unseen);
+        });
     });
 
     describe('certs', () => {

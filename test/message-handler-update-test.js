@@ -54,6 +54,7 @@ describe('MessageHandler message updates', function () {
             mailboxUpdates: 0,
             messageUpdates: 0
         };
+        const atomicFlags = messageOverrides?.atomicFlags ?? messageOverrides?.flags ?? [];
 
         let handler = Object.create(MessageHandler.prototype);
         handler.redis = false;
@@ -150,6 +151,7 @@ describe('MessageHandler message updates', function () {
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
+                                expect(options.returnDocument).to.equal('before');
                                 if (checkUpdate) {
                                     checkUpdate(update);
                                 } else {
@@ -163,7 +165,7 @@ describe('MessageHandler message updates', function () {
                                         _id: message,
                                         uid: 42,
                                         thread,
-                                        flags: ['\\Flagged']
+                                        flags: atomicFlags
                                     }
                                 });
                             }
@@ -336,6 +338,46 @@ describe('MessageHandler message updates', function () {
         });
 
         expect(updated).to.equal(1);
+    });
+
+    it('derives keyword counter deltas from the atomic pre-update flags', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(MessageHandler, () => false, {
+            // Simulates a cursor snapshot read before another request added the keyword.
+            flags: [],
+            atomicFlags: ['concurrent-keyword']
+        });
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            addKeywords: ['concurrent-keyword']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified).to.have.lengthOf(1);
+        expect(notified[0].flags).to.deep.equal(['concurrent-keyword']);
+        expect(notified[0].addedKeywords).to.deep.equal([]);
+        expect(notified[0].removedKeywords).to.deep.equal([]);
+    });
+
+    it('does not add or remove the reserved forwarded marker as a keyword', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['visible-keyword'] });
+            },
+            { flags: ['$Forwarded', 'old-keyword'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            keywords: ['$Forwarded', 'visible-keyword'],
+            removeKeywords: ['$Forwarded']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['$Forwarded', 'visible-keyword']);
+        expect(notified[0].addedKeywords).to.deep.equal(['visible-keyword']);
+        expect(notified[0].removedKeywords).to.deep.equal(['old-keyword']);
     });
 
     it('publishes marked.ham when markHam=true is the only requested action', async function () {
