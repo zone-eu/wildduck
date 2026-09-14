@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.51.1](https://github.com/zone-eu/wildduck/compare/v1.51.0...v1.51.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* bump deps ([#1167](https://github.com/zone-eu/wildduck/issues/1167)) ([614ab26](https://github.com/zone-eu/wildduck/commit/614ab2677d3a808b8a6df90eb9c6d0f803a6fee9))
+* ZMS-101: fix seen value for get message listing endpoint when threads are collapsed ([#1168](https://github.com/zone-eu/wildduck/issues/1168)) ([8e27f3e](https://github.com/zone-eu/wildduck/commit/8e27f3e7aa0c29882bca6f2df386bc2df8d480cc))
+
 ## [1.51.0](https://github.com/zone-eu/wildduck/compare/v1.50.2...v1.51.0) (2026-09-06)
 
 
