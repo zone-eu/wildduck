@@ -1,5 +1,5 @@
 /*eslint no-unused-expressions: 0, prefer-arrow-callback: 0, no-console:0 */
-/* globals before: false */
+/* globals before: false, after: false */
 
 'use strict';
 
@@ -2766,5 +2766,150 @@ describe('Messages tests', function () {
         const response = await server.delete(`/users/${user}/mailboxes/${otherMailbox}/messages`).send({}).expect(404);
 
         expect(response.body.code).to.equal('NoSuchMailbox');
+    });
+});
+
+describe('Collapsed thread state', function () {
+    this.timeout(20000); // eslint-disable-line no-invalid-this
+
+    let user;
+    let mailbox;
+    let root;
+    let middle;
+    let latest;
+    let single;
+
+    before(async () => {
+        const username = `thread-seen-${Date.now().toString(36)}-${process.pid}`;
+        const userResponse = await server
+            .post('/users')
+            .send({ username, password: 'secretpassword', address: `${username}@example.com` })
+            .expect(200);
+        user = userResponse.body.id;
+
+        const mailboxes = await server.get(`/users/${user}/mailboxes`).expect(200);
+        mailbox = mailboxes.body.results.find(entry => entry.path === 'INBOX').id;
+        const drafts = mailboxes.body.results.find(entry => entry.specialUse === '\\Drafts').id;
+
+        const append = async (targetMailbox, day, options) => {
+            const response = await server
+                .post(`/users/${user}/mailboxes/${targetMailbox}/messages`)
+                .send({
+                    date: new Date(`2026-01-0${day}T00:00:00.000Z`),
+                    draft: false,
+                    unseen: false,
+                    to: [{ address: 'thread-seen@example.com' }],
+                    text: 'Thread seen state regression',
+                    ...options
+                })
+                .expect(200);
+            return response.body.message.id;
+        };
+
+        root = await append(mailbox, 1, { subject: 'Thread with an unseen middle message' });
+        middle = await append(mailbox, 2, { unseen: true, reference: { mailbox, id: root, action: 'reply' } });
+        latest = await append(mailbox, 3, { draft: true, reference: { mailbox, id: middle, action: 'reply' } });
+        // Thread metadata includes messages in other mailboxes.
+        await append(drafts, 4, { unseen: true, flagged: true, reference: { mailbox, id: root, action: 'reply' } });
+        single = await append(mailbox, 5, { subject: 'Separate seen thread' });
+    });
+
+    after(async () => {
+        if (user) {
+            await server.delete(`/users/${user}`).expect(200);
+        }
+    });
+
+    const listings = [
+        { path: '/users/:user/mailboxes/:mailbox/messages', order: 'asc' },
+        { path: '/users/:user/mailboxes/:mailbox/messages', order: 'desc' },
+        { path: '/users/:user/search', order: 'asc' },
+        { path: '/users/:user/search', order: 'desc' },
+        { path: '/users/:user/search' }
+    ];
+
+    for (const { path, order } of listings) {
+        it(`should GET ${path} expect success / unseen middle message marks collapsed thread unread (${order || 'default'} order)`, async () => {
+            const response = await server
+                .get(path.replace(':user', user).replace(':mailbox', mailbox))
+                .query({ mailbox, order, collapseThreads: true, includeHasDrafts: true, limit: 10 })
+                .expect(200);
+
+            expect(response.body.total).to.equal(2);
+            const thread = response.body.results.find(entry => entry.id === (order === 'asc' ? root : latest));
+            expect(thread).to.exist;
+            expect(thread.seen).to.be.false;
+            expect(thread.flagged).to.be.true;
+            expect(thread.hasDrafts).to.be.true;
+            expect(thread).to.not.have.property('threadMessageCount');
+            expect(response.body.results.find(entry => entry.id === single).seen).to.be.true;
+            expect(response.body.results.find(entry => entry.id === single).flagged).to.be.false;
+        });
+    }
+
+    it('should GET /users/:user/mailboxes/:mailbox/messages expect success / collapsed seen state survives cursor pagination without hasDrafts', async () => {
+        const path = `/users/${user}/mailboxes/${mailbox}/messages`;
+        const query = { collapseThreads: true, threadCounters: true, limit: 1, order: 'desc' };
+        const first = await server.get(path).query(query).expect(200);
+        expect(first.body.results[0].id).to.equal(single);
+        expect(first.body.results[0].seen).to.be.true;
+
+        const next = await server.get(path).query({ ...query, next: first.body.nextCursor }).expect(200);
+        expect(next.body.results[0].id).to.equal(latest);
+        expect(next.body.results[0].seen).to.be.false;
+        expect(next.body.results[0].flagged).to.be.true;
+        expect(next.body.results[0].threadMessageCount).to.equal(4);
+        expect(next.body.results[0]).to.not.have.property('hasDrafts');
+        expect(next.body.nextCursor).to.be.false;
+
+        const previous = await server.get(path).query({ ...query, previous: next.body.previousCursor }).expect(200);
+        expect(previous.body.results).to.deep.equal(first.body.results);
+    });
+
+    it('should GET /users/:user/mailboxes/:mailbox/messages expect success / expanded results keep individual seen flags', async () => {
+        const response = await server
+            .get(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .query({ includeHasDrafts: true, order: 'asc' })
+            .expect(200);
+
+        expect(response.body.results.map(entry => entry.id)).to.deep.equal([root, middle, latest, single]);
+        expect(response.body.results.map(entry => entry.seen)).to.deep.equal([true, false, true, true]);
+        expect(response.body.results.map(entry => entry.flagged)).to.deep.equal([false, false, false, false]);
+        expect(response.body.results.map(entry => entry.hasDrafts)).to.deep.equal([true, true, false, false]);
+    });
+
+    it('should GET /users/:user/search expect success / collapsed seen state respects message filters', async () => {
+        for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
+            for (const unseen of [true, false]) {
+                const filter = path.endsWith('/search') ? { unseen, seen: !unseen } : { unseen };
+                const response = await server
+                    .get(path)
+                    .query({ mailbox, ...filter, collapseThreads: true, includeHasDrafts: true, order: 'desc' })
+                    .expect(200);
+
+                expect(response.body.results.map(entry => entry.id)).to.deep.equal(unseen ? [middle] : [single, latest]);
+                expect(response.body.results.map(entry => entry.seen), `${path}, unseen=${unseen}`).to.deep.equal(unseen ? [false] : [true, false]);
+            }
+        }
+    });
+
+    it('should GET /users/:user/search expect success / unread thread state includes messages in other mailboxes', async () => {
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${middle}`).send({ seen: true }).expect(200);
+
+        for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
+            const response = await server
+                .get(path)
+                .query({ mailbox, collapseThreads: true, includeHasDrafts: true, order: 'desc' })
+                .expect(200);
+
+            expect(response.body.results.map(entry => entry.id)).to.deep.equal([single, latest]);
+            expect(response.body.results.map(entry => entry.seen)).to.deep.equal([true, false]);
+            expect(response.body.results.map(entry => entry.flagged)).to.deep.equal([false, true]);
+            expect(response.body.results[1].hasDrafts).to.be.true;
+        }
+
+        const response = await server.get(`/users/${user}/search`).query({ collapseThreads: true, includeHasDrafts: true }).expect(200);
+        expect(response.body.results.find(entry => entry.id !== single).seen).to.be.false;
+        expect(response.body.results.find(entry => entry.id !== single).flagged).to.be.true;
     });
 });
