@@ -10,6 +10,13 @@ const expect = chai.expect;
 chai.config.includeStack = true;
 
 describe('Unicode flags', function() {
+    it('should keep already-decoded Unicode keywords unchanged', function() {
+        const keyword = 'čau-😀';
+
+        expect(imapTools.decodeUtf8(keyword)).to.equal(keyword);
+        expect(imapTools.decodeUtf8(Buffer.from(keyword).toString('binary'))).to.equal(keyword);
+    });
+
     it('should preserve Unicode keywords without introducing response control bytes', function() {
         const keyword = 'safe\u010a\u010d-čau-😀';
         const connection = Object.create(IMAPConnection.prototype);

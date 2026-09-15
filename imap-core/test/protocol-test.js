@@ -755,6 +755,34 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should preserve Unicode flags when appending', function (done) {
+            const keyword = 'čau-😀';
+            const wireKeyword = Buffer.from(keyword).toString('binary');
+            let message = Buffer.from('From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: HELLO!\r\n\r\nWORLD!');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 APPEND INBOX (' + wireKeyword + ') {' + message.length + '}\r\n' + message.toString('binary'),
+                'T3 SELECT INBOX',
+                'T4 FETCH 7 (FLAGS)',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    expect(resp).to.include(`* 7 FETCH (FLAGS (${keyword}))`);
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should reject appending an empty literal message', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 STATUS INBOX (MESSAGES)', 'T3 APPEND INBOX {0}', [''], 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
 
@@ -1270,6 +1298,26 @@ describe('IMAP Protocol integration tests', function () {
                 function (resp) {
                     resp = resp.toString();
                     expect(resp.match(/^\* \d+ FETCH \(UID \d+ FLAGS \(MyFlag1 MyFlag2\)\)$/gm).length).to.equal(6);
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should preserve Unicode flags', function (done) {
+            const keyword = 'čau-😀';
+            const wireKeyword = Buffer.from(keyword).toString('binary');
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID STORE 1 FLAGS (' + wireKeyword + ')', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp).to.include(`FLAGS (${keyword})`);
                     expect(/^T3 OK/m.test(resp)).to.be.true;
                     done();
                 }

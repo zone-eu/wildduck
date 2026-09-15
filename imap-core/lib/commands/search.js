@@ -342,7 +342,7 @@ function normalizeTerm(term, mapping) {
             if (i && i % 2 !== 0) {
                 flags.push({
                     key: 'flag',
-                    value: typeof val === 'string' && val.charAt(0) !== '\\' ? Buffer.from(val, 'binary').toString() : val,
+                    value: typeof val === 'string' && val.charAt(0) !== '\\' ? imapTools.decodeUtf8(val) : val,
                     exists: !!result[i + 1]
                 });
             }
