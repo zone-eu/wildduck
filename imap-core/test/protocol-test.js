@@ -1134,13 +1134,7 @@ describe('IMAP Protocol integration tests', function () {
         it('should round-trip a Unicode flag without introducing response control bytes', function (done) {
             const keyword = 'safe\u010a\u010d-čau-😀';
             const wireKeyword = Buffer.from(keyword).toString('binary');
-            const cmds = [
-                'T1 LOGIN testuser pass',
-                'T2 SELECT INBOX',
-                `T3 STORE 1 FLAGS (${wireKeyword})`,
-                'T4 FETCH 1 (FLAGS BODY[])',
-                'T5 LOGOUT'
-            ];
+            const cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', `T3 STORE 1 FLAGS (${wireKeyword})`, 'T4 FETCH 1 (FLAGS BODY[])', 'T5 LOGOUT'];
 
             testClient(
                 {
@@ -1307,7 +1301,7 @@ describe('IMAP Protocol integration tests', function () {
         it('should preserve Unicode flags', function (done) {
             const keyword = 'čau-😀';
             const wireKeyword = Buffer.from(keyword).toString('binary');
-            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID STORE 1 FLAGS (' + wireKeyword + ')', 'T4 LOGOUT'];
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID STORE 1:* FLAGS (' + wireKeyword + ')', 'T4 LOGOUT'];
 
             testClient(
                 {
