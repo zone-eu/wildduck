@@ -2734,6 +2734,67 @@
                 }
             }
         },
+        "/users/{user}/keywords": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get user keywords",
+                "description": "Returns all custom keywords used by the user with message counters",
+                "operationId": "getUserKeywords",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "counters",
+                        "in": "query",
+                        "description": "Should the response include counters (total + unseen). Counters come with some overhead.",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserKeywordsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/keyword-counters/{keyword}": {
             "get": {
                 "tags": [
@@ -11292,6 +11353,41 @@
                     "encryptMessages",
                     "total",
                     "unseen"
+                ]
+            },
+            "UserKeywordsResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "keyword": {
+                                    "type": "string",
+                                    "description": "Keyword name"
+                                },
+                                "total": {
+                                    "type": "number",
+                                    "description": "Total number of messages with this keyword"
+                                },
+                                "unseen": {
+                                    "type": "number",
+                                    "description": "Unseen number of messages with this keyword"
+                                }
+                            },
+                            "required": [
+                                "keyword"
+                            ]
+                        }
+                    }
+                },
+                "required": [
+                    "success",
+                    "keywords"
                 ]
             },
             "KeywordCounterResponse": {

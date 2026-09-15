@@ -103,7 +103,7 @@ module.exports = {
                     flags[i] = flags[i].toLowerCase().replace(/^\\./, c => c.toUpperCase());
                 }
             } else {
-                flags[i] = imapTools.decodeUtf8(flags[i]);
+                flags[i] = imapTools.decodeUtf8(flags[i], command.sourceEncoding);
             }
             if (flags[i].length > 255) {
                 return callback(new Error('Too long value for a flag'));

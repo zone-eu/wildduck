@@ -14,11 +14,8 @@ const utf7decode = str => iconv.decode(Buffer.from(str), 'utf-7-imap').toString(
 module.exports.utf7encode = utf7encode;
 module.exports.utf7decode = utf7decode;
 
-// IMAP atoms are normally represented as binary strings by the stream parser,
-// but command handlers may also receive already-decoded JavaScript strings.
-// Decode only the former so that Unicode keywords are not truncated.
-module.exports.decodeUtf8 = value => {
-    if (typeof value !== 'string' || /[\u0100-\uffff]/.test(value)) {
+module.exports.decodeUtf8 = (value, sourceEncoding) => {
+    if (sourceEncoding !== 'binary' || typeof value !== 'string') {
         return value;
     }
     return Buffer.from(value, 'binary').toString();

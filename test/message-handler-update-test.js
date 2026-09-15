@@ -308,13 +308,15 @@ describe('MessageHandler message updates', function () {
                 expect(update).to.be.an('array').with.lengthOf(1);
                 expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen', '$Label'] });
                 expect(update[0].$set.flags.$setUnion[0].$filter.cond.$in[1].$literal).to.include('$Forwarded');
+                expect(update[0].$set['meta.custom']).to.deep.equal({ $literal: { label: '$flags' } });
             },
             { flags: ['\\Seen', '$Forwarded', 'old-label'] }
         );
 
         let updated = await updateAsync(handler, user, mailbox, {
             seen: true,
-            keywords: ['$Label']
+            keywords: ['$Label'],
+            metaData: { label: '$flags' }
         });
 
         expect(updated).to.equal(1);

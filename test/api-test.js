@@ -935,6 +935,54 @@ describe('API tests', function () {
             }
         });
 
+        it('should GET /users/:user/keywords with all custom keywords and counters', async () => {
+            const firstResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
+                    subject: 'first keyword list message',
+                    text: 'Testing keyword list',
+                    unseen: true,
+                    keywords: ['keyword-list-a', 'keyword-list-shared']
+                })
+                .expect(200);
+            const secondResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
+                    subject: 'second keyword list message',
+                    text: 'Testing keyword list',
+                    keywords: ['keyword-list-b', 'keyword-list-shared']
+                })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${secondResponse.body.message.id}`)
+                .send({ seen: true })
+                .expect(200);
+
+            const response = await server.get(`/users/${userId}/keywords?counters=true`).expect(200);
+            expect(response.body.success).to.be.true;
+            expect(response.body.keywords).to.deep.include.members([
+                { keyword: 'keyword-list-a', total: 1, unseen: 1 },
+                { keyword: 'keyword-list-b', total: 1, unseen: 0 },
+                { keyword: 'keyword-list-shared', total: 2, unseen: 1 }
+            ]);
+
+            const namesOnlyResponse = await server.get(`/users/${userId}/keywords`).expect(200);
+            expect(namesOnlyResponse.body.keywords).to.deep.include.members([
+                { keyword: 'keyword-list-a' },
+                { keyword: 'keyword-list-b' },
+                { keyword: 'keyword-list-shared' }
+            ]);
+            for (const keyword of namesOnlyResponse.body.keywords) {
+                expect(keyword).to.not.have.any.keys('total', 'unseen');
+            }
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${firstResponse.body.message.id}`).expect(200);
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${secondResponse.body.message.id}`).expect(200);
+        });
+
         it('should POST /users/:user/mailboxes/:mailbox/messages with keywords expect success / keywords appear in GET', async () => {
             const uploadResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)

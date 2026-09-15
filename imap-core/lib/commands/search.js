@@ -36,7 +36,7 @@ module.exports = {
         let parsed;
 
         try {
-            parsed = parseQueryTerms(terms, this.selected.uidList);
+            parsed = parseQueryTerms(terms, this.selected.uidList, command.sourceEncoding);
         } catch (E) {
             return callback(E);
         }
@@ -159,7 +159,7 @@ function getWithinTargetDate(interval) {
     return new Date(Math.floor(Date.now() / 1000) * 1000 - interval * 1000);
 }
 
-function parseQueryTerms(terms, uidList) {
+function parseQueryTerms(terms, uidList, sourceEncoding) {
     terms = [].concat(terms || []);
 
     let pos = 0;
@@ -221,7 +221,7 @@ function parseQueryTerms(terms, uidList) {
         }
 
         if (imapTools.searchMapping.hasOwnProperty(curTerm[0])) {
-            curTerm = normalizeTerm(curTerm, imapTools.searchMapping[curTerm[0]]);
+            curTerm = normalizeTerm(curTerm, imapTools.searchMapping[curTerm[0]], sourceEncoding);
         }
 
         // return multiple values at once, should be already formatted
@@ -331,7 +331,7 @@ function parseQueryTerms(terms, uidList) {
     return parsed;
 }
 
-function normalizeTerm(term, mapping) {
+function normalizeTerm(term, mapping, sourceEncoding) {
     let flags;
 
     let result = [mapping.key].concat(mapping.value.map(val => (val === '$1' ? term[1] : val)));
@@ -342,7 +342,7 @@ function normalizeTerm(term, mapping) {
             if (i && i % 2 !== 0) {
                 flags.push({
                     key: 'flag',
-                    value: typeof val === 'string' && val.charAt(0) !== '\\' ? imapTools.decodeUtf8(val) : val,
+                    value: typeof val === 'string' && val.charAt(0) !== '\\' ? imapTools.decodeUtf8(val, sourceEncoding) : val,
                     exists: !!result[i + 1]
                 });
             }
