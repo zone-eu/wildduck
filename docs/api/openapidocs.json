@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.50.0"
+        "version": "1.51.1"
     },
     "servers": [
         {
@@ -371,10 +371,11 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "metaData": {
                                         "type": "object",
@@ -747,10 +748,11 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "disabled": {
                                         "type": "boolean",
@@ -2732,6 +2734,178 @@
                 }
             }
         },
+        "/users/{user}/keywords": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get user keywords",
+                "description": "Returns all custom keywords used by the user with message counters",
+                "operationId": "getUserKeywords",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "counters",
+                        "in": "query",
+                        "description": "Should the response include counters (total + unseen). Counters come with some overhead.",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserKeywordsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/keyword-counters/{keyword}": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get keyword counter",
+                "description": "Returns total and unseen counters for a custom keyword",
+                "operationId": "getKeywordCounters",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "keyword",
+                        "in": "path",
+                        "description": "Keyword to count",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/KeywordCounterResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/flagged-counter": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get flagged counter",
+                "description": "Returns total and unseen counters for flagged messages",
+                "operationId": "getFlaggedCounter",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "ID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FlaggedCounterResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/mailboxes/{mailbox}/messages": {
             "get": {
                 "tags": [
@@ -2964,6 +3138,27 @@
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
                                     },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the message. Replaces all existing custom keywords. System flags are not affected."
+                                    },
+                                    "addKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to add to the message without affecting existing keywords."
+                                    },
+                                    "removeKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to remove from the message without affecting other keywords."
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "description": "Session identifier for the logs"
@@ -3123,6 +3318,13 @@
                                         "type": "boolean",
                                         "description": "Is the message a draft or not",
                                         "default": false
+                                    },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the uploaded message"
                                     },
                                     "raw": {
                                         "type": "string",
@@ -3437,6 +3639,15 @@
                         }
                     },
                     {
+                        "name": "keyword",
+                        "in": "query",
+                        "description": "If set, then matches only messages that have this custom keyword set",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
                         "name": "useAndSearch",
                         "in": "query",
                         "description": "If true, then fulltext search terms are combined with AND semantics",
@@ -3684,6 +3895,10 @@
                                         "type": "boolean",
                                         "description": "If true, then matches only messages with \\Seen flags"
                                     },
+                                    "keyword": {
+                                        "type": "string",
+                                        "description": "If set, then matches only messages that have this custom keyword set"
+                                    },
                                     "useAndSearch": {
                                         "type": "boolean",
                                         "description": "If true, then fulltext search terms are combined with AND semantics",
@@ -3731,6 +3946,27 @@
                                                 "type": "boolean",
                                                 "description": "If true then delete all found messages",
                                                 "default": false
+                                            },
+                                            "keywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to set on matched messages. Replaces all existing custom keywords."
+                                            },
+                                            "addKeywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to add to matched messages without affecting existing keywords."
+                                            },
+                                            "removeKeywords": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "description": "Custom keywords to remove from matched messages without affecting other keywords."
                                             }
                                         }
                                     }
@@ -3916,6 +4152,27 @@
                                         "type": "object",
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
+                                    },
+                                    "keywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to set on the message, overrides any existing keywords"
+                                    },
+                                    "addKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to add to the message without affecting existing keywords, can not be used together with `keywords`"
+                                    },
+                                    "removeKeywords": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Custom keywords to remove from the message without affecting other keywords, can not be used together with `keywords`"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -9149,11 +9406,196 @@
                 }
             }
         },
-        "/api-methods": {
+        "/users/{user}/mcp-tokens": {
+            "post": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "Create MCP Access Token",
+                "description": "Creates a read-only MCP personal access token. The plaintext token is returned only by this response.",
+                "operationId": "createMcpToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Human-readable token description"
+                                    },
+                                    "expires": {
+                                        "type": "string",
+                                        "description": "Optional fixed expiration time in the future",
+                                        "format": "date-time"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "description": "Access level to grant. Only the read level exists today.",
+                                        "enum": [
+                                            "mcp:read"
+                                        ],
+                                        "default": "mcp:read"
+                                    }
+                                },
+                                "required": [
+                                    "description"
+                                ]
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateMcpTokenResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "get": {
-                "operationId": "api-methods",
-                "parameters": [],
-                "responses": {}
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "List MCP Access Tokens",
+                "description": "Lists MCP token metadata without token hashes or plaintext secrets.",
+                "operationId": "getMcpTokens",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetMcpTokensResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mcp-tokens/{token}": {
+            "delete": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "Revoke MCP Access Token",
+                "description": "Immediately revokes an MCP access token by its record ID.",
+                "operationId": "deleteMcpToken",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "description": "ID of the MCP access token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     },
@@ -9797,7 +10239,8 @@
                             "enum": [
                                 "imap",
                                 "pop3",
-                                "smtp"
+                                "smtp",
+                                "mcp"
                             ]
                         },
                         "description": "Disabled scopes for this user"
@@ -10912,6 +11355,88 @@
                     "unseen"
                 ]
             },
+            "UserKeywordsResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "keyword": {
+                                    "type": "string",
+                                    "description": "Keyword name"
+                                },
+                                "total": {
+                                    "type": "number",
+                                    "description": "Total number of messages with this keyword"
+                                },
+                                "unseen": {
+                                    "type": "number",
+                                    "description": "Unseen number of messages with this keyword"
+                                }
+                            },
+                            "required": [
+                                "keyword"
+                            ]
+                        }
+                    }
+                },
+                "required": [
+                    "success",
+                    "keywords"
+                ]
+            },
+            "KeywordCounterResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Keyword name"
+                    },
+                    "total": {
+                        "type": "number",
+                        "description": "Total number of messages with this keyword"
+                    },
+                    "unseen": {
+                        "type": "number",
+                        "description": "Unseen number of messages with this keyword"
+                    }
+                },
+                "required": [
+                    "success",
+                    "keyword",
+                    "total",
+                    "unseen"
+                ]
+            },
+            "FlaggedCounterResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "total": {
+                        "type": "number",
+                        "description": "Total number of flagged messages"
+                    },
+                    "unseen": {
+                        "type": "number",
+                        "description": "Unseen number of flagged messages"
+                    }
+                },
+                "required": [
+                    "success",
+                    "total",
+                    "unseen"
+                ]
+            },
             "Address": {
                 "type": "object",
                 "properties": {
@@ -11099,6 +11624,13 @@
                     "forwarded": {
                         "type": "boolean",
                         "description": "Does this message have a $Forwarded flag"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Custom keywords set on this message"
                     },
                     "references": {
                         "type": "array",
@@ -12058,6 +12590,13 @@
                         ],
                         "description": "Custom metadata object set for this message"
                     },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Custom keywords set on this message"
+                    },
                     "references": {
                         "type": "array",
                         "items": {
@@ -12556,6 +13095,13 @@
                             "type": "string"
                         },
                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "An array of keywords to apply to matching messages"
                     }
                 }
             },
@@ -15104,6 +15650,136 @@
                     "success",
                     "version",
                     "message"
+                ]
+            },
+            "CreateMcpTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the MCP access token"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable token description"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Access level of the token. Only the read level exists today; treat this as an open set.",
+                        "enum": [
+                            "mcp:read"
+                        ]
+                    },
+                    "audience": {
+                        "type": "string",
+                        "description": "Fixed MCP token audience",
+                        "enum": [
+                            "mcp"
+                        ]
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Token creation time",
+                        "format": "date-time"
+                    },
+                    "expires": {
+                        "type": "string",
+                        "description": "Fixed expiration time, if configured",
+                        "format": "date-time"
+                    },
+                    "lastUse": {
+                        "type": "string",
+                        "description": "Most recent rate-limited token-use timestamp",
+                        "format": "date-time"
+                    },
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "Plaintext bearer token. This value is returned only once."
+                    }
+                },
+                "required": [
+                    "id",
+                    "description",
+                    "role",
+                    "audience",
+                    "created",
+                    "success",
+                    "token"
+                ]
+            },
+            "McpTokenMetadata": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the MCP access token"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable token description"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Access level of the token. Only the read level exists today; treat this as an open set.",
+                        "enum": [
+                            "mcp:read"
+                        ]
+                    },
+                    "audience": {
+                        "type": "string",
+                        "description": "Fixed MCP token audience",
+                        "enum": [
+                            "mcp"
+                        ]
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Token creation time",
+                        "format": "date-time"
+                    },
+                    "expires": {
+                        "type": "string",
+                        "description": "Fixed expiration time, if configured",
+                        "format": "date-time"
+                    },
+                    "lastUse": {
+                        "type": "string",
+                        "description": "Most recent rate-limited token-use timestamp",
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "id",
+                    "description",
+                    "role",
+                    "audience",
+                    "created"
+                ]
+            },
+            "GetMcpTokensResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/McpTokenMetadata"
+                        },
+                        "description": "MCP token metadata"
+                    }
+                },
+                "required": [
+                    "success",
+                    "results"
                 ]
             }
         },

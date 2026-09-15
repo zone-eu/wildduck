@@ -94,4 +94,87 @@ describe('Search apply task', function () {
         expect(mailboxLookup.user.toString()).to.equal(user.toString());
         expect(mailboxLookup.mailbox.toString()).to.equal(destinationMailbox.toString());
     });
+
+    it('should preserve a move action when keyword updates are also requested', async () => {
+        const user = new ObjectId();
+        const sourceMailbox = new ObjectId();
+        const destinationMailbox = new ObjectId();
+        const message = {
+            _id: new ObjectId(),
+            user,
+            mailbox: sourceMailbox,
+            uid: 42,
+            flags: []
+        };
+        const originalUsers = db.users;
+        const originalDatabase = db.database;
+        const moves = [];
+        let position = 0;
+
+        db.users = {
+            collection() {
+                return {
+                    async findOne() {
+                        return { _id: user };
+                    }
+                };
+            }
+        };
+        db.database = {
+            collection(name) {
+                expect(name).to.equal('messages');
+                return {
+                    find() {
+                        return {
+                            async next() {
+                                return position++ ? null : message;
+                            },
+                            async close() {
+                                return;
+                            }
+                        };
+                    }
+                };
+            }
+        };
+
+        try {
+            await searchApplyTask(
+                { _id: new ObjectId() },
+                {
+                    user: user.toHexString(),
+                    action: {
+                        moveTo: destinationMailbox.toHexString(),
+                        addKeywords: ['project']
+                    }
+                },
+                {
+                    messageHandler: {
+                        update(...args) {
+                            const callback = args[args.length - 1];
+                            callback(new Error('update should not replace moveAsync'));
+                        },
+                        async getMailboxAsync() {
+                            return { _id: destinationMailbox };
+                        },
+                        async moveAsync(options) {
+                            moves.push(options);
+                        },
+                        async delAsync() {
+                            throw new Error('delAsync should not be called');
+                        }
+                    }
+                }
+            );
+        } finally {
+            db.users = originalUsers;
+            db.database = originalDatabase;
+        }
+
+        expect(moves).to.have.lengthOf(1);
+        expect(moves[0].source.mailbox.toString()).to.equal(sourceMailbox.toString());
+        expect(moves[0].destination.mailbox.toString()).to.equal(destinationMailbox.toString());
+        expect(moves[0].updates).to.deep.equal({ addKeywords: ['project'] });
+        expect(moves[0].messageQuery).to.equal(42);
+    });
 });

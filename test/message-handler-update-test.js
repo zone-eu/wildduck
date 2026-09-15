@@ -54,6 +54,7 @@ describe('MessageHandler message updates', function () {
             mailboxUpdates: 0,
             messageUpdates: 0
         };
+        const atomicFlags = messageOverrides?.atomicFlags ?? messageOverrides?.flags ?? [];
 
         let handler = Object.create(MessageHandler.prototype);
         handler.redis = false;
@@ -150,6 +151,7 @@ describe('MessageHandler message updates', function () {
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
+                                expect(options.returnDocument).to.equal('before');
                                 if (checkUpdate) {
                                     checkUpdate(update);
                                 } else {
@@ -163,7 +165,7 @@ describe('MessageHandler message updates', function () {
                                         _id: message,
                                         uid: 42,
                                         thread,
-                                        flags: ['\\Flagged']
+                                        flags: atomicFlags
                                     }
                                 });
                             }
@@ -298,6 +300,88 @@ describe('MessageHandler message updates', function () {
         expect(quotaUpdates).to.deep.equal([]);
     });
 
+    it('uses literal keyword arrays in aggregation updates', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen', '$Label'] });
+                expect(update[0].$set.flags.$setUnion[0].$filter.cond.$in[1].$literal).to.include('$Forwarded');
+                expect(update[0].$set['meta.custom']).to.deep.equal({ $literal: { label: '$flags' } });
+            },
+            { flags: ['\\Seen', '$Forwarded', 'old-label'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            seen: true,
+            keywords: ['$Label'],
+            metaData: { label: '$flags' }
+        });
+
+        expect(updated).to.equal(1);
+    });
+
+    it('uses one aggregation update when adding and removing system flags together', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen'] });
+                expect(update[0].$set.flags.$setUnion[0].$filter.cond.$not.$in[1]).to.deep.equal({ $literal: ['\\Flagged'] });
+            },
+            { flags: ['\\Flagged'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            seen: true,
+            flagged: false
+        });
+
+        expect(updated).to.equal(1);
+    });
+
+    it('derives keyword counter deltas from the atomic pre-update flags', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(MessageHandler, () => false, {
+            // Simulates a cursor snapshot read before another request added the keyword.
+            flags: [],
+            atomicFlags: ['concurrent-keyword']
+        });
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            addKeywords: ['concurrent-keyword']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified).to.have.lengthOf(1);
+        expect(notified[0].flags).to.deep.equal(['concurrent-keyword']);
+        expect(notified[0].addedKeywords).to.deep.equal([]);
+        expect(notified[0].removedKeywords).to.deep.equal([]);
+    });
+
+    it('does not add or remove the reserved forwarded marker as a keyword', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['visible-keyword'] });
+            },
+            { flags: ['$Forwarded', 'old-keyword'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            keywords: ['$Forwarded', 'visible-keyword'],
+            removeKeywords: ['$Forwarded']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['$Forwarded', 'visible-keyword']);
+        expect(notified[0].addedKeywords).to.deep.equal(['visible-keyword']);
+        expect(notified[0].removedKeywords).to.deep.equal(['old-keyword']);
+    });
+
     it('publishes marked.ham when markHam=true is the only requested action', async function () {
         const published = [];
         const { MessageHandler, MARKED_HAM, restore } = loadModulesWithPublishStub(published);
@@ -334,6 +418,7 @@ describe('MessageHandler message updates', function () {
         const insertedMessage = new ObjectId();
         const thread = new ObjectId();
         const existsEntries = [];
+        const removeEntries = [];
 
         let handler = Object.create(MessageHandler.prototype);
         handler.database = {
@@ -364,6 +449,7 @@ describe('MessageHandler message updates', function () {
                 message: {
                     mailbox: targetMailbox,
                     unseen: false,
+                    flags: ['\\Flagged', 'new-keyword'],
                     idate: new Date(),
                     thread
                 },
@@ -377,10 +463,12 @@ describe('MessageHandler message updates', function () {
                     user
                 },
                 existsEntries,
-                removeEntries: [],
+                removeEntries,
                 messageId: sourceMessage,
                 messageUid: 41,
-                unseen: false,
+                unseen: true,
+                flagged: false,
+                keywords: ['old-keyword'],
                 newModseq: 3,
                 uidNext: 42,
                 junk: false,
@@ -400,6 +488,11 @@ describe('MessageHandler message updates', function () {
         expect(existsEntries[0].markHam).to.be.true;
         expect(existsEntries[0].uid).to.equal(42);
         expect(existsEntries[0].message.toString()).to.equal(insertedMessage.toString());
+        expect(existsEntries[0].flagged).to.be.true;
+        expect(existsEntries[0].keywords).to.deep.equal(['new-keyword']);
+        expect(removeEntries[0].unseen).to.be.true;
+        expect(removeEntries[0].flagged).to.be.false;
+        expect(removeEntries[0].keywords).to.deep.equal(['old-keyword']);
     });
 });
 

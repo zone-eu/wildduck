@@ -298,6 +298,11 @@ class IMAPCommand {
 
             try {
                 this.parsed = imapHandler.parser(this.payload, { literals: this.literals });
+                // IMAPStream exposes command lines as binary strings. Keep that
+                // provenance explicit so handlers only UTF-8 decode wire data.
+                Object.defineProperty(this.parsed, 'sourceEncoding', {
+                    value: 'binary'
+                });
             } catch (E) {
                 if (this.connection && typeof this.connection.loggelf === 'function') {
                     // Log IMAP parser failures where the raw command can not be tokenized into a valid request.

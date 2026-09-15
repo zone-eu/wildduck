@@ -92,6 +92,8 @@ module.exports = {
                     // fix flag case
                     flags[i] = flags[i].toLowerCase().replace(/^\\./, c => c.toUpperCase());
                 }
+            } else {
+                flags[i] = imapTools.decodeUtf8(flags[i], command.sourceEncoding);
             }
         }
 
