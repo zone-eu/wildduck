@@ -917,6 +917,8 @@ describe('API tests', function () {
         let messageId;
 
         before(async () => {
+            const mailboxes = await server.get(`/users/${userId}/mailboxes`).expect(200);
+            inbox = mailboxes.body.results.find(mailbox => mailbox.path === 'INBOX').id;
             const response = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
@@ -963,24 +965,51 @@ describe('API tests', function () {
 
             const response = await server.get(`/users/${userId}/keywords?counters=true`).expect(200);
             expect(response.body.success).to.be.true;
-            expect(response.body.keywords).to.deep.include.members([
+            expect(response.body.keywords.map(({ keyword, total, unseen }) => ({ keyword, total, unseen }))).to.deep.include.members([
                 { keyword: 'keyword-list-a', total: 1, unseen: 1 },
                 { keyword: 'keyword-list-b', total: 1, unseen: 0 },
                 { keyword: 'keyword-list-shared', total: 2, unseen: 1 }
             ]);
 
             const namesOnlyResponse = await server.get(`/users/${userId}/keywords`).expect(200);
-            expect(namesOnlyResponse.body.keywords).to.deep.include.members([
+            expect(namesOnlyResponse.body.keywords.map(({ keyword }) => ({ keyword }))).to.deep.include.members([
                 { keyword: 'keyword-list-a' },
                 { keyword: 'keyword-list-b' },
                 { keyword: 'keyword-list-shared' }
             ]);
             for (const keyword of namesOnlyResponse.body.keywords) {
                 expect(keyword).to.not.have.any.keys('total', 'unseen');
+                expect(keyword.path.startsWith('\\')).to.be.false;
+                expect(keyword.path).to.not.equal('$Forwarded');
             }
 
             await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${firstResponse.body.message.id}`).expect(200);
             await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${secondResponse.body.message.id}`).expect(200);
+            const emptyLabels = await server.get(`/users/${userId}/keywords?counters=true`).expect(200);
+            expect(emptyLabels.body.keywords.find(entry => entry.path === 'keyword-list-a')).to.include({ total: 0, unseen: 0 });
+        });
+
+        it('creates empty nested keywords idempotently with parents and validates paths', async () => {
+            const path = 'Projects/čau-😀';
+            const [first, second] = await Promise.all([
+                server.post(`/users/${userId}/keywords`).send({ path }).expect(200),
+                server.post(`/users/${userId}/keywords`).send({ path }).expect(200)
+            ]);
+            expect(second.body.id).to.equal(first.body.id);
+            const listing = await server.get(`/users/${userId}/keywords`).expect(200);
+            expect(listing.body.keywords.find(entry => entry.path === path)).to.deep.equal({
+                id: first.body.id,
+                path,
+                keyword: path,
+                name: 'čau-😀'
+            });
+            expect(listing.body.keywords.some(entry => entry.path === 'Projects')).to.be.true;
+            for (const invalidPath of ['/Projects', 'Projects/', 'Projects//child', '\\Seen', 'a'.repeat(257), 'a/b/c/d/e/f']) {
+                await server.post(`/users/${userId}/keywords`).send({ path: invalidPath }).expect(400);
+            }
+            for (const validPath of ['a'.repeat(256), 'a/b/c/d/e']) {
+                await server.post(`/users/${userId}/keywords`).send({ path: validPath }).expect(200);
+            }
         });
 
         it('should POST /users/:user/mailboxes/:mailbox/messages with keywords expect success / keywords appear in GET', async () => {

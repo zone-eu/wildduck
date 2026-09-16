@@ -55,6 +55,7 @@ module.exports = function (grunt) {
                     'test/hibp-tools-test.js',
                     'test/imap-notifier-counters-test.js',
                     'test/keyword-schema-test.js',
+                    'test/keyword-handler-test.js',
                     'test/list-headers-test.js',
                     'test/maildropper-test.js',
                     'test/message-handler-update-test.js',

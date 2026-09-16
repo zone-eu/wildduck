@@ -87,36 +87,22 @@ describe('Account counter tools', () => {
         expect(redis.stores).to.equal(2);
     });
 
-    it('targets current mailboxes and treats reserved flags as literals when listing keywords', async () => {
+    it('lists persistent empty keyword paths without touching messages or Redis', async () => {
         const user = new ObjectId();
-        const mailbox = new ObjectId();
-        const redis = createRedis();
-        let aggregation;
-        let aggregationOptions;
+        const id = new ObjectId();
         const db = {
-            redis,
             database: {
                 collection(name) {
-                    if (name === 'mailboxes') {
-                        return {
-                            find() {
-                                return {
-                                    async toArray() {
-                                        return [{ _id: mailbox }];
-                                    }
-                                };
-                            }
-                        };
-                    }
+                    expect(name).to.equal('keywords');
                     return {
-                        aggregate(pipeline, options) {
-                            aggregation = pipeline;
-                            aggregationOptions = options;
+                        find(query) {
+                            expect(query).to.deep.equal({ user });
                             return {
-                            async toArray() {
-                                return aggregation[3].$group.total
-                                    ? [{ keyword: 'project', total: 2, unseen: 1 }]
-                                    : [{ keyword: 'project' }];
+                                sort() {
+                                    return this;
+                                },
+                                async toArray() {
+                                    return [{ _id: id, path: 'Projects/2026' }];
                                 }
                             };
                         }
@@ -125,12 +111,8 @@ describe('Account counter tools', () => {
             }
         };
 
-        expect(await tools.getUserKeywords(db, user)).to.deep.equal([{ keyword: 'project', total: 2, unseen: 1 }]);
-        expect(aggregation[0]).to.deep.equal({ $match: { mailbox: { $in: [mailbox] } } });
-        expect(aggregation[1].$project.flags.$filter.cond.$not.$in[1]).to.deep.equal({ $literal: [...consts.SYSTEM_FLAGS] });
-        expect(aggregationOptions).to.deep.equal({ allowDiskUse: false, maxTimeMS: consts.DB_MAX_TIME_MESSAGES_SEARCH });
-
-        expect(await tools.getUserKeywords(db, user, false)).to.deep.equal([{ keyword: 'project' }]);
-        expect(aggregation[3]).to.deep.equal({ $group: { _id: '$flags' } });
+        expect(await tools.getUserKeywords(db, user)).to.deep.equal([
+            { id: id.toString(), keyword: 'Projects/2026', path: 'Projects/2026', name: '2026' }
+        ]);
     });
 });

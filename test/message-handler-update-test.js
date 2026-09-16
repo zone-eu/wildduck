@@ -171,6 +171,13 @@ describe('MessageHandler message updates', function () {
                             }
                         };
 
+                    case 'keywords':
+                        return {
+                            find(query) {
+                                return { async toArray() { return query.path.$in.map(path => ({ path })); } };
+                            }
+                        };
+
                     default:
                         throw new Error('Unexpected collection lookup: ' + name);
                 }

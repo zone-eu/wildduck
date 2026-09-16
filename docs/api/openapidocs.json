@@ -2740,7 +2740,7 @@
                     "Messages"
                 ],
                 "summary": "Get user keywords",
-                "description": "Returns all custom keywords used by the user with message counters",
+                "description": "Lists persistent keyword paths, including empty labels, with optional exact-path message counters",
                 "operationId": "getUserKeywords",
                 "parameters": [
                     {
@@ -2788,6 +2788,64 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/UserKeywordsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Create a keyword",
+                "description": "Creates a persistent keyword and its parent paths. Repeated creation returns the existing keyword.",
+                "operationId": "createKeyword",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {
+                                        "type": "string",
+                                        "description": "Full keyword path, separated by /; at most 256 characters and 5 levels"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "path"
+                                ]
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateKeywordResponse"
                                 }
                             }
                         }
@@ -11366,9 +11424,21 @@
                         "items": {
                             "type": "object",
                             "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "ID of the keyword"
+                                },
                                 "keyword": {
                                     "type": "string",
                                     "description": "Keyword name"
+                                },
+                                "path": {
+                                    "type": "string",
+                                    "description": "Full keyword path"
+                                },
+                                "name": {
+                                    "type": "string",
+                                    "description": "Last component of the keyword path"
                                 },
                                 "total": {
                                     "type": "number",
@@ -11380,7 +11450,10 @@
                                 }
                             },
                             "required": [
-                                "keyword"
+                                "id",
+                                "keyword",
+                                "path",
+                                "name"
                             ]
                         }
                     }
@@ -11388,6 +11461,27 @@
                 "required": [
                     "success",
                     "keywords"
+                ]
+            },
+            "CreateKeywordResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the keyword"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Full keyword path"
+                    }
+                },
+                "required": [
+                    "success",
+                    "id",
+                    "path"
                 ]
             },
             "KeywordCounterResponse": {
