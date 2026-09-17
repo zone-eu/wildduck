@@ -2,7 +2,7 @@
 
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
-const { ensureKeywords, expandPaths } = require('../lib/keyword-handler');
+const { ensureKeywords, expandPaths, getMessageImapFlags } = require('../lib/keyword-handler');
 const { keywordSchema } = require('../lib/schemas');
 const { MAX_KEYWORDS } = require('../lib/consts');
 
@@ -51,6 +51,20 @@ function createDatabase(records = []) {
 }
 
 describe('Persistent keywords', () => {
+    it('merges stable keyword paths into IMAP flags without duplicates', () => {
+        const first = new ObjectId();
+        const second = new ObjectId();
+        expect(
+            getMessageImapFlags(
+                { flags: ['\\Seen', 'Legacy', 'projects/web'], keywords: [first, second] },
+                new Map([
+                    [first.toString(), 'Projects/Web'],
+                    [second.toString(), 'Important']
+                ])
+            )
+        ).to.deep.equal(['\\Seen', 'Legacy', 'projects/web', 'Important']);
+    });
+
     it('expands nested paths while excluding system flags', () => {
         expect(expandPaths(['Projects/čau-😀', 'Projects/čau-😀', '\\Seen', '$Forwarded', '\\Recent', '\\Flagged'])).to.deep.equal([
             'Projects/čau-😀',

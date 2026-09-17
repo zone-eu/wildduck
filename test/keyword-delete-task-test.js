@@ -13,6 +13,24 @@ describe('Keyword deletion task', () => {
         const ids = [keyword, childKeyword];
         const task = { _id: new ObjectId() };
         const events = [];
+        const journalEntries = [];
+        const redis = {
+            async set() {
+                events.push('redis');
+            }
+        };
+        const notifier = {
+            addEntries(mailboxData, entries, callback) {
+                expect(mailboxData).to.equal(mailbox);
+                journalEntries.push(...entries);
+                events.push('journal');
+                callback();
+            },
+            fire(notifiedUser) {
+                expect(notifiedUser).to.equal(user);
+                events.push('fire');
+            }
+        };
         const database = {
             collection(name) {
                 if (name === 'mailboxes') {
@@ -64,11 +82,16 @@ describe('Keyword deletion task', () => {
         const result = await run(
             task,
             { user, keyword, path: 'Projects', paths: ['Projects', 'Projects/2026'], ids },
-            { messageHandler: {}, loggelf: entry => events.push(entry) },
+            { messageHandler: { notifier, redis }, loggelf: entry => events.push(entry) },
             database
         );
         expect(result).to.deep.equal({ updated: 1, filters: 1, deleted: 2 });
         expect(events.slice(0, 3)).to.deep.equal(['messages', 'filters', 'keywords']);
-        expect(events[3]).to.include({ _mail_action: 'keyword_delete', _messages_updated: 1, _filters_updated: 1, _keywords_deleted: 2 });
+        expect(events.slice(3, 6)).to.deep.equal(['redis', 'journal', 'fire']);
+        expect(journalEntries).to.deep.equal([
+            { command: 'KEYWORD_COUNTERS', keyword: 'Projects', total: 0, unseen: 0 },
+            { command: 'KEYWORD_COUNTERS', keyword: 'Projects/2026', total: 0, unseen: 0 }
+        ]);
+        expect(events[6]).to.include({ _mail_action: 'keyword_delete', _messages_updated: 1, _filters_updated: 1, _keywords_deleted: 2 });
     });
 });

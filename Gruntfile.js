@@ -54,6 +54,7 @@ module.exports = function (grunt) {
                     'test/filtering-tools-test.js',
                     'test/hibp-tools-test.js',
                     'test/imap-notifier-counters-test.js',
+                    'test/imap-keyword-bridge-test.js',
                     'test/keyword-schema-test.js',
                     'test/keyword-handler-test.js',
                     'test/keyword-delete-task-test.js',
@@ -67,6 +68,7 @@ module.exports = function (grunt) {
                     'test/mcp-token-handler-test.js',
                     'test/mcp-tools-test.js',
                     'test/metrics-config-test.js',
+                    'test/on-store-counters-test.js',
                     'test/prometheus-test.js',
                     'test/roles-test.js',
                     'test/tools-test.js'

@@ -305,3 +305,130 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         expect(moved.intro).to.equal('');
     });
 });
+
+describe('moveAsync keyword counter notifications', function () {
+    it('loads keyword paths when a labelled message follows an unlabelled message', async function () {
+        const user = new ObjectId();
+        const sourceMailbox = new ObjectId();
+        const targetMailbox = new ObjectId();
+        const keyword = new ObjectId();
+        const messages = [
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailbox,
+                user,
+                uid: 1,
+                size: 10,
+                unseen: true,
+                flags: [],
+                keywords: [],
+                mimeTree: { attachmentMap: {} },
+                idate: new Date()
+            },
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailbox,
+                user,
+                uid: 2,
+                size: 10,
+                unseen: true,
+                flags: [],
+                keywords: [keyword],
+                mimeTree: { attachmentMap: {} },
+                idate: new Date()
+            }
+        ];
+        const sourceEntries = [];
+        const targetEntries = [];
+        let cursorPosition = 0;
+        let nextUid = 10;
+
+        const handler = Object.create(MessageHandler.prototype);
+        handler.loggelf = () => {};
+        handler.database = {
+            collection(name) {
+                if (name === 'mailboxes') {
+                    return {
+                        async findOne(query) {
+                            if (query._id.equals(sourceMailbox)) {
+                                return { _id: sourceMailbox, user, path: 'INBOX', uidValidity: 1 };
+                            }
+                            return { _id: targetMailbox, user, path: 'Archive', uidValidity: 2 };
+                        },
+                        async findOneAndUpdate(query) {
+                            if (query._id.equals(sourceMailbox)) {
+                                return { value: { modifyIndex: 3 } };
+                            }
+                            return { value: { uidNext: nextUid++, modifyIndex: 4 } };
+                        }
+                    };
+                }
+                if (name === 'messages') {
+                    return {
+                        find() {
+                            return {
+                                sort() {
+                                    return {
+                                        async next() {
+                                            return messages[cursorPosition++];
+                                        },
+                                        async close() {}
+                                    };
+                                }
+                            };
+                        },
+                        async insertOne() {
+                            return { acknowledged: true, insertedId: new ObjectId() };
+                        },
+                        async deleteOne() {
+                            return { deletedCount: 1 };
+                        }
+                    };
+                }
+                if (name === 'keywords') {
+                    return {
+                        find() {
+                            return {
+                                async toArray() {
+                                    return [{ _id: keyword, path: 'Projects/later' }];
+                                }
+                            };
+                        }
+                    };
+                }
+                throw new Error(`Unexpected collection ${name}`);
+            }
+        };
+        handler.users = {
+            collection() {
+                return {
+                    async findOne() {
+                        return { _id: user };
+                    }
+                };
+            }
+        };
+        handler.settingsHandler = { get: async () => 100 };
+        handler.notifier = {
+            addEntries(mailbox, entries, callback) {
+                const target = mailbox._id.equals(sourceMailbox) ? sourceEntries : targetEntries;
+                target.push(...entries);
+                callback();
+            },
+            fire() {}
+        };
+
+        await handler.moveAsync({
+            source: { mailbox: sourceMailbox },
+            destination: { mailbox: targetMailbox },
+            messages: [1, 2],
+            updates: { seen: true }
+        });
+
+        expect(sourceEntries).to.have.lengthOf(2);
+        expect(sourceEntries[0].keywords).to.deep.equal([]);
+        expect(sourceEntries[1].keywords).to.deep.equal(['Projects/later']);
+        expect(targetEntries).to.have.lengthOf(2);
+        expect(targetEntries[1].keywords).to.deep.equal(['Projects/later']);
+    });
+});

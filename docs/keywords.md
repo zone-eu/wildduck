@@ -9,8 +9,15 @@ Keywords are stored in the `keywords` collection in the main database:
 The unique `{ user: 1, path: 1 }` index scopes paths to an account. If this
 collection is sharded, use `{ user: 1 }` so user lookups and path upserts can
 be routed by user. Message assignments use keyword object IDs in
-`messages.keywords`. IMAP flags remain in `messages.flags`; the new labels are
-available through the REST API only and are not exposed through IMAP.
+`messages.keywords`. System flags and unregistered legacy keywords remain in
+`messages.flags`.
+
+At the IMAP boundary, keyword IDs are translated to their current paths.
+`FETCH` and `COPY` expose those paths as custom flags, `APPEND` and `STORE`
+create missing keyword records and persist their IDs, and `SEARCH KEYWORD`
+matches the ID while retaining a fallback for legacy string flags. This keeps
+REST labels and IMAP keywords synchronized without duplicating paths in message
+documents; renames are therefore immediately visible to IMAP clients.
 
 `POST /users/:user/keywords` accepts `{ "path": "Projects/2026" }` and
 idempotently creates the path and missing parent paths. Paths use `/`, cannot
@@ -29,9 +36,9 @@ under contention or a database failure, some requested paths may already have
 been created when the request fails; retrying is idempotent.
 
 `GET /users/:user/keywords` returns `keywords` entries with `id`, `keyword`
-(the full path, retained for compatibility), `path`, and `name` (the last
-component). This reads only keyword documents, without scanning messages or
-requiring Redis. Empty labels remain after their last message is removed.
+(the final path component), and `path` (the full path). This reads only keyword
+documents, without scanning messages or requiring Redis. Empty labels remain
+after their last message is removed.
 
 With `?counters=true`, entries also contain `total` and `unseen`. Counters
 continue to use the existing versioned Redis cache and mailbox-scoped message
