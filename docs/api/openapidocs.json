@@ -11557,15 +11557,11 @@
                                 },
                                 "keyword": {
                                     "type": "string",
-                                    "description": "Keyword name"
+                                    "description": "Keyword name (last path component)"
                                 },
                                 "path": {
                                     "type": "string",
                                     "description": "Full keyword path"
-                                },
-                                "name": {
-                                    "type": "string",
-                                    "description": "Last component of the keyword path"
                                 },
                                 "total": {
                                     "type": "number",

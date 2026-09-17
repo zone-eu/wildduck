@@ -979,6 +979,7 @@ describe('API tests', function () {
             ]);
             for (const keyword of namesOnlyResponse.body.keywords) {
                 expect(keyword).to.not.have.any.keys('total', 'unseen');
+                expect(keyword).to.not.have.property('name');
                 expect(keyword.path.startsWith('\\')).to.be.false;
                 expect(keyword.path).to.not.equal('$Forwarded');
             }
@@ -1000,8 +1001,7 @@ describe('API tests', function () {
             expect(listing.body.keywords.find(entry => entry.path === path)).to.deep.equal({
                 id: first.body.id,
                 path,
-                keyword: path,
-                name: 'čau-😀'
+                keyword: 'čau-😀'
             });
             expect(listing.body.keywords.some(entry => entry.path === 'Projects')).to.be.true;
             for (const invalidPath of ['/Projects', 'Projects/', 'Projects//child', '\\Seen', 'a'.repeat(257), 'a/b/c/d/e/f']) {

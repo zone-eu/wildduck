@@ -3,7 +3,7 @@
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const { ensureKeywords, expandPaths } = require('../lib/keyword-handler');
-const { keywordPathSchema } = require('../lib/schemas/request/keywords-schemas');
+const { keywordSchema } = require('../lib/schemas');
 const { MAX_KEYWORDS } = require('../lib/consts');
 
 function createDatabase(records = []) {
@@ -56,9 +56,9 @@ describe('Persistent keywords', () => {
             'Projects/čau-😀',
             'Projects'
         ]);
-        expect(keywordPathSchema.validate('Projects/čau-😀').error).to.equal(undefined);
+        expect(keywordSchema.validate('Projects/čau-😀').error).to.equal(undefined);
         for (const path of ['/Projects', 'Projects/', 'Projects//child', '\\Seen']) {
-            expect(keywordPathSchema.validate(path).error).to.be.instanceOf(Error);
+            expect(keywordSchema.validate(path).error).to.be.instanceOf(Error);
         }
     });
 
@@ -78,11 +78,11 @@ describe('Persistent keywords', () => {
 
     it('accepts 256 characters and five levels, rejecting the next character or level', () => {
         for (const path of ['a'.repeat(256), 'a/b/c/d/e']) {
-            expect(keywordPathSchema.validate(path).error).to.equal(undefined);
+            expect(keywordSchema.validate(path).error).to.equal(undefined);
             expect(() => expandPaths([path])).to.not.throw();
         }
         for (const path of ['a'.repeat(257), 'a/b/c/d/e/f']) {
-            expect(keywordPathSchema.validate(path).error).to.be.instanceOf(Error);
+            expect(keywordSchema.validate(path).error).to.be.instanceOf(Error);
             expect(() => expandPaths([path])).to.throw();
         }
     });
