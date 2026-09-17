@@ -277,6 +277,7 @@ indexes:
           partialFilterExpression:
               slot:
                   $exists: true
+
     # Indexes for the messages collection
     - collection: messages
       index:
@@ -336,6 +337,13 @@ indexes:
           key:
               mailbox: 1
               flags: 1
+
+    - collection: messages
+      index:
+          name: mailbox_keywords
+          key:
+              mailbox: 1
+              keywords: 1
 
     - collection: messages
       index:

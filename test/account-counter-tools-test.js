@@ -53,6 +53,7 @@ describe('Account counter tools', () => {
     it('retries a keyword count when its account version changes during initialization', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
+        const keyword = new ObjectId();
         const redis = createRedis({ changeVersionOnFirstStore: true });
         let counts = 0;
         const db = {
@@ -70,10 +71,18 @@ describe('Account counter tools', () => {
                             }
                         };
                     }
+                    if (name === 'keywords') {
+                        return {
+                            async findOne(query) {
+                                expect(query).to.deep.equal({ user, path: 'project', deleting: { $ne: true } });
+                                return { _id: keyword };
+                            }
+                        };
+                    }
                     return {
                         async countDocuments(query, options) {
                             counts++;
-                            expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, flags: 'project' });
+                            expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, keywords: keyword });
                             expect(options.maxTimeMS).to.equal(consts.DB_MAX_TIME_MESSAGES_SEARCH);
                             return 1;
                         }

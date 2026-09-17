@@ -7,18 +7,43 @@ const { keywordPathSchema } = require('../lib/schemas/request/keywords-schemas')
 const { MAX_KEYWORDS } = require('../lib/consts');
 
 function createDatabase(records = []) {
+    for (const record of records) {
+        record._id = record._id || new ObjectId();
+    }
     return {
         records,
         collection() {
             return {
                 find({ user, path }) {
-                    return { async toArray() { return records.filter(record => record.user.equals(user) && (!path || path.$in.includes(record.path))); } };
+                    const paths = path?.$in;
+                    return {
+                        async toArray() {
+                            return records.filter(record => record.user.equals(user) && (!paths || paths.includes(record.path)));
+                        }
+                    };
+                },
+                aggregate(pipeline) {
+                    const user = pipeline[0].$match.user;
+                    return {
+                        async toArray() {
+                            const userRecords = records.filter(record => record.user.equals(user));
+                            if (!userRecords.length) {
+                                return [];
+                            }
+                            const used = new Set(userRecords.map(record => record.slot));
+                            let slot = 0;
+                            while (used.has(slot) && slot < MAX_KEYWORDS) {
+                                slot++;
+                            }
+                            return [{ count: userRecords.length, slot: slot < MAX_KEYWORDS ? slot : undefined }];
+                        }
+                    };
                 },
                 async insertOne(record) {
                     if (records.some(existing => existing.user.equals(record.user) && (existing.path === record.path || existing.slot === record.slot))) {
                         throw Object.assign(new Error('Duplicate'), { code: 11000 });
                     }
-                    records.push(record);
+                    records.push({ _id: new ObjectId(), ...record });
                 }
             };
         }
@@ -40,9 +65,13 @@ describe('Persistent keywords', () => {
     it('creates parent paths idempotently without overwriting existing metadata', async () => {
         const user = new ObjectId();
         const db = createDatabase();
-        expect(await ensureKeywords(db, user, ['A/B', 'A/B'])).to.deep.equal({ created: ['A/B', 'A'] });
+        const created = await ensureKeywords(db, user, ['A/B', 'A/B']);
+        expect(created.created).to.deep.equal(['A/B', 'A']);
+        expect(created.keywords.map(record => record.path)).to.deep.equal(['A/B']);
         const first = db.records[0];
-        expect(await ensureKeywords(db, user, ['A/B'])).to.deep.equal({ created: [] });
+        const existing = await ensureKeywords(db, user, ['A/B']);
+        expect(existing.created).to.deep.equal([]);
+        expect(existing.keywords).to.deep.equal([first]);
         expect(db.records.map(record => record.path)).to.deep.equal(['A/B', 'A']);
         expect(db.records[0]).to.equal(first);
     });
@@ -68,9 +97,8 @@ describe('Persistent keywords', () => {
             error = err;
         }
         expect(error.code).to.equal('KeywordLimitExceeded');
-        expect(db.records.length).to.equal(MAX_KEYWORDS - 1);
-        await ensureKeywords(db, user, ['last']);
-        await ensureKeywords(db, user, ['last']);
+        expect(db.records.length).to.equal(MAX_KEYWORDS);
+        await ensureKeywords(db, user, ['label-0']);
         expect(db.records.length).to.equal(MAX_KEYWORDS);
         await ensureKeywords(db, new ObjectId(), ['other-user']);
         expect(db.records.length).to.equal(MAX_KEYWORDS + 1);
@@ -96,4 +124,5 @@ describe('Persistent keywords', () => {
             expect(err.responseCode).to.equal(409);
         }
     });
+
 });

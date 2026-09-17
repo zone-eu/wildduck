@@ -1020,6 +1020,83 @@ describe('API tests', function () {
             expect(deletingListing.body.keywords.some(entry => entry.path === 'Projects')).to.be.true;
         });
 
+        it('should PUT /users/:user/keywords/:keyword rename only the selected keyword', async () => {
+            await server.post(`/users/${userId}/keywords`).send({ path: 'rename-me/nested' }).expect(200);
+            const listingBefore = await server.get(`/users/${userId}/keywords`).expect(200);
+            const topId = listingBefore.body.keywords.find(entry => entry.path === 'rename-me').id;
+
+            const uploadResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
+                    subject: 'keyword rename message',
+                    text: 'Testing keyword rename',
+                    keywords: ['rename-me', 'rename-me/nested']
+                })
+                .expect(200);
+            const renamedMessageId = uploadResponse.body.message.id;
+
+            const renameResponse = await server
+                .put(`/users/${userId}/keywords/${topId}`)
+                .send({ path: 'renamed-root' })
+                .expect(200);
+            expect(renameResponse.body.success).to.be.true;
+            expect(renameResponse.body.id).to.equal(topId);
+            expect(renameResponse.body.path).to.equal('renamed-root');
+            expect(renameResponse.body.oldPath).to.equal('rename-me');
+
+            const listing = await server.get(`/users/${userId}/keywords`).expect(200);
+            expect(listing.body.keywords.some(entry => entry.path === 'rename-me')).to.be.false;
+            expect(listing.body.keywords.some(entry => entry.path === 'rename-me/nested')).to.be.true;
+            expect(listing.body.keywords.some(entry => entry.path === 'renamed-root')).to.be.true;
+            expect(listing.body.keywords.some(entry => entry.path === 'renamed-root/nested')).to.be.false;
+
+            // The message assignment follows the stable keyword ID.
+            const renamedMessage = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`).expect(200);
+            expect(renamedMessage.body.keywords).to.have.members(['renamed-root', 'rename-me/nested']);
+
+            // The old path is free and creates a separate keyword when assigned again.
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`)
+                .send({ addKeywords: ['rename-me'] })
+                .expect(200);
+
+            // Renaming to the current path is idempotent.
+            await server
+                .put(`/users/${userId}/keywords/${topId}`)
+                .send({ path: 'renamed-root' })
+                .expect(200);
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`).expect(200);
+        });
+
+        it('should PUT /users/:user/keywords/:keyword reject an existing path', async () => {
+            await server.post(`/users/${userId}/keywords`).send({ path: 'rename-conflict-target' }).expect(200);
+            const source = await server.post(`/users/${userId}/keywords`).send({ path: 'rename-conflict-source' }).expect(200);
+
+            const clash = await server
+                .put(`/users/${userId}/keywords/${source.body.id}`)
+                .send({ path: 'rename-conflict-target' })
+                .expect(409);
+            expect(clash.body.code).to.equal('KeywordConflict');
+
+            const missing = await server
+                .put(`/users/${userId}/keywords/${new ObjectId()}`)
+                .send({ path: 'rename-conflict-target' })
+                .expect(404);
+            expect(missing.body.code).to.equal('KeywordNotFound');
+
+            const invalid = await server
+                .put(`/users/${userId}/keywords/${source.body.id}`)
+                .send({ path: 'a/b/c/d/e/f' })
+                .expect(400);
+            expect(invalid.body.code).to.equal('InputValidationError');
+
+            // nothing was changed by the failed renames
+            const listing = await server.get(`/users/${userId}/keywords`).expect(200);
+            expect(listing.body.keywords.some(entry => entry.path === 'rename-conflict-source')).to.be.true;
+        });
+
         it('should POST /users/:user/mailboxes/:mailbox/messages with keywords expect success / keywords appear in GET', async () => {
             const uploadResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)

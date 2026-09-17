@@ -42,24 +42,17 @@ descendants. Counter queries run at most two at a time within one request.
 New keywords assigned through the REST API and saved filter actions are
 registered automatically. Creating a label does not apply it to a message.
 
-`PUT /users/:user/keywords/:keyword` renames a keyword with its descendants.
-The request body is `{ "path": "New/Path" }`. Renaming `Projects/2026` to
-`Archive` moves `Projects/2026/child` to `Archive/child`. Missing parent paths
-of the new path are created. The new path must not collide with existing
-keywords, must not nest inside the keyword being renamed, and must not land
-inside a subtree that is being deleted or renamed. Renaming updates the catalog
-paths in place; message and filter assignments continue to refer to the same
-keyword object IDs.
-Renaming a keyword that is already being renamed, or deleting it while the
-rename is pending, fails with `409 KeywordRenaming`. Conflicting targets fail
-with `409 KeywordConflict`. Renaming to the same path is a no-op.
+`PUT /users/:user/keywords/:keyword` renames the selected keyword by updating
+its path. The request body is `{ "path": "New/Path" }`. Descendant keyword
+records are independent and are not renamed. Message and filter assignments
+continue to refer to the same stable keyword object ID. An existing target path
+fails with `409 KeywordConflict`; renaming to the current path is a no-op.
 
 `DELETE /users/:user/keywords/:keyword` schedules a durable `keyword-delete`
 task. It removes the selected path and descendants from messages and filter
 actions, then deletes their catalog records. A parent remains when deleting a
 child. Paths are hidden from listings and cannot be assigned while deletion is
 in progress. The request returns the task ID; repeat requests reuse it.
-Deleting a keyword that is being renamed fails with `409 KeywordRenaming`.
 
 Install the indexes before enabling keyword writes. Labels are introduced by
 this branch, so there is no historical backfill or migration. System flags
