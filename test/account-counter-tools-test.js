@@ -121,7 +121,7 @@ describe('Account counter tools', () => {
         };
 
         expect(await tools.getUserKeywords(db, user)).to.deep.equal([
-            { id: id.toString(), keyword: 'Projects/2026', path: 'Projects/2026', name: '2026' }
+            { id: id.toString(), keyword: '2026', path: 'Projects/2026' }
         ]);
     });
 });
