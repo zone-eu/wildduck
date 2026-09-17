@@ -3,6 +3,7 @@
 const IMAPStream = require('./imap-stream').IMAPStream;
 const IMAPCommand = require('./imap-command').IMAPCommand;
 const IMAPComposer = require('./imap-composer').IMAPComposer;
+const imapFormalSyntax = require('./handler/imap-formal-syntax');
 const imapTools = require('./imap-tools');
 const search = require('./search');
 const dns = require('dns');
@@ -562,7 +563,19 @@ class IMAPConnection extends EventEmitter {
             this._currentCommand = false;
             this._nextHandler = false;
             resetCompressedInput();
-            this.send('* BAD Command line too long');
+            const tag = command.tag && imapFormalSyntax.verify(command.tag, imapFormalSyntax.tag()) < 0 ? command.tag : false;
+            this.loggelf({
+                short_message: '[IMAPCMDERR] Command line too long',
+                _service: 'imap',
+                _failure_msg: 'Command line too long',
+                _code: 'CommandLineTooLong',
+                _response: 'BAD',
+                _tag: tag || false,
+                _max_line_length: this._server.options.maxLineLength,
+                _sess: this.id,
+                _remoteAddress: this.remoteAddress
+            });
+            this.send((tag ? tag : '*') + ' BAD Command line too long');
             return callback();
         }
 

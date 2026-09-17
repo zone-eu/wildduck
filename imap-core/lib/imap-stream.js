@@ -30,6 +30,7 @@ class IMAPStream extends Writable {
         this._literal = false;
         this._literalReady = false;
         this._discarding = false;
+        this._discardedTag = false;
 
         // how many literal bytes to wait for
         this._expecting = 0;
@@ -58,10 +59,19 @@ class IMAPStream extends Writable {
         this.oncommand(
             {
                 lineTooLong: true,
-                final: true
+                final: true,
+                tag: this._discardedTag || this._getTag(data, pos)
             },
-            () => setImmediate(this._readValue.bind(this, regex, data, pos, done))
+            () => {
+                this._discardedTag = false;
+                setImmediate(this._readValue.bind(this, regex, data, pos, done));
+            }
         );
+    }
+
+    _getTag(data, pos) {
+        const match = /^([^\s]+)/.exec(data.substr(pos));
+        return match ? match[1] : false;
     }
 
     /**
@@ -135,6 +145,7 @@ class IMAPStream extends Writable {
         // so it knows from where to start with the next iteration
         if ((match = regex.exec(data))) {
             if (this._checkLineLength(match.index - pos)) {
+                this._discardedTag = this._getTag(data, pos);
                 pos = match.index + match[0].length;
                 return this._emitLineTooLong(regex, data, pos, done);
             }
@@ -143,6 +154,7 @@ class IMAPStream extends Writable {
         } else {
             if (this._checkLineLength(data.length - pos)) {
                 this._discarding = true;
+                this._discardedTag = this._getTag(data, pos);
                 return done();
             }
             this._remainder = pos < data.length ? data.substr(pos) : '';
@@ -211,9 +223,13 @@ class IMAPStream extends Writable {
             return this.oncommand(
                 {
                     lineTooLong: true,
-                    final: true
+                    final: true,
+                    tag: this._discardedTag
                 },
-                () => false
+                () => {
+                    this._discardedTag = false;
+                    return false;
+                }
             );
         }
 
