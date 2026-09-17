@@ -345,11 +345,11 @@ describe('MessageHandler message updates', function () {
             },
             { flags: ['\\Seen', '$Forwarded'], keywordPaths: ['old-label'] }
         );
-        labelId = getKeywordRecord('$Label')._id;
+        labelId = getKeywordRecord('valid$Label')._id;
 
         let updated = await updateAsync(handler, user, mailbox, {
             seen: true,
-            keywords: ['$Label'],
+            keywords: ['valid$Label'],
             metaData: { label: '$flags' }
         });
 

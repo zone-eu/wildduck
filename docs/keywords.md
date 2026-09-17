@@ -63,4 +63,6 @@ in progress. The request returns the task ID; repeat requests reuse it.
 
 Install the indexes before enabling keyword writes. Labels are introduced by
 this branch, so there is no historical backfill or migration. System flags
-remain separate and are never registered in the keywords collection.
+remain separate and are never registered in the keywords collection. IMAP
+flags beginning with `$`, including Thunderbird tags such as `$label1`, also
+remain in `messages.flags` and are not registered as labels.

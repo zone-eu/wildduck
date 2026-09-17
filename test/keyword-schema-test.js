@@ -13,7 +13,7 @@ describe('Keyword schema', () => {
     });
 
     it('rejects internal and system flags as custom keywords', () => {
-        for (const keyword of ['$Forwarded', '$forwarded', '\\Seen']) {
+        for (const keyword of ['$Forwarded', '$forwarded', '$label1', '\\Seen']) {
             expect(keywordSchema.validate(keyword).error).to.exist;
         }
     });

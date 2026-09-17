@@ -74,16 +74,23 @@ describe('IMAP keyword bridge', () => {
             remoteAddress: '127.0.0.1'
         };
 
-        onAppend(server, messageHandler, userCache)('INBOX', ['\\Seen', 'Team/Blue'], null, Buffer.from('Subject: test\r\n\r\nbody'), session, err => {
-            try {
-                expect(err).to.not.exist;
-                expect(addOptions.flags).to.deep.equal(['\\Seen']);
-                expect(addOptions.keywords.map(value => value.toString())).to.deep.equal([keyword._id.toString()]);
-                return done();
-            } catch (testErr) {
-                return done(testErr);
+        onAppend(server, messageHandler, userCache)(
+            'INBOX',
+            ['\\Seen', '$label1', 'Team/Blue'],
+            null,
+            Buffer.from('Subject: test\r\n\r\nbody'),
+            session,
+            err => {
+                try {
+                    expect(err).to.not.exist;
+                    expect(addOptions.flags).to.deep.equal(['\\Seen', '$label1']);
+                    expect(addOptions.keywords.map(value => value.toString())).to.deep.equal([keyword._id.toString()]);
+                    return done();
+                } catch (testErr) {
+                    return done(testErr);
+                }
             }
-        });
+        );
     });
 
     it('searches stable keyword ids while retaining legacy flag compatibility', done => {

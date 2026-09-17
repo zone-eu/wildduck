@@ -160,7 +160,7 @@ describe('on-store counter notifications', () => {
                     },
                     bulkWrite(updates, options, callback) {
                         const stored = updates[0].updateOne.update.$set;
-                        expect(stored.flags).to.deep.equal(['\\Seen']);
+                        expect(stored.flags).to.deep.equal(['\\Seen', '$label1']);
                         expect(stored.keywords.map(value => value.toString())).to.deep.equal([keyword._id.toString()]);
                         callback();
                     }
@@ -191,11 +191,11 @@ describe('on-store counter notifications', () => {
             }
         };
 
-        onStore(server)(mailbox, { messages: [1], action: 'add', value: ['Projects/Web'], silent: false }, session, err => {
+        onStore(server)(mailbox, { messages: [1], action: 'add', value: ['Projects/Web', '$label1'], silent: false }, session, err => {
             db.database = databaseSnapshot;
             try {
                 expect(err).to.not.exist;
-                expect(responseFlags).to.deep.equal(['\\Seen', 'Projects/Web']);
+                expect(responseFlags).to.deep.equal(['\\Seen', 'Projects/Web', '$label1']);
                 expect(notification.addedKeywords).to.deep.equal(['Projects/Web']);
                 expect(notification).to.not.have.property('removedKeywords');
                 return done();
