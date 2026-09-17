@@ -14,13 +14,6 @@ const utf7decode = str => iconv.decode(Buffer.from(str), 'utf-7-imap').toString(
 module.exports.utf7encode = utf7encode;
 module.exports.utf7decode = utf7decode;
 
-module.exports.decodeUtf8 = (value, sourceEncoding) => {
-    if (sourceEncoding !== 'binary' || typeof value !== 'string') {
-        return value;
-    }
-    return Buffer.from(value, 'binary').toString();
-};
-
 module.exports.fetchSchema = {
     body: [
         true,

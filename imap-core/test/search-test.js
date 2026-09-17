@@ -218,27 +218,6 @@ describe('#parseQueryTerms', function () {
         ]);
     });
 
-    it('should preserve decoded Unicode KEYWORD values', function () {
-        for (const keyword of ['café', 'čau-😀']) {
-            expect(parseQueryTerms(['KEYWORD', keyword], uidList).query).to.deep.equal([
-                {
-                    key: 'flag',
-                    value: keyword,
-                    exists: true
-                }
-            ]);
-
-            const wireKeyword = Buffer.from(keyword).toString('binary');
-            expect(parseQueryTerms(['KEYWORD', wireKeyword], uidList, 'binary').query).to.deep.equal([
-                {
-                    key: 'flag',
-                    value: keyword,
-                    exists: true
-                }
-            ]);
-        }
-    });
-
     it('should handle LARGER', function () {
         expect(parseQueryTerms('LARGER 123'.split(' '), uidList).query).to.deep.equal([
             {

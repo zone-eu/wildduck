@@ -96,7 +96,7 @@ describe('Account counter tools', () => {
                     expect(name).to.equal('keywords');
                     return {
                         find(query) {
-                            expect(query).to.deep.equal({ user });
+                            expect(query).to.deep.equal({ user, deleting: { $ne: true } });
                             return {
                                 sort() {
                                     return this;

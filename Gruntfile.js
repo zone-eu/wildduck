@@ -56,6 +56,7 @@ module.exports = function (grunt) {
                     'test/imap-notifier-counters-test.js',
                     'test/keyword-schema-test.js',
                     'test/keyword-handler-test.js',
+                    'test/keyword-delete-task-test.js',
                     'test/list-headers-test.js',
                     'test/maildropper-test.js',
                     'test/message-handler-update-test.js',

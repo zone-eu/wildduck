@@ -8,15 +8,16 @@ Keywords are stored in the `keywords` collection in the main database:
 
 The unique `{ user: 1, path: 1 }` index scopes paths to an account. If this
 collection is sharded, use `{ user: 1 }` so user lookups and path upserts can
-be routed by user. Message assignments continue to use the full keyword
-string in `messages.flags`; existing IMAP and search clients remain compatible.
+be routed by user. Message assignments use keyword object IDs in
+`messages.keywords`. IMAP flags remain in `messages.flags`; the new labels are
+available through the REST API only and are not exposed through IMAP.
 
 `POST /users/:user/keywords` accepts `{ "path": "Projects/2026" }` and
 idempotently creates the path and missing parent paths. Paths use `/`, cannot
 have empty segments, and have at most five components (the root is level one).
 The full path is limited to 256 characters, including separators, and follows
-the existing IMAP keyword character restrictions. Paths preserve case; API
-lookup and counters retain the existing exact-string semantics.
+the label path schema. Paths preserve case; API lookup and counters retain the
+existing exact-string semantics.
 
 Each user can have at most 5,000 labels, including automatically created parents.
 The unique `{ user: 1, slot: 1 }` index reserves slots 0–4999 and prevents
@@ -38,10 +39,27 @@ counts on cache misses. They are not persisted in keyword documents. Parent
 counts include only messages explicitly tagged with that parent path, not
 descendants. Counter queries run at most two at a time within one request.
 
-New keywords observed through the message journal (API, IMAP, delivery, and
-restore) and saved filter actions are registered automatically. Creating a
-label does not apply it to a message. Rename and delete APIs are not included;
-renaming a path will require coordinated updates to message flags and filters.
+New keywords assigned through the REST API and saved filter actions are
+registered automatically. Creating a label does not apply it to a message.
+
+`PUT /users/:user/keywords/:keyword` renames a keyword with its descendants.
+The request body is `{ "path": "New/Path" }`. Renaming `Projects/2026` to
+`Archive` moves `Projects/2026/child` to `Archive/child`. Missing parent paths
+of the new path are created. The new path must not collide with existing
+keywords, must not nest inside the keyword being renamed, and must not land
+inside a subtree that is being deleted or renamed. Renaming updates the catalog
+paths in place; message and filter assignments continue to refer to the same
+keyword object IDs.
+Renaming a keyword that is already being renamed, or deleting it while the
+rename is pending, fails with `409 KeywordRenaming`. Conflicting targets fail
+with `409 KeywordConflict`. Renaming to the same path is a no-op.
+
+`DELETE /users/:user/keywords/:keyword` schedules a durable `keyword-delete`
+task. It removes the selected path and descendants from messages and filter
+actions, then deletes their catalog records. A parent remains when deleting a
+child. Paths are hidden from listings and cannot be assigned while deletion is
+in progress. The request returns the task ID; repeat requests reuse it.
+Deleting a keyword that is being renamed fails with `409 KeywordRenaming`.
 
 Install the indexes before enabling keyword writes. Labels are introduced by
 this branch, so there is no historical backfill or migration. System flags

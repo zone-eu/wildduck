@@ -104,16 +104,9 @@ module.exports = function (response, asArray, isLogging) {
 
             case 'ATOM':
             case 'SECTION':
-                val = (
-                    node.allow8Bit && !Buffer.isBuffer(node.value) ? Buffer.from((node.value ?? '').toString()) : node.value || ''
-                ).toString('binary');
+                val = (node.value || '').toString('binary');
 
-                if (
-                    imapFormalSyntax.verify(
-                        val.charAt(0) === '\\' ? val.substr(1) : val,
-                        node.allow8Bit ? imapFormalSyntax['ATOM-CHAR']() + imapFormalSyntax.CHAR8().slice(0x7f) : imapFormalSyntax['ATOM-CHAR']()
-                    ) >= 0
-                ) {
+                if (imapFormalSyntax.verify(val.charAt(0) === '\\' ? val.substr(1) : val, imapFormalSyntax['ATOM-CHAR']()) >= 0) {
                     val = JSON.stringify(val);
                 }
 

@@ -1010,6 +1010,14 @@ describe('API tests', function () {
             for (const validPath of ['a'.repeat(256), 'a/b/c/d/e']) {
                 await server.post(`/users/${userId}/keywords`).send({ path: validPath }).expect(200);
             }
+            const deletion = await server.delete(`/users/${userId}/keywords/${first.body.id}`).expect(200);
+            expect(deletion.body.success).to.be.true;
+            const repeatedDeletion = await server.delete(`/users/${userId}/keywords/${first.body.id}`).expect(200);
+            expect(repeatedDeletion.body.scheduled).to.equal(deletion.body.scheduled);
+            expect(repeatedDeletion.body.existing).to.be.true;
+            const deletingListing = await server.get(`/users/${userId}/keywords`).expect(200);
+            expect(deletingListing.body.keywords.some(entry => entry.path === path)).to.be.false;
+            expect(deletingListing.body.keywords.some(entry => entry.path === 'Projects')).to.be.true;
         });
 
         it('should POST /users/:user/mailboxes/:mailbox/messages with keywords expect success / keywords appear in GET', async () => {

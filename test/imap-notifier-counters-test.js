@@ -26,7 +26,7 @@ describe('ImapNotifier account counters', () => {
         expect(entry.flaggedCounterInvalidated).to.be.true;
     });
 
-    it('tracks changed keywords and advances the account counter version', async () => {
+    it('tracks API labels without treating IMAP flags as labels', async () => {
         const user = new ObjectId();
         const operations = [];
         const testNotifier = Object.create(ImapNotifier.prototype);
@@ -62,7 +62,7 @@ describe('ImapNotifier account counters', () => {
             }
         ]);
 
-        expect(operations[0]).to.deep.equal(['sadd', `account-counters:{${user}}:keywords`, ['current', 'added', 'removed']]);
+        expect(operations[0]).to.deep.equal(['sadd', `account-counters:{${user}}:keywords`, ['added', 'removed']]);
         expect(
             operations.some(
                 operation =>

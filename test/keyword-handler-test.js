@@ -84,4 +84,16 @@ describe('Persistent keywords', () => {
         expect(results.find(result => result.status === 'rejected').reason.code).to.equal('KeywordLimitExceeded');
         expect(db.records.length).to.equal(MAX_KEYWORDS);
     });
+
+    it('rejects assigning a path while it is being deleted', async () => {
+        const user = new ObjectId();
+        const db = createDatabase([{ user, slot: 0, path: 'Projects', deleting: true }]);
+        try {
+            await ensureKeywords(db, user, ['Projects']);
+            expect.fail('Expected keyword deletion error');
+        } catch (err) {
+            expect(err.code).to.equal('KeywordDeleting');
+            expect(err.responseCode).to.equal(409);
+        }
+    });
 });

@@ -2853,6 +2853,66 @@
                 }
             }
         },
+        "/users/{user}/keywords/{keyword}": {
+            "delete": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Delete a keyword",
+                "description": "Asynchronously removes the keyword, its descendants, and their assignments from messages and filters.",
+                "operationId": "deleteKeyword",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "keyword",
+                        "in": "path",
+                        "description": "ID of the keyword",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeleteKeywordResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/keyword-counters/{keyword}": {
             "get": {
                 "tags": [
@@ -11482,6 +11542,27 @@
                     "success",
                     "id",
                     "path"
+                ]
+            },
+            "DeleteKeywordResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "scheduled": {
+                        "type": "string",
+                        "description": "ID of the keyword deletion task"
+                    },
+                    "existing": {
+                        "type": "boolean",
+                        "description": "True if an existing deletion task was reused"
+                    }
+                },
+                "required": [
+                    "success",
+                    "scheduled",
+                    "existing"
                 ]
             },
             "KeywordCounterResponse": {

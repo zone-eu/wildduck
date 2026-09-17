@@ -931,15 +931,7 @@ class IMAPConnection extends EventEmitter {
                 // Response for FETCH command
                 data.query.forEach((item, i) => {
                     response.attributes[1].push(item.original);
-                    if (item.item === 'flags') {
-                        response.attributes[1].push(
-                            [].concat(data.values[i] || []).map(value => ({
-                                type: 'ATOM',
-                                value: Buffer.from((value || value === 0 ? value : '').toString()),
-                                allow8Bit: true
-                            }))
-                        );
-                    } else if (item.item === 'modseq') {
+                    if (['flags', 'modseq'].indexOf(item.item) >= 0) {
                         response.attributes[1].push(
                             [].concat(data.values[i] || []).map(value => ({
                                 type: 'ATOM',
@@ -993,8 +985,7 @@ class IMAPConnection extends EventEmitter {
                                     ? flag
                                     : {
                                           type: 'ATOM',
-                                          value: Buffer.from((flag ?? '').toString()),
-                                          allow8Bit: true
+                                          value: flag
                                       }
                             );
                             break;

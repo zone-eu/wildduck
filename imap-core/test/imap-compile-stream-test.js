@@ -110,25 +110,6 @@ describe('IMAP Command Compile Stream', function () {
                     done();
                 });
             });
-
-            it('should compile a Unicode flag as an 8-bit atom without control-byte injection', function (done) {
-                const keyword = 'safe\u010a\u010d-čau-😀';
-                parsed.attributes = [
-                    {
-                        type: 'ATOM',
-                        value: Buffer.from(keyword),
-                        allow8Bit: true
-                    }
-                ];
-
-                resolveStream(imapHandler.compileStream(parsed), (err, compiled) => {
-                    expect(err).to.not.exist;
-                    expect(compiled.toString()).to.equal(`* CMD ${keyword}`);
-                    expect([...compiled].filter(byte => byte === 0x0a)).to.have.lengthOf(0);
-                    expect([...compiled].filter(byte => byte === 0x0d)).to.have.lengthOf(0);
-                    done();
-                });
-            });
         });
 
         describe('SEQUENCE', function () {
