@@ -32,6 +32,7 @@ const taskMailboxRetention = require('./lib/tasks/mailbox-retention');
 const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
+const taskKeywordDelete = require('./lib/tasks/keyword-delete');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let messageHandler;
@@ -559,6 +560,8 @@ function processTask(task, data, callback) {
     }
 
     switch (task.type) {
+        case 'keyword-delete':
+            return taskKeywordDelete(task, data, { messageHandler, loggelf }, err => callback(err, !err));
         case 'restore':
             return taskRestore(
                 task,

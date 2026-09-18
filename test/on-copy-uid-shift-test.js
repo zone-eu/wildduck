@@ -217,9 +217,17 @@ describe('on-copy UID arrays', function () {
     });
 
     // Build a self-contained COPY environment with spies on the attachment-storage refcount calls.
-    function setupCopyEnv({ sourceMessages, targetEncrypted = false, encryptResult = null, insertOneImpl, updateManyImpl, deleteManyAsyncImpl }) {
+    function setupCopyEnv({
+        sourceMessages,
+        targetEncrypted = false,
+        encryptResult = null,
+        insertOneImpl,
+        updateManyImpl,
+        deleteManyAsyncImpl,
+        keywordRecords = []
+    }) {
         let cursorIdx = 0;
-        let calls = { insertOne: [], updateOneCopied: [], updateMany: [], deleteManyAsync: [] };
+        let calls = { insertOne: [], updateOneCopied: [], updateMany: [], deleteManyAsync: [], notifications: [] };
 
         let mailboxesCollection = {
             findOne: query => {
@@ -264,6 +272,17 @@ describe('on-copy UID arrays', function () {
             collection: name => {
                 if (name === 'mailboxes') return mailboxesCollection;
                 if (name === 'messages') return messagesCollection;
+                if (name === 'keywords') {
+                    return {
+                        find() {
+                            return {
+                                async toArray() {
+                                    return keywordRecords;
+                                }
+                            };
+                        }
+                    };
+                }
                 throw new Error('unexpected db.database.collection: ' + name);
             }
         };
@@ -279,6 +298,7 @@ describe('on-copy UID arrays', function () {
             loggelf() {},
             notifier: {
                 addEntries(target, entry, cb) {
+                    calls.notifications.push(entry);
                     if (cb) {
                         return cb();
                     }
@@ -355,6 +375,33 @@ describe('on-copy UID arrays', function () {
         maildata: { attachments: [], magic: 'new-magic' },
         type: 'smime'
     };
+
+    it('includes flagged state and API keyword paths in copied-message notifications', async function () {
+        const keyword = new ObjectId();
+        let { server, messageHandler, calls } = setupCopyEnv({
+            sourceMessages: [
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 10,
+                    size: 100,
+                    unseen: true,
+                    flags: ['\\Flagged'],
+                    keywords: [keyword],
+                    mimeTree: { header: [], attachmentMap: {} }
+                }
+            ],
+            keywordRecords: [{ _id: keyword, path: 'Projects/copied' }],
+            insertOneImpl: () => Promise.resolve({ acknowledged: true, insertedId: new ObjectId() })
+        });
+
+        const { status } = await runCopy(server, messageHandler, [10]);
+
+        expect(status).to.be.true;
+        expect(calls.notifications).to.have.lengthOf(1);
+        expect(calls.notifications[0]).to.include({ command: 'EXISTS', unseen: true, flagged: true });
+        expect(calls.notifications[0].keywords).to.deep.equal(['Projects/copied']);
+    });
 
     it('releases newly encrypted attachments when the encrypted-copy insert is not acknowledged', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({

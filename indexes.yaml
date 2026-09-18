@@ -258,8 +258,27 @@ indexes:
               user: 1
               specialUse: 1
 
-    # Indexes for the messages collection
+    # Keyword paths are scoped to a user, like mailbox paths.
+    - collection: keywords
+      index:
+          name: user_path
+          unique: true
+          key:
+              user: 1
+              path: 1
 
+    - collection: keywords
+      index:
+          name: user_slot
+          unique: true
+          key:
+              user: 1
+              slot: 1
+          partialFilterExpression:
+              slot:
+                  $exists: true
+
+    # Indexes for the messages collection
     - collection: messages
       index:
           # several message related queries include the shard key values
@@ -318,6 +337,13 @@ indexes:
           key:
               mailbox: 1
               flags: 1
+
+    - collection: messages
+      index:
+          name: mailbox_keywords
+          key:
+              mailbox: 1
+              keywords: 1
 
     - collection: messages
       index:

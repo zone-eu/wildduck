@@ -54,6 +54,18 @@ describe('MessageHandler message updates', function () {
             mailboxUpdates: 0,
             messageUpdates: 0
         };
+        const atomicFlags = messageOverrides?.atomicFlags ?? messageOverrides?.flags ?? [];
+        const keywordRecords = new Map();
+        const getKeywordRecord = path => {
+            if (!keywordRecords.has(path)) {
+                keywordRecords.set(path, { _id: new ObjectId(), user, path });
+            }
+            return keywordRecords.get(path);
+        };
+        const messageKeywords = (messageOverrides?.keywordPaths || []).map(path => getKeywordRecord(path)._id);
+        const atomicKeywords = (messageOverrides?.atomicKeywordPaths ?? messageOverrides?.keywordPaths ?? []).map(
+            path => getKeywordRecord(path)._id
+        );
 
         let handler = Object.create(MessageHandler.prototype);
         handler.redis = false;
@@ -135,7 +147,8 @@ describe('MessageHandler message updates', function () {
                                                     mimeTree: {
                                                         header: ['From: sender@example.com', 'Date: Mon, 24 Aug 2026 09:00:00 +0000 (GMT)']
                                                     },
-                                                    ...messageOverrides
+                                                    ...messageOverrides,
+                                                    keywords: messageKeywords
                                                 });
                                             },
                                             close(callback) {
@@ -150,6 +163,7 @@ describe('MessageHandler message updates', function () {
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
+                                expect(options.returnDocument).to.equal('before');
                                 if (checkUpdate) {
                                     checkUpdate(update);
                                 } else {
@@ -163,9 +177,29 @@ describe('MessageHandler message updates', function () {
                                         _id: message,
                                         uid: 42,
                                         thread,
-                                        flags: ['\\Flagged']
+                                        flags: atomicFlags,
+                                        keywords: atomicKeywords
                                     }
                                 });
+                            }
+                        };
+
+                    case 'keywords':
+                        return {
+                            find(query) {
+                                const paths = query.path?.$in || query.$or?.[0]?.path?.$in;
+                                const records = paths
+                                    ? paths.map(getKeywordRecord)
+                                    : query._id?.$in
+                                      ? query._id.$in
+                                            .map(id => [...keywordRecords.values()].find(record => record._id.equals(id)))
+                                            .filter(Boolean)
+                                      : [...keywordRecords.values()];
+                                return {
+                                    async toArray() {
+                                        return records;
+                                    }
+                                };
                             }
                         };
 
@@ -175,7 +209,7 @@ describe('MessageHandler message updates', function () {
             }
         };
 
-        return { handler, user, mailbox, message, notified, fires: () => fires, quotaUpdates, calls };
+        return { handler, user, mailbox, message, notified, fires: () => fires, quotaUpdates, calls, getKeywordRecord };
     }
 
     function updateAsync(handler, user, mailbox, changes) {
@@ -298,6 +332,90 @@ describe('MessageHandler message updates', function () {
         expect(quotaUpdates).to.deep.equal([]);
     });
 
+    it('uses literal keyword arrays in aggregation updates', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        let labelId;
+        const { handler, user, mailbox, getKeywordRecord } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen'] });
+                expect(update[0].$set.keywords.$setUnion[0].$literal).to.deep.equal([labelId]);
+                expect(update[0].$set['meta.custom']).to.deep.equal({ $literal: { label: '$flags' } });
+            },
+            { flags: ['\\Seen', '$Forwarded'], keywordPaths: ['old-label'] }
+        );
+        labelId = getKeywordRecord('valid$Label')._id;
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            seen: true,
+            keywords: ['valid$Label'],
+            metaData: { label: '$flags' }
+        });
+
+        expect(updated).to.equal(1);
+    });
+
+    it('uses one aggregation update when adding and removing system flags together', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen'] });
+                expect(update[0].$set.flags.$setUnion[0].$filter.cond.$not.$in[1]).to.deep.equal({ $literal: ['\\Flagged'] });
+            },
+            { flags: ['\\Flagged'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            seen: true,
+            flagged: false
+        });
+
+        expect(updated).to.equal(1);
+    });
+
+    it('keeps API labels separate from legacy IMAP flags in notifications', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(MessageHandler, () => false, {
+            flags: ['legacy-imap-keyword'],
+            keywordPaths: ['concurrent-label'],
+            atomicKeywordPaths: ['concurrent-label']
+        });
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            addKeywords: ['concurrent-label']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified).to.have.lengthOf(1);
+        expect(notified[0].flags).to.deep.equal(['legacy-imap-keyword']);
+        expect(notified[0].addedKeywords).to.deep.equal([]);
+        expect(notified[0].removedKeywords).to.deep.equal([]);
+    });
+
+    it('does not add or remove the reserved forwarded marker as a keyword', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update[0].$set).not.to.have.property('flags');
+            },
+            { flags: ['$Forwarded'], keywordPaths: ['old-keyword'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            keywords: ['$Forwarded', 'visible-keyword'],
+            removeKeywords: ['$Forwarded']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['$Forwarded']);
+        expect(notified[0].addedKeywords).to.deep.equal(['visible-keyword']);
+        expect(notified[0].removedKeywords).to.deep.equal(['old-keyword']);
+    });
+
     it('publishes marked.ham when markHam=true is the only requested action', async function () {
         const published = [];
         const { MessageHandler, MARKED_HAM, restore } = loadModulesWithPublishStub(published);
@@ -334,6 +452,7 @@ describe('MessageHandler message updates', function () {
         const insertedMessage = new ObjectId();
         const thread = new ObjectId();
         const existsEntries = [];
+        const removeEntries = [];
 
         let handler = Object.create(MessageHandler.prototype);
         handler.database = {
@@ -364,6 +483,7 @@ describe('MessageHandler message updates', function () {
                 message: {
                     mailbox: targetMailbox,
                     unseen: false,
+                    flags: ['\\Flagged', 'new-keyword'],
                     idate: new Date(),
                     thread
                 },
@@ -377,10 +497,13 @@ describe('MessageHandler message updates', function () {
                     user
                 },
                 existsEntries,
-                removeEntries: [],
+                removeEntries,
                 messageId: sourceMessage,
                 messageUid: 41,
-                unseen: false,
+                unseen: true,
+                flagged: false,
+                keywords: ['old-keyword'],
+                destinationKeywords: ['new-keyword'],
                 newModseq: 3,
                 uidNext: 42,
                 junk: false,
@@ -400,6 +523,11 @@ describe('MessageHandler message updates', function () {
         expect(existsEntries[0].markHam).to.be.true;
         expect(existsEntries[0].uid).to.equal(42);
         expect(existsEntries[0].message.toString()).to.equal(insertedMessage.toString());
+        expect(existsEntries[0].flagged).to.be.true;
+        expect(existsEntries[0].keywords).to.deep.equal(['new-keyword']);
+        expect(removeEntries[0].unseen).to.be.true;
+        expect(removeEntries[0].flagged).to.be.false;
+        expect(removeEntries[0].keywords).to.deep.equal(['old-keyword']);
     });
 });
 
