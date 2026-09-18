@@ -2923,6 +2923,11 @@
                                         "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
                                         "default": false
                                     },
+                                    "updateThreadAll": {
+                                        "type": "boolean",
+                                        "description": "Only used when updateThread is true. If true, applies the requested updates to matching thread messages in all mailboxes. Can not be combined with moveTo",
+                                        "default": false
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -3874,6 +3879,11 @@
                                     "updateThread": {
                                         "type": "boolean",
                                         "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message",
+                                        "default": false
+                                    },
+                                    "updateThreadAll": {
+                                        "type": "boolean",
+                                        "description": "Only used when updateThread is true. If true, applies the requested updates to matching thread messages in all mailboxes. Can not be combined with moveTo",
                                         "default": false
                                     },
                                     "seen": {

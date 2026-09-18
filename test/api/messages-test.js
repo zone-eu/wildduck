@@ -2391,7 +2391,7 @@ describe('Messages tests', function () {
         expect(singleThread.body.previousCursor).to.be.false;
     });
 
-    it('should PUT and DELETE /users/:user/mailboxes/:mailbox/messages expect success / updateThread affects only the current mailbox thread', async () => {
+    it('should PUT and DELETE /users/:user/mailboxes/:mailbox/messages expect success / updateThreadAll broadens updateThread to all mailboxes', async () => {
         const mailboxResponse = await server
             .post(`/users/${user}/mailboxes`)
             .send({ path: `/update-thread-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
@@ -2485,6 +2485,45 @@ describe('Messages tests', function () {
         expect(otherMailboxMessage.body.thread).to.equal(currentMessages.get(root.body.message.id).thread);
         expect(otherMailboxMessage.body.seen).to.be.false;
         expect(otherMailboxMessage.body.flagged).to.be.false;
+
+        const ignoredAllMailboxUpdateResponse = await server
+            .put(`/users/${user}/mailboxes/${threadMailbox}/messages/${root.body.message.id}`)
+            .send({
+                updateThreadAll: true,
+                seen: false,
+                flagged: false
+            })
+            .expect(200);
+
+        expect(ignoredAllMailboxUpdateResponse.body.updated).to.equal(1);
+
+        const unchangedThreadReply = await server
+            .get(`/users/${user}/mailboxes/${threadMailbox}/messages/${reply.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(unchangedThreadReply.body.seen).to.be.true;
+        expect(unchangedThreadReply.body.flagged).to.be.true;
+
+        const allMailboxUpdateResponse = await server
+            .put(`/users/${user}/mailboxes/${threadMailbox}/messages/${root.body.message.id}`)
+            .send({
+                updateThread: true,
+                updateThreadAll: true,
+                seen: true,
+                flagged: true
+            })
+            .expect(200);
+
+        expect(allMailboxUpdateResponse.body.updated).to.equal(3);
+
+        const updatedOtherMailboxMessage = await server
+            .get(`/users/${user}/mailboxes/${otherMailbox}/messages/${otherMailboxReply.body.message.id}`)
+            .send({})
+            .expect(200);
+
+        expect(updatedOtherMailboxMessage.body.seen).to.be.true;
+        expect(updatedOtherMailboxMessage.body.flagged).to.be.true;
 
         const deleteResponse = await server
             .put(`/users/${user}/mailboxes/${threadMailbox}/messages`)
@@ -2720,6 +2759,16 @@ describe('Messages tests', function () {
             expect(response.body.code).to.equal('InputValidationError');
             expect(response.body.error).to.include('updateThread');
         }
+    });
+
+    it('should PUT /users/:user/mailboxes/:mailbox/messages expect failure / updateThreadAll with moveTo', async () => {
+        const response = await server
+            .put(`/users/${user}/mailboxes/${testMailbox}/messages/1`)
+            .send({ updateThread: true, updateThreadAll: true, moveTo: trashId })
+            .expect(400);
+
+        expect(response.body.code).to.equal('InputValidationError');
+        expect(response.body.error).to.include('updateThreadAll');
     });
 
     it('should PUT /users/:user/mailboxes/:mailbox/messages expect success / move lots of messages to trash, should not timeout', async () => {
