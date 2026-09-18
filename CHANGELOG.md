@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.51.2](https://github.com/zone-eu/wildduck/compare/v1.51.1...v1.51.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* ZMS-103: Fix imap line too long bad response tagging. Add tests, add logging ([#1171](https://github.com/zone-eu/wildduck/issues/1171)) ([5ac428c](https://github.com/zone-eu/wildduck/commit/5ac428c8cbf7e48ce7c1d3d7e11ef609bb1dcc93))
+* ZMS-104: add updateThreadAll to update all messages in a thread regardles of mailbox ([#1173](https://github.com/zone-eu/wildduck/issues/1173)) ([56036d9](https://github.com/zone-eu/wildduck/commit/56036d90977757091588f676e065f6a12efb7968))
+
 ## [1.51.1](https://github.com/zone-eu/wildduck/compare/v1.51.0...v1.51.1) (2026-09-14)
 
 
