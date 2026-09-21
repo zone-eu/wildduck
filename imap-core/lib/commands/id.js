@@ -4,7 +4,7 @@ const packageInfo = require('../../../package');
 const imapHandler = require('../handler/imap-handler');
 const imapTools = require('../imap-tools');
 
-const allowedKeys = ['name', 'version', 'os', 'os-version', 'vendor', 'support-url', 'address', 'date', 'command', 'arguments', 'environment'];
+const allowedKeys = ['name', 'version', 'os', 'os-version', 'vendor', 'support-url', 'address', 'date', 'command', 'arguments', 'environment', 'event'];
 
 module.exports = {
     schema: [
@@ -34,9 +34,10 @@ module.exports = {
         if (Array.isArray(command.attributes[0])) {
             command.attributes[0].forEach(val => {
                 if (key === false) {
-                    key = (val.value || '').toString().toLowerCase().trim();
+                    key = ((val && val.value) || '').toString().toLowerCase().trim();
                 } else {
-                    if (allowedKeys.indexOf(key) >= 0) {
+                    // omit keys sent as NIL (parsed as null); keep empty-string values
+                    if (val && allowedKeys.indexOf(key) >= 0) {
                         clientId[key] = (val.value || '').toString();
                         maxKeyLen = Math.max(maxKeyLen, key.length);
                     }

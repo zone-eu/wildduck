@@ -62,10 +62,18 @@ ignoredHosts = []
 #secure=false
 #ignoreSTARTTLS=true
 
-# Apple push notifications
-# TODO: missing actual implementation for Apple Push Service
+# Apple Push Notification Service (XAPPLEPUSHSERVICE)
+# Requires a valid APNs certificate obtained from Apple
 [aps]
 enabled = false
+# APNs topic (UID from the push certificate, e.g. "com.apple.mobilemail.push.<tld>.<domain>")
+#topic = ""
+# Path to APNs client certificate (PEM)
+#certPath = "apns.pem"
+# Path to APNs client private key (PEM)
+#keyPath = "apns.key"
+# Use APNs sandbox environment (api.sandbox.push.apple.com) instead of production
+#sandbox = false
 
 [setup]
 # Public configuration for IMAP
