@@ -6,7 +6,37 @@ const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 
 const db = require('../lib/db');
+const consts = require('../lib/consts');
 const searchApplyTask = util.promisify(require('../lib/tasks/search-apply'));
+
+const createMessageIdCursor = (messageIds, filter, checkFilter) => {
+    const pagedFilter = filter.$and && filter.$and.length === 2 && filter.$and[1]._id && filter.$and[1]._id.$gt;
+    const baseFilter = pagedFilter ? filter.$and[0] : filter;
+    const lastId = pagedFilter ? filter.$and[1]._id.$gt : false;
+    let pageSize;
+
+    checkFilter(baseFilter);
+
+    return {
+        project(projection) {
+            expect(projection).to.deep.equal({ _id: true });
+            return this;
+        },
+        sort(sort) {
+            expect(sort).to.deep.equal({ _id: 1 });
+            return this;
+        },
+        limit(limit) {
+            expect(limit).to.equal(consts.CURSOR_MAX_PAGE_SIZE);
+            pageSize = limit;
+            return this;
+        },
+        async toArray() {
+            const start = lastId ? messageIds.findIndex(id => id.equals(lastId)) + 1 : 0;
+            return messageIds.slice(start, start + pageSize).map(_id => ({ _id }));
+        }
+    };
+};
 
 describe('Search apply task', function () {
     it('should resolve move destination mailbox with the task user scope', async () => {
@@ -38,16 +68,9 @@ describe('Search apply task', function () {
                     case 'messages':
                         return {
                             find(filter) {
-                                expect(filter.user.toString()).to.equal(user.toString());
-
-                                return {
-                                    project() {
-                                        return this;
-                                    },
-                                    async toArray() {
-                                        return [];
-                                    }
-                                };
+                                return createMessageIdCursor([], filter, baseFilter => {
+                                    expect(baseFilter.user.toString()).to.equal(user.toString());
+                                });
                             }
                         };
 
@@ -122,18 +145,11 @@ describe('Search apply task', function () {
 
                 return {
                     find(filter) {
-                        expect(filter.user.toString()).to.equal(user.toString());
-                        expect(filter.idate.$gte).to.deep.equal(new Date('2025-01-01T00:00:00.000Z'));
-                        expect(filter.idate.$lte).to.deep.equal(new Date('2025-12-31T23:59:59.999Z'));
-                        return {
-                            project(projection) {
-                                expect(projection).to.deep.equal({ _id: true });
-                                return this;
-                            },
-                            async toArray() {
-                                return messageIds.map(_id => ({ _id }));
-                            }
-                        };
+                        return createMessageIdCursor(messageIds, filter, baseFilter => {
+                            expect(baseFilter.user.toString()).to.equal(user.toString());
+                            expect(baseFilter.idate.$gte).to.deep.equal(new Date('2025-01-01T00:00:00.000Z'));
+                            expect(baseFilter.idate.$lte).to.deep.equal(new Date('2025-12-31T23:59:59.999Z'));
+                        });
                     },
                     async findOne(query) {
                         const _id = query._id;
@@ -209,18 +225,19 @@ describe('Search apply task', function () {
 
                 return {
                     find(filter) {
-                        expect(filter.user.toString()).to.equal(user.toString());
-                        return {
-                            project(projection) {
-                                expect(projection).to.deep.equal({ _id: true });
-                                return this;
-                            },
-                            async toArray() {
-                                return messageIds.map(_id => ({ _id }));
-                            }
-                        };
+                        return createMessageIdCursor(messageIds, filter, baseFilter => {
+                            expect(baseFilter.user.toString()).to.equal(user.toString());
+                        });
                     },
-                    async findOne(query) {
+                    async findOne(query, options) {
+                        expect(options).to.deep.equal({
+                            projection: {
+                                _id: true,
+                                user: true,
+                                mailbox: true,
+                                uid: true
+                            }
+                        });
                         return {
                             _id: query._id,
                             user,
