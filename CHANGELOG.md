@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.51.3](https://github.com/zone-eu/wildduck/compare/v1.51.2...v1.51.3) (2026-09-22)
+
+
+### Bug Fixes
+
+* **proxy:** guard the raw socket while parsing the PROXY header ([#1158](https://github.com/zone-eu/wildduck/issues/1158)) ([7fb2650](https://github.com/zone-eu/wildduck/commit/7fb265095621fd06ff07779025d4d9649a1963a4))
+* ZMS-105: Fix search-apply task instability, now applies all changes ([#1175](https://github.com/zone-eu/wildduck/issues/1175)) ([15c43de](https://github.com/zone-eu/wildduck/commit/15c43de34cbf43603b1ebace68e628e605169b2d))
+
 ## [1.51.2](https://github.com/zone-eu/wildduck/compare/v1.51.1...v1.51.2) (2026-09-18)
 
 
