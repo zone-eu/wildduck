@@ -36,7 +36,6 @@
         "grunt": "1.6.3",
         "grunt-cli": "1.5.0",
         "grunt-eslint": "24.3.0",
-        "grunt-mocha-test": "0.13.3",
         "grunt-shell-spawn": "0.5.0",
         "grunt-wait": "0.3.0",
         "imapflow": "2.0.5",
