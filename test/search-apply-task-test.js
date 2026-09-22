@@ -10,10 +10,11 @@ const consts = require('../lib/consts');
 const searchApplyTask = util.promisify(require('../lib/tasks/search-apply'));
 
 const createMessageIdCursor = (messageIds, filter, checkFilter) => {
-    const pagedFilter = filter.$and && filter.$and.length === 2 && filter.$and[1]._id && filter.$and[1]._id.$gt;
-    const baseFilter = pagedFilter ? filter.$and[0] : filter;
-    const lastId = pagedFilter ? filter.$and[1]._id.$gt : false;
+    const boundedFilter = filter.$and && filter.$and.length === 2 && filter.$and[1]._id && filter.$and[1]._id.$lte;
+    const baseFilter = boundedFilter ? filter.$and[0] : filter;
+    const idRange = boundedFilter ? filter.$and[1]._id : {};
     let pageSize;
+    let sortDirection;
 
     checkFilter(baseFilter);
 
@@ -23,17 +24,24 @@ const createMessageIdCursor = (messageIds, filter, checkFilter) => {
             return this;
         },
         sort(sort) {
-            expect(sort).to.deep.equal({ _id: 1 });
+            expect(sort._id).to.be.oneOf([-1, 1]);
+            sortDirection = sort._id;
             return this;
         },
         limit(limit) {
-            expect(limit).to.equal(consts.CURSOR_MAX_PAGE_SIZE);
+            expect(limit).to.equal(sortDirection === -1 ? 1 : consts.CURSOR_MAX_PAGE_SIZE);
             pageSize = limit;
             return this;
         },
         async toArray() {
-            const start = lastId ? messageIds.findIndex(id => id.equals(lastId)) + 1 : 0;
-            return messageIds.slice(start, start + pageSize).map(_id => ({ _id }));
+            if (sortDirection === -1) {
+                return messageIds.length ? [{ _id: messageIds[messageIds.length - 1] }] : [];
+            }
+
+            expect(idRange.$lte).to.deep.equal(messageIds[messageIds.length - 1]);
+            const start = idRange.$gt ? messageIds.findIndex(id => id.equals(idRange.$gt)) + 1 : 0;
+            const end = messageIds.findIndex(id => id.equals(idRange.$lte)) + 1;
+            return messageIds.slice(start, end).slice(0, pageSize).map(_id => ({ _id }));
         }
     };
 };
