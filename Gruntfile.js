@@ -3,7 +3,7 @@
 process.env.NODE_ENV = 'test';
 
 module.exports = function (grunt) {
-    const mocha = 'npx mocha --reporter spec --color';
+    const mocha = 'npx mocha --reporter spec --color --exit';
     const mochaOutput = {
         stdout: true,
         stderr: true
