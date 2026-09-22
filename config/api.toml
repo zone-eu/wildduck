@@ -60,3 +60,7 @@ accountDescription = "WildDuck ({email})"
 
 [cors]
 origins = ["*"]
+
+[search]
+# Minimum time between accepted full-text searches for the same user. Set to 0 to disable.
+debounceMs = 1000
