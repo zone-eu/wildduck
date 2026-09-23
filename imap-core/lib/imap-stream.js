@@ -55,6 +55,12 @@ class IMAPStream extends Writable {
         return true;
     }
 
+    _reportLineTooLong(value) {
+        if (typeof this.options.onLineTooLong === 'function') {
+            this.options.onLineTooLong(value);
+        }
+    }
+
     _emitLineTooLong(regex, data, pos, done) {
         this.oncommand(
             {
@@ -145,6 +151,7 @@ class IMAPStream extends Writable {
         // so it knows from where to start with the next iteration
         if ((match = regex.exec(data))) {
             if (this._checkLineLength(match.index - pos)) {
+                this._reportLineTooLong(data.substr(pos, match.index - pos));
                 this._discardedTag = this._getTag(data, pos);
                 pos = match.index + match[0].length;
                 return this._emitLineTooLong(regex, data, pos, done);
@@ -153,6 +160,7 @@ class IMAPStream extends Writable {
             pos += line.length + match[0].length;
         } else {
             if (this._checkLineLength(data.length - pos)) {
+                this._reportLineTooLong(data.substr(pos));
                 this._discarding = true;
                 this._discardedTag = this._getTag(data, pos);
                 return done();

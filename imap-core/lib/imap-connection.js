@@ -58,7 +58,18 @@ class IMAPConnection extends EventEmitter {
 
         // Parser instance for the incoming stream
         this._parser = new IMAPStream({
-            maxLineLength: this._server.options.maxLineLength
+            maxLineLength: this._server.options.maxLineLength,
+            onLineTooLong: value => {
+                this.logger.error(
+                    {
+                        tnx: 'client',
+                        cid: this.id
+                    },
+                    '[%s] Command line too long, C: %s',
+                    this.id,
+                    value
+                );
+            }
         });
 
         // Set handler for incoming commands
