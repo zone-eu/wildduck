@@ -36,14 +36,12 @@
         "grunt": "1.6.3",
         "grunt-cli": "1.5.0",
         "grunt-eslint": "24.3.0",
-        "grunt-mocha-test": "0.13.3",
         "grunt-shell-spawn": "0.5.0",
         "grunt-wait": "0.3.0",
-        "imapflow": "2.0.2",
-        "mailparser": "3.9.26",
-        "mocha": "11.8.0",
-        "request": "2.88.2",
-        "supertest": "7.2.2"
+        "imapflow": "2.0.5",
+        "mailparser": "3.9.28",
+        "mocha": "12.0.2",
+        "supertest": "7.3.0"
     },
     "dependencies": {
         "@fidm/x509": "1.2.1",
@@ -54,7 +52,7 @@
         "@postalsys/vmc": "1.1.5",
         "@root/acme": "3.1.0",
         "@root/csr": "0.8.1",
-        "@zone-eu/mailsplit": "5.4.16",
+        "@zone-eu/mailsplit": "5.4.17",
         "@zone-eu/mobileconfig": "2.4.6",
         "@zone-eu/seq-index": "1.1.5",
         "@zone-eu/smime-js": "0.1.0",
@@ -65,8 +63,8 @@
         "axios": "1.20.0",
         "base32.js": "0.1.0",
         "bcryptjs": "3.0.3",
-        "bson": "7.3.2",
-        "bullmq": "6.3.5",
+        "bson": "7.3.3",
+        "bullmq": "6.3.8",
         "fido2-lib": "3.5.9",
         "gelf": "2.0.1",
         "generate-password": "1.7.1",
@@ -84,7 +82,7 @@
         "js-yaml": "5.4.2",
         "key-fingerprint": "1.1.0",
         "libbase64": "1.3.0",
-        "libmime": "5.4.3",
+        "libmime": "5.4.4",
         "libqp": "2.1.1",
         "logic-query-parser": "0.0.5",
         "mailauth": "5.0.3",
@@ -94,7 +92,7 @@
         "msgpack5": "6.0.2",
         "node-forge": "1.4.0",
         "node-html-parser": "9.0.4",
-        "nodemailer": "10.0.9",
+        "nodemailer": "10.0.10",
         "npmlog": "7.0.1",
         "openpgp": "6.1.1",
         "pem-jwk": "2.0.0",
@@ -108,9 +106,9 @@
         "restifyapigenerate": "1.2.4",
         "sanitize-html": "2.17.7",
         "search-string": "4.1.0",
-        "smtp-server": "3.19.12",
+        "smtp-server": "3.19.13",
         "speakeasy": "2.0.0",
-        "undici": "7.28.0",
+        "undici": "8.11.0",
         "unix-crypt-td-js": "1.1.4",
         "unixcrypt": "1.2.0",
         "yargs": "18.0.0",
@@ -119,6 +117,11 @@
     "repository": {
         "type": "git",
         "url": "git://github.com/zone-eu/wildduck.git"
+    },
+    "overrides": {
+        "restify-cors-middleware2": {
+            "restify": "$restify"
+        }
     },
     "engines": {
         "node": ">=22.19.0"
