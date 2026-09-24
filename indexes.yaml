@@ -168,17 +168,6 @@ indexes:
     - collection: authlog
       type: users # index applies to users database
       index:
-          name: user_by_ip
-          key:
-              user: 1
-              ip: 1 # List events for user by IP
-              _id: -1
-          partialFilterExpression:
-              ip: true
-
-    - collection: authlog
-      type: users # index applies to users database
-      index:
           name: by_ip
           key:
               ip: 1 # All events from this IP
@@ -767,13 +756,6 @@ indexes:
     - collection: audit.files
       type: gridfs # index applies to gridfs database
       index:
-          name: audit_files_expire
-          key:
-              metadata.info.expires: 1
-
-    - collection: audit.files
-      type: gridfs # index applies to gridfs database
-      index:
           name: audit_files_addresses
           key:
               metadata.audit: 1
@@ -852,3 +834,18 @@ indexes:
 deleteindexes:
     - collection: settings
       index: key_enumerable
+
+    - collection: authlog
+      type: users
+      index: user_by_ip
+
+    - collection: audit.files
+      type: gridfs
+      index: audit_files_expire
+
+    - collection: attachments.files
+      type: gridfs
+      index: related_attachments
+
+    - collection: addressregister
+      index: by_name
