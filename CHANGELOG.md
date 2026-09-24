@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.51.4](https://github.com/zone-eu/wildduck/compare/v1.51.3...v1.51.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* bump deps, remove unnecessary deps ([#1178](https://github.com/zone-eu/wildduck/issues/1178)) ([80f3b2b](https://github.com/zone-eu/wildduck/commit/80f3b2b6e0274cd85e3d81ac1d3723111a989099))
+* docs(migration): mention checking inbox placement after the move ([#1179](https://github.com/zone-eu/wildduck/issues/1179)) ([cdc9490](https://github.com/zone-eu/wildduck/commit/cdc9490e8de36fbe6dcd45fb5e1d91faaa888154))
+* ZMS-102: Try to improve search, fix maildropper tests ([#1183](https://github.com/zone-eu/wildduck/issues/1183)) ([63cb0f6](https://github.com/zone-eu/wildduck/commit/63cb0f644a801782065d5675691043e014689ef1))
+* ZMS-106: Log imap commands bigger than 64kb, log imap command even if cancelled to due being too long,  ([#1184](https://github.com/zone-eu/wildduck/issues/1184)) ([bfcb7ac](https://github.com/zone-eu/wildduck/commit/bfcb7ac7f58c3128f845c6fd6fc5b94fe1b19e19))
+* ZMS-88: Remove unneeded or unused indexes ([#1177](https://github.com/zone-eu/wildduck/issues/1177)) ([45a38da](https://github.com/zone-eu/wildduck/commit/45a38da3b98cd2551afb46bfe058524c90157f7b))
+
 ## [1.51.3](https://github.com/zone-eu/wildduck/compare/v1.51.2...v1.51.3) (2026-09-22)
 
 
