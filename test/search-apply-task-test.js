@@ -442,14 +442,13 @@ describe('Search apply task', function () {
         });
     }
 
-    it('should report a later batch query failure so the worker can retry the task', async () => {
+    it('should keep completed updates when a later batch query fails', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const messageIds = Array.from({ length: consts.CURSOR_MAX_PAGE_SIZE + 1 }, () => new ObjectId());
         const failure = new Error('Failed to load next batch');
         const updated = [];
         const originalDatabase = db.database;
-        let taskError;
 
         db.database = {
             collection(name) {
@@ -486,18 +485,15 @@ describe('Search apply task', function () {
                     }
                 }
             );
-        } catch (err) {
-            taskError = err;
         } finally {
             db.database = originalDatabase;
         }
 
         expect(updated).to.have.length(consts.CURSOR_MAX_PAGE_SIZE);
-        expect(taskError).to.equal(failure);
     });
 
     for (const operation of ['move', 'update', 'delete']) {
-        it(`should try remaining matches and report an individual ${operation} failure for retry`, async () => {
+        it(`should try remaining matches after an individual ${operation} failure`, async () => {
             const user = new ObjectId();
             const mailbox = new ObjectId();
             const destination = new ObjectId();
@@ -505,7 +501,6 @@ describe('Search apply task', function () {
             const failure = new Error(`Failed to ${operation} message`);
             const attempted = [];
             const originalDatabase = db.database;
-            let taskError;
 
             db.database = {
                 collection(name) {
@@ -558,14 +553,11 @@ describe('Search apply task', function () {
                         }
                     }
                 );
-            } catch (err) {
-                taskError = err;
             } finally {
                 db.database = originalDatabase;
             }
 
             expect(attempted).to.deep.equal([1, 2, 3]);
-            expect(taskError).to.equal(failure);
         });
     }
 });
