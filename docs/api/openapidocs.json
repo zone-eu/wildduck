@@ -6915,7 +6915,7 @@
                                     },
                                     "scope": {
                                         "type": "string",
-                                        "description": "Required scope. One of master, imap, smtp, pop3",
+                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp",
                                         "default": "master"
                                     },
                                     "sess": {
@@ -6985,7 +6985,7 @@
                                     },
                                     "scope": {
                                         "type": "string",
-                                        "description": "Required scope. One of master, imap, smtp, pop3",
+                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp",
                                         "default": "master"
                                     },
                                     "appId": {
@@ -6994,7 +6994,7 @@
                                     },
                                     "token": {
                                         "type": "boolean",
-                                        "description": "If true then generates a temporary access token that is valid for this user. Only available if scope is \"master\". When using user tokens then you can replace user ID in URLs with \"me\".",
+                                        "description": "If true then generates a temporary credential for the requested scope. The \"master\" scope returns an API access token and \"mcp\" returns an MCP-only bearer token.",
                                         "default": false
                                     },
                                     "sess": {
@@ -13213,7 +13213,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "User auth token returned when this check completes a pending 2FA login"
+                        "description": "API access token or MCP-only bearer token returned when this check completes a pending 2FA login"
                     }
                 },
                 "required": [
@@ -13532,7 +13532,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "User auth token"
+                        "description": "API access token or MCP-only bearer token"
                     }
                 },
                 "required": [
@@ -13642,7 +13642,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the value to use as access token when making API requests on behalf of logged in user."
+                        "description": "If a token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the API access token or MCP-only bearer token for the requested scope."
                     },
                     "twoFactorNonce": {
                         "type": "string",

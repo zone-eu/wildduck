@@ -16,7 +16,7 @@ const authRoutes = require('../../lib/api/auth');
 const webauthnRoutes = require('../../lib/api/2fa/webauthn');
 const UserHandler = require('../../lib/user-handler');
 
-function getAuthenticateRoute(userHandler) {
+function getAuthenticateRoute(userHandler, mcpTokenHandler) {
     const routes = [];
     const server = {
         post(spec, handler) {
@@ -26,7 +26,7 @@ function getAuthenticateRoute(userHandler) {
         get() {}
     };
 
-    authRoutes({}, server, userHandler);
+    authRoutes({}, server, userHandler, mcpTokenHandler);
     return routes.find(route => route.spec.path === '/authenticate' && route.spec.name === 'authenticate');
 }
 
@@ -141,10 +141,121 @@ describe('Authenticate Strict 2FA Handling', function () {
                 user.toString(),
                 {
                     methods: ['totp'],
-                    tokenRequested: true
+                    tokenRequested: true,
+                    tokenScope: 'master'
                 }
             ]
         ]);
+    });
+
+    it('should return a dedicated MCP token for the mcp scope', async () => {
+        config.strict2fa = true;
+
+        const user = new ObjectId();
+        const mcpToken = `wdmcp_1${'a'.repeat(64)}deadbeef`;
+        const calls = [];
+
+        const route = getAuthenticateRoute(
+            {
+                asyncAuthenticate: async (username, password, scope) => [
+                    {
+                        user,
+                        username,
+                        address: 'mcpuser@example.com',
+                        scope,
+                        require2fa: false,
+                        require2faEnabled: false,
+                        requirePasswordChange: false
+                    },
+                    user
+                ],
+                generateAuthToken: async () => {
+                    throw new Error('generateAuthToken should not be called for the mcp scope');
+                }
+            },
+            {
+                create: async (authUser, data) => {
+                    calls.push([authUser.toString(), data]);
+                    return { token: mcpToken };
+                }
+            }
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: '/authenticate',
+                route: { spec: route.spec },
+                params: {
+                    username: 'mcpuser',
+                    password: 'mcpsecret',
+                    scope: 'mcp',
+                    token: true,
+                    sess: 'session-id',
+                    ip: '192.0.2.1'
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body).to.include({ success: true, scope: 'mcp', token: mcpToken });
+        expect(calls).to.have.length(1);
+        expect(calls[0][0]).to.equal(user.toString());
+        expect(calls[0][1]).to.include({ description: 'MCP login', sess: 'session-id', ip: '192.0.2.1' });
+        expect(calls[0][1].expires).to.be.instanceOf(Date);
+    });
+
+    it('should bind an MCP token request to the pending 2FA nonce', async () => {
+        config.strict2fa = true;
+
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        let pendingData;
+        const route = getAuthenticateRoute({
+            asyncAuthenticate: async () => [
+                {
+                    user,
+                    username: 'mcptotpuser',
+                    address: 'mcptotpuser@example.com',
+                    scope: 'mcp',
+                    require2fa: ['totp'],
+                    require2faEnabled: true,
+                    requirePasswordChange: false
+                },
+                user
+            ],
+            generatePending2faNonce: async (authUser, data) => {
+                pendingData = data;
+                return twoFactorNonce;
+            }
+        });
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: '/authenticate',
+                route: { spec: route.spec },
+                params: {
+                    username: 'mcptotpuser',
+                    password: 'mcpsecret',
+                    scope: 'mcp',
+                    token: true
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.not.exist;
+        expect(res.body.totpNonce).to.equal(twoFactorNonce);
+        expect(pendingData).to.deep.equal({ methods: ['totp'], tokenRequested: true, tokenScope: 'mcp' });
     });
 
     it('should return a token and standalone TOTP nonce when strict2fa is disabled', async () => {

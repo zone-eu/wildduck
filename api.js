@@ -743,11 +743,11 @@ module.exports = done => {
     filtersRoutes(db, server, userHandler, settingsHandler);
     domainaccessRoutes(db, server);
     aspsRoutes(db, server, userHandler);
-    totpRoutes(db, server, userHandler);
+    totpRoutes(db, server, userHandler, mcpTokenHandler);
     custom2faRoutes(db, server, userHandler);
-    webauthnRoutes(db, server, userHandler);
+    webauthnRoutes(db, server, userHandler, mcpTokenHandler);
     updatesRoutes(db, server, notifier);
-    authRoutes(db, server, userHandler);
+    authRoutes(db, server, userHandler, mcpTokenHandler);
     autoreplyRoutes(db, server);
     submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
     auditRoutes(db, server, auditHandler);
