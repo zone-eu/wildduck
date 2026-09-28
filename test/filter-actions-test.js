@@ -230,8 +230,8 @@ describe('Filter actions runtime behavior', function () {
             }
         },
         {
-            caseName: 'keywords action',
-            actionBuilder: async () => ({ keywords: ['runtime-keyword'] }),
+            caseName: 'labels action',
+            actionBuilder: async () => ({ labels: ['runtime-label'] }),
             verify: async context => {
                 const inboxMessage = await waitForMessageBySubject({
                     userId: context.mainUser.userId,
@@ -240,7 +240,7 @@ describe('Filter actions runtime behavior', function () {
                 });
 
                 expect(inboxMessage).to.exist;
-                expect(inboxMessage.keywords).to.include('runtime-keyword');
+                expect(inboxMessage.labels).to.include('runtime-label');
             }
         },
         {
@@ -338,7 +338,7 @@ describe('Filter actions runtime behavior', function () {
                 return {
                     seen: true,
                     flag: true,
-                    keywords: ['combined-a', 'combined-b'],
+                    labels: ['combined-a', 'combined-b'],
                     targets: [context.forwardTargetAddress]
                 };
             },
@@ -352,7 +352,7 @@ describe('Filter actions runtime behavior', function () {
                 expect(inboxMessage).to.exist;
                 expect(inboxMessage.seen).to.equal(true);
                 expect(inboxMessage.flagged).to.equal(true);
-                expect(inboxMessage.keywords).to.include.members(['combined-a', 'combined-b']);
+                expect(inboxMessage.labels).to.include.members(['combined-a', 'combined-b']);
 
                 const forwardQueueEntry = await waitForForwardQueueEntry({
                     recipientAddress: context.forwardTargetAddress,
@@ -427,7 +427,7 @@ describe('Filter actions runtime behavior', function () {
                 queryFrom: context.senderTag,
                 action: {
                     seen: true,
-                    keywords: ['multi-one'],
+                    labels: ['multi-one'],
                     targets: [context.forwardTargetAddressOne]
                 }
             });
@@ -437,7 +437,7 @@ describe('Filter actions runtime behavior', function () {
                 queryFrom: context.senderTag,
                 action: {
                     flag: true,
-                    keywords: ['multi-two'],
+                    labels: ['multi-two'],
                     targets: [context.forwardTargetAddressTwo]
                 }
             });
@@ -457,7 +457,7 @@ describe('Filter actions runtime behavior', function () {
             expect(inboxMessage).to.exist;
             expect(inboxMessage.seen).to.equal(true);
             expect(inboxMessage.flagged).to.equal(true);
-            expect(inboxMessage.keywords).to.include.members(['multi-one', 'multi-two']);
+            expect(inboxMessage.labels).to.include.members(['multi-one', 'multi-two']);
 
             const forwardQueueEntryOne = await waitForForwardQueueEntry({
                 recipientAddress: context.forwardTargetAddressOne,

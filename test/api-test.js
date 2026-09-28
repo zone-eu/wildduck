@@ -913,7 +913,7 @@ describe('API tests', function () {
         });
     });
 
-    describe('keywords', () => {
+    describe('labels', () => {
         let messageId;
 
         before(async () => {
@@ -922,9 +922,9 @@ describe('API tests', function () {
             const response = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
-                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
-                    subject: 'keyword test message',
-                    text: 'Testing keywords'
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'label test message',
+                    text: 'Testing labels'
                 })
                 .expect(200);
             expect(response.body.success).to.be.true;
@@ -937,24 +937,24 @@ describe('API tests', function () {
             }
         });
 
-        it('should GET /users/:user/keywords with all custom keywords and counters', async () => {
+        it('should GET /users/:user/labels with all custom labels and counters', async () => {
             const firstResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
-                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
-                    subject: 'first keyword list message',
-                    text: 'Testing keyword list',
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'first label list message',
+                    text: 'Testing label list',
                     unseen: true,
-                    keywords: ['keyword-list-a', 'keyword-list-shared']
+                    labels: ['label-list-a', 'label-list-shared']
                 })
                 .expect(200);
             const secondResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
-                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
-                    subject: 'second keyword list message',
-                    text: 'Testing keyword list',
-                    keywords: ['keyword-list-b', 'keyword-list-shared']
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'second label list message',
+                    text: 'Testing label list',
+                    labels: ['label-list-b', 'label-list-shared']
                 })
                 .expect(200);
 
@@ -963,326 +963,330 @@ describe('API tests', function () {
                 .send({ seen: true })
                 .expect(200);
 
-            const response = await server.get(`/users/${userId}/keywords?counters=true`).expect(200);
+            const response = await server.get(`/users/${userId}/labels?counters=true`).expect(200);
             expect(response.body.success).to.be.true;
-            expect(response.body.keywords.map(({ keyword, total, unseen }) => ({ keyword, total, unseen }))).to.deep.include.members([
-                { keyword: 'keyword-list-a', total: 1, unseen: 1 },
-                { keyword: 'keyword-list-b', total: 1, unseen: 0 },
-                { keyword: 'keyword-list-shared', total: 2, unseen: 1 }
+            expect(response.body.labels.map(({ name, total, unseen }) => ({ name, total, unseen }))).to.deep.include.members([
+                { name: 'label-list-a', total: 1, unseen: 1 },
+                { name: 'label-list-b', total: 1, unseen: 0 },
+                { name: 'label-list-shared', total: 2, unseen: 1 }
             ]);
 
-            const namesOnlyResponse = await server.get(`/users/${userId}/keywords`).expect(200);
-            expect(namesOnlyResponse.body.keywords.map(({ keyword }) => ({ keyword }))).to.deep.include.members([
-                { keyword: 'keyword-list-a' },
-                { keyword: 'keyword-list-b' },
-                { keyword: 'keyword-list-shared' }
+            const namesOnlyResponse = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(namesOnlyResponse.body.labels.map(({ name }) => ({ name }))).to.deep.include.members([
+                { name: 'label-list-a' },
+                { name: 'label-list-b' },
+                { name: 'label-list-shared' }
             ]);
-            for (const keyword of namesOnlyResponse.body.keywords) {
-                expect(keyword).to.not.have.any.keys('total', 'unseen');
-                expect(keyword).to.not.have.property('name');
-                expect(keyword.path.startsWith('\\')).to.be.false;
-                expect(keyword.path).to.not.equal('$Forwarded');
+            for (const label of namesOnlyResponse.body.labels) {
+                expect(label).to.not.have.any.keys('total', 'unseen');
+                expect(label).to.not.have.property('path');
+                expect(label.name.startsWith('\\')).to.be.false;
+                expect(label.name).to.not.equal('$Forwarded');
             }
 
             await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${firstResponse.body.message.id}`).expect(200);
             await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${secondResponse.body.message.id}`).expect(200);
-            const emptyLabels = await server.get(`/users/${userId}/keywords?counters=true`).expect(200);
-            expect(emptyLabels.body.keywords.find(entry => entry.path === 'keyword-list-a')).to.include({ total: 0, unseen: 0 });
+            const emptyLabels = await server.get(`/users/${userId}/labels?counters=true`).expect(200);
+            expect(emptyLabels.body.labels.find(entry => entry.name === 'label-list-a')).to.include({ total: 0, unseen: 0 });
         });
 
-        it('creates empty nested keywords idempotently with parents and validates paths', async () => {
-            const path = 'Projects/čau-😀';
+        it('creates independent labels with metadata and validates names', async () => {
+            const name = 'Projects/čau-😀';
             const [first, second] = await Promise.all([
-                server.post(`/users/${userId}/keywords`).send({ path }).expect(200),
-                server.post(`/users/${userId}/keywords`).send({ path }).expect(200)
+                server.post(`/users/${userId}/labels`).send({ name, metaData: { color: 'blue' } }).expect(200),
+                server.post(`/users/${userId}/labels`).send({ name, metaData: { color: 'blue' } }).expect(200)
             ]);
             expect(second.body.id).to.equal(first.body.id);
-            const listing = await server.get(`/users/${userId}/keywords`).expect(200);
-            expect(listing.body.keywords.find(entry => entry.path === path)).to.deep.equal({
+            const listing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(listing.body.labels.find(entry => entry.name === name)).to.deep.equal({
                 id: first.body.id,
-                path,
-                keyword: 'čau-😀'
+                name,
+                metaData: { color: 'blue' }
             });
-            expect(listing.body.keywords.some(entry => entry.path === 'Projects')).to.be.true;
-            for (const invalidPath of ['/Projects', 'Projects/', 'Projects//child', '\\Seen', 'a'.repeat(257), 'a/b/c/d/e/f']) {
-                await server.post(`/users/${userId}/keywords`).send({ path: invalidPath }).expect(400);
+            expect(listing.body.labels.some(entry => entry.name === 'Projects')).to.be.false;
+            await server.post(`/users/${userId}/labels`).send({ name: 'Projects' }).expect(200);
+            const fetched = await server.get(`/users/${userId}/labels/${first.body.id}`).expect(200);
+            expect(fetched.body).to.include({ id: first.body.id, name });
+            expect(fetched.body.metaData).to.deep.equal({ color: 'blue' });
+            for (const invalidName of ['\\Seen', 'a'.repeat(257)]) {
+                await server.post(`/users/${userId}/labels`).send({ name: invalidName }).expect(400);
             }
-            for (const validPath of ['a'.repeat(256), 'a/b/c/d/e']) {
-                await server.post(`/users/${userId}/keywords`).send({ path: validPath }).expect(200);
+            for (const validName of ['a'.repeat(256), 'a/b/c/d/e/f']) {
+                await server.post(`/users/${userId}/labels`).send({ name: validName }).expect(200);
             }
-            const deletion = await server.delete(`/users/${userId}/keywords/${first.body.id}`).expect(200);
+            const deletion = await server.delete(`/users/${userId}/labels/${first.body.id}`).expect(200);
             expect(deletion.body.success).to.be.true;
-            const repeatedDeletion = await server.delete(`/users/${userId}/keywords/${first.body.id}`).expect(200);
+            const repeatedDeletion = await server.delete(`/users/${userId}/labels/${first.body.id}`).expect(200);
             expect(repeatedDeletion.body.scheduled).to.equal(deletion.body.scheduled);
             expect(repeatedDeletion.body.existing).to.be.true;
-            const deletingListing = await server.get(`/users/${userId}/keywords`).expect(200);
-            expect(deletingListing.body.keywords.some(entry => entry.path === path)).to.be.false;
-            expect(deletingListing.body.keywords.some(entry => entry.path === 'Projects')).to.be.true;
+            const deletingListing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(deletingListing.body.labels.some(entry => entry.name === name)).to.be.false;
+            expect(deletingListing.body.labels.some(entry => entry.name === 'Projects')).to.be.true;
         });
 
-        it('should PUT /users/:user/keywords/:keyword rename only the selected keyword', async () => {
-            await server.post(`/users/${userId}/keywords`).send({ path: 'rename-me/nested' }).expect(200);
-            const listingBefore = await server.get(`/users/${userId}/keywords`).expect(200);
-            const topId = listingBefore.body.keywords.find(entry => entry.path === 'rename-me').id;
+        it('should PUT /users/:user/labels/:label rename only the selected label', async () => {
+            const top = await server.post(`/users/${userId}/labels`).send({ name: 'rename-me' }).expect(200);
+            await server.post(`/users/${userId}/labels`).send({ name: 'rename-me/nested' }).expect(200);
+            const topId = top.body.id;
 
             const uploadResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
-                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
-                    subject: 'keyword rename message',
-                    text: 'Testing keyword rename',
-                    keywords: ['rename-me', 'rename-me/nested']
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'label rename message',
+                    text: 'Testing label rename',
+                    labels: ['rename-me', 'rename-me/nested']
                 })
                 .expect(200);
             const renamedMessageId = uploadResponse.body.message.id;
 
             const renameResponse = await server
-                .put(`/users/${userId}/keywords/${topId}`)
-                .send({ path: 'renamed-root' })
+                .put(`/users/${userId}/labels/${topId}`)
+                .send({ name: 'renamed-root', metaData: { color: 'red' } })
                 .expect(200);
             expect(renameResponse.body.success).to.be.true;
             expect(renameResponse.body.id).to.equal(topId);
-            expect(renameResponse.body.path).to.equal('renamed-root');
-            expect(renameResponse.body.oldPath).to.equal('rename-me');
+            expect(renameResponse.body.name).to.equal('renamed-root');
+            expect(renameResponse.body.metaData).to.deep.equal({ color: 'red' });
 
-            const listing = await server.get(`/users/${userId}/keywords`).expect(200);
-            expect(listing.body.keywords.some(entry => entry.path === 'rename-me')).to.be.false;
-            expect(listing.body.keywords.some(entry => entry.path === 'rename-me/nested')).to.be.true;
-            expect(listing.body.keywords.some(entry => entry.path === 'renamed-root')).to.be.true;
-            expect(listing.body.keywords.some(entry => entry.path === 'renamed-root/nested')).to.be.false;
+            const listing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(listing.body.labels.some(entry => entry.name === 'rename-me')).to.be.false;
+            expect(listing.body.labels.some(entry => entry.name === 'rename-me/nested')).to.be.true;
+            expect(listing.body.labels.some(entry => entry.name === 'renamed-root')).to.be.true;
+            expect(listing.body.labels.some(entry => entry.name === 'renamed-root/nested')).to.be.false;
 
-            // The message assignment follows the stable keyword ID.
+            // The message assignment follows the stable label ID.
             const renamedMessage = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`).expect(200);
-            expect(renamedMessage.body.keywords).to.have.members(['renamed-root', 'rename-me/nested']);
+            expect(renamedMessage.body.labels).to.have.members(['renamed-root', 'rename-me/nested']);
 
-            // The old path is free and creates a separate keyword when assigned again.
+            // The old name is free and creates a separate label when assigned again.
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`)
-                .send({ addKeywords: ['rename-me'] })
+                .send({ addLabels: ['rename-me'] })
                 .expect(200);
 
-            // Renaming to the current path is idempotent.
+            // Renaming to the current name is idempotent.
             await server
-                .put(`/users/${userId}/keywords/${topId}`)
-                .send({ path: 'renamed-root' })
+                .put(`/users/${userId}/labels/${topId}`)
+                .send({ name: 'renamed-root' })
                 .expect(200);
 
             await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`).expect(200);
         });
 
-        it('should PUT /users/:user/keywords/:keyword reject an existing path', async () => {
-            await server.post(`/users/${userId}/keywords`).send({ path: 'rename-conflict-target' }).expect(200);
-            const source = await server.post(`/users/${userId}/keywords`).send({ path: 'rename-conflict-source' }).expect(200);
+        it('should PUT /users/:user/labels/:label reject an existing name', async () => {
+            await server.post(`/users/${userId}/labels`).send({ name: 'rename-conflict-target' }).expect(200);
+            const source = await server.post(`/users/${userId}/labels`).send({ name: 'rename-conflict-source' }).expect(200);
 
             const clash = await server
-                .put(`/users/${userId}/keywords/${source.body.id}`)
-                .send({ path: 'rename-conflict-target' })
+                .put(`/users/${userId}/labels/${source.body.id}`)
+                .send({ name: 'rename-conflict-target' })
                 .expect(409);
-            expect(clash.body.code).to.equal('KeywordConflict');
+            expect(clash.body.code).to.equal('LabelConflict');
 
             const missing = await server
-                .put(`/users/${userId}/keywords/${new ObjectId()}`)
-                .send({ path: 'rename-conflict-target' })
+                .put(`/users/${userId}/labels/${new ObjectId()}`)
+                .send({ name: 'rename-conflict-target' })
                 .expect(404);
-            expect(missing.body.code).to.equal('KeywordNotFound');
+            expect(missing.body.code).to.equal('LabelNotFound');
 
             const invalid = await server
-                .put(`/users/${userId}/keywords/${source.body.id}`)
-                .send({ path: 'a/b/c/d/e/f' })
+                .put(`/users/${userId}/labels/${source.body.id}`)
+                .send({ name: 'a'.repeat(257) })
                 .expect(400);
             expect(invalid.body.code).to.equal('InputValidationError');
 
             // nothing was changed by the failed renames
-            const listing = await server.get(`/users/${userId}/keywords`).expect(200);
-            expect(listing.body.keywords.some(entry => entry.path === 'rename-conflict-source')).to.be.true;
+            const listing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(listing.body.labels.some(entry => entry.name === 'rename-conflict-source')).to.be.true;
         });
 
-        it('should POST /users/:user/mailboxes/:mailbox/messages with keywords expect success / keywords appear in GET', async () => {
+        it('should POST /users/:user/mailboxes/:mailbox/messages with labels expect success / labels appear in GET', async () => {
             const uploadResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
-                    from: { name: 'Keyword Tester', address: 'kwtest@example.com' },
-                    subject: 'upload with keywords',
-                    text: 'Testing upload keywords',
-                    keywords: ['important', 'project-x']
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'upload with labels',
+                    text: 'Testing upload labels',
+                    labels: ['important', 'project-x']
                 })
                 .expect(200);
             expect(uploadResponse.body.success).to.be.true;
 
             const msgId = uploadResponse.body.message.id;
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${msgId}`).expect(200);
-            expect(getResponse.body.keywords).to.have.members(['important', 'project-x']);
+            expect(getResponse.body.labels).to.have.members(['important', 'project-x']);
 
             await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${msgId}`).expect(200);
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message set and replace keywords expect success', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message set and replace labels expect success', async () => {
             const putResponse = await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['todo', 'urgent'] })
+                .send({ labels: ['todo', 'urgent'] })
                 .expect(200);
             expect(putResponse.body.success).to.be.true;
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse.body.keywords).to.have.members(['todo', 'urgent']);
+            expect(getResponse.body.labels).to.have.members(['todo', 'urgent']);
 
-            // Replacing keywords removes the old ones
-            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ keywords: ['new-tag'] }).expect(200);
+            // Replacing labels removes the old ones
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ labels: ['new-tag'] }).expect(200);
 
             const getResponse2 = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse2.body.keywords).to.deep.equal(['new-tag']);
+            expect(getResponse2.body.labels).to.deep.equal(['new-tag']);
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message clear keywords with empty array expect success', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message clear labels with empty array expect success', async () => {
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['to-be-cleared'] })
+                .send({ labels: ['to-be-cleared'] })
                 .expect(200);
 
-            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ keywords: [] }).expect(200);
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ labels: [] }).expect(200);
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse.body.keywords).to.deep.equal([]);
+            expect(getResponse.body.labels).to.deep.equal([]);
         });
 
-        it('should GET /users/:user/mailboxes/:mailbox/messages keywords appear in listing expect success', async () => {
+        it('should GET /users/:user/mailboxes/:mailbox/messages labels appear in listing expect success', async () => {
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['list-test'] })
+                .send({ labels: ['list-test'] })
                 .expect(200);
 
             const listResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages`).expect(200);
             expect(listResponse.body.success).to.be.true;
             const found = listResponse.body.results.find(m => m.id === messageId);
             expect(found).to.exist;
-            expect(found.keywords).to.include('list-test');
+            expect(found.labels).to.include('list-test');
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message system flags unaffected by keyword changes expect success', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message system flags unaffected by label changes expect success', async () => {
             await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ seen: true }).expect(200);
 
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['check-flags'] })
+                .send({ labels: ['check-flags'] })
                 .expect(200);
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
             expect(getResponse.body.seen).to.be.true;
-            expect(getResponse.body.keywords).to.include('check-flags');
+            expect(getResponse.body.labels).to.include('check-flags');
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addKeywords expect success', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addLabels expect success', async () => {
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['base'] })
+                .send({ labels: ['base'] })
                 .expect(200);
 
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ addKeywords: ['added'] })
+                .send({ addLabels: ['added'] })
                 .expect(200);
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse.body.keywords).to.include.members(['base', 'added']);
+            expect(getResponse.body.labels).to.include.members(['base', 'added']);
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message removeKeywords expect success', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message removeLabels expect success', async () => {
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['keep', 'remove-me'] })
+                .send({ labels: ['keep', 'remove-me'] })
                 .expect(200);
 
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ removeKeywords: ['remove-me'] })
+                .send({ removeLabels: ['remove-me'] })
                 .expect(200);
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse.body.keywords).to.deep.equal(['keep']);
+            expect(getResponse.body.labels).to.deep.equal(['keep']);
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message keywords with addKeywords expect failure', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message labels with addLabels expect failure', async () => {
             const putResponse = await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['a'], addKeywords: ['b'] })
+                .send({ labels: ['a'], addLabels: ['b'] })
                 .expect(400);
             expect(putResponse.body.error).to.exist;
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addKeywords and removeKeywords together expect success', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addLabels and removeLabels together expect success', async () => {
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['keep', 'remove-me'] })
+                .send({ labels: ['keep', 'remove-me'] })
                 .expect(200);
 
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ addKeywords: ['added'], removeKeywords: ['remove-me'] })
+                .send({ addLabels: ['added'], removeLabels: ['remove-me'] })
                 .expect(200);
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
-            expect(getResponse.body.keywords).to.include.members(['keep', 'added']);
+            expect(getResponse.body.labels).to.include.members(['keep', 'added']);
         });
 
         it('should PUT /users/:user/mailboxes/:mailbox/messages/:message multiple flag changes in single request expect success', async () => {
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ seen: true, keywords: ['old'] })
+                .send({ seen: true, labels: ['old'] })
                 .expect(200);
 
-            // Flip seen, add deleted, and replace keywords — all in one atomic operation
+            // Flip seen, add deleted, and replace labels — all in one atomic operation
             const putResponse = await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ seen: false, deleted: true, keywords: ['new'] })
+                .send({ seen: false, deleted: true, labels: ['new'] })
                 .expect(200);
             expect(putResponse.body.success).to.be.true;
 
             const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
             expect(getResponse.body.seen).to.be.false;
             expect(getResponse.body.deleted).to.be.true;
-            expect(getResponse.body.keywords).to.deep.equal(['new']);
+            expect(getResponse.body.labels).to.deep.equal(['new']);
         });
 
-        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message invalid keyword expect failure', async () => {
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message invalid label expect failure', async () => {
             const putResponse = await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ keywords: ['invalid keyword'] })
+                .send({ labels: ['invalid label'] })
                 .expect(400);
             expect(putResponse.body.error).to.exist;
         });
 
-        it('should GET /users/:user/search keyword filter expect success', async () => {
-            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ keywords: ['search-target'] }).expect(200);
+        it('should GET /users/:user/search label filter expect success', async () => {
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ labels: ['search-target'] }).expect(200);
 
-            const searchResponse = await server.get(`/users/${userId}/search?keyword=search-target`).expect(200);
+            const searchResponse = await server.get(`/users/${userId}/search?label=search-target`).expect(200);
             expect(searchResponse.body.results.some(result => result.id === messageId)).to.be.true;
 
-            const noMatchResponse = await server.get(`/users/${userId}/search?keyword=nonexistent-keyword`).expect(200);
+            const noMatchResponse = await server.get(`/users/${userId}/search?label=nonexistent-label`).expect(200);
             expect(noMatchResponse.body.results.some(result => result.id === messageId)).to.be.false;
         });
 
-        it('should GET /users/:user/keyword-counters/:keyword reflect keyword and seen deltas expect success', async () => {
-            const keywordCounterKeywordOne = `kw-counter-a-${Date.now()}`;
-            const keywordCounterKeywordTwo = `kw-counter-b-${Date.now()}`;
+        it('should GET /users/:user/label-counters/:label reflect label and seen deltas expect success', async () => {
+            const labelCounterLabelOne = `kw-counter-a-${Date.now()}`;
+            const labelCounterLabelTwo = `kw-counter-b-${Date.now()}`;
 
             const wait = timeout => new Promise(resolvePromise => setTimeout(resolvePromise, timeout));
 
             const readCounters = async () => {
-                const [keywordAResponse, keywordBResponse] = await Promise.all([
-                    server.get(`/users/${userId}/keyword-counters/${keywordCounterKeywordOne}`).expect(200),
-                    server.get(`/users/${userId}/keyword-counters/${keywordCounterKeywordTwo}`).expect(200)
+                const [labelAResponse, labelBResponse] = await Promise.all([
+                    server.get(`/users/${userId}/label-counters/${labelCounterLabelOne}`).expect(200),
+                    server.get(`/users/${userId}/label-counters/${labelCounterLabelTwo}`).expect(200)
                 ]);
 
                 return {
-                    keywordACounter: {
-                        keyword: keywordAResponse.body.keyword,
-                        total: keywordAResponse.body.total,
-                        unseen: keywordAResponse.body.unseen
+                    labelACounter: {
+                        label: labelAResponse.body.label,
+                        total: labelAResponse.body.total,
+                        unseen: labelAResponse.body.unseen
                     },
-                    keywordBCounter: {
-                        keyword: keywordBResponse.body.keyword,
-                        total: keywordBResponse.body.total,
-                        unseen: keywordBResponse.body.unseen
+                    labelBCounter: {
+                        label: labelBResponse.body.label,
+                        total: labelBResponse.body.total,
+                        unseen: labelBResponse.body.unseen
                     }
                 };
             };
@@ -1296,44 +1300,44 @@ describe('API tests', function () {
                     await wait(100);
                 }
 
-                throw new Error('Keyword counters did not reach expected values in time');
+                throw new Error('Label counters did not reach expected values in time');
             };
 
             const baseline = await readCounters();
 
-            const createExpectedCounters = (keywordATotalDelta, keywordAUnseenDelta, keywordBTotalDelta, keywordBUnseenDelta) => ({
-                keywordACounter: {
-                    total: baseline.keywordACounter.total + keywordATotalDelta,
-                    unseen: baseline.keywordACounter.unseen + keywordAUnseenDelta
+            const createExpectedCounters = (labelATotalDelta, labelAUnseenDelta, labelBTotalDelta, labelBUnseenDelta) => ({
+                labelACounter: {
+                    total: baseline.labelACounter.total + labelATotalDelta,
+                    unseen: baseline.labelACounter.unseen + labelAUnseenDelta
                 },
-                keywordBCounter: {
-                    total: baseline.keywordBCounter.total + keywordBTotalDelta,
-                    unseen: baseline.keywordBCounter.unseen + keywordBUnseenDelta
+                labelBCounter: {
+                    total: baseline.labelBCounter.total + labelBTotalDelta,
+                    unseen: baseline.labelBCounter.unseen + labelBUnseenDelta
                 }
             });
 
             const countersMatchExpected = (currentCounters, expectedCounters) =>
-                currentCounters.keywordACounter.total === expectedCounters.keywordACounter.total &&
-                currentCounters.keywordACounter.unseen === expectedCounters.keywordACounter.unseen &&
-                currentCounters.keywordBCounter.total === expectedCounters.keywordBCounter.total &&
-                currentCounters.keywordBCounter.unseen === expectedCounters.keywordBCounter.unseen;
+                currentCounters.labelACounter.total === expectedCounters.labelACounter.total &&
+                currentCounters.labelACounter.unseen === expectedCounters.labelACounter.unseen &&
+                currentCounters.labelBCounter.total === expectedCounters.labelBCounter.total &&
+                currentCounters.labelBCounter.unseen === expectedCounters.labelBCounter.unseen;
 
             const expectCounters = async expectedCounters => {
                 const observedCounters = await waitForExpectedCounters(currentCounters => countersMatchExpected(currentCounters, expectedCounters));
-                expect(observedCounters.keywordACounter.total).to.equal(expectedCounters.keywordACounter.total);
-                expect(observedCounters.keywordACounter.unseen).to.equal(expectedCounters.keywordACounter.unseen);
-                expect(observedCounters.keywordBCounter.total).to.equal(expectedCounters.keywordBCounter.total);
-                expect(observedCounters.keywordBCounter.unseen).to.equal(expectedCounters.keywordBCounter.unseen);
+                expect(observedCounters.labelACounter.total).to.equal(expectedCounters.labelACounter.total);
+                expect(observedCounters.labelACounter.unseen).to.equal(expectedCounters.labelACounter.unseen);
+                expect(observedCounters.labelBCounter.total).to.equal(expectedCounters.labelBCounter.total);
+                expect(observedCounters.labelBCounter.unseen).to.equal(expectedCounters.labelBCounter.unseen);
             };
 
             const createResponse = await server
                 .post(`/users/${userId}/mailboxes/${inbox}/messages`)
                 .send({
-                    from: { name: 'Keyword Counter Tester', address: 'kwcounter@example.com' },
-                    subject: 'keyword counters',
-                    text: 'keyword counters',
+                    from: { name: 'Label Counter Tester', address: 'kwcounter@example.com' },
+                    subject: 'label counters',
+                    text: 'label counters',
                     unseen: true,
-                    keywords: [keywordCounterKeywordOne]
+                    labels: [labelCounterLabelOne]
                 })
                 .expect(200);
 
@@ -1343,14 +1347,14 @@ describe('API tests', function () {
 
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`)
-                .send({ addKeywords: [keywordCounterKeywordTwo], seen: true })
+                .send({ addLabels: [labelCounterLabelTwo], seen: true })
                 .expect(200);
 
             await expectCounters(createExpectedCounters(1, 0, 1, 0));
 
             await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`)
-                .send({ removeKeywords: [keywordCounterKeywordOne], seen: false })
+                .send({ removeLabels: [labelCounterLabelOne], seen: false })
                 .expect(200);
 
             await expectCounters(createExpectedCounters(0, 0, 1, 1));
@@ -1434,14 +1438,14 @@ describe('API tests', function () {
         });
 
         it('should DELETE /users/{user}/mailboxes/{mailbox} expect success and invalidate account counters', async () => {
-            const keyword = `deleted-mailbox-${Date.now()}`;
+            const label = `deleted-mailbox-${Date.now()}`;
             const readCounters = async () => {
-                const [keywordResponse, flaggedResponse] = await Promise.all([
-                    server.get(`/users/${userId}/keyword-counters/${keyword}`).expect(200),
+                const [labelResponse, flaggedResponse] = await Promise.all([
+                    server.get(`/users/${userId}/label-counters/${label}`).expect(200),
                     server.get(`/users/${userId}/flagged-counter`).expect(200)
                 ]);
                 return {
-                    keyword: keywordResponse.body,
+                    label: labelResponse.body,
                     flagged: flaggedResponse.body
                 };
             };
@@ -1449,8 +1453,8 @@ describe('API tests', function () {
                 for (let attempt = 0; attempt < 20; attempt++) {
                     const counters = await readCounters();
                     if (
-                        counters.keyword.total === expected.keyword.total &&
-                        counters.keyword.unseen === expected.keyword.unseen &&
+                        counters.label.total === expected.label.total &&
+                        counters.label.unseen === expected.label.unseen &&
                         counters.flagged.total === expected.flagged.total &&
                         counters.flagged.unseen === expected.flagged.unseen
                     ) {
@@ -1475,14 +1479,14 @@ describe('API tests', function () {
                     text: 'mailbox deletion counters',
                     unseen: true,
                     flagged: true,
-                    keywords: [keyword]
+                    labels: [label]
                 })
                 .expect(200);
 
             await waitForCounters({
-                keyword: {
-                    total: baseline.keyword.total + 1,
-                    unseen: baseline.keyword.unseen + 1
+                label: {
+                    total: baseline.label.total + 1,
+                    unseen: baseline.label.unseen + 1
                 },
                 flagged: {
                     total: baseline.flagged.total + 1,
@@ -1493,8 +1497,8 @@ describe('API tests', function () {
             await server.delete(`/users/${userId}/mailboxes/${mailbox}`).expect(200);
 
             const afterDeletion = await waitForCounters(baseline);
-            expect(afterDeletion.keyword.total).to.equal(baseline.keyword.total);
-            expect(afterDeletion.keyword.unseen).to.equal(baseline.keyword.unseen);
+            expect(afterDeletion.label.total).to.equal(baseline.label.total);
+            expect(afterDeletion.label.unseen).to.equal(baseline.label.unseen);
             expect(afterDeletion.flagged.total).to.equal(baseline.flagged.total);
             expect(afterDeletion.flagged.unseen).to.equal(baseline.flagged.unseen);
         });

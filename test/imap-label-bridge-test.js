@@ -7,7 +7,7 @@ const db = require('../lib/db');
 const onAppend = require('../lib/handlers/on-append');
 const onSearch = require('../lib/handlers/on-search');
 
-describe('IMAP keyword bridge', () => {
+describe('IMAP label bridge', () => {
     let databaseSnapshot;
     let usersSnapshot;
 
@@ -21,18 +21,18 @@ describe('IMAP keyword bridge', () => {
         db.users = usersSnapshot;
     });
 
-    it('converts APPEND keyword flags to stable keyword ids', done => {
+    it('converts APPEND label flags to stable label ids', done => {
         const user = new ObjectId();
-        const keyword = { _id: new ObjectId(), user, path: 'Team/Blue', slot: 0 };
-        const parentKeyword = { _id: new ObjectId(), user, path: 'Team', slot: 1 };
+        const label = { _id: new ObjectId(), user, name: 'Team/Blue', slot: 0 };
+        const foreignLabel = new ObjectId();
         let addOptions;
 
         db.database = {
             collection(name) {
-                expect(name).to.equal('keywords');
+                expect(name).to.equal('labels');
                 return {
                     find() {
-                        return { toArray: async () => [keyword, parentKeyword] };
+                        return { toArray: async () => [label] };
                     }
                 };
             }
@@ -69,22 +69,22 @@ describe('IMAP keyword bridge', () => {
             }
         };
         const session = {
-            id: 'append-keyword-test',
+            id: 'append-label-test',
             user: { id: user, address: 'user@example.com' },
             remoteAddress: '127.0.0.1'
         };
 
         onAppend(server, messageHandler, userCache)(
             'INBOX',
-            ['\\Seen', '$label1', 'Team/Blue'],
+            ['\\Seen', '$label1', `$wdlabel$${label._id}`, `$wdlabel$${foreignLabel}`, 'Team/Blue'],
             null,
             Buffer.from('Subject: test\r\n\r\nbody'),
             session,
             err => {
                 try {
                     expect(err).to.not.exist;
-                    expect(addOptions.flags).to.deep.equal(['\\Seen', '$label1']);
-                    expect(addOptions.keywords.map(value => value.toString())).to.deep.equal([keyword._id.toString()]);
+                    expect(addOptions.flags).to.deep.equal(['\\Seen', '$label1', `$wdlabel$${foreignLabel}`, 'Team/Blue']);
+                    expect(addOptions.labels.map(value => value.toString())).to.deep.equal([label._id.toString()]);
                     return done();
                 } catch (testErr) {
                     return done(testErr);
@@ -93,10 +93,10 @@ describe('IMAP keyword bridge', () => {
         );
     });
 
-    it('searches stable keyword ids while retaining legacy flag compatibility', done => {
+    it('searches stable label ids through the IMAP flag', done => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
-        const keyword = { _id: new ObjectId(), user, path: 'Team/Blue' };
+        const label = { _id: new ObjectId(), user, name: 'Team/Blue' };
         let messageQuery;
 
         const cursor = {
@@ -125,10 +125,10 @@ describe('IMAP keyword bridge', () => {
                         }
                     };
                 }
-                if (name === 'keywords') {
+                if (name === 'labels') {
                     return {
                         find() {
-                            return { toArray: async () => [keyword] };
+                            return { toArray: async () => [label] };
                         }
                     };
                 }
@@ -143,13 +143,13 @@ describe('IMAP keyword bridge', () => {
         };
 
         const server = { logger: { info() {}, error() {} } };
-        const session = { id: 'search-keyword-test', user: { id: user }, selected: { uidList: [] } };
-        onSearch(server)(mailbox, { query: [{ key: 'flag', value: 'team/blue', exists: true }] }, session, (err, result) => {
+        const session = { id: 'search-label-test', user: { id: user }, selected: { uidList: [] } };
+        onSearch(server)(mailbox, { query: [{ key: 'flag', value: `$wdlabel$${label._id}`, exists: true }] }, session, (err, result) => {
             try {
                 expect(err).to.not.exist;
                 expect(result.uidList).to.deep.equal([]);
                 expect(messageQuery.$and[0]).to.deep.equal({
-                    $or: [{ keywords: keyword._id }, { flags: 'Team/Blue' }]
+                    $or: [{ labels: label._id }, { flags: `$wdlabel$${label._id}` }]
                 });
                 return done();
             } catch (testErr) {

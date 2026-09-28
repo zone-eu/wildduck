@@ -258,16 +258,16 @@ indexes:
               user: 1
               specialUse: 1
 
-    # Keyword paths are scoped to a user, like mailbox paths.
-    - collection: keywords
+    # Label names are unique within a user account.
+    - collection: labels
       index:
-          name: user_path
+          name: user_name
           unique: true
           key:
               user: 1
-              path: 1
+              name: 1
 
-    - collection: keywords
+    - collection: labels
       index:
           name: user_slot
           unique: true
@@ -340,10 +340,10 @@ indexes:
 
     - collection: messages
       index:
-          name: mailbox_keywords
+          name: mailbox_labels
           key:
               mailbox: 1
-              keywords: 1
+              labels: 1
 
     - collection: messages
       index:

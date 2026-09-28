@@ -306,12 +306,12 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
     });
 });
 
-describe('moveAsync keyword counter notifications', function () {
-    it('loads keyword paths when a labelled message follows an unlabelled message', async function () {
+describe('moveAsync label counter notifications', function () {
+    it('loads label paths when a labelled message follows an unlabelled message', async function () {
         const user = new ObjectId();
         const sourceMailbox = new ObjectId();
         const targetMailbox = new ObjectId();
-        const keyword = new ObjectId();
+        const label = new ObjectId();
         const messages = [
             {
                 _id: new ObjectId(),
@@ -321,7 +321,7 @@ describe('moveAsync keyword counter notifications', function () {
                 size: 10,
                 unseen: true,
                 flags: [],
-                keywords: [],
+                labels: [],
                 mimeTree: { attachmentMap: {} },
                 idate: new Date()
             },
@@ -333,7 +333,7 @@ describe('moveAsync keyword counter notifications', function () {
                 size: 10,
                 unseen: true,
                 flags: [],
-                keywords: [keyword],
+                labels: [label],
                 mimeTree: { attachmentMap: {} },
                 idate: new Date()
             }
@@ -385,12 +385,12 @@ describe('moveAsync keyword counter notifications', function () {
                         }
                     };
                 }
-                if (name === 'keywords') {
+                if (name === 'labels') {
                     return {
                         find() {
                             return {
                                 async toArray() {
-                                    return [{ _id: keyword, path: 'Projects/later' }];
+                                    return [{ _id: label, name: 'Projects/later' }];
                                 }
                             };
                         }
@@ -426,9 +426,9 @@ describe('moveAsync keyword counter notifications', function () {
         });
 
         expect(sourceEntries).to.have.lengthOf(2);
-        expect(sourceEntries[0].keywords).to.deep.equal([]);
-        expect(sourceEntries[1].keywords).to.deep.equal(['Projects/later']);
+        expect(sourceEntries[0].labels).to.deep.equal([]);
+        expect(sourceEntries[1].labels).to.deep.equal(['Projects/later']);
         expect(targetEntries).to.have.lengthOf(2);
-        expect(targetEntries[1].keywords).to.deep.equal(['Projects/later']);
+        expect(targetEntries[1].labels).to.deep.equal(['Projects/later']);
     });
 });

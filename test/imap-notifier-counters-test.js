@@ -6,7 +6,7 @@ const { ObjectId } = require('mongodb');
 const ImapNotifier = require('../lib/imap-notifier');
 
 describe('ImapNotifier account counters', () => {
-    it('loads tracked keywords without scanning Redis when a mailbox is deleted', async () => {
+    it('loads tracked labels without scanning Redis when a mailbox is deleted', async () => {
         const user = new ObjectId();
         const entry = {
             command: 'DELETE',
@@ -16,13 +16,13 @@ describe('ImapNotifier account counters', () => {
 
         testNotifier.redis = {
             async smembers(key) {
-                expect(key).to.equal(`account-counters:{${user}}:keywords`);
+                expect(key).to.equal(`account-counters:{${user}}:labels`);
                 return ['project', 'čau'];
             }
         };
 
         await testNotifier.prepareAccountCounterInvalidations([entry]);
-        expect(entry.counterKeywords).to.have.members(['project', 'čau']);
+        expect(entry.counterLabels).to.have.members(['project', 'čau']);
         expect(entry.flaggedCounterInvalidated).to.be.true;
     });
 
@@ -37,8 +37,8 @@ describe('ImapNotifier account counters', () => {
             },
             multi() {
                 return {
-                    sadd(key, ...keywords) {
-                        operations.push(['sadd', key, keywords]);
+                    sadd(key, ...labels) {
+                        operations.push(['sadd', key, labels]);
                         return this;
                     },
                     expire(key, ttl) {
@@ -57,12 +57,12 @@ describe('ImapNotifier account counters', () => {
                 command: 'FETCH',
                 user,
                 flags: ['\\Seen', 'current'],
-                addedKeywords: ['added'],
-                removedKeywords: ['removed']
+                addedLabels: ['added'],
+                removedLabels: ['removed']
             }
         ]);
 
-        expect(operations[0]).to.deep.equal(['sadd', `account-counters:{${user}}:keywords`, ['added', 'removed']]);
+        expect(operations[0]).to.deep.equal(['sadd', `account-counters:{${user}}:labels`, ['added', 'removed']]);
         expect(
             operations.some(
                 operation =>

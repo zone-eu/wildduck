@@ -12,7 +12,7 @@ describe('on-store counter notifications', () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const message = new ObjectId();
-        const keyword = { _id: new ObjectId(), user, path: 'legacy-keyword' };
+        const label = { _id: new ObjectId(), user, name: 'legacy-label' };
         let notification;
 
         const cursor = {
@@ -30,7 +30,7 @@ describe('on-store counter notifications', () => {
                 if (this.calls++) {
                     return callback(null, null);
                 }
-                callback(null, { _id: message, uid: 1, flags: ['\\Seen', '\\Flagged'], keywords: [keyword._id], modseq: 1 });
+                callback(null, { _id: message, uid: 1, flags: ['\\Seen', '\\Flagged'], labels: [label._id], modseq: 1 });
             },
             close(callback) {
                 callback();
@@ -49,10 +49,10 @@ describe('on-store counter notifications', () => {
                         }
                     };
                 }
-                if (name === 'keywords') {
+                if (name === 'labels') {
                     return {
                         find() {
-                            return { toArray: async () => [keyword] };
+                            return { toArray: async () => [label] };
                         }
                     };
                 }
@@ -64,7 +64,7 @@ describe('on-store counter notifications', () => {
                     bulkWrite(updates, options, callback) {
                         expect(updates).to.have.lengthOf(1);
                         expect(updates[0].updateOne.update.$set).to.include({ unseen: true, flagged: false, modseq: 2 });
-                        expect(updates[0].updateOne.update.$set.keywords).to.deep.equal([]);
+                        expect(updates[0].updateOne.update.$set.labels).to.deep.equal([]);
                         callback();
                     }
                 };
@@ -89,13 +89,13 @@ describe('on-store counter notifications', () => {
             formatResponse() {}
         };
 
-        onStore(server)(mailbox, { messages: [1], action: 'remove', value: ['\\Seen', '\\Flagged', 'legacy-keyword'], silent: true }, session, err => {
+        onStore(server)(mailbox, { messages: [1], action: 'remove', value: ['\\Seen', '\\Flagged', `$wdlabel$${label._id}`], silent: true }, session, err => {
             db.database = databaseSnapshot;
             try {
                 expect(err).to.not.exist;
                 expect(notification).to.include({ unseenChange: true, flaggedChangedTo: false });
-                expect(notification.removedKeywords).to.deep.equal(['legacy-keyword']);
-                expect(notification).to.not.have.property('addedKeywords');
+                expect(notification.removedLabels).to.deep.equal(['legacy-label']);
+                expect(notification).to.not.have.property('addedLabels');
                 return done();
             } catch (testErr) {
                 return done(testErr);
@@ -103,13 +103,13 @@ describe('on-store counter notifications', () => {
         });
     });
 
-    it('stores IMAP keywords as ids and emits keyword deltas', done => {
+    it('stores IMAP labels as ids and emits label deltas', done => {
         const databaseSnapshot = db.database;
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const message = new ObjectId();
-        const keyword = { _id: new ObjectId(), user, path: 'Projects/Web', slot: 0 };
-        const parentKeyword = { _id: new ObjectId(), user, path: 'Projects', slot: 1 };
+        const label = { _id: new ObjectId(), user, name: 'Projects/Web', slot: 0 };
+        const previouslyUnknown = new ObjectId();
         let notification;
         let responseFlags;
 
@@ -125,7 +125,7 @@ describe('on-store counter notifications', () => {
                 return this;
             },
             next(callback) {
-                callback(null, this.calls++ ? null : { _id: message, uid: 1, flags: ['\\Seen'], keywords: [], modseq: 1 });
+                callback(null, this.calls++ ? null : { _id: message, uid: 1, flags: ['\\Seen', `$wdlabel$${previouslyUnknown}`], labels: [], modseq: 1 });
             },
             close(callback) {
                 callback();
@@ -147,10 +147,10 @@ describe('on-store counter notifications', () => {
                         }
                     };
                 }
-                if (name === 'keywords') {
+                if (name === 'labels') {
                     return {
                         find() {
-                            return { toArray: async () => [keyword, parentKeyword] };
+                            return { toArray: async () => [label, { _id: previouslyUnknown, user, name: 'Created later' }] };
                         }
                     };
                 }
@@ -160,8 +160,8 @@ describe('on-store counter notifications', () => {
                     },
                     bulkWrite(updates, options, callback) {
                         const stored = updates[0].updateOne.update.$set;
-                        expect(stored.flags).to.deep.equal(['\\Seen', '$label1']);
-                        expect(stored.keywords.map(value => value.toString())).to.deep.equal([keyword._id.toString()]);
+                        expect(stored.flags).to.deep.equal(['\\Seen', `$wdlabel$${previouslyUnknown}`, '$label1']);
+                        expect(stored.labels.map(value => value.toString())).to.deep.equal([label._id.toString()]);
                         callback();
                     }
                 };
@@ -179,7 +179,7 @@ describe('on-store counter notifications', () => {
             }
         };
         const session = {
-            id: 'store-keyword-test',
+            id: 'store-label-test',
             user: { id: user },
             selected: { uidList: [1], condstoreEnabled: false },
             writeStream: {
@@ -191,13 +191,13 @@ describe('on-store counter notifications', () => {
             }
         };
 
-        onStore(server)(mailbox, { messages: [1], action: 'add', value: ['Projects/Web', '$label1'], silent: false }, session, err => {
+        onStore(server)(mailbox, { messages: [1], action: 'add', value: [`$wdlabel$${label._id}`, `$wdlabel$${previouslyUnknown}`, '$label1'], silent: false }, session, err => {
             db.database = databaseSnapshot;
             try {
                 expect(err).to.not.exist;
-                expect(responseFlags).to.deep.equal(['\\Seen', 'Projects/Web', '$label1']);
-                expect(notification.addedKeywords).to.deep.equal(['Projects/Web']);
-                expect(notification).to.not.have.property('removedKeywords');
+                expect(responseFlags).to.deep.equal(['\\Seen', `$wdlabel$${previouslyUnknown}`, '$label1', `$wdlabel$${label._id}`]);
+                expect(notification.addedLabels).to.deep.equal(['Projects/Web']);
+                expect(notification).to.not.have.property('removedLabels');
                 return done();
             } catch (testErr) {
                 return done(testErr);

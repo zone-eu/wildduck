@@ -224,7 +224,7 @@ describe('on-copy UID arrays', function () {
         insertOneImpl,
         updateManyImpl,
         deleteManyAsyncImpl,
-        keywordRecords = []
+        labelRecords = []
     }) {
         let cursorIdx = 0;
         let calls = { insertOne: [], updateOneCopied: [], updateMany: [], deleteManyAsync: [], notifications: [] };
@@ -272,12 +272,12 @@ describe('on-copy UID arrays', function () {
             collection: name => {
                 if (name === 'mailboxes') return mailboxesCollection;
                 if (name === 'messages') return messagesCollection;
-                if (name === 'keywords') {
+                if (name === 'labels') {
                     return {
                         find() {
                             return {
                                 async toArray() {
-                                    return keywordRecords;
+                                    return labelRecords;
                                 }
                             };
                         }
@@ -376,8 +376,8 @@ describe('on-copy UID arrays', function () {
         type: 'smime'
     };
 
-    it('includes flagged state and API keyword paths in copied-message notifications', async function () {
-        const keyword = new ObjectId();
+    it('includes flagged state and API label paths in copied-message notifications', async function () {
+        const label = new ObjectId();
         let { server, messageHandler, calls } = setupCopyEnv({
             sourceMessages: [
                 {
@@ -387,11 +387,11 @@ describe('on-copy UID arrays', function () {
                     size: 100,
                     unseen: true,
                     flags: ['\\Flagged'],
-                    keywords: [keyword],
+                    labels: [label],
                     mimeTree: { header: [], attachmentMap: {} }
                 }
             ],
-            keywordRecords: [{ _id: keyword, path: 'Projects/copied' }],
+            labelRecords: [{ _id: label, name: 'Projects/copied' }],
             insertOneImpl: () => Promise.resolve({ acknowledged: true, insertedId: new ObjectId() })
         });
 
@@ -400,7 +400,7 @@ describe('on-copy UID arrays', function () {
         expect(status).to.be.true;
         expect(calls.notifications).to.have.lengthOf(1);
         expect(calls.notifications[0]).to.include({ command: 'EXISTS', unseen: true, flagged: true });
-        expect(calls.notifications[0].keywords).to.deep.equal(['Projects/copied']);
+        expect(calls.notifications[0].labels).to.deep.equal(['Projects/copied']);
     });
 
     it('releases newly encrypted attachments when the encrypted-copy insert is not acknowledged', async function () {

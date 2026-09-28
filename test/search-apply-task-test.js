@@ -95,7 +95,7 @@ describe('Search apply task', function () {
         expect(mailboxLookup.mailbox.toString()).to.equal(destinationMailbox.toString());
     });
 
-    it('should preserve a move action when keyword updates are also requested', async () => {
+    it('should preserve a move action when label updates are also requested', async () => {
         const user = new ObjectId();
         const sourceMailbox = new ObjectId();
         const destinationMailbox = new ObjectId();
@@ -145,7 +145,7 @@ describe('Search apply task', function () {
                     user: user.toHexString(),
                     action: {
                         moveTo: destinationMailbox.toHexString(),
-                        addKeywords: ['project']
+                        addLabels: ['project']
                     }
                 },
                 {
@@ -174,7 +174,7 @@ describe('Search apply task', function () {
         expect(moves).to.have.lengthOf(1);
         expect(moves[0].source.mailbox.toString()).to.equal(sourceMailbox.toString());
         expect(moves[0].destination.mailbox.toString()).to.equal(destinationMailbox.toString());
-        expect(moves[0].updates).to.deep.equal({ addKeywords: ['project'] });
+        expect(moves[0].updates).to.deep.equal({ addLabels: ['project'] });
         expect(moves[0].messageQuery).to.equal(42);
     });
 });

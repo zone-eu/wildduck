@@ -16,16 +16,18 @@ const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 describe('API Filters', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
-    let user, user2;
+    let user, user2, username;
 
     before(async () => {
         // ensure that we have an existing user account
+        const suffix = Date.now();
+        username = `filteruser${suffix}`;
         const response = await server
             .post('/users')
             .send({
-                username: 'filteruser',
+                username,
                 password: 'secretvalue',
-                address: 'filteruser.addrtest@example.com',
+                address: `filteruser${suffix}.addrtest@example.com`,
                 name: 'Filter User'
             })
             .expect(200);
@@ -37,9 +39,9 @@ describe('API Filters', function () {
         const response2 = await server
             .post('/users')
             .send({
-                username: 'filteruser2',
+                username: `filteruser2${suffix}`,
                 password: 'secretvalue',
-                address: 'filteruser2.addrtest@example.com',
+                address: `filteruser2${suffix}.addrtest@example.com`,
                 name: 'Filter User 2'
             })
             .expect(200);
@@ -58,6 +60,9 @@ describe('API Filters', function () {
         expect(response.body.success).to.be.true;
 
         user = false;
+        if (user2) {
+            await server.delete(`/users/${user2}`).expect(200);
+        }
     });
 
     it('should POST /users/{user}/filters expect success', async () => {
@@ -115,7 +120,7 @@ describe('API Filters', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'filteruser',
+                username,
                 password: 'secretvalue',
                 token: true
             })
@@ -228,7 +233,7 @@ describe('API Filters', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'filteruser',
+                username,
                 password: 'secretvalue',
                 token: true
             })
@@ -371,72 +376,72 @@ describe('API Filters', function () {
         });
     });
 
-    describe('Filter keywords action', function () {
-        let keywordFilterId;
+    describe('Filter labels action', function () {
+        let labelFilterId;
 
-        it('should POST /users/{user}/filters expect success / with keywords action', async () => {
+        it('should POST /users/{user}/filters expect success / with labels action', async () => {
             const response = await server
                 .post(`/users/${user}/filters`)
                 .send({
-                    name: 'keywords action create',
+                    name: 'labels action create',
                     query: {
-                        from: 'keywords-create'
+                        from: 'labels-create'
                     },
                     action: {
-                        keywords: ['important', 'project-x']
+                        labels: ['important', 'project-x']
                     }
                 })
                 .expect(200);
             expect(response.body.success).to.be.true;
-            keywordFilterId = response.body.id;
+            labelFilterId = response.body.id;
 
-            const filterDataResponse = await server.get(`/users/${user}/filters/${keywordFilterId}`).expect(200);
+            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
             expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action.keywords).to.deep.equal(['important', 'project-x']);
+            expect(filterDataResponse.body.action.labels).to.deep.equal(['important', 'project-x']);
         });
 
-        it('should PUT /users/{user}/filters/{filter} expect success / update keywords action', async () => {
+        it('should PUT /users/{user}/filters/{filter} expect success / update labels action', async () => {
             const response = await server
-                .put(`/users/${user}/filters/${keywordFilterId}`)
+                .put(`/users/${user}/filters/${labelFilterId}`)
                 .send({
                     action: {
-                        keywords: ['priority', 'customer']
+                        labels: ['priority', 'customer']
                     }
                 })
                 .expect(200);
             expect(response.body.success).to.be.true;
 
-            const filterDataResponse = await server.get(`/users/${user}/filters/${keywordFilterId}`).expect(200);
+            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
             expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action.keywords).to.deep.equal(['priority', 'customer']);
+            expect(filterDataResponse.body.action.labels).to.deep.equal(['priority', 'customer']);
         });
 
-        it('should PUT /users/{user}/filters/{filter} expect success / clear keywords action with empty array', async () => {
+        it('should PUT /users/{user}/filters/{filter} expect success / clear labels action with empty array', async () => {
             const response = await server
-                .put(`/users/${user}/filters/${keywordFilterId}`)
+                .put(`/users/${user}/filters/${labelFilterId}`)
                 .send({
                     action: {
-                        keywords: []
+                        labels: []
                     }
                 })
                 .expect(200);
             expect(response.body.success).to.be.true;
 
-            const filterDataResponse = await server.get(`/users/${user}/filters/${keywordFilterId}`).expect(200);
+            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
             expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action).to.not.have.property('keywords');
+            expect(filterDataResponse.body.action).to.not.have.property('labels');
         });
 
-        it('should POST /users/{user}/filters expect failure / reject invalid keyword value', async () => {
+        it('should POST /users/{user}/filters expect failure / reject invalid label value', async () => {
             const response = await server
                 .post(`/users/${user}/filters`)
                 .send({
-                    name: 'keywords action invalid',
+                    name: 'labels action invalid',
                     query: {
-                        from: 'keywords-invalid'
+                        from: 'labels-invalid'
                     },
                     action: {
-                        keywords: ['contains space']
+                        labels: ['contains space']
                     }
                 })
                 .expect(400);

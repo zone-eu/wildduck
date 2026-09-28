@@ -2734,14 +2734,14 @@
                 }
             }
         },
-        "/users/{user}/keywords": {
+        "/users/{user}/labels": {
             "get": {
                 "tags": [
                     "Messages"
                 ],
-                "summary": "Get user keywords",
-                "description": "Lists persistent keyword paths, including empty labels, with optional exact-path message counters",
-                "operationId": "getUserKeywords",
+                "summary": "Get user labels",
+                "description": "Lists persistent labels, including empty labels, with optional message counters",
+                "operationId": "getUserLabels",
                 "parameters": [
                     {
                         "name": "user",
@@ -2787,7 +2787,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/UserKeywordsResponse"
+                                    "$ref": "#/components/schemas/UserLabelsResponse"
                                 }
                             }
                         }
@@ -2798,18 +2798,23 @@
                 "tags": [
                     "Messages"
                 ],
-                "summary": "Create a keyword",
-                "description": "Creates a persistent keyword and its parent paths. Repeated creation returns the existing keyword.",
-                "operationId": "createKeyword",
+                "summary": "Create a label",
+                "description": "Creates a persistent label. Repeated creation returns the existing label.",
+                "operationId": "createLabel",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "path": {
+                                    "name": {
                                         "type": "string",
-                                        "description": "Full keyword path, separated by /; at most 256 characters and 5 levels"
+                                        "description": "Label name, at most 256 characters"
+                                    },
+                                    "metaData": {
+                                        "type": "object",
+                                        "description": "Custom JSON metadata",
+                                        "properties": {}
                                     },
                                     "sess": {
                                         "type": "string",
@@ -2821,7 +2826,7 @@
                                     }
                                 },
                                 "required": [
-                                    "path"
+                                    "name"
                                 ]
                             }
                         }
@@ -2845,7 +2850,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/CreateKeywordResponse"
+                                    "$ref": "#/components/schemas/CreateLabelResponse"
                                 }
                             }
                         }
@@ -2853,41 +2858,13 @@
                 }
             }
         },
-        "/users/{user}/keywords/{keyword}": {
-            "put": {
+        "/users/{user}/labels/{label}": {
+            "get": {
                 "tags": [
                     "Messages"
                 ],
-                "summary": "Rename a keyword",
-                "description": "Renames a keyword while preserving its stable ID and all message and filter assignments.",
-                "operationId": "renameKeyword",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "path": {
-                                        "type": "string",
-                                        "description": "New full keyword path, separated by /; at most 256 characters and 5 levels"
-                                    },
-                                    "sess": {
-                                        "type": "string",
-                                        "description": "Session identifier for the logs"
-                                    },
-                                    "ip": {
-                                        "type": "string",
-                                        "description": "IP address for the logs "
-                                    }
-                                },
-                                "required": [
-                                    "path"
-                                ]
-                            }
-                        }
-                    },
-                    "required": true
-                },
+                "summary": "Get label",
+                "operationId": "getLabel",
                 "parameters": [
                     {
                         "name": "user",
@@ -2899,49 +2876,9 @@
                         }
                     },
                     {
-                        "name": "keyword",
+                        "name": "label",
                         "in": "path",
-                        "description": "ID of the keyword",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/RenameKeywordResponse"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "tags": [
-                    "Messages"
-                ],
-                "summary": "Delete a keyword",
-                "description": "Asynchronously removes the keyword, its descendants, and their assignments from messages and filters.",
-                "operationId": "deleteKeyword",
-                "parameters": [
-                    {
-                        "name": "user",
-                        "in": "path",
-                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "keyword",
-                        "in": "path",
-                        "description": "ID of the keyword",
+                        "description": "ID of the label",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -2972,7 +2909,134 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/DeleteKeywordResponse"
+                                    "$ref": "#/components/schemas/GetLabelResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Rename a label",
+                "description": "Updates a label while preserving its stable ID and all message and filter assignments.",
+                "operationId": "renameLabel",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "New label name"
+                                    },
+                                    "metaData": {
+                                        "type": "object",
+                                        "description": "Custom JSON metadata",
+                                        "properties": {}
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "label",
+                        "in": "path",
+                        "description": "ID of the label",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RenameLabelResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Delete a label",
+                "description": "Asynchronously removes this label and its assignments from messages and filters.",
+                "operationId": "deleteLabel",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "label",
+                        "in": "path",
+                        "description": "ID of the label",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeleteLabelResponse"
                                 }
                             }
                         }
@@ -2980,14 +3044,14 @@
                 }
             }
         },
-        "/users/{user}/keyword-counters/{keyword}": {
+        "/users/{user}/label-counters/{label}": {
             "get": {
                 "tags": [
                     "Messages"
                 ],
-                "summary": "Get keyword counter",
-                "description": "Returns total and unseen counters for a custom keyword",
-                "operationId": "getKeywordCounters",
+                "summary": "Get label counter",
+                "description": "Returns total and unseen counters for a custom label",
+                "operationId": "getLabelCounters",
                 "parameters": [
                     {
                         "name": "user",
@@ -2999,9 +3063,9 @@
                         }
                     },
                     {
-                        "name": "keyword",
+                        "name": "label",
                         "in": "path",
-                        "description": "Keyword to count",
+                        "description": "Label to count",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -3032,7 +3096,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/KeywordCounterResponse"
+                                    "$ref": "#/components/schemas/LabelCounterResponse"
                                 }
                             }
                         }
@@ -3323,26 +3387,26 @@
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
                                     },
-                                    "keywords": {
+                                    "labels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to set on the message. Replaces all existing custom keywords. System flags are not affected."
+                                        "description": "Custom labels to set on the message. Replaces all existing custom labels. System flags are not affected."
                                     },
-                                    "addKeywords": {
+                                    "addLabels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to add to the message without affecting existing keywords."
+                                        "description": "Custom labels to add to the message without affecting existing labels."
                                     },
-                                    "removeKeywords": {
+                                    "removeLabels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to remove from the message without affecting other keywords."
+                                        "description": "Custom labels to remove from the message without affecting other labels."
                                     },
                                     "sess": {
                                         "type": "string",
@@ -3504,12 +3568,12 @@
                                         "description": "Is the message a draft or not",
                                         "default": false
                                     },
-                                    "keywords": {
+                                    "labels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to set on the uploaded message"
+                                        "description": "Custom labels to set on the uploaded message"
                                     },
                                     "raw": {
                                         "type": "string",
@@ -3824,9 +3888,9 @@
                         }
                     },
                     {
-                        "name": "keyword",
+                        "name": "label",
                         "in": "query",
-                        "description": "If set, then matches only messages that have this custom keyword set",
+                        "description": "If set, then matches only messages that have this custom label set",
                         "required": false,
                         "schema": {
                             "type": "string"
@@ -4080,9 +4144,9 @@
                                         "type": "boolean",
                                         "description": "If true, then matches only messages with \\Seen flags"
                                     },
-                                    "keyword": {
+                                    "label": {
                                         "type": "string",
-                                        "description": "If set, then matches only messages that have this custom keyword set"
+                                        "description": "If set, then matches only messages that have this custom label set"
                                     },
                                     "useAndSearch": {
                                         "type": "boolean",
@@ -4132,26 +4196,26 @@
                                                 "description": "If true then delete all found messages",
                                                 "default": false
                                             },
-                                            "keywords": {
+                                            "labels": {
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string"
                                                 },
-                                                "description": "Custom keywords to set on matched messages. Replaces all existing custom keywords."
+                                                "description": "Custom labels to set on matched messages. Replaces all existing custom labels."
                                             },
-                                            "addKeywords": {
+                                            "addLabels": {
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string"
                                                 },
-                                                "description": "Custom keywords to add to matched messages without affecting existing keywords."
+                                                "description": "Custom labels to add to matched messages without affecting existing labels."
                                             },
-                                            "removeKeywords": {
+                                            "removeLabels": {
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string"
                                                 },
-                                                "description": "Custom keywords to remove from matched messages without affecting other keywords."
+                                                "description": "Custom labels to remove from matched messages without affecting other labels."
                                             }
                                         }
                                     }
@@ -4338,26 +4402,26 @@
                                         "description": "Optional metadata, must be an object or JSON formatted string",
                                         "format": "any"
                                     },
-                                    "keywords": {
+                                    "labels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to set on the message, overrides any existing keywords"
+                                        "description": "Custom labels to set on the message, overrides any existing labels"
                                     },
-                                    "addKeywords": {
+                                    "addLabels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to add to the message without affecting existing keywords, can not be used together with `keywords`"
+                                        "description": "Custom labels to add to the message without affecting existing labels, can not be used together with `labels`"
                                     },
-                                    "removeKeywords": {
+                                    "removeLabels": {
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         },
-                                        "description": "Custom keywords to remove from the message without affecting other keywords, can not be used together with `keywords`"
+                                        "description": "Custom labels to remove from the message without affecting other labels, can not be used together with `labels`"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -11540,42 +11604,41 @@
                     "unseen"
                 ]
             },
-            "UserKeywordsResponse": {
+            "UserLabelsResponse": {
                 "type": "object",
                 "properties": {
                     "success": {
                         "type": "boolean"
                     },
-                    "keywords": {
+                    "labels": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "id": {
                                     "type": "string",
-                                    "description": "ID of the keyword"
+                                    "description": "ID of the label"
                                 },
-                                "keyword": {
+                                "name": {
                                     "type": "string",
-                                    "description": "Keyword name (last path component)"
+                                    "description": "Label name"
                                 },
-                                "path": {
-                                    "type": "string",
-                                    "description": "Full keyword path"
+                                "metaData": {
+                                    "type": "object",
+                                    "description": "Custom label metadata",
+                                    "properties": {}
                                 },
                                 "total": {
                                     "type": "number",
-                                    "description": "Total number of messages with this keyword"
+                                    "description": "Total number of messages with this label"
                                 },
                                 "unseen": {
                                     "type": "number",
-                                    "description": "Unseen number of messages with this keyword"
+                                    "description": "Unseen number of messages with this label"
                                 }
                             },
                             "required": [
                                 "id",
-                                "keyword",
-                                "path",
                                 "name"
                             ]
                         }
@@ -11583,10 +11646,10 @@
                 },
                 "required": [
                     "success",
-                    "keywords"
+                    "labels"
                 ]
             },
-            "CreateKeywordResponse": {
+            "CreateLabelResponse": {
                 "type": "object",
                 "properties": {
                     "success": {
@@ -11594,20 +11657,48 @@
                     },
                     "id": {
                         "type": "string",
-                        "description": "ID of the keyword"
+                        "description": "ID of the label"
                     },
-                    "path": {
+                    "name": {
                         "type": "string",
-                        "description": "Full keyword path"
+                        "description": "Label name"
+                    },
+                    "metaData": {
+                        "type": "object",
+                        "description": "Custom label metadata",
+                        "properties": {}
                     }
                 },
                 "required": [
                     "success",
                     "id",
-                    "path"
+                    "name"
                 ]
             },
-            "RenameKeywordResponse": {
+            "GetLabelResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "metaData": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                "required": [
+                    "success",
+                    "id",
+                    "name"
+                ]
+            },
+            "RenameLabelResponse": {
                 "type": "object",
                 "properties": {
                     "success": {
@@ -11615,25 +11706,25 @@
                     },
                     "id": {
                         "type": "string",
-                        "description": "ID of the keyword"
+                        "description": "ID of the label"
                     },
-                    "path": {
+                    "name": {
                         "type": "string",
-                        "description": "New full keyword path"
+                        "description": "Label name"
                     },
-                    "oldPath": {
-                        "type": "string",
-                        "description": "Previous full keyword path"
+                    "metaData": {
+                        "type": "object",
+                        "description": "Custom label metadata",
+                        "properties": {}
                     }
                 },
                 "required": [
                     "success",
                     "id",
-                    "path",
-                    "oldPath"
+                    "name"
                 ]
             },
-            "DeleteKeywordResponse": {
+            "DeleteLabelResponse": {
                 "type": "object",
                 "properties": {
                     "success": {
@@ -11641,7 +11732,7 @@
                     },
                     "scheduled": {
                         "type": "string",
-                        "description": "ID of the keyword deletion task"
+                        "description": "ID of the label deletion task"
                     },
                     "existing": {
                         "type": "boolean",
@@ -11654,28 +11745,28 @@
                     "existing"
                 ]
             },
-            "KeywordCounterResponse": {
+            "LabelCounterResponse": {
                 "type": "object",
                 "properties": {
                     "success": {
                         "type": "boolean"
                     },
-                    "keyword": {
+                    "label": {
                         "type": "string",
-                        "description": "Keyword name"
+                        "description": "Label name"
                     },
                     "total": {
                         "type": "number",
-                        "description": "Total number of messages with this keyword"
+                        "description": "Total number of messages with this label"
                     },
                     "unseen": {
                         "type": "number",
-                        "description": "Unseen number of messages with this keyword"
+                        "description": "Unseen number of messages with this label"
                     }
                 },
                 "required": [
                     "success",
-                    "keyword",
+                    "label",
                     "total",
                     "unseen"
                 ]
@@ -11889,12 +11980,12 @@
                         "type": "boolean",
                         "description": "Does this message have a $Forwarded flag"
                     },
-                    "keywords": {
+                    "labels": {
                         "type": "array",
                         "items": {
                             "type": "string"
                         },
-                        "description": "Custom keywords set on this message"
+                        "description": "Custom labels set on this message"
                     },
                     "references": {
                         "type": "array",
@@ -12854,12 +12945,12 @@
                         ],
                         "description": "Custom metadata object set for this message"
                     },
-                    "keywords": {
+                    "labels": {
                         "type": "array",
                         "items": {
                             "type": "string"
                         },
-                        "description": "Custom keywords set on this message"
+                        "description": "Custom labels set on this message"
                     },
                     "references": {
                         "type": "array",
@@ -13360,12 +13451,12 @@
                         },
                         "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
                     },
-                    "keywords": {
+                    "labels": {
                         "type": "array",
                         "items": {
                             "type": "string"
                         },
-                        "description": "An array of keywords to apply to matching messages"
+                        "description": "An array of labels to apply to matching messages"
                     }
                 }
             },
