@@ -307,7 +307,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
 });
 
 describe('moveAsync label counter notifications', function () {
-    it('loads label paths when a labelled message follows an unlabelled message', async function () {
+    it('loads label names when a labelled message follows an unlabelled message', async function () {
         const user = new ObjectId();
         const sourceMailbox = new ObjectId();
         const targetMailbox = new ObjectId();

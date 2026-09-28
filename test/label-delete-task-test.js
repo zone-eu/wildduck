@@ -9,7 +9,6 @@ describe('Label deletion task', () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const label = new ObjectId();
-        const ids = [label];
         const task = { _id: new ObjectId() };
         const events = [];
         const journalEntries = [];
@@ -47,12 +46,12 @@ describe('Label deletion task', () => {
                 if (name === 'messages') {
                     return {
                         async findOne(query) {
-                            expect(query).to.deep.equal({ mailbox, labels: { $in: ids } });
+                            expect(query).to.deep.equal({ mailbox, labels: label });
                             return { _id: new ObjectId() };
                         },
                         async updateMany(query, update) {
-                            expect(query).to.deep.equal({ mailbox, labels: { $in: ids } });
-                            expect(update).to.deep.equal({ $pull: { labels: { $in: ids } }, $set: { modseq: 7 } });
+                            expect(query).to.deep.equal({ mailbox, labels: label });
+                            expect(update).to.deep.equal({ $pull: { labels: label }, $set: { modseq: 7 } });
                             events.push('messages');
                             return { modifiedCount: 1 };
                         }
@@ -61,8 +60,8 @@ describe('Label deletion task', () => {
                 if (name === 'filters') {
                     return {
                         async updateMany(query, update) {
-                            expect(query).to.deep.equal({ user, 'action.labels': { $in: ids } });
-                            expect(update).to.deep.equal({ $pull: { 'action.labels': { $in: ids } } });
+                            expect(query).to.deep.equal({ user, 'action.labels': label });
+                            expect(update).to.deep.equal({ $pull: { 'action.labels': label } });
                             events.push('filters');
                             return { modifiedCount: 1 };
                         }
@@ -70,8 +69,8 @@ describe('Label deletion task', () => {
                 }
                 expect(name).to.equal('labels');
                 return {
-                    async deleteMany(query) {
-                        expect(query).to.deep.equal({ user, _id: { $in: ids }, deleting: true });
+                    async deleteOne(query) {
+                        expect(query).to.deep.equal({ user, _id: label, deleting: true });
                         events.push('labels');
                         return { deletedCount: 1 };
                     }
@@ -80,7 +79,7 @@ describe('Label deletion task', () => {
         };
         const result = await run(
             task,
-            { user, label, name: 'Projects', ids },
+            { user, label, name: 'Projects' },
             { messageHandler: { notifier, redis }, loggelf: entry => events.push(entry) },
             database
         );

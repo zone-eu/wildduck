@@ -31,6 +31,7 @@ describe('Label allocation limits in MongoDB', function () {
         const collection = database.collection('labels');
         const indexes = await collection.indexes();
         expect(indexes.find(index => index.name === 'user_slot').unique).to.equal(true);
+        expect(indexes.find(index => index.name === 'user_slot').partialFilterExpression).to.equal(undefined);
         expect(indexes.find(index => index.name === 'user_name').unique).to.equal(true);
         await collection.insertMany(Array.from({ length: MAX_LABELS - 1 }, (_, slot) => ({ user, slot, name: `test-${slot}` })));
         const results = await Promise.allSettled([

@@ -376,7 +376,7 @@ describe('on-copy UID arrays', function () {
         type: 'smime'
     };
 
-    it('includes flagged state and API label paths in copied-message notifications', async function () {
+    it('includes flagged state and API label names in copied-message notifications', async function () {
         const label = new ObjectId();
         let { server, messageHandler, calls } = setupCopyEnv({
             sourceMessages: [

@@ -56,15 +56,15 @@ describe('MessageHandler message updates', function () {
         };
         const atomicFlags = messageOverrides?.atomicFlags ?? messageOverrides?.flags ?? [];
         const labelRecords = new Map();
-        const getLabelRecord = path => {
-            if (!labelRecords.has(path)) {
-                labelRecords.set(path, { _id: new ObjectId(), user, name: path });
+        const getLabelRecord = name => {
+            if (!labelRecords.has(name)) {
+                labelRecords.set(name, { _id: new ObjectId(), user, name });
             }
-            return labelRecords.get(path);
+            return labelRecords.get(name);
         };
-        const messageLabels = (messageOverrides?.labelNames || []).map(path => getLabelRecord(path)._id);
+        const messageLabels = (messageOverrides?.labelNames || []).map(name => getLabelRecord(name)._id);
         const atomicLabels = (messageOverrides?.atomicLabelNames ?? messageOverrides?.labelNames ?? []).map(
-            path => getLabelRecord(path)._id
+            name => getLabelRecord(name)._id
         );
 
         let handler = Object.create(MessageHandler.prototype);
@@ -187,9 +187,9 @@ describe('MessageHandler message updates', function () {
                     case 'labels':
                         return {
                             find(query) {
-                                const paths = query.name?.$in || query.$or?.[0]?.name?.$in;
-                                const records = paths
-                                    ? paths.map(getLabelRecord)
+                                const names = query.name?.$in;
+                                const records = names
+                                    ? names.map(getLabelRecord)
                                     : query._id?.$in
                                       ? query._id.$in
                                             .map(id => [...labelRecords.values()].find(record => record._id.equals(id)))
@@ -376,10 +376,10 @@ describe('MessageHandler message updates', function () {
         expect(updated).to.equal(1);
     });
 
-    it('keeps API labels separate from legacy IMAP flags in notifications', async function () {
+    it('keeps API labels separate from ordinary IMAP flags in notifications', async function () {
         const MessageHandler = require('../lib/message-handler');
         const { handler, user, mailbox, notified, getLabelRecord } = buildHandler(MessageHandler, () => false, {
-            flags: ['legacy-imap-label'],
+            flags: ['ordinary-imap-flag'],
             labelNames: ['concurrent-label'],
             atomicLabelNames: ['concurrent-label']
         });
@@ -390,7 +390,7 @@ describe('MessageHandler message updates', function () {
 
         expect(updated).to.equal(1);
         expect(notified).to.have.lengthOf(1);
-        expect(notified[0].flags).to.deep.equal(['legacy-imap-label', `$wdlabel$${getLabelRecord('concurrent-label')._id}`]);
+        expect(notified[0].flags).to.deep.equal(['ordinary-imap-flag', `$wdlabel$${getLabelRecord('concurrent-label')._id}`]);
         expect(notified[0].addedLabels).to.deep.equal([]);
         expect(notified[0].removedLabels).to.deep.equal([]);
     });
