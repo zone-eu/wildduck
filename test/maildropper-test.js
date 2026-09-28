@@ -72,6 +72,8 @@ describe('Maildropper', function () {
         metadata: { data }
     });
 
+    const validSendTime = () => new Date('2026-08-25T09:00:00.000Z');
+
     const submittedQueueFile = headers => queueFileFor({ userId: 'user-id', reason: 'submit', headers });
 
     describe('updateQueueTime', function () {
@@ -119,7 +121,7 @@ describe('Maildropper', function () {
                 updateMany: async () => ({ matchedCount: 3, modifiedCount: 0 })
             });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result.success).to.be.true;
             expect(result.updated).to.equal(3);
@@ -131,7 +133,7 @@ describe('Maildropper', function () {
                 updateMany: async () => ({ matchedCount: 0, modifiedCount: 0 })
             });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -166,7 +168,7 @@ describe('Maildropper', function () {
                 updateMany: async () => ({ matchedCount: 1, modifiedCount: 1 })
             });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -204,7 +206,7 @@ describe('Maildropper', function () {
         it('rejects a queue entry owned by another user', async function () {
             const maildropper = createMaildropper(queueFileFor({ userId: 'another-user-id' }));
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -216,7 +218,7 @@ describe('Maildropper', function () {
             // system generated messages without an owner must not be modifiable by a user token
             const maildropper = createMaildropper(queueFileFor({ reason: 'bounce' }));
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -237,7 +239,7 @@ describe('Maildropper', function () {
                 updateMany: async () => ({ matchedCount: 1, modifiedCount: 1 })
             });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(messageQuery).to.deep.equal({ user: 'user-id', outbound: 'queue-id' });
             expect(result.success).to.be.true;
@@ -249,7 +251,7 @@ describe('Maildropper', function () {
                 referencedBy: { _id: 'message-id' }
             });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -261,7 +263,7 @@ describe('Maildropper', function () {
             // metadata is stored after the message itself, so a queue file might not have it yet
             const maildropper = createMaildropper({ _id: 'gridfs-id' });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -272,7 +274,7 @@ describe('Maildropper', function () {
         it('returns a missing-entry response when the queue file does not exist', async function () {
             const maildropper = createMaildropper(false);
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result).to.deep.equal({
                 success: false,
@@ -345,7 +347,7 @@ describe('Maildropper', function () {
                 updateMany: async () => ({ matchedCount: 1, modifiedCount: 1 })
             });
 
-            const result = await maildropper.updateQueueTime('queue-id', 'user-id', new Date());
+            const result = await maildropper.updateQueueTime('queue-id', 'user-id', validSendTime());
 
             expect(result.success).to.be.true;
             // the caller uses this to decide whether the stored copies need to be re-dated as well
