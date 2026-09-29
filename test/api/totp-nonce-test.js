@@ -439,15 +439,15 @@ describe('Master token MCP exchange', function () {
                     return true;
                 }
             },
-            '/authenticate/mcp/:token',
-            'deleteMcpAuthenticationToken'
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
         );
 
         const res = getResponse();
         await route.handler(
             {
                 route: { spec: route.spec },
-                params: { token: tokenId },
+                params: { scope: 'mcp', token: tokenId },
                 role: 'user',
                 user: user.toString(),
                 accessToken: { user: user.toString() },
