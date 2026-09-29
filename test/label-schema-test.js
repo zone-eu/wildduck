@@ -12,6 +12,12 @@ describe('Label schema', () => {
         expect(value).to.equal('safe\u010a\u010d-čau-😀');
     });
 
+    it('accepts label names that are not valid IMAP atoms', () => {
+        for (const label of ['Work Projects', '50% done', 'Review (later)', 'A[B]{C}*']) {
+            expect(labelSchema.validate(label).error).not.to.exist;
+        }
+    });
+
     it('rejects internal and system flags as custom labels', () => {
         for (const label of ['$Forwarded', '$forwarded', '$label1', '\\Seen']) {
             expect(labelSchema.validate(label).error).to.exist;

@@ -441,7 +441,7 @@ describe('API Filters', function () {
                         from: 'labels-invalid'
                     },
                     action: {
-                        labels: ['contains space']
+                        labels: ['a'.repeat(257)]
                     }
                 })
                 .expect(400);

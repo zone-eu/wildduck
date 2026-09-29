@@ -125,6 +125,9 @@ describe('MessageHandler message updates', function () {
 
                     case 'messages':
                         return {
+                            async distinct() {
+                                return atomicLabels;
+                            },
                             find(query) {
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
@@ -414,6 +417,25 @@ describe('MessageHandler message updates', function () {
         expect(notified[0].flags).to.deep.equal(['$Forwarded', `$wdlabel$${getLabelRecord('visible-label')._id}`]);
         expect(notified[0].addedLabels).to.deep.equal(['visible-label']);
         expect(notified[0].removedLabels).to.deep.equal(['old-label']);
+    });
+
+    it('hides deleting labels from flag notifications and reports active labels on seen changes', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const setup = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$set.unseen).to.be.false;
+                expect(update.$addToSet.flags.$each).to.deep.equal(['\\Seen']);
+            },
+            { flags: [], labelNames: ['Active', 'Deleting'] }
+        );
+        setup.getLabelRecord('Deleting').deleting = true;
+
+        await updateAsync(setup.handler, setup.user, setup.mailbox, { seen: true });
+
+        expect(setup.notified).to.have.lengthOf(1);
+        expect(setup.notified[0].flags).to.deep.equal(['\\Seen', `$wdlabel$${setup.getLabelRecord('Active')._id}`]);
+        expect(setup.notified[0].labels).to.deep.equal(['Active']);
     });
 
     it('publishes marked.ham when markHam=true is the only requested action', async function () {

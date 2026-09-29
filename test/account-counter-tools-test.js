@@ -124,4 +124,70 @@ describe('Account counter tools', () => {
             { id: id.toString(), name: 'Projects/2026', metaData: { color: 'blue' } }
         ]);
     });
+
+    it('loads all label counters with one mailbox lookup and one aggregate', async () => {
+        const user = new ObjectId();
+        const mailbox = new ObjectId();
+        const labels = [
+            { _id: new ObjectId(), name: 'Finance' },
+            { _id: new ObjectId(), name: 'Work Projects' }
+        ];
+        let mailboxLookups = 0;
+        let aggregates = 0;
+        const db = {
+            redis: createRedis(),
+            database: {
+                collection(name) {
+                    if (name === 'labels') {
+                        return {
+                            find() {
+                                return {
+                                    sort() {
+                                        return this;
+                                    },
+                                    async toArray() {
+                                        return labels;
+                                    }
+                                };
+                            }
+                        };
+                    }
+                    if (name === 'mailboxes') {
+                        return {
+                            find() {
+                                mailboxLookups++;
+                                return {
+                                    async toArray() {
+                                        return [{ _id: mailbox }];
+                                    }
+                                };
+                            }
+                        };
+                    }
+                    expect(name).to.equal('messages');
+                    return {
+                        aggregate(pipeline, options) {
+                            aggregates++;
+                            expect(pipeline[0]).to.deep.equal({
+                                $match: { mailbox: { $in: [mailbox] }, labels: { $in: labels.map(label => label._id) } }
+                            });
+                            expect(options.maxTimeMS).to.equal(consts.DB_MAX_TIME_MESSAGES_SEARCH);
+                            return {
+                                async toArray() {
+                                    return [{ _id: labels[0]._id, total: 3, unseen: 2 }];
+                                }
+                            };
+                        }
+                    };
+                }
+            }
+        };
+
+        expect(await tools.getUserLabels(db, user, true)).to.deep.equal([
+            { id: labels[0]._id.toString(), name: 'Finance', metaData: undefined, total: 3, unseen: 2 },
+            { id: labels[1]._id.toString(), name: 'Work Projects', metaData: undefined, total: 0, unseen: 0 }
+        ]);
+        expect(mailboxLookups).to.equal(1);
+        expect(aggregates).to.equal(1);
+    });
 });

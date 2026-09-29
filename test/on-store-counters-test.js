@@ -58,13 +58,17 @@ describe('on-store counter notifications', () => {
                 }
                 expect(name).to.equal('messages');
                 return {
+                    async distinct() {
+                        return [label._id];
+                    },
                     find() {
                         return cursor;
                     },
                     bulkWrite(updates, options, callback) {
                         expect(updates).to.have.lengthOf(1);
-                        expect(updates[0].updateOne.update.$set).to.include({ unseen: true, flagged: false, modseq: 2 });
-                        expect(updates[0].updateOne.update.$set.labels).to.deep.equal([]);
+                        const pipelineSet = updates[0].updateOne.update[0].$set;
+                        expect(pipelineSet).to.deep.include({ unseen: { $literal: true }, flagged: { $literal: false }, modseq: { $literal: 2 } });
+                        expect(pipelineSet.labels.$setUnion[0].$filter.input).to.deep.equal({ $ifNull: ['$labels', []] });
                         callback();
                     }
                 };
@@ -143,6 +147,7 @@ describe('on-store counter notifications', () => {
                             callback(null, { value: { modifyIndex: 2 } });
                         },
                         updateOne(query, update, options, callback) {
+                            expect(update.$addToSet.flags.$each).to.deep.equal(['$label1']);
                             callback();
                         }
                     };
@@ -155,13 +160,16 @@ describe('on-store counter notifications', () => {
                     };
                 }
                 return {
+                    async distinct() {
+                        return [];
+                    },
                     find() {
                         return cursor;
                     },
                     bulkWrite(updates, options, callback) {
-                        const stored = updates[0].updateOne.update.$set;
-                        expect(stored.flags).to.deep.equal(['\\Seen', `$wdlabel$${previouslyUnknown}`, '$label1']);
-                        expect(stored.labels.map(value => value.toString())).to.deep.equal([label._id.toString()]);
+                        const stored = updates[0].updateOne.update[0].$set;
+                        expect(stored.flags.$setUnion[1].$literal).to.deep.equal(['$label1']);
+                        expect(stored.labels.$setUnion[1].$literal.map(value => value.toString())).to.deep.equal([label._id.toString()]);
                         callback();
                     }
                 };

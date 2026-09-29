@@ -26,12 +26,14 @@ describe('IMAP label bridge', () => {
         const label = { _id: new ObjectId(), user, name: 'Team/Blue', slot: 0 };
         const foreignLabel = new ObjectId();
         let addOptions;
+        let labelQuery;
 
         db.database = {
             collection(name) {
                 expect(name).to.equal('labels');
                 return {
-                    find() {
+                    find(query) {
+                        labelQuery = query;
                         return { toArray: async () => [label] };
                     }
                 };
@@ -83,6 +85,7 @@ describe('IMAP label bridge', () => {
             err => {
                 try {
                     expect(err).to.not.exist;
+                    expect(labelQuery).to.deep.equal({ user, _id: { $in: [label._id, foreignLabel] } });
                     expect(addOptions.flags).to.deep.equal(['\\Seen', '$label1', `$wdlabel$${foreignLabel}`, 'Team/Blue']);
                     expect(addOptions.labels.map(value => value.toString())).to.deep.equal([label._id.toString()]);
                     return done();

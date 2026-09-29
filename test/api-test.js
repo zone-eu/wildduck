@@ -1250,7 +1250,7 @@ describe('API tests', function () {
         it('should PUT /users/:user/mailboxes/:mailbox/messages/:message invalid label expect failure', async () => {
             const putResponse = await server
                 .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
-                .send({ labels: ['invalid label'] })
+                .send({ labels: ['a'.repeat(257)] })
                 .expect(400);
             expect(putResponse.body.error).to.exist;
         });
