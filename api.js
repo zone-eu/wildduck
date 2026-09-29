@@ -55,18 +55,18 @@ const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
 
-// The only routes an MCP credential may reach, by route name, mapped to the resource whose
-// field allowlist shapes the response. Every one is a GET that a tool in lib/mcp-tools.js
-// dispatches to; the method is checked separately so the list cannot accidentally admit a
-// mutating route that reuses a name.
+// The only routes an MCP credential may reach, by route name and method. Read routes map to
+// the resource whose field allowlist shapes the response. The sole non-read route revokes the
+// credential that authenticated that same request.
 const MCP_ROUTES = new Map([
-    ['getuser', 'users'],
-    ['getuseraddresses', 'addresses'],
-    ['getmailboxes', 'mailboxes'],
-    ['getmailbox', 'mailboxes'],
-    ['getmessages', 'messages'],
-    ['getmessage', 'messages'],
-    ['searchmessages', 'messages']
+    ['getuser', { method: 'GET', resource: 'users' }],
+    ['getuseraddresses', { method: 'GET', resource: 'addresses' }],
+    ['getmailboxes', { method: 'GET', resource: 'mailboxes' }],
+    ['getmailbox', { method: 'GET', resource: 'mailboxes' }],
+    ['getmessages', { method: 'GET', resource: 'messages' }],
+    ['getmessage', { method: 'GET', resource: 'messages' }],
+    ['searchmessages', { method: 'GET', resource: 'messages' }],
+    ['invalidateaccesstoken', { method: 'DELETE' }]
 ]);
 
 /**
@@ -416,11 +416,11 @@ server.use(async (req, res) => {
         // messages and users also covers the raw RFC822 source, the archive, the address
         // register, the journal stream and PUT /users/:user/logout, which is a state change
         // guarded by readOwn('users'). So the credential is additionally pinned to the exact
-        // routes the MCP tools dispatch to: adding a route under an existing grant cannot
-        // widen what an agent token reaches, and the read-only promise belongs to the
-        // credential rather than to the client that happens to be using it.
-        let mcpResource = MCP_ROUTES.get(((req.route && req.route.name) || '').toLowerCase());
-        if (req.method !== 'GET' || !mcpResource) {
+        // routes the MCP tools dispatch to, plus self-revocation: adding a route under an
+        // existing grant cannot widen what an agent token reaches, and the read-only promise
+        // belongs to the credential rather than to the client that happens to be using it.
+        let mcpRoute = MCP_ROUTES.get(((req.route && req.route.name) || '').toLowerCase());
+        if (!mcpRoute || req.method !== mcpRoute.method) {
             return fail();
         }
 
@@ -444,8 +444,15 @@ server.use(async (req, res) => {
             req.params.user = req.user;
         }
 
-        if (!filterResponseFields(req, res, mcpResource)) {
-            return fail();
+        if (mcpRoute.resource) {
+            if (!filterResponseFields(req, res, mcpRoute.resource)) {
+                return fail();
+            }
+        } else {
+            req.accessToken = {
+                mcp: true,
+                revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
+            };
         }
 
         return;
@@ -477,6 +484,11 @@ server.use(async (req, res) => {
                         authVersion: tokenData.authVersion,
                         role: tokenData.role
                     };
+                    if ('mfaRequired' in tokenData || 'mfaVerified' in tokenData || 'passwordChangeRequired' in tokenData) {
+                        signData.mfaRequired = tokenData.mfaRequired;
+                        signData.mfaVerified = tokenData.mfaVerified;
+                        signData.passwordChangeRequired = tokenData.passwordChangeRequired;
+                    }
                 } else {
                     signData = {
                         token: accessToken,
@@ -506,12 +518,35 @@ server.use(async (req, res) => {
 
                     // check if token is not too old
                     if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
+                        let assuranceRecorded =
+                            'mfaRequired' in tokenData && 'mfaVerified' in tokenData && 'passwordChangeRequired' in tokenData;
+                        let mfaVerified = assuranceRecorded && tokenData.mfaVerified === 'true';
+                        if (assuranceRecorded && tokenData.mfaRequired === 'true' && !mfaVerified) {
+                            try {
+                                let proof = await db.redis.get('tn:token:mfa:' + tokenHash);
+                                let expectedProof = crypto
+                                    .createHmac('sha256', config.api.accessControl.secret)
+                                    .update(
+                                        JSON.stringify({
+                                            tokenHash,
+                                            user: tokenData.user,
+                                            authVersion: tokenData.authVersion
+                                        })
+                                    )
+                                    .digest('hex');
+                                mfaVerified = proof === expectedProof;
+                            } catch (err) {
+                                mfaVerified = false;
+                            }
+                        }
+
                         // token is still usable, increase session length
                         try {
-                            await db.redis
-                                .multi()
-                                .expire('tn:token:' + tokenHash, tokenTTL)
-                                .exec();
+                            let refresh = db.redis.multi().expire('tn:token:' + tokenHash, tokenTTL);
+                            if (mfaVerified && tokenData.mfaRequired === 'true' && tokenData.mfaVerified !== 'true') {
+                                refresh.expire('tn:token:mfa:' + tokenHash, tokenTTL);
+                            }
+                            await refresh.exec();
                         } catch (err) {
                             // ignore
                         }
@@ -524,8 +559,18 @@ server.use(async (req, res) => {
                         req.accessToken = {
                             hash: tokenHash,
                             user: tokenData.user,
+                            authVersion: tokenData.authVersion,
+                            assuranceRecorded,
+                            mfaRequired: assuranceRecorded && tokenData.mfaRequired === 'true',
+                            mfaVerified,
+                            passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
                             // if called then refreshes token data for current hash
-                            update: async () => setAuthToken(tokenData.user, accessToken)
+                            update: async () =>
+                                setAuthToken(tokenData.user, accessToken, {
+                                    mfaRequired: assuranceRecorded && tokenData.mfaRequired === 'true',
+                                    mfaVerified,
+                                    passwordChangeRequired: false
+                                })
                         };
                     } else {
                         // expired token, clear it

@@ -7034,9 +7034,65 @@
                     "Authentication"
                 ],
                 "summary": "Invalidate authentication token",
-                "description": "This method invalidates currently used authentication token. If token is not provided then nothing happens",
+                "description": "This method invalidates the currently used API or MCP authentication token. If token is not provided then nothing happens",
                 "operationId": "invalidateAccessToken",
                 "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/mcp": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Create an MCP authentication token",
+                "description": "Exchanges an MFA-satisfied master API token for an independent MCP-only bearer token.",
+                "operationId": "createMcpAuthenticationToken",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateMcpAuthenticationTokenResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/mcp/{token}": {
+            "delete": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Revoke an MCP authentication token",
+                "description": "Revokes an independent MCP login session owned by the authenticated master-token user.",
+                "operationId": "deleteMcpAuthenticationToken",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "description": "MCP session identifier returned when the token was created",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Success",
@@ -13642,7 +13698,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If a token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the API access token or MCP-only bearer token for the requested scope."
+                        "description": "Credential for the requested scope. MCP credentials are returned only after any configured TOTP or WebAuthn challenge; master-scope API tokens retain the strict2fa compatibility behavior."
                     },
                     "twoFactorNonce": {
                         "type": "string",
@@ -13666,6 +13722,29 @@
                     "require2fa",
                     "require2faEnabled",
                     "requirePasswordChange"
+                ]
+            },
+            "CreateMcpAuthenticationTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "MCP session identifier used for master-token revocation"
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "Plaintext MCP bearer token. This value is returned only once."
+                    }
+                },
+                "required": [
+                    "success",
+                    "id",
+                    "token"
                 ]
             },
             "GetAuthlogResult": {

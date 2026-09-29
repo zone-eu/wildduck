@@ -114,8 +114,16 @@ The REST endpoints are:
 - `POST /users/:user/mcp-tokens`
 - `GET /users/:user/mcp-tokens`
 - `DELETE /users/:user/mcp-tokens/:token`
+- `POST /authenticate/mcp`
+- `DELETE /authenticate/mcp/:token`
 
 The create command and `POST` return the plaintext token once. Save it immediately; later list responses contain metadata only. Revocation takes the record ID, not the token value.
+
+Tokens returned by `POST /authenticate` with `scope: "mcp"` are interactive login sessions rather than personal tokens. They are stored in Redis, do not count toward `MAX_MCP_TOKEN_COUNT`, expire after `api.accessControl.tokenTTL` seconds without use (14 days by default), and can be extended by use only until `api.accessControl.tokenLifetime` (180 days by default). A client can revoke its current API or MCP login credential with `DELETE /authenticate`; a persistent MCP personal token may revoke itself through the same endpoint as well.
+
+An authenticated user may also exchange a master API login token for an independent MCP login session with `POST /authenticate/mcp`. The master token must have been issued by the current authentication flow, must not require a password change, and must have completed TOTP or WebAuthn when either was required. With `strict2fa = false`, the master token returned before the optional challenge is initially ineligible; completing the nonce returned alongside it marks that exact master session as MFA-verified. Older master tokens without authentication-assurance metadata cannot perform the exchange.
+
+The exchange response returns the plaintext MCP bearer once and a 64-character session identifier. Any current master API token belonging to the same user can revoke that MCP session with `DELETE /authenticate/mcp/:token`, using the identifier rather than the bearer secret. The MCP bearer can revoke itself with `DELETE /authenticate`. MCP sessions are independent: logging out or expiring the master token does not revoke MCP sessions minted through it.
 
 Users may manage their own tokens. Root, manager and webmail roles may manage tokens for any user. The `mcp:read` role itself has no grant here, so an MCP token can never mint another MCP token.
 
@@ -186,7 +194,7 @@ Mail content is untrusted data. The server instructions tell clients not to foll
 | Tool calls per token               | `MCP_TOOL_CALLS` / `MCP_TOOL_WINDOW`    | 600 per 60s |
 | List and search page size          | `MCP_MAX_RESULTS`                       | 50          |
 | Body characters per call           | `MCP_MAX_BODY_CHARS`                    | 50000       |
-| Tokens per user                    | `MAX_MCP_TOKEN_COUNT`                   | 50          |
+| Persistent personal tokens per user | `MAX_MCP_TOKEN_COUNT`                 | 50          |
 
 Only failed authentications are counted, so a working client never approaches that limit.
 
