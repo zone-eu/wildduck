@@ -341,7 +341,7 @@ describe('Master token MCP exchange', function () {
                     mfaRequired: true,
                     disabled: false,
                     suspended: false,
-                    mcpDisabled: false
+                    disabledScopes: []
                 })
             },
             {
@@ -350,15 +350,15 @@ describe('Master token MCP exchange', function () {
                     return mcpToken;
                 }
             },
-            '/authenticate/mcp',
-            'createMcpAuthenticationToken'
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
         );
 
         const res = getResponse();
         await route.handler(
             {
                 route: { spec: route.spec },
-                params: {},
+                params: { scope: 'mcp' },
                 role: 'user',
                 user: user.toString(),
                 accessToken: {
@@ -378,6 +378,7 @@ describe('Master token MCP exchange', function () {
         expect(mintedFor).to.equal(user.toString());
         expect(res.body).to.deep.equal({
             success: true,
+            scope: 'mcp',
             id: crypto.createHash('sha256').update(mcpToken).digest('hex'),
             token: mcpToken
         });
@@ -391,7 +392,7 @@ describe('Master token MCP exchange', function () {
                     mfaRequired: true,
                     disabled: false,
                     suspended: false,
-                    mcpDisabled: false
+                    disabledScopes: []
                 })
             },
             {
@@ -399,15 +400,15 @@ describe('Master token MCP exchange', function () {
                     throw new Error('must not mint');
                 }
             },
-            '/authenticate/mcp',
-            'createMcpAuthenticationToken'
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
         );
 
         const res = getResponse();
         await route.handler(
             {
                 route: { spec: route.spec },
-                params: {},
+                params: { scope: 'mcp' },
                 role: 'user',
                 user: user.toString(),
                 accessToken: {

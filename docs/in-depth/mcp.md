@@ -114,14 +114,14 @@ The REST endpoints are:
 - `POST /users/:user/mcp-tokens`
 - `GET /users/:user/mcp-tokens`
 - `DELETE /users/:user/mcp-tokens/:token`
-- `POST /authenticate/mcp`
+- `POST /authenticate/:scope` (`mcp` is currently supported)
 - `DELETE /authenticate/mcp/:token`
 
 The create command and `POST` return the plaintext token once. Save it immediately; later list responses contain metadata only. Revocation takes the record ID, not the token value.
 
 Tokens returned by `POST /authenticate` with `scope: "mcp"` are interactive login sessions rather than personal tokens. They are stored in Redis, do not count toward `MAX_MCP_TOKEN_COUNT`, expire after `api.accessControl.tokenTTL` seconds without use (14 days by default), and can be extended by use only until `api.accessControl.tokenLifetime` (180 days by default). A client can revoke its current API or MCP login credential with `DELETE /authenticate`; a persistent MCP personal token may revoke itself through the same endpoint as well.
 
-An authenticated user may also exchange a master API login token for an independent MCP login session with `POST /authenticate/mcp`. The master token must have been issued by the current authentication flow, must not require a password change, and must have completed TOTP or WebAuthn when either was required. With `strict2fa = false`, the master token returned before the optional challenge is initially ineligible; completing the nonce returned alongside it marks that exact master session as MFA-verified. Older master tokens without authentication-assurance metadata cannot perform the exchange.
+An authenticated user may also exchange a master API login token for an independent scoped login session with `POST /authenticate/:scope`; `POST /authenticate/mcp` selects the MCP token handler. The endpoint dispatches through a scope-handler registry so additional restricted token types can be added without adding another authentication route. The master token must have been issued by the current authentication flow, must not require a password change, and must have completed TOTP or WebAuthn when either was required. With `strict2fa = false`, the master token returned before the optional challenge is initially ineligible; completing the nonce returned alongside it marks that exact master session as MFA-verified. Older master tokens without authentication-assurance metadata cannot perform the exchange.
 
 The exchange response returns the plaintext MCP bearer once and a 64-character session identifier. Any current master API token belonging to the same user can revoke that MCP session with `DELETE /authenticate/mcp/:token`, using the identifier rather than the bearer secret. The MCP bearer can revoke itself with `DELETE /authenticate`. MCP sessions are independent: logging out or expiring the master token does not revoke MCP sessions minted through it.
 

@@ -7051,22 +7051,32 @@
                 }
             }
         },
-        "/authenticate/mcp": {
+        "/authenticate/{scope}": {
             "post": {
                 "tags": [
                     "Authentication"
                 ],
-                "summary": "Create an MCP authentication token",
-                "description": "Exchanges an MFA-satisfied master API token for an independent MCP-only bearer token.",
-                "operationId": "createMcpAuthenticationToken",
-                "parameters": [],
+                "summary": "Create a scoped authentication token",
+                "description": "Exchanges an MFA-satisfied master API token for an independent token restricted to the requested scope.",
+                "operationId": "createScopedAuthenticationToken",
+                "parameters": [
+                    {
+                        "name": "scope",
+                        "in": "path",
+                        "description": "Authentication scope for the new token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/CreateMcpAuthenticationTokenResponse"
+                                    "$ref": "#/components/schemas/CreateScopedAuthenticationTokenResponse"
                                 }
                             }
                         }
@@ -13724,7 +13734,7 @@
                     "requirePasswordChange"
                 ]
             },
-            "CreateMcpAuthenticationTokenResponse": {
+            "CreateScopedAuthenticationTokenResponse": {
                 "type": "object",
                 "properties": {
                     "success": {
@@ -13732,17 +13742,22 @@
                         "description": "Indicates successful response",
                         "example": true
                     },
+                    "scope": {
+                        "type": "string",
+                        "description": "Scope granted to the new token"
+                    },
                     "id": {
                         "type": "string",
-                        "description": "MCP session identifier used for master-token revocation"
+                        "description": "Token identifier used for management and revocation"
                     },
                     "token": {
                         "type": "string",
-                        "description": "Plaintext MCP bearer token. This value is returned only once."
+                        "description": "Plaintext scoped bearer token. This value is returned only once."
                     }
                 },
                 "required": [
                     "success",
+                    "scope",
                     "id",
                     "token"
                 ]
