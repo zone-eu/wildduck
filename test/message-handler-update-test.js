@@ -54,6 +54,18 @@ describe('MessageHandler message updates', function () {
             mailboxUpdates: 0,
             messageUpdates: 0
         };
+        const atomicFlags = messageOverrides?.atomicFlags ?? messageOverrides?.flags ?? [];
+        const labelRecords = new Map();
+        const getLabelRecord = name => {
+            if (!labelRecords.has(name)) {
+                labelRecords.set(name, { _id: new ObjectId(), user, name });
+            }
+            return labelRecords.get(name);
+        };
+        const messageLabels = (messageOverrides?.labelNames || []).map(name => getLabelRecord(name)._id);
+        const atomicLabels = (messageOverrides?.atomicLabelNames ?? messageOverrides?.labelNames ?? []).map(
+            name => getLabelRecord(name)._id
+        );
 
         let handler = Object.create(MessageHandler.prototype);
         handler.redis = false;
@@ -113,6 +125,9 @@ describe('MessageHandler message updates', function () {
 
                     case 'messages':
                         return {
+                            async distinct() {
+                                return atomicLabels;
+                            },
                             find(query) {
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
@@ -135,7 +150,8 @@ describe('MessageHandler message updates', function () {
                                                     mimeTree: {
                                                         header: ['From: sender@example.com', 'Date: Mon, 24 Aug 2026 09:00:00 +0000 (GMT)']
                                                     },
-                                                    ...messageOverrides
+                                                    ...messageOverrides,
+                                                    labels: messageLabels
                                                 });
                                             },
                                             close(callback) {
@@ -150,6 +166,7 @@ describe('MessageHandler message updates', function () {
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
+                                expect(options.returnDocument).to.equal('before');
                                 if (checkUpdate) {
                                     checkUpdate(update);
                                 } else {
@@ -163,9 +180,29 @@ describe('MessageHandler message updates', function () {
                                         _id: message,
                                         uid: 42,
                                         thread,
-                                        flags: ['\\Flagged']
+                                        flags: atomicFlags,
+                                        labels: atomicLabels
                                     }
                                 });
+                            }
+                        };
+
+                    case 'labels':
+                        return {
+                            find(query) {
+                                const names = query.name?.$in;
+                                const records = names
+                                    ? names.map(getLabelRecord)
+                                    : query._id?.$in
+                                      ? query._id.$in
+                                            .map(id => [...labelRecords.values()].find(record => record._id.equals(id)))
+                                            .filter(Boolean)
+                                      : [...labelRecords.values()];
+                                return {
+                                    async toArray() {
+                                        return records;
+                                    }
+                                };
                             }
                         };
 
@@ -175,7 +212,7 @@ describe('MessageHandler message updates', function () {
             }
         };
 
-        return { handler, user, mailbox, message, notified, fires: () => fires, quotaUpdates, calls };
+        return { handler, user, mailbox, message, notified, fires: () => fires, quotaUpdates, calls, getLabelRecord };
     }
 
     function updateAsync(handler, user, mailbox, changes) {
@@ -298,6 +335,109 @@ describe('MessageHandler message updates', function () {
         expect(quotaUpdates).to.deep.equal([]);
     });
 
+    it('uses literal label arrays in aggregation updates', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        let labelId;
+        const { handler, user, mailbox, getLabelRecord } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen'] });
+                expect(update[0].$set.labels.$setUnion[0].$literal).to.deep.equal([labelId]);
+                expect(update[0].$set['meta.custom']).to.deep.equal({ $literal: { label: '$flags' } });
+            },
+            { flags: ['\\Seen', '$Forwarded'], labelNames: ['old-label'] }
+        );
+        labelId = getLabelRecord('valid$Label')._id;
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            seen: true,
+            labels: ['valid$Label'],
+            metaData: { label: '$flags' }
+        });
+
+        expect(updated).to.equal(1);
+    });
+
+    it('uses one aggregation update when adding and removing system flags together', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['\\Seen'] });
+                expect(update[0].$set.flags.$setUnion[0].$filter.cond.$not.$in[1]).to.deep.equal({ $literal: ['\\Flagged'] });
+            },
+            { flags: ['\\Flagged'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            seen: true,
+            flagged: false
+        });
+
+        expect(updated).to.equal(1);
+    });
+
+    it('keeps API labels separate from ordinary IMAP flags in notifications', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified, getLabelRecord } = buildHandler(MessageHandler, () => false, {
+            flags: ['ordinary-imap-flag'],
+            labelNames: ['concurrent-label'],
+            atomicLabelNames: ['concurrent-label']
+        });
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            addLabels: ['concurrent-label']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified).to.have.lengthOf(1);
+        expect(notified[0].flags).to.deep.equal(['ordinary-imap-flag', `$wdlabel$${getLabelRecord('concurrent-label')._id}`]);
+        expect(notified[0].addedLabels).to.deep.equal([]);
+        expect(notified[0].removedLabels).to.deep.equal([]);
+    });
+
+    it('does not add or remove the reserved forwarded marker as a label', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified, getLabelRecord } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update[0].$set).not.to.have.property('flags');
+            },
+            { flags: ['$Forwarded'], labelNames: ['old-label'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            labels: ['$Forwarded', 'visible-label'],
+            removeLabels: ['$Forwarded']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['$Forwarded', `$wdlabel$${getLabelRecord('visible-label')._id}`]);
+        expect(notified[0].addedLabels).to.deep.equal(['visible-label']);
+        expect(notified[0].removedLabels).to.deep.equal(['old-label']);
+    });
+
+    it('hides deleting labels from flag notifications and reports active labels on seen changes', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const setup = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$set.unseen).to.be.false;
+                expect(update.$addToSet.flags.$each).to.deep.equal(['\\Seen']);
+            },
+            { flags: [], labelNames: ['Active', 'Deleting'] }
+        );
+        setup.getLabelRecord('Deleting').deleting = true;
+
+        await updateAsync(setup.handler, setup.user, setup.mailbox, { seen: true });
+
+        expect(setup.notified).to.have.lengthOf(1);
+        expect(setup.notified[0].flags).to.deep.equal(['\\Seen', `$wdlabel$${setup.getLabelRecord('Active')._id}`]);
+        expect(setup.notified[0].labels).to.deep.equal(['Active']);
+    });
+
     it('publishes marked.ham when markHam=true is the only requested action', async function () {
         const published = [];
         const { MessageHandler, MARKED_HAM, restore } = loadModulesWithPublishStub(published);
@@ -334,6 +474,7 @@ describe('MessageHandler message updates', function () {
         const insertedMessage = new ObjectId();
         const thread = new ObjectId();
         const existsEntries = [];
+        const removeEntries = [];
 
         let handler = Object.create(MessageHandler.prototype);
         handler.database = {
@@ -364,6 +505,7 @@ describe('MessageHandler message updates', function () {
                 message: {
                     mailbox: targetMailbox,
                     unseen: false,
+                    flags: ['\\Flagged', 'new-label'],
                     idate: new Date(),
                     thread
                 },
@@ -377,10 +519,13 @@ describe('MessageHandler message updates', function () {
                     user
                 },
                 existsEntries,
-                removeEntries: [],
+                removeEntries,
                 messageId: sourceMessage,
                 messageUid: 41,
-                unseen: false,
+                unseen: true,
+                flagged: false,
+                labels: ['old-label'],
+                destinationLabels: ['new-label'],
                 newModseq: 3,
                 uidNext: 42,
                 junk: false,
@@ -400,6 +545,11 @@ describe('MessageHandler message updates', function () {
         expect(existsEntries[0].markHam).to.be.true;
         expect(existsEntries[0].uid).to.equal(42);
         expect(existsEntries[0].message.toString()).to.equal(insertedMessage.toString());
+        expect(existsEntries[0].flagged).to.be.true;
+        expect(existsEntries[0].labels).to.deep.equal(['new-label']);
+        expect(removeEntries[0].unseen).to.be.true;
+        expect(removeEntries[0].flagged).to.be.false;
+        expect(removeEntries[0].labels).to.deep.equal(['old-label']);
     });
 });
 
