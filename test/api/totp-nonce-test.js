@@ -334,6 +334,8 @@ describe('Master token MCP exchange', function () {
 
     it('mints an independent MCP session after MFA assurance', async () => {
         let mintedFor;
+        let mintedData;
+        const sess = crypto.randomBytes(20).toString('hex');
         const route = getAuthRoute(
             {
                 getAuthTokenRequirements: async () => ({
@@ -345,8 +347,9 @@ describe('Master token MCP exchange', function () {
                 })
             },
             {
-                createSession: async authUser => {
+                createSession: async (authUser, data) => {
                     mintedFor = authUser;
+                    mintedData = data;
                     return mcpToken;
                 }
             },
@@ -358,7 +361,7 @@ describe('Master token MCP exchange', function () {
         await route.handler(
             {
                 route: { spec: route.spec },
-                params: { scope: 'mcp' },
+                params: { scope: 'mcp', sess, ip: '192.0.2.1' },
                 role: 'user',
                 user: user.toString(),
                 accessToken: {
@@ -376,6 +379,7 @@ describe('Master token MCP exchange', function () {
 
         expect(res.statusCode).to.equal(200);
         expect(mintedFor).to.equal(user.toString());
+        expect(mintedData).to.deep.equal({ sess, ip: '192.0.2.1' });
         expect(res.body).to.deep.equal({
             success: true,
             scope: 'mcp',
