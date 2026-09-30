@@ -295,4 +295,37 @@ describe('Scoped MCP token exchange', function () {
         expect(response.status).to.equal(403);
         expect(response.body.code).to.equal('InvalidToken');
     });
+
+    it('should accept sess and ip in the request body of both scoped token routes', async () => {
+        const master = await loginMaster(account);
+
+        const session = await server
+            .post('/authenticate/mcp')
+            .set('Authorization', `Bearer ${master.token}`)
+            .send({ sess: 'scoped-mint-audit', ip: '203.0.113.7' })
+            .expect(200);
+        expect(session.body.success).to.be.true;
+        expect(session.body.id).to.match(/^[0-9a-f]{64}$/);
+
+        const response = await server
+            .delete(`/authenticate/mcp/${session.body.id}`)
+            .set('Authorization', `Bearer ${master.token}`)
+            .send({ sess: 'scoped-mint-audit', ip: '203.0.113.7' })
+            .expect(200);
+        expect(response.body.success).to.be.true;
+
+        // the body-carrying revoke really went through
+        expect((await mcpCall(session.body.token, 'initialize')).status).to.equal(401);
+    });
+
+    it('should reject an invalid ip in the scoped token request body', async () => {
+        const master = await loginMaster(account);
+
+        const response = await server
+            .post('/authenticate/mcp')
+            .set('Authorization', `Bearer ${master.token}`)
+            .send({ sess: 'scoped-mint-audit', ip: 'not-an-ip' });
+        expect(response.status).to.equal(400);
+        expect(response.body.code).to.equal('InputValidationError');
+    });
 });
