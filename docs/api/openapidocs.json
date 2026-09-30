@@ -7059,6 +7059,26 @@
                 "summary": "Create a scoped authentication token",
                 "description": "Exchanges an MFA-satisfied master API token for an independent token restricted to the requested scope.",
                 "operationId": "createScopedAuthenticationToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sess": {
+                                        "type": "string",
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": true
+                },
                 "parameters": [
                     {
                         "name": "scope",
