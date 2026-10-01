@@ -8,6 +8,40 @@ const AttachmentStorage = require('../lib/attachment-storage');
 describe('Attachment catalog and locking', () => {
     const id = Buffer.alloc(32, 0xab);
 
+    for (const writeConcern of [undefined, 1, 2, 'majority']) {
+        it(`inserts S3 catalog entries with ${writeConcern === undefined ? 'majority by default' : `configured w:${writeConcern}`}`, async () => {
+            let insertOptions;
+            let insertedFile;
+            const files = {
+                findOne: async () => null,
+                async insertOne(file, options) {
+                    insertedFile = file;
+                    insertOptions = options;
+                }
+            };
+            const redis = {
+                duplicate: () => ({ subscribe() {}, on() {} }),
+                defineCommand() {}
+            };
+            const storage = new AttachmentStorage({
+                gridfs: { writeConcern: { w: 1 }, collection: () => files },
+                redis,
+                s3Client: {},
+                options: { type: 's3', writeConcern, s3: { bucket: 'test', prefix: 'test' } }
+            });
+            storage.lock = { run: async (attachmentId, operation) => operation(() => {}) };
+            storage.s3.publish = async () => ({ bucket: 'test', key: 'key', length: 6 });
+            storage.s3.verifyContent = async () => {};
+
+            await new Promise((resolve, reject) => {
+                storage.create({ body: Buffer.from('abcdef'), magic: 17 }, err => (err ? reject(err) : resolve()));
+            });
+
+            expect(insertedFile.metadata.storage.backend).to.equal('s3');
+            expect(insertOptions).to.deep.equal({ writeConcern: { w: writeConcern || 'majority' } });
+        });
+    }
+
     it('does not claim an orphan refreshed between the age check and the update', async () => {
         const cutoff = new Date(Date.now() - 24 * 3600 * 1000);
         const old = { _id: id, metadata: { c: 0, m: 0, cu: new Date(0) } };

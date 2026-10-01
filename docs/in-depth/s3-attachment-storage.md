@@ -45,6 +45,8 @@ Run every prefix from `00` through `ff`, or omit `--prefix` to scan all attachme
 
 The CLI also accepts `--gridfs-bucket`, `--s3-bucket`, `--s3-prefix`, and `--s3-endpoint` for a specifically targeted run. Review those overrides carefully before using `--cleanup-chunks`. Progress and failures are printed to stdout and stderr; a failed entry makes the process exit nonzero. Re-run after resolving failures. An incomplete migration is supported: WildDuck continues to read both backends.
 
+Value options accept both `--prefix=00` and `--prefix 00`. Unknown, duplicate or missing arguments are rejected before connecting to storage. Verification checks the S3 locator using the same rules as message readers, and requires a recorded payload checksum or retained GridFS chunks. If neither exists, the entry fails verification. When cleanup verifies against GridFS without a recorded checksum, it saves the established checksum before deleting the chunks so future verification remains possible.
+
 ## Verification
 
 The focused tests are:
