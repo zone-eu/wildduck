@@ -13,6 +13,7 @@ const { ObjectId } = require('mongodb');
 const { ImapFlow } = require('imapflow');
 const { parseSearchQuery, getMongoDBQuery } = require('../../lib/search-query');
 const { prepareSearchFilter } = require('../../lib/prepare-search-filter');
+const db = require('../../lib/db');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -958,6 +959,59 @@ describe('Messages tests', function () {
         } finally {
             await server.put(`/users/${user}`).send({ encryptMessages: false }).expect(200);
         }
+    });
+
+    it('should POST /users/:user/submit expect success / replacing drafts releases duplicate attachment references', async () => {
+        if (!db.database) {
+            await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        }
+
+        const attachment = {
+            filename: 'draft-reference.txt',
+            contentType: 'text/plain',
+            content: Buffer.from(`draft attachment ${new ObjectId()}`).toString('base64'),
+            encoding: 'base64'
+        };
+        let previous;
+        let hash;
+
+        for (let count = 1; count <= 3; count++) {
+            const response = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    isDraft: true,
+                    uploadOnly: true,
+                    from: { address: testAddress },
+                    subject: 'Draft attachment reference counts',
+                    text: 'Draft with repeated attachments',
+                    attachments: Array.from({ length: count }, () => attachment),
+                    ...(previous ? { draft: previous } : {})
+                })
+                .expect(200);
+
+            expect(response.body.success).to.be.true;
+            const current = response.body.message;
+            const stored = await db.database.collection('messages').findOne({ mailbox: new ObjectId(current.mailbox), uid: current.id });
+            expect(stored, 'Submitted draft must exist in the configured test database').to.not.equal(null);
+            const ids = Object.values(stored.mimeTree.attachmentMap);
+            expect(ids).to.have.length(count);
+            hash = hash || ids[0];
+            expect(ids.every(id => id === hash)).to.be.true;
+            const file = await db.gridfs.collection('attachments.files').findOne({ _id: hash });
+            expect(file.metadata.c).to.equal(count);
+            expect(file.metadata.m).to.equal(stored.magic * count);
+
+            if (previous) {
+                const old = await db.database.collection('messages').findOne({ mailbox: new ObjectId(previous.mailbox), uid: previous.id });
+                expect(old).to.equal(null);
+            }
+            previous = { mailbox: current.mailbox, id: current.id };
+        }
+
+        await server.delete(`/users/${user}/mailboxes/${previous.mailbox}/messages/${previous.id}`).expect(200);
+        const file = await db.gridfs.collection('attachments.files').findOne({ _id: hash });
+        expect(file.metadata.c).to.equal(0);
+        expect(file.metadata.m).to.equal(0);
     });
 
     it('should POST /users/:user/submit expect failure / recipient cap counts all recipients', async () => {
