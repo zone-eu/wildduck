@@ -13,6 +13,7 @@ module.exports = function (grunt) {
         'imap-core/test/imap-compile-stream-test.js',
         'imap-core/test/imap-compiler-test.js',
         'imap-core/test/imap-indexer-test.js',
+        'imap-core/test/imap-literal-limit-test.js',
         'imap-core/test/imap-parser-test.js',
         'imap-core/test/onconnect-test.js',
         'imap-core/test/parse-mime-tree-test.js',
