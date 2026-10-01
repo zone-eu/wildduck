@@ -1238,6 +1238,65 @@ describe('Messages tests', function () {
         expect(archivedRoot).to.not.have.property('hasDrafts');
     });
 
+    it('should GET message listings / non-collapsed hasDrafts matches the exact forward source across mailboxes', async () => {
+        const createMailbox = async name => {
+            const response = await server
+                .post(`/users/${user}/mailboxes`)
+                .send({ path: `/${name}-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+                .expect(200);
+            return response.body.id;
+        };
+        const mailbox = await createMailbox('forward-source');
+        const drafts = await createMailbox('forward-drafts');
+        const root = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({ draft: false, to: [{ address: 'forward@example.com' }], subject: 'Forward draft thread', text: 'Root' })
+            .expect(200);
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({ to: [{ address: 'forward@example.com' }], text: 'Reply', reference: { mailbox, id: root.body.message.id, action: 'reply' } })
+            .expect(200);
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        // UIDs are local to a mailbox. Give the forward draft the same UID as its source to check mailbox matching.
+        await server
+            .post(`/users/${user}/mailboxes/${drafts}/messages`)
+            .send({ draft: true, to: [{ address: 'forward@example.com' }], subject: 'Unrelated draft', text: 'Unrelated' })
+            .expect(200);
+        const forward = await server
+            .post(`/users/${user}/mailboxes/${drafts}/messages`)
+            .send({ to: [{ address: 'forward@example.com' }], text: 'Forward draft', reference: { mailbox, id: reply.body.message.id, action: 'forward' } })
+            .expect(200);
+        expect(forward.body.message.id).to.equal(reply.body.message.id);
+        const checkListings = async hasDrafts => {
+            for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
+                const response = await server
+                    .get(path)
+                    .query({ mailbox, collapseThreads: false, includeHasDrafts: true, order: 'asc' })
+                    .expect(200);
+                expect(response.body.results.map(entry => entry.id)).to.deep.equal([root.body.message.id, reply.body.message.id]);
+                expect(response.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, hasDrafts]);
+            }
+            const draftListing = await server
+                .get(`/users/${user}/mailboxes/${drafts}/messages`)
+                .query({ includeHasDrafts: true, includeHeaders: true })
+                .expect(200);
+            expect(draftListing.body.results[0].headers).to.not.have.property('in-reply-to');
+            expect(draftListing.body.results[0].hasDrafts).to.be.false;
+        };
+
+        await checkListings(true);
+        await server.put(`/users/${user}/mailboxes/${drafts}/messages/${forward.body.message.id}`).send({ draft: false }).expect(200);
+        await checkListings(false);
+        await server.put(`/users/${user}/mailboxes/${drafts}/messages/${forward.body.message.id}`).send({ draft: true }).expect(200);
+        await checkListings(true);
+        await server.delete(`/users/${user}/mailboxes/${drafts}/messages/${forward.body.message.id}`).expect(200);
+        for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
+            const response = await server.get(path).query({ mailbox, includeHasDrafts: true }).expect(200);
+            expect(response.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false]);
+        }
+    });
+
     it('should GET /users/:user/search expect success / IMAP APPEND draft hasDrafts matches only the direct parent', async () => {
         const mailboxPath = `imap-draft-reference-${Date.now().toString(36)}`;
         const mailboxResponse = await server
