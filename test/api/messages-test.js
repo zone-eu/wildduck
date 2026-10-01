@@ -996,7 +996,9 @@ describe('Messages tests', function () {
             const ids = Object.values(stored.mimeTree.attachmentMap);
             expect(ids).to.have.length(count);
             hash = hash || ids[0];
-            expect(ids.every(id => id === hash)).to.be.true;
+            for (const id of ids) {
+                expect(id).to.deep.equal(hash);
+            }
             const file = await db.gridfs.collection('attachments.files').findOne({ _id: hash });
             expect(file.metadata.c).to.equal(count);
             expect(file.metadata.m).to.equal(stored.magic * count);
