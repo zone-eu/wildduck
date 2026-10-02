@@ -87,7 +87,7 @@ module.exports = function (response, asArray, isLogging) {
         switch (node.type.toUpperCase()) {
             case 'LITERAL':
                 if (isLogging) {
-                    resp += '"(* ' + node.value.length + 'B literal *)"';
+                    resp += '"(* ' + ((node.value && node.value.length) || 0) + 'B literal *)"';
                 } else {
                     if (!node.value) {
                         resp += '{0}\r\n';

@@ -50,9 +50,9 @@ module.exports = (response, isLogging) => {
             }
 
             return new Promise((resolve, reject) => {
-                expectedLength = maxLength ? Math.min(expectedLength, startFrom + maxLength) : expectedLength;
                 startFrom = startFrom || 0;
                 maxLength = maxLength || 0;
+                expectedLength = maxLength ? Math.min(expectedLength, startFrom + maxLength) : expectedLength;
 
                 if (stream.isLimited) {
                     // stream is already limited
@@ -148,10 +148,13 @@ module.exports = (response, isLogging) => {
                         nodeValue = nodeValue.toString();
                     }
 
+                    let isStream = !!(nodeValue && typeof nodeValue.pipe === 'function');
                     let len;
+                    // the bytes the literal is made of, so the announced octet count can not
+                    // disagree with what is written (RFC 3501 4.3)
+                    let buf = null;
 
-                    // Figure out correct byte length
-                    if (nodeValue && typeof nodeValue.pipe === 'function') {
+                    if (isStream) {
                         len = node.expectedLength || 0;
                         if (node.startFrom) {
                             len -= node.startFrom;
@@ -160,7 +163,8 @@ module.exports = (response, isLogging) => {
                             len = Math.min(len, node.maxLength);
                         }
                     } else {
-                        len = (nodeValue || '').toString().length;
+                        buf = Buffer.isBuffer(nodeValue) ? nodeValue : Buffer.from((nodeValue || '').toString(), 'binary');
+                        len = buf.length;
                     }
 
                     if (isLogging) {
@@ -168,14 +172,11 @@ module.exports = (response, isLogging) => {
                     } else {
                         resp.push(Buffer.from('{' + Math.max(len, 0) + '}\r\n'));
 
-                        if (nodeValue && typeof nodeValue.pipe === 'function') {
-                            //value is a stream object
+                        if (isStream) {
                             // emit existing string before passing the stream
                             await emit(nodeValue, node.expectedLength, node.startFrom, node.maxLength);
-                        } else if (Buffer.isBuffer(nodeValue)) {
-                            resp.push(nodeValue);
                         } else {
-                            resp.push(Buffer.from((nodeValue || '').toString('binary'), 'binary'));
+                            resp.push(buf);
                         }
                     }
                     break;
