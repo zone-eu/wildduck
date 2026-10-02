@@ -503,6 +503,24 @@ module.exports.packMessageRange = function (uidList) {
  * @param {Date} date Date object to parse
  * @returns {String} Internaldate formatted date
  */
+/**
+ * Builds the response code for a completed COPY or MOVE.
+ *
+ * RFC 4315 4: resp-code-copy takes two non-empty uid-sets, so when nothing matched the code is
+ * left out instead of emitting empty sets.
+ */
+module.exports.getCopyUidCode = function (success, info) {
+    if (typeof success === 'string') {
+        return success.toUpperCase();
+    }
+
+    if (!info || !info.sourceUid || !info.sourceUid.length) {
+        return false;
+    }
+
+    return 'COPYUID ' + info.uidValidity + ' ' + module.exports.packMessageRange(info.sourceUid) + ' ' + module.exports.packMessageRange(info.destinationUid);
+};
+
 module.exports.formatInternalDate = function (date) {
     let day = date.getUTCDate(),
         month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getUTCMonth()],

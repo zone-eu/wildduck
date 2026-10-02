@@ -87,15 +87,7 @@ module.exports = {
                 logdata._response = success;
                 this._server.loggelf(logdata);
 
-                let code =
-                    typeof success === 'string'
-                        ? success.toUpperCase()
-                        : 'COPYUID ' +
-                          info.uidValidity +
-                          ' ' +
-                          imapTools.packMessageRange(info.sourceUid) +
-                          ' ' +
-                          imapTools.packMessageRange(info.destinationUid);
+                let code = imapTools.getCopyUidCode(success, info);
 
                 callback(null, {
                     response: success === true ? 'OK' : 'NO',

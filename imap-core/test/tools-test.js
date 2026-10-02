@@ -7,35 +7,36 @@ const chai = require('chai');
 const expect = chai.expect;
 chai.config.includeStack = true;
 
-describe('#packMessageRange', function() {
-    it('should return as is', function() {
+describe('#packMessageRange', function () {
+    it('should return as is', function () {
         expect(imapTools.packMessageRange([1, 3, 5, 9])).to.equal('1,3,5,9');
     });
 
-    it('should return a range', function() {
+    it('should return a range', function () {
         expect(imapTools.packMessageRange([1, 2, 3, 4])).to.equal('1:4');
     });
 
-    it('should return mixed ranges', function() {
+    it('should return mixed ranges', function () {
         expect(imapTools.packMessageRange([1, 3, 4, 6, 8, 9, 10, 11, 13])).to.equal('1,3:4,6,8:11,13');
     });
 });
 
-describe('#filterFolders', function() {
-    it('should not throw for wildcard queries containing braces', function() {
-        expect(function() {
+describe('#filterFolders', function () {
+    it('should not throw for wildcard queries containing braces', function () {
+        expect(function () {
             imapTools.filterFolders([{ path: 'test' }], '%{2}');
         }).to.not.throw();
     });
 
-    it('should treat braces in wildcard queries as literal characters', function() {
-        expect(
-            imapTools.filterFolders([{ path: 'test' }, { path: 'test{2}' }, { path: 'other{2}' }], '%{2}').map(folder => folder.path)
-        ).to.deep.equal(['test{2}', 'other{2}']);
+    it('should treat braces in wildcard queries as literal characters', function () {
+        expect(imapTools.filterFolders([{ path: 'test' }, { path: 'test{2}' }, { path: 'other{2}' }], '%{2}').map(folder => folder.path)).to.deep.equal([
+            'test{2}',
+            'other{2}'
+        ]);
     });
 });
 
-describe('#sendCapabilityResponse', function() {
+describe('#sendCapabilityResponse', function () {
     function getCapabilities(connection) {
         let responses = [];
 
@@ -53,15 +54,15 @@ describe('#sendCapabilityResponse', function() {
         return responses[0].replace(/^\* CAPABILITY /, '').split(' ');
     }
 
-    it('should advertise WITHIN before authentication', function() {
+    it('should advertise WITHIN before authentication', function () {
         expect(getCapabilities({ state: 'Not Authenticated' })).to.include('WITHIN');
     });
 
-    it('should advertise WITHIN after authentication', function() {
+    it('should advertise WITHIN after authentication', function () {
         expect(getCapabilities({ state: 'Authenticated' })).to.include('WITHIN');
     });
 
-    it('should advertise WITHIN together with STARTTLS capabilities', function() {
+    it('should advertise WITHIN together with STARTTLS capabilities', function () {
         let capabilities = getCapabilities({
             secure: false,
             state: 'Not Authenticated',
@@ -73,7 +74,7 @@ describe('#sendCapabilityResponse', function() {
         expect(capabilities).to.include('LOGINDISABLED');
     });
 
-    it('should advertise WITHIN only once', function() {
+    it('should advertise WITHIN only once', function () {
         let capabilities = getCapabilities({
             state: 'Authenticated',
             _server: {
@@ -85,5 +86,20 @@ describe('#sendCapabilityResponse', function() {
         });
 
         expect(capabilities.filter(capability => capability === 'WITHIN')).to.have.length(1);
+    });
+});
+
+describe('#getCopyUidCode', function () {
+    it('should build a COPYUID code', function () {
+        expect(imapTools.getCopyUidCode(true, { uidValidity: 123, sourceUid: [1, 2, 3], destinationUid: [10, 11, 12] })).to.equal('COPYUID 123 1:3 10:12');
+    });
+
+    it('should skip the code when nothing was copied', function () {
+        // RFC 4315 4: resp-code-copy takes two non-empty uid-sets
+        expect(imapTools.getCopyUidCode(true, { uidValidity: 123, sourceUid: [], destinationUid: [] })).to.be.false;
+    });
+
+    it('should pass a failure code through', function () {
+        expect(imapTools.getCopyUidCode('trycreate', false)).to.equal('TRYCREATE');
     });
 });

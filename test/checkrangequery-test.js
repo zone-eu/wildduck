@@ -51,6 +51,16 @@ const makeRand = seed => () => {
 
 describe('checkRangeQuery', () => {
     describe('return shapes', () => {
+        it('empty set -> matches nothing', () => {
+            expect(checkRangeQuery([])).to.deep.equal({ $in: [] });
+            expect(matchedSet(checkRangeQuery([]), 10)).to.deep.equal([]);
+        });
+
+        it('empty set negated -> matches everything', () => {
+            expect(checkRangeQuery([], true)).to.deep.equal({ $nin: [] });
+            expect(matchedSet(checkRangeQuery([], true), 5)).to.deep.equal([1, 2, 3, 4, 5]);
+        });
+
         it('single uid -> $eq', () => {
             expect(checkRangeQuery([5])).to.deep.equal({ $eq: 5 });
         });
