@@ -1362,6 +1362,29 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should report EXISTS for a copy into the selected mailbox', function (done) {
+            // RFC 3501 5.2: "A server MUST send mailbox size updates automatically if a mailbox size
+            // change is observed during the processing of a command."
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 COPY 1 INBOX', 'T4 FETCH 7 (UID)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    // the EXISTS must arrive with the COPY, not on a later command
+                    expect(resp.indexOf('\r\n* 7 EXISTS\r\nT3 OK [COPYUID') >= 0).to.be.true;
+                    // and the new message is addressable by its sequence number right away
+                    expect(/^\* 7 FETCH \(UID \d+\)$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should report COPYUID for a UID COPY', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID COPY 101 Trash', 'T4 LOGOUT'];
 
@@ -1416,6 +1439,28 @@ describe('IMAP Protocol integration tests', function () {
                     expect(/^\* STATUS Trash \(MESSAGES 1\)$/m.test(resp)).to.be.true;
                     // RFC 6851 4.4: the updated per-mailbox modification sequence of the source
                     expect(/^\* OK \[HIGHESTMODSEQ 5001\] Highest$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report EXISTS for a move into the selected mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 101 INBOX', 'T4 FETCH 6 (UID)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* 1 EXPUNGE$/m.test(resp)).to.be.true;
+                    // exactly one EXISTS for the moved copy, before the tagged OK
+                    expect(resp.indexOf('\r\n* 1 EXPUNGE\r\n* 6 EXISTS\r\n') >= 0).to.be.true;
+                    let moveResponse = resp.slice(resp.indexOf('* 1 EXPUNGE'), resp.indexOf('T3 OK'));
+                    expect(moveResponse.match(/^\* 6 EXISTS$/gm).length).to.equal(1);
+                    expect(/^\* 6 FETCH \(UID \d+\)$/m.test(resp)).to.be.true;
                     done();
                 }
             );
