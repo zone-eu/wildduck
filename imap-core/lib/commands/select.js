@@ -183,31 +183,7 @@ module.exports = {
             this.send('* 0 RECENT');
 
             // * OK [HIGHESTMODSEQ 123]
-            this.send(
-                imapHandler.compiler({
-                    tag: '*',
-                    command: 'OK',
-                    attributes: [
-                        {
-                            type: 'section',
-                            section: [
-                                {
-                                    type: 'atom',
-                                    value: 'HIGHESTMODSEQ'
-                                },
-                                {
-                                    type: 'atom',
-                                    value: String(Number(mailboxData.modifyIndex) || 1)
-                                }
-                            ]
-                        },
-                        {
-                            type: 'text',
-                            value: 'Highest'
-                        }
-                    ]
-                })
-            );
+            imapTools.sendHighestModseq(this, Number(mailboxData.modifyIndex) || 1);
 
             // * OK [UIDNEXT 1] Predicted next UID
             this.send(

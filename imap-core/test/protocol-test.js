@@ -1146,6 +1146,8 @@ describe('IMAP Protocol integration tests', function () {
                     expect(/^T3 OK \[COPYUID \d+ 101 1\] UID MOVE completed$/m.test(resp)).to.be.true;
                     expect(/^\* 1 EXPUNGE$/m.test(resp)).to.be.true;
                     expect(/^\* STATUS Trash \(MESSAGES 1\)$/m.test(resp)).to.be.true;
+                    // RFC 6851 4.4: the updated per-mailbox modification sequence of the source
+                    expect(/^\* OK \[HIGHESTMODSEQ 5001\] Highest$/m.test(resp)).to.be.true;
                     done();
                 }
             );
@@ -1164,6 +1166,8 @@ describe('IMAP Protocol integration tests', function () {
                     resp = resp.toString();
                     expect(/^T3 OK UID MOVE completed$/m.test(resp)).to.be.true;
                     expect(/COPYUID/.test(resp)).to.be.false;
+                    // nothing moved, so only the SELECT reports a modification sequence
+                    expect(resp.match(/^\* OK \[HIGHESTMODSEQ \d+\]/gm).length).to.equal(1);
                     done();
                 }
             );
