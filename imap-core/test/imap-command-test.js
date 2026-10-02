@@ -345,6 +345,22 @@ describe('IMAPCommand', function () {
         });
     });
 
+    it('should report GETQUOTAROOT as not implemented when the handler is missing', function (done) {
+        const { connection, writes } = createConnection();
+
+        // an embedder that only implements onGetQuota must not end up calling onGetQuotaRoot
+        connection._server.onGetQuota = (path, session, cb) => cb(null, {});
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 GETQUOTAROOT INBOX' }, err => {
+            expect(err).to.not.exist;
+            expect(writes).to.have.length(1);
+            expect(writes[0].command).to.equal('NO');
+            expect(writes[0].attributes[0].value).to.equal('GETQUOTAROOT not implemented');
+            done();
+        });
+    });
+
     it('should record the protocol error that disconnects the client', function (done) {
         const { connection, responses } = createConnection();
         const records = [];
