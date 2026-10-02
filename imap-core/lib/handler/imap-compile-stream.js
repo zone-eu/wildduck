@@ -217,7 +217,7 @@ module.exports = (response, isLogging) => {
                 case 'SECTION': {
                     val = (node.value || '').toString();
 
-                    if (imapFormalSyntax.verify(val.charAt(0) === '\\' ? val.substr(1) : val, imapFormalSyntax['ATOM-CHAR']()) >= 0) {
+                    if (imapFormalSyntax.needsQuoting(val)) {
                         val = imapFormalSyntax.quote(val);
                     }
 

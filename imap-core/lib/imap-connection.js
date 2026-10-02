@@ -15,6 +15,23 @@ const packageInfo = require('../../package');
 const errors = require('../../lib/errors.js');
 
 /**
+ * Compiles a list of message flags into the response nodes for FLAGS.
+ *
+ * RFC 3501 9: flag = "\" atom / flag-keyword, so every flag goes out as an atom. One that can not
+ * be compiled as an atom would become a quoted string, which is not a flag at all, so it is left
+ * out rather than answered with something the grammar does not allow.
+ *
+ * @param {Array} flags Flag values, or ready made response nodes
+ * @returns {Array} Response nodes
+ */
+function toFlagAtoms(flags) {
+    return []
+        .concat(flags || [])
+        .map(flag => (flag && flag.value ? flag : { type: 'ATOM', value: (flag || flag === 0 ? flag : '').toString() }))
+        .filter(node => imapTools.isEmittableFlag(node.value));
+}
+
+/**
  * Creates a handler for new socket
  *
  * @constructor
@@ -971,7 +988,9 @@ class IMAPConnection extends EventEmitter {
                 // Response for FETCH command
                 data.query.forEach((item, i) => {
                     response.attributes[1].push(item.original);
-                    if (['flags', 'modseq'].indexOf(item.item) >= 0) {
+                    if (item.item === 'flags') {
+                        response.attributes[1].push(toFlagAtoms(data.values[i]));
+                    } else if (item.item === 'modseq') {
                         response.attributes[1].push(
                             [].concat(data.values[i] || []).map(value => ({
                                 type: 'ATOM',
@@ -1020,14 +1039,7 @@ class IMAPConnection extends EventEmitter {
 
                     switch (key) {
                         case 'FLAGS':
-                            value = [].concat(value || []).map(flag =>
-                                flag && flag.value
-                                    ? flag
-                                    : {
-                                          type: 'ATOM',
-                                          value: flag
-                                      }
-                            );
+                            value = toFlagAtoms(value);
                             break;
 
                         case 'UID':
