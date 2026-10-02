@@ -6,6 +6,23 @@ const libmime = require('libmime');
 const punycode = require('punycode.js');
 const iconv = require('iconv-lite');
 
+// RFC 3501 5.4: "If a server has an inactivity autologout timer, the duration of that timer MUST be
+// at least 30 minutes." Shifted by 37 seconds (randomly selected, no specific meaning) to avoid race
+// conditions where both the client and the server wait for the same 30 minutes.
+module.exports.SOCKET_TIMEOUT = 30 * 60 * 1000 + 37 * 1000;
+
+// RFC 9051 5.4: the 30 minute minimum applies to sessions after authentication, "servers are allowed
+// to use a shortened pre-authentication timer to protect themselves from Denial-of-Service attacks"
+module.exports.PREAUTH_SOCKET_TIMEOUT = 5 * 60 * 1000 + 37 * 1000;
+
+module.exports.getSocketTimeout = connection => {
+    let options = connection._server.options;
+    if (!connection.user) {
+        return options.preAuthSocketTimeout || module.exports.PREAUTH_SOCKET_TIMEOUT;
+    }
+    return options.socketTimeout || module.exports.SOCKET_TIMEOUT;
+};
+
 module.exports.systemFlagsFormatted = ['\\Answered', '\\Flagged', '\\Draft', '\\Deleted', '\\Seen'];
 module.exports.systemFlags = ['\\answered', '\\flagged', '\\draft', '\\deleted', '\\seen'];
 
