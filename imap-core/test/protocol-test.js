@@ -2837,6 +2837,38 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should match a header that is not in the indexed set', function (done) {
+            // RFC 3501 6.4.4: "HEADER <field-name> <string>: Messages that have a header with the
+            // specified field-name ... If the string to search is zero-length, this matches all
+            // messages that have a header line with the specified field-name"
+            let message = Buffer.from('From: sender@example.com\r\nTo: receiver@example.com\r\nSubject: custom\r\nX-Custom: findme\r\n\r\nbody');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 APPEND INBOX {' + message.length + '}\r\n' + message.toString('binary'),
+                'T3 SELECT INBOX',
+                'T4 SEARCH HEADER X-Custom findme',
+                'T5 SEARCH HEADER X-Custom ""',
+                'T6 SEARCH NOT HEADER X-Custom findme',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 7$/gm.test(resp)).to.be.true;
+                    expect(resp.match(/^\* SEARCH 7$/gm).length).to.equal(2);
+                    expect(/^\* SEARCH 1 2 3 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should handle NOT and OR around a text search key', function (done) {
             // RFC 3501 6.4.4: NOT and OR apply to every search key, BODY and TEXT included.
             // MongoDB only allows $text in the root of a query, so those uids are resolved apart
