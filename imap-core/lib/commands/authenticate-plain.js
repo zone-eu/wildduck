@@ -145,7 +145,9 @@ function authenticate(connection, token, requireClientToken, callback) {
 
             callback(null, {
                 response: 'OK',
-                message: Buffer.from(username + ' authenticated').toString('binary')
+                // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F), and a leading "[" would be read as
+                // a response code, so the client supplied username does not belong here
+                message: 'Logged in'
             });
         }
     );
