@@ -17,10 +17,10 @@ const { MAX_SUB_MAILBOXES, MAX_MAILBOX_NAME_LENGTH } = require('../../lib/consts
 
 describe('IMAP Protocol integration tests', function () {
     this.timeout(100000); // eslint-disable-line no-invalid-this
-    let port = 9993;
+    let port = config.imap.port;
 
     beforeEach(function (done) {
-        exec(__dirname + '/prepare.sh ' + config.dbs.dbname, { cwd: __dirname }, (err, stdout, stderr) => {
+        exec(__dirname + '/prepare.sh ' + config.dbs.dbname + ' ' + config.api.port, { cwd: __dirname }, (err, stdout, stderr) => {
             if (process.env.DEBUG_CONSOLE) {
                 console.log(stdout.toString());
                 console.log(stderr.toString());
