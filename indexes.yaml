@@ -349,6 +349,16 @@ indexes:
 
     - collection: messages
       index:
+          # SENTBEFORE, SENTON and SENTSINCE read hdateDay, and fall back to by_hdate for
+          # messages stored before that field existed. Mongo can only use an index for an
+          # $or when every branch has one, so without this the whole pair goes unindexed
+          name: by_hdate_day
+          key:
+              mailbox: 1
+              hdateDay: 1
+
+    - collection: messages
+      index:
           name: by_size
           key:
               mailbox: 1

@@ -2837,6 +2837,41 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should match SENT keys on the calendar date of the Date header', function (done) {
+            // RFC 3501 6.4.4: "SENTON <date>: Messages whose [RFC-2822] Date: header (disregarding
+            // time and timezone) is within the specified date." The two messages below are the same
+            // instant seen from different zones, so the sender's own date decides
+            let east = Buffer.from('From: s@example.com\r\nTo: r@example.com\r\nSubject: east\r\nDate: Sun, 15 Sep 2013 01:30:00 +0300\r\n\r\nbody');
+            let west = Buffer.from('From: s@example.com\r\nTo: r@example.com\r\nSubject: west\r\nDate: Mon, 16 Sep 2013 23:30:00 -0500\r\n\r\nbody');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 APPEND INBOX {' + east.length + '}\r\n' + east.toString('binary'),
+                'T3 APPEND INBOX {' + west.length + '}\r\n' + west.toString('binary'),
+                'T4 SELECT INBOX',
+                'T5 SEARCH SENTON 15-Sep-2013',
+                'T6 SEARCH SENTON 16-Sep-2013',
+                'T7 SEARCH SENTON 17-Sep-2013',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    // the +0300 message was sent on the 15th, although it is the 14th in UTC
+                    expect(/^\* SEARCH 1 7$/m.test(resp)).to.be.true;
+                    // and the -0500 one on the 16th, although it is the 17th in UTC
+                    expect(/^\* SEARCH 8$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should match a header that is not in the indexed set', function (done) {
             // RFC 3501 6.4.4: "HEADER <field-name> <string>: Messages that have a header with the
             // specified field-name ... If the string to search is zero-length, this matches all
