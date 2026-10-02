@@ -296,6 +296,30 @@ describe('IMAPCommand', function () {
         });
     });
 
+    it('should not flush queued notifications while responding to SEARCH', function (done) {
+        const { connection } = createConnection({ state: 'Selected' });
+        let notificationFlushes = 0;
+
+        connection.selected = { mailbox: 'INBOX', uidList: [1, 2, 3] };
+        connection.emitNotifications = () => notificationFlushes++;
+        connection._server.onSearch = (mailbox, options, session, cb) => cb(null, { uidList: [1] });
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 SEARCH ALL' }, err => {
+            expect(err).to.not.exist;
+            // RFC 3501 7.4.1: no EXPUNGE between the * SEARCH data and the tagged OK
+            expect(notificationFlushes).to.equal(0);
+
+            // a command that does not report sequence numbers still flushes them
+            const noop = new IMAPCommand(connection);
+            noop.end({ value: 'A2 NOOP' }, noopErr => {
+                expect(noopErr).to.not.exist;
+                expect(notificationFlushes).to.equal(1);
+                done();
+            });
+        });
+    });
+
     it('should record the protocol error that disconnects the client', function (done) {
         const { connection, responses } = createConnection();
         const records = [];
