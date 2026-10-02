@@ -10,6 +10,15 @@ secure = true
 # Max size for messages uploaded via APPEND
 maxMB = 25
 
+# Inactivity autologout for an authenticated session, in milliseconds. Defaults to 30 minutes
+# and 37 seconds. RFC 3501 5.4 requires at least 30 minutes, so leave this unset unless you know
+# what you are doing.
+# socketTimeout = 2400000
+
+# Inactivity timeout before the client has authenticated, in milliseconds.
+# Defaults to 5 minutes and 37 seconds. Allowed to be shorter by RFC 9051 5.4.
+# preAuthSocketTimeout = 337000
+
 # Max length for a single IMAP command line in bytes, excluding literal payloads.
 # Set to 0 to disable the limit.
 maxLineLength = 16384

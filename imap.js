@@ -89,6 +89,8 @@ let createInterface = (ifaceOptions, callback) => {
         logger,
 
         maxMessage: config.imap.maxMB * 1024 * 1024,
+        socketTimeout: 'socketTimeout' in ifaceOptions ? ifaceOptions.socketTimeout : config.imap.socketTimeout,
+        preAuthSocketTimeout: 'preAuthSocketTimeout' in ifaceOptions ? ifaceOptions.preAuthSocketTimeout : config.imap.preAuthSocketTimeout,
         maxLineLength,
         maxCompressionInflateBytes,
         settingsHandler: ifaceOptions.settingsHandler,

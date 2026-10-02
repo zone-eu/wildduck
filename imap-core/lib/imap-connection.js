@@ -14,10 +14,6 @@ const EventEmitter = require('events').EventEmitter;
 const packageInfo = require('../../package');
 const errors = require('../../lib/errors.js');
 
-// Shift timeout by 37 seconds (randomly selected by myself, no specific meaning) to
-// avoid race conditions where both the client and the server wait for 5 minutes
-const SOCKET_TIMEOUT = 5 * 60 * 1000 + 37 * 1000;
-
 /**
  * Creates a handler for new socket
  *
@@ -359,7 +355,7 @@ class IMAPConnection extends EventEmitter {
         this._socket.on('close', this._onClose.bind(this));
         this._socket.on('end', this._onEnd.bind(this));
         this._socket.on('error', this._onError.bind(this));
-        this._socket.setTimeout(this._server.options.socketTimeout || SOCKET_TIMEOUT, this._onTimeout.bind(this));
+        this._socket.setTimeout(imapTools.getSocketTimeout(this), this._onTimeout.bind(this));
         this._socket.pipe(this._parser);
     }
 
@@ -551,7 +547,7 @@ class IMAPConnection extends EventEmitter {
         if (this.idling) {
             // see if the connection still works
             this.send('* OK Still here (' + Date.now() + ')');
-            this._socket.setTimeout(this._server.options.socketTimeout || SOCKET_TIMEOUT, this._onTimeout.bind(this));
+            this._socket.setTimeout(imapTools.getSocketTimeout(this), this._onTimeout.bind(this));
             return;
         }
 
@@ -1061,6 +1057,10 @@ class IMAPConnection extends EventEmitter {
 
     setUser(user) {
         this.user = this.session.user = user;
+        // an authenticated session gets the longer autologout timer
+        if (this._socket && !this._socket.destroyed) {
+            this._socket.setTimeout(imapTools.getSocketTimeout(this), this._onTimeout.bind(this));
+        }
     }
 }
 
