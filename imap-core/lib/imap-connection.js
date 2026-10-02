@@ -75,6 +75,14 @@ class IMAPConnection extends EventEmitter {
         // Set handler for incoming commands
         this._parser.oncommand = this._onCommand.bind(this);
 
+        // Without a listener a stream level error would be an uncaught exception and take the process down.
+        // The parser can not be used after it errors, so the session is closed instead of being left hanging.
+        this._parser.on('error', err => {
+            this._onError(err);
+            this.send('* BYE Internal server error');
+            this.close();
+        });
+
         // Manage multi part command
         this._currentCommand = false;
 

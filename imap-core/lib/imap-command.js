@@ -390,64 +390,81 @@ class IMAPCommand {
                 }
 
                 if (typeof handler.handler === 'function') {
-                    handler.handler.call(
-                        this.connection,
-                        this.parsed,
-                        (err, response) => {
-                            if (err) {
-                                let payload = imapHandler.compiler(this.parsed, false, true);
-                                if (this.connection && typeof this.connection.loggelf === 'function') {
-                                    // Log command handler failures that return BAD/NO without destroying the IMAP connection.
-                                    let logEntry = createCommandFailureLogEntry(this.connection, err, {
-                                        _command: this.command,
-                                        _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
-                                    });
-                                    this.connection.loggelf(logEntry);
-                                }
-                                this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
-                                if (!err.response || err.response === 'BAD') {
-                                    if (!this.countBadResponses()) {
-                                        recordMetric(err.response || err.code || 'error');
-                                        // stop processing
-                                        return;
-                                    }
-                                }
-                                recordMetric(err.response || err.code || 'error');
-                                return next(err);
-                            }
+                    // set once the tagged response has been written, so a later exception does not produce a second one
+                    let responseSent = false;
+                    let fail = E => this.sendServerBug(E, responseSent, recordMetric, next);
 
-                            // send EXPUNGE, EXISTS etc queued notices
-                            this.sendNotifications(handler, () => {
-                                // send command ready response
-                                this.connection.writeStream.write({
-                                    tag: this.tag,
-                                    command: response.response,
-                                    attributes: []
-                                        .concat(
-                                            response.code
-                                                ? {
-                                                      type: 'SECTION',
-                                                      section: [
-                                                          {
-                                                              type: 'TEXT',
-                                                              value: response.code
-                                                          }
-                                                      ]
-                                                  }
-                                                : []
-                                        )
-                                        .concat({
-                                            type: 'TEXT',
-                                            value: response.message || this.command + ' completed'
-                                        })
+                    let handlerCallback = (err, response) => {
+                        if (err) {
+                            let payload = imapHandler.compiler(this.parsed, false, true);
+                            if (this.connection && typeof this.connection.loggelf === 'function') {
+                                // Log command handler failures that return BAD/NO without destroying the IMAP connection.
+                                let logEntry = createCommandFailureLogEntry(this.connection, err, {
+                                    _command: this.command,
+                                    _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
                                 });
+                                this.connection.loggelf(logEntry);
+                            }
+                            this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
+                            if (!err.response || err.response === 'BAD') {
+                                if (!this.countBadResponses()) {
+                                    recordMetric(err.response || err.code || 'error');
+                                    // stop processing
+                                    return;
+                                }
+                            }
+                            recordMetric(err.response || err.code || 'error');
+                            return next(err);
+                        }
 
-                                recordMetric(response.response || 'ok');
-                                next();
+                        // send EXPUNGE, EXISTS etc queued notices
+                        this.sendNotifications(handler, () => {
+                            // send command ready response
+                            this.connection.writeStream.write({
+                                tag: this.tag,
+                                command: response.response,
+                                attributes: []
+                                    .concat(
+                                        response.code
+                                            ? {
+                                                  type: 'SECTION',
+                                                  section: [
+                                                      {
+                                                          type: 'TEXT',
+                                                          value: response.code
+                                                      }
+                                                  ]
+                                              }
+                                            : []
+                                    )
+                                    .concat({
+                                        type: 'TEXT',
+                                        value: response.message || this.command + ' completed'
+                                    })
                             });
-                        },
-                        next
-                    );
+                            responseSent = true;
+
+                            recordMetric(response.response || 'ok');
+                            next();
+                        });
+                    };
+
+                    // A command handler must never take the connection down with it. Anything that escapes
+                    // from the handler or from the response callback is a bug in the server (RFC 5530 SERVERBUG).
+                    let safeCallback = (err, response) => {
+                        try {
+                            handlerCallback(err, response);
+                        } catch (E) {
+                            fail(E);
+                        }
+                    };
+
+                    try {
+                        handler.handler.call(this.connection, this.parsed, safeCallback, next);
+                    } catch (E) {
+                        fail(E);
+                    }
+
                     if (this.command === 'LOGOUT') {
                         recordMetric('ok');
                     }
@@ -458,6 +475,37 @@ class IMAPCommand {
                 }
             });
         });
+    }
+
+    sendServerBug(err, responseSent, recordMetric, next) {
+        if (this.connection && typeof this.connection.loggelf === 'function') {
+            // Log exceptions that escaped a command handler. These are server bugs, not client errors.
+            this.connection.loggelf(
+                createCommandFailureLogEntry(this.connection, err, {
+                    _command: this.command,
+                    _server_bug: 'yes'
+                })
+            );
+        }
+
+        this.connection.logger.error(
+            {
+                err,
+                tnx: 'command',
+                cid: this.connection.id
+            },
+            '[%s] Unhandled exception in %s: %s',
+            this.connection.id,
+            this.command,
+            err.message
+        );
+
+        if (!responseSent) {
+            this.connection.send(this.tag + ' NO [SERVERBUG] Internal server error');
+        }
+
+        recordMetric('serverbug');
+        next();
     }
 
     sendNotifications(handler, callback) {

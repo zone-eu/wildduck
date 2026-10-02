@@ -263,6 +263,39 @@ describe('IMAPCommand', function () {
         });
     });
 
+    it('should answer NO [SERVERBUG] when a command handler throws', function (done) {
+        const { connection, responses } = createConnection();
+        const records = [];
+        metrics.recordImapCommand = (command, result) => records.push({ command, result });
+
+        connection._server.onLsub = () => {
+            throw new TypeError('folders.forEach is not a function');
+        };
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 LSUB "" "*"' }, err => {
+            expect(err).to.not.exist;
+            expect(responses).to.deep.equal(['A1 NO [SERVERBUG] Internal server error']);
+            expect(records).to.deep.equal([{ command: 'LSUB', result: 'serverbug' }]);
+            done();
+        });
+    });
+
+    it('should answer NO [SERVERBUG] when writing the tagged response throws', function (done) {
+        const { connection, responses } = createConnection();
+
+        connection.writeStream.write = () => {
+            throw new Error('compiler failed');
+        };
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 NOOP' }, err => {
+            expect(err).to.not.exist;
+            expect(responses).to.deep.equal(['A1 NO [SERVERBUG] Internal server error']);
+            done();
+        });
+    });
+
     it('should record the protocol error that disconnects the client', function (done) {
         const { connection, responses } = createConnection();
         const records = [];
