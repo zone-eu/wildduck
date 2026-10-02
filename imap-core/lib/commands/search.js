@@ -9,6 +9,10 @@ const MAX_IMAP_NUMBER = 0xffffffff;
 module.exports = {
     state: 'Selected',
 
+    // RFC 3501 7.4.1: an EXPUNGE response MUST NOT be sent while responding to SEARCH, otherwise the
+    // sequence numbers in the * SEARCH reply no longer match the numbering the client ends up with
+    disableNotifications: true,
+
     schema: false, // recursive, can't predefine
 
     handler(command, callback) {
