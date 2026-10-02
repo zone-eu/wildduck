@@ -421,6 +421,15 @@ class TokenParser {
                 case STATE_STRING:
                     // DQUOTE ends the string sequence
                     if (chr === '"') {
+                        // only client commands are held to this, the same parser also reads server
+                        // responses where a lone high bit byte is not ours to refuse
+                        if (this.options.validateUtf8 && !imapFormalSyntax.isValidUtf8(this.currentNode.value)) {
+                            let error = new Error(`Invalid UTF-8 sequence in a quoted string at position ${this.pos + i} [E36]`);
+                            error.code = 'ParserError36';
+                            error.parserContext = { input: this.str, pos: this.pos + i, chr };
+                            throw error;
+                        }
+
                         this.currentNode.endPos = this.pos + i;
                         this.currentNode.isClosed = true;
                         this.currentNode = this.currentNode.parentNode;

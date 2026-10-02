@@ -444,6 +444,29 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse an invalid UTF-8 sequence in a quoted mailbox name', function (done) {
+            // RFC 6855 3: a UTF8=ACCEPT server "MUST reject, with a BAD response, any octet
+            // sequences with the high bit set that fail to comply with the formal syntax
+            // requirements of UTF-8"
+            let utf8Name = Buffer.from('Pröbe', 'utf8').toString('binary');
+            let latin1Name = Buffer.from('Pröbe', 'latin1').toString('binary');
+            let cmds = ['T1 LOGIN testuser pass', 'T2 ENABLE UTF8=ACCEPT', 'T3 CREATE "' + utf8Name + '"', 'T4 CREATE "' + latin1Name + '"', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString('binary');
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 BAD Invalid UTF-8 sequence/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should accept an unquoted pattern with a wildcard', function (done) {
             // RFC 3501 9: list-mailbox = 1*list-char / string, and list-char includes "%" and "*".
             // Python imaplib does not quote its arguments

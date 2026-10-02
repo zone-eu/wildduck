@@ -155,3 +155,19 @@ describe('#isValidKeyword', function () {
         expect(imapTools.isValidKeyword('a\u0001b')).to.be.false;
     });
 });
+
+describe('#isValidUtf8', function () {
+    const formalSyntax = require('../lib/handler/imap-formal-syntax'); // eslint-disable-line global-require
+
+    it('should accept 7-bit and well formed UTF-8', function () {
+        expect(formalSyntax.isValidUtf8('plain ascii')).to.be.true;
+        expect(formalSyntax.isValidUtf8(Buffer.from('Pröbe', 'utf8').toString('binary'))).to.be.true;
+        expect(formalSyntax.isValidUtf8(Buffer.from('😀', 'utf8').toString('binary'))).to.be.true;
+    });
+
+    it('should reject a high bit sequence that is not UTF-8', function () {
+        // RFC 6855 3 requires a BAD response for these
+        expect(formalSyntax.isValidUtf8(Buffer.from('Pröbe', 'latin1').toString('binary'))).to.be.false;
+        expect(formalSyntax.isValidUtf8('Â')).to.be.false;
+    });
+});

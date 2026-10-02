@@ -2,6 +2,8 @@
 
 'use strict';
 
+const { isUtf8 } = require('buffer');
+
 // IMAP Formal Syntax
 // http://tools.ietf.org/html/rfc3501#section-9
 
@@ -163,6 +165,22 @@ module.exports = {
                 .replace(/(["\\])/g, '\\$1') +
             '"'
         );
+    },
+
+    /**
+     * Checks that a binary string with high bit octets is well formed UTF-8.
+     *
+     * RFC 6855 3: when a client uses the extended quoting mechanism, the server "MUST reject, with
+     * a BAD response, any octet sequences with the high bit set that fail to comply with the formal
+     * syntax requirements of UTF-8".
+     */
+    isValidUtf8(value) {
+        if (!/[\u0080-\u00ff]/.test(value)) {
+            // nothing above 7 bit, no UTF-8 requirement to meet
+            return true;
+        }
+
+        return isUtf8(Buffer.from(value, 'binary'));
     },
 
     verify(str, allowedChars) {
