@@ -153,6 +153,13 @@ class TokenParser {
             }
         };
 
+        const startAtom = (chr, pos) => {
+            this.currentNode = this.createNode(this.currentNode, pos);
+            this.currentNode.type = 'ATOM';
+            this.currentNode.value = chr;
+            this.state = STATE_ATOM;
+        };
+
         // a sequence set must not end with a separator, and a bare "*" is only allowed as a range end
         const checkSequenceComplete = (chr, pos) => {
             let value = this.currentNode.value;
@@ -213,10 +220,10 @@ class TokenParser {
                         // ] closes section group
                         case ']':
                             if (this.currentNode.type !== 'SECTION') {
-                                let error = new Error(`Unexpected section terminator ] at position ${this.pos + i} [E11]`);
-                                error.code = 'ParserError11';
-                                error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                                throw error;
+                                // RFC 3501 9: ASTRING-CHAR = ATOM-CHAR / resp-specials, and "]" is a
+                                // resp-special, so a mailbox named "]ab" is valid unquoted
+                                startAtom(chr, this.pos + i);
+                                break;
                             }
                             this.currentNode.isClosed = true;
                             this.currentNode.endPos = this.pos + i;
@@ -228,10 +235,7 @@ class TokenParser {
                         // < starts a new partial
                         case '<':
                             if (this.str.charAt(i - 1) !== ']') {
-                                this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                                this.currentNode.type = 'ATOM';
-                                this.currentNode.value = chr;
-                                this.state = STATE_ATOM;
+                                startAtom(chr, this.pos + i);
                             } else {
                                 this.currentNode = this.createNode(this.currentNode, this.pos + i);
                                 this.currentNode.type = 'PARTIAL';
@@ -242,21 +246,11 @@ class TokenParser {
 
                         // binary literal8
                         case '~': {
-                            let nextChr = this.str.charAt(i + 1);
-                            if (nextChr !== '{') {
-                                if (imapFormalSyntax['ATOM-CHAR']().indexOf(nextChr) >= 0) {
-                                    // treat as ATOM
-                                    this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                                    this.currentNode.type = 'ATOM';
-                                    this.currentNode.value = chr;
-                                    this.state = STATE_ATOM;
-                                    break;
-                                }
-
-                                let error = new Error(`Unexpected literal8 marker at position ${this.pos + i} [E12]`);
-                                error.code = 'ParserError12';
-                                error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                                throw error;
+                            if (this.str.charAt(i + 1) !== '{') {
+                                // RFC 3501 9: "~" is an ATOM-CHAR, it only marks a literal8 when a
+                                // "{" follows it (RFC 4466)
+                                startAtom(chr, this.pos + i);
+                                break;
                             }
                             this.expectedLiteralType = 'literal8';
                             break;
@@ -351,10 +345,7 @@ class TokenParser {
                                 throw error;
                             }
 
-                            this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                            this.currentNode.type = 'ATOM';
-                            this.currentNode.value = chr;
-                            this.state = STATE_ATOM;
+                            startAtom(chr, this.pos + i);
                             break;
                     }
                     break;
@@ -484,13 +475,7 @@ class TokenParser {
                         throw error;
                     }
 
-                    if (this.currentNode.value.match(/^0$|\.0$/) && chr !== '.') {
-                        let error = new Error(`Invalid partial at position ${this.pos + i} [E22: ${JSON.stringify(chr)}]`);
-                        error.code = 'ParserError22';
-                        error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                        throw error;
-                    }
-
+                    // RFC 3501 9: number = 1*DIGIT, so a leading zero is allowed here as well
                     this.currentNode.value += chr;
                     break;
 
@@ -591,12 +576,7 @@ class TokenParser {
                         error.parserContext = { input: this.str, pos: this.pos + i, chr };
                         throw error;
                     }
-                    if (this.currentNode.literalLength === '0') {
-                        let error = new Error(`Invalid literal at position ${this.pos + i} [E26]`);
-                        error.code = 'ParserError26';
-                        error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                        throw error;
-                    }
+                    // RFC 3501 9: number = 1*DIGIT, so a leading zero is allowed
                     this.currentNode.literalLength = (this.currentNode.literalLength || '') + chr;
                     break;
 
