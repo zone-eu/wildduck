@@ -36,6 +36,8 @@ class IMAPConnection extends EventEmitter {
         this.ignore = options.ignore;
 
         this.compression = false;
+        // set as soon as COMPRESS is accepted, a tick before the pipes are switched and this.compression flips
+        this._compressing = false;
         this._deflate = false;
         this._inflate = false;
         this._inflateLimit = false;

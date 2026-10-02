@@ -42,6 +42,18 @@ module.exports = {
             });
         }
 
+        // RFC 4978 3: "BAD ... COMPRESS already active". Turning on a second deflater would write
+        // doubly compressed data onto a socket the client only inflates once, killing the connection.
+        if (this._compressing) {
+            return callback(null, {
+                response: 'BAD',
+                code: 'COMPRESSIONACTIVE',
+                message: 'DEFLATE already active'
+            });
+        }
+
+        this._compressing = true;
+
         setImmediate(() => {
             // Check if connection is already closed or closing
             if (!this._parser) {
