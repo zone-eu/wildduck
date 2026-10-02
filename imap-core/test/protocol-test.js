@@ -1276,6 +1276,57 @@ describe('IMAP Protocol integration tests', function () {
         });
     });
 
+    describe('EXAMINE', function () {
+        it('should open a mailbox read-only', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 EXAMINE INBOX', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* 6 EXISTS$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK \[READ-ONLY\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse STORE, EXPUNGE and UID EXPUNGE on a read-only mailbox', function (done) {
+            // RFC 3501 6.3.2: "No changes to the permanent state of the mailbox ... are permitted",
+            // and 6.4.6 / 6.4.3 list NO as the failure result. An OK would claim the change was made
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 EXAMINE INBOX',
+                'T3 STORE 1 +FLAGS (\\Deleted)',
+                'T4 EXPUNGE',
+                'T5 UID EXPUNGE 101',
+                'T6 FETCH 1 (FLAGS)',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[CANNOT\] Mailbox is read-only$/m.test(resp)).to.be.true;
+                    expect(/^T4 NO \[CANNOT\] Mailbox is read-only$/m.test(resp)).to.be.true;
+                    expect(/^T5 NO \[CANNOT\] Mailbox is read-only$/m.test(resp)).to.be.true;
+                    // and nothing was changed
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
     describe('COPY', function () {
         it('should not copy to nonexistent mailbox', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 COPY 1:* zzz', 'T4 LOGOUT'];

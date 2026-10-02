@@ -36,12 +36,8 @@ module.exports = {
             });
         }
 
-        // Do nothing if in read only mode
         if (this.selected.readOnly) {
-            return callback(null, {
-                response: 'OK',
-                message: 'STORE ignored with read-only mailbox'
-            });
+            return callback(null, imapTools.READ_ONLY_RESPONSE);
         }
 
         let type = 'flags'; // currently hard coded, in the future might support other values as well, eg. X-GM-LABELS
