@@ -1,6 +1,7 @@
 'use strict';
 
 const Indexer = require('./indexer/indexer');
+const imapHandler = require('./handler/imap-handler');
 const libmime = require('libmime');
 const punycode = require('punycode.js');
 const iconv = require('iconv-lite');
@@ -835,6 +836,26 @@ module.exports.sendCapabilityResponse = connection => {
 
     let protocolCaps = connection._server.options.aps?.enabled ? ['XAPPLEPUSHSERVICE', 'IMAP4rev1'] : ['IMAP4rev1'];
     connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
+};
+
+// RFC 3501 6.3.8: an empty mailbox name is a request for the hierarchy delimiter and the root name
+module.exports.sendDelimiterResponse = (connection, commandName) => {
+    connection.send(
+        imapHandler.compiler({
+            tag: '*',
+            command: commandName,
+            attributes: [
+                [
+                    {
+                        type: 'atom',
+                        value: '\\Noselect'
+                    }
+                ],
+                '/',
+                '/'
+            ]
+        })
+    );
 };
 
 module.exports.validateInternalDate = internaldate => {
