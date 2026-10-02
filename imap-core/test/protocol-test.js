@@ -67,6 +67,24 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('LOGIN', function () {
+        it('should not put the username into the success text', function (done) {
+            // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F) and a leading "[" would be read as a code
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 OK Logged in$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         /*
         let stlsServer;
         let stlsPort;
@@ -200,6 +218,24 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     expect(/^T1 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not put the username into the success text', function (done) {
+            // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F) and a leading "[" would be read as a code
+            let cmds = ['T1 AUTHENTICATE PLAIN ' + Buffer.from('\x00testuser\x00pass', 'utf-8').toString('base64'), 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 OK Logged in$/m.test(resp)).to.be.true;
                     done();
                 }
             );
