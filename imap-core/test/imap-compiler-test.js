@@ -302,3 +302,17 @@ describe('IMAP Quoting', function () {
         expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'ATOM', value: 'a\tb' }] })).to.equal('* CMD "a\tb"');
     });
 });
+
+describe('IMAP Logging mode', function () {
+    it('should not crash on a node without a value', function () {
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: null }] }, false, true)).to.equal('* CMD ""');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'LITERAL', value: null }] }, false, true)).to.equal(
+            '* CMD "(* 0B literal *)"'
+        );
+    });
+
+    it('should compile a STRING node that holds a Buffer', function () {
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: Buffer.from('abc') }] })).to.equal('* CMD "abc"');
+    });
+});

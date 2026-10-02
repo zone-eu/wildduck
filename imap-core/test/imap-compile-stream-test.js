@@ -691,3 +691,30 @@ describe('IMAP Stream Quoting', function () {
         expect(await compile({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'c\nd' }] })).to.equal('* CMD {3}\r\nc\nd');
     });
 });
+
+describe('IMAP Stream Literals', function () {
+    const compile = response =>
+        new Promise((resolve, reject) => {
+            let chunks = [];
+            let output = imapHandler.compileStream(response);
+            output.on('data', chunk => chunks.push(chunk));
+            output.on('end', () => resolve(Buffer.concat(chunks).toString('binary')));
+            output.on('error', reject);
+        });
+
+    it('should announce the byte length of a Buffer literal', async () => {
+        // RFC 3501 4.3: a literal is prefix-quoted with an octet count, two bytes for this one
+        let value = Buffer.from('ä', 'utf8');
+
+        expect(await compile({ tag: '*', command: 'CMD', attributes: [{ type: 'LITERAL', value }] })).to.equal('* CMD {2}\r\n' + value.toString('binary'));
+    });
+
+    it('should limit a stream literal that has no startFrom', async () => {
+        let source = new PassThrough();
+        source.end('0123456789');
+
+        expect(
+            await compile({ tag: '*', command: 'CMD', attributes: [{ type: 'LITERAL', value: source, expectedLength: 10, maxLength: 4 }, 'tail'] })
+        ).to.equal('* CMD {4}\r\n0123 "tail"');
+    });
+});
