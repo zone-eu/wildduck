@@ -2814,6 +2814,40 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should match NOT on a header key as the complement of the key', function (done) {
+            // RFC 3501 6.4.4: "NOT <search-key>: Messages that do not match the specified search
+            // key", and a string key matches when the string is a substring of the field. Message 3
+            // has no Subject header at all and must therefore match NOT SUBJECT
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH SUBJECT test5',
+                'T4 SEARCH NOT SUBJECT test5',
+                'T5 SEARCH NOT SUBJECT zzzz',
+                'T6 SEARCH HEADER Subject ""',
+                'T7 SEARCH NOT HEADER Subject ""',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 5$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 2 3 4 6$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 2 3 4 5 6$/m.test(resp)).to.be.true;
+                    // the zero length string is an existence test for the header
+                    expect(/^\* SEARCH 1 2 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 3$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should refuse an unsupported CHARSET', function (done) {
             // RFC 3501 6.4.4: "If the server does not support the specified [CHARSET], it MUST
             // return a tagged NO response (not a BAD). This response SHOULD contain the BADCHARSET
