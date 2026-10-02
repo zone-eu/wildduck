@@ -106,6 +106,8 @@ module.exports = {
                     // fix flag case
                     flags[i] = flags[i].toLowerCase().replace(/^\\./, c => c.toUpperCase());
                 }
+            } else if (!imapTools.isValidKeyword(flags[i])) {
+                return callback(new Error('Invalid flag argument for APPEND'));
             }
         }
 
