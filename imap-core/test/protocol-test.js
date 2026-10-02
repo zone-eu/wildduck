@@ -806,6 +806,35 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should append to a mailbox with a non-ASCII name after ENABLE UTF8=ACCEPT', function (done) {
+            // RFC 6855 3: a UTF8=ACCEPT server accepts UTF8-quoted mailbox names
+            let message = Buffer.from('From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: HELLO!\r\n\r\nWORLD!');
+            let mailbox = Buffer.from('Pröbe', 'utf8').toString('binary');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 ENABLE UTF8=ACCEPT',
+                'T3 CREATE "' + mailbox + '"',
+                'T4 APPEND "' + mailbox + '" {' + message.length + '}\r\n' + message.toString('binary'),
+                'T5 STATUS "' + mailbox + '" (MESSAGES)',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString('binary');
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 OK \[APPENDUID /m.test(resp)).to.be.true;
+                    expect(resp.indexOf('* STATUS "' + mailbox + '" (MESSAGES 1)') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should reject appending an empty literal message', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 STATUS INBOX (MESSAGES)', 'T3 APPEND INBOX {0}', [''], 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
 

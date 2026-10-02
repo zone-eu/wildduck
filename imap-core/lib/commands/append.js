@@ -45,12 +45,8 @@ module.exports = {
             });
         }
 
-        let path = (command.attributes.shift() || {}).value;
-        if (!Buffer.isBuffer(path)) {
-            path = path.toString();
-        } else {
-            path = Buffer.from(path, 'binary').toString();
-        }
+        // the parser hands UTF8-quoted names over as binary strings, so decode as every other mailbox command does
+        let path = Buffer.from((command.attributes.shift() || {}).value || '', 'binary').toString();
 
         path = imapTools.normalizeMailbox(path, !this.acceptUTF8Enabled);
         let message = command.attributes.pop();
