@@ -103,3 +103,30 @@ describe('#getCopyUidCode', function () {
         expect(imapTools.getCopyUidCode('trycreate', false)).to.equal('TRYCREATE');
     });
 });
+
+describe('#validateSequence', function () {
+    it('should accept a sequence set', function () {
+        expect(imapTools.validateSequence('1')).to.be.true;
+        expect(imapTools.validateSequence('*')).to.be.true;
+        expect(imapTools.validateSequence('1:*')).to.be.true;
+        expect(imapTools.validateSequence('*:4')).to.be.true;
+        expect(imapTools.validateSequence('1,3,5:9')).to.be.true;
+        // leading zeros name the same non-zero message, keep accepting them
+        expect(imapTools.validateSequence('01')).to.be.true;
+    });
+
+    it('should reject a zero sequence number', function () {
+        // RFC 3501 9: seq-number = nz-number / "*"
+        expect(imapTools.validateSequence('0')).to.be.false;
+        expect(imapTools.validateSequence('1:0')).to.be.false;
+        expect(imapTools.validateSequence('0:1')).to.be.false;
+        expect(imapTools.validateSequence('1,0')).to.be.false;
+        expect(imapTools.validateSequence('00')).to.be.false;
+    });
+
+    it('should reject malformed input', function () {
+        expect(imapTools.validateSequence('')).to.be.false;
+        expect(imapTools.validateSequence('1:')).to.be.false;
+        expect(imapTools.validateSequence('a')).to.be.false;
+    });
+});
