@@ -2601,7 +2601,28 @@ describe('IMAP Protocol integration tests', function () {
         });
     });
 
-    describe('Sequence sets', function () {
+    describe('Argument validation', function () {
+        it('should refuse a partial with a zero octet count', function (done) {
+            // RFC 3501 9: section ["<" number "." nz-number ">"], a zero count was treated as
+            // "no limit" and returned the whole section
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 FETCH 1 (BODY[]<0.0>)', 'T4 FETCH 1 (BODY[]<0.10>)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 BAD Invalid partial octet count in BODY\[\]<0\.0> for FETCH$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(BODY\[\]<0> \{10\}$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should refuse a zero sequence number', function (done) {
             // RFC 3501 9: seq-number = nz-number / "*", and mapping 0 to the first message
             // silently operated on a message the client did not ask for
