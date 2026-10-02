@@ -205,6 +205,25 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should send the continuation request with the mandatory space', function (done) {
+            // RFC 3501 9: continue-req = "+" SP (resp-text / base64) CRLF
+            let cmds = ['T1 AUTHENTICATE PLAIN', Buffer.from('\x00testuser\x00pass', 'utf-8').toString('base64'), 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n+ \r\n') >= 0).to.be.true;
+                    expect(/^T1 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should authenticate using SASL-IR', function (done) {
             let cmds = ['T1 AUTHENTICATE PLAIN ' + Buffer.from('\x00testuser\x00pass', 'utf-8').toString('base64'), 'T2 LOGOUT'];
 

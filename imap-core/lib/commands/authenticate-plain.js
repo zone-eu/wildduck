@@ -40,7 +40,8 @@ module.exports = {
                 next(); // keep the parser flowing
                 authenticate(this, token, requireClientToken, callback);
             };
-            this.send('+');
+            // RFC 3501 9: continue-req = "+" SP (resp-text / base64) CRLF, the space is not optional
+            this.send('+ ');
             return next(); // resume input parser. Normally this is done by callback() but we need the next input sooner
         }
 
