@@ -644,6 +644,87 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should rename inferior mailboxes along with the mailbox', function (done) {
+            // RFC 3501 6.3.5: "If the name has inferior hierarchical names, then the inferior
+            // hierarchical names MUST also be renamed."
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Foo',
+                'T3 CREATE Foo/Bar',
+                'T4 CREATE Foo/Bar/Baz',
+                'T5 RENAME Foo Zap',
+                'T6 LIST "" "*"',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Zap"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Zap/Bar"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Zap/Bar/Baz"\r\n') >= 0).to.be.true;
+                    // the old subtree must be gone, not orphaned under a \Noselect parent
+                    expect(/"\/" "Foo/m.test(resp)).to.be.false;
+                    done();
+                }
+            );
+        });
+
+        it('should rename inferior mailboxes into a subpath of the renamed mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Foo', 'T3 CREATE Foo/Bar', 'T4 RENAME Foo Foo/Sub', 'T5 LIST "" "*"', 'T6 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Foo/Sub"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo/Sub/Bar"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo/Bar"\r\n') >= 0).to.be.false;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a rename that would overwrite an existing inferior mailbox', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Foo',
+                'T3 CREATE Foo/Bar',
+                'T4 CREATE Zap/Bar',
+                'T5 RENAME Foo Zap',
+                'T6 LIST "" "*"',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T5 NO \[ALREADYEXISTS\]/m.test(resp)).to.be.true;
+                    // nothing may be renamed when the subtree can not be moved as a whole
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Foo"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo/Bar"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Zap/Bar"\r\n') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('cannot rename a mailbox to a mailbox path where subpath length is bigger than max allowed', function (done) {
             let cmds = [
                 'T1 LOGIN testuser pass',
