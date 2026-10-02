@@ -865,14 +865,18 @@ class IMAPConnection extends EventEmitter {
                 this.selected.uidList.length
             );
             switch (update.command) {
-                case 'EXISTS':
+                case 'EXISTS': {
                     // Generate the response but do not send it yet (EXIST response generation is needed to modify the UID list)
                     // This way we can accumulate consecutive EXISTS responses into single one as
                     // only the last one actually matters to the client
-                    existsResponse = this.formatResponse('EXISTS', update.uid);
-                    changed = false;
+                    const response = this.formatResponse('EXISTS', update.uid);
+                    if (response) {
+                        existsResponse = response;
+                        changed = false;
+                    }
 
                     break;
+                }
 
                 case 'EXPUNGE': {
                     let seq = (this.selected.uidList || []).indexOf(update.uid);
@@ -930,8 +934,14 @@ class IMAPConnection extends EventEmitter {
         let seq;
 
         if (command === 'EXISTS') {
-            this.selected.uidList.push(uid);
-            seq = this.selected.uidList.length;
+            let uidList = this.selected.uidList || [];
+            // uids only ever grow, so anything not above the last one is already known. Pushing it
+            // again would duplicate the entry and shift every sequence number after it
+            if (uidList.length && uid <= uidList[uidList.length - 1]) {
+                return false;
+            }
+            uidList.push(uid);
+            seq = uidList.length;
         } else {
             seq = (this.selected.uidList || []).indexOf(uid);
             if (seq < 0) {
