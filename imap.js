@@ -17,8 +17,8 @@ const Gelf = require('gelf');
 const os = require('os');
 const Lock = require('ioredfour');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
-
 const onFetch = require('./lib/handlers/on-fetch');
 const onAuth = require('./lib/handlers/on-auth');
 const onList = require('./lib/handlers/on-list');
@@ -254,6 +254,13 @@ module.exports = done => {
 
     let settingsHandler = new SettingsHandler({ db: db.database });
 
+    // setup APNs client for iOS push notifications
+    let apn = ApnClient.get({
+        config: config.imap && config.imap.aps,
+        database: db.database,
+        loggelf: message => loggelf(message)
+    });
+
     // setup notification system for updates
     notifier = new ImapNotifier({
         database: db.database,
@@ -268,6 +275,7 @@ module.exports = done => {
         gridfs: db.gridfs,
         attachments: config.attachments,
         settingsHandler,
+        apn,
         loggelf: message => loggelf(message)
     });
 

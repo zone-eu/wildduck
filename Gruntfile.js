@@ -12,14 +12,19 @@ module.exports = function (grunt) {
         'imap-core/test/compress-race-condition-test.js',
         'imap-core/test/imap-compile-stream-test.js',
         'imap-core/test/imap-compiler-test.js',
+        'imap-core/test/imap-id-command-test.js',
         'imap-core/test/imap-indexer-test.js',
         'imap-core/test/imap-parser-test.js',
         'imap-core/test/onconnect-test.js',
         'imap-core/test/parse-mime-tree-test.js',
         'imap-core/test/search-test.js',
-        'imap-core/test/tools-test.js'
+        'imap-core/test/tools-test.js',
+        'imap-core/test/xapplepushservice-command-test.js'
     ];
     const unitTests = [
+        'test/apn-client-test.js',
+        'test/imap-notifier-apn-test.js',
+        'test/xapplepushservice-validation-test.js',
         'test/certs-test.js',
         'test/checkrangequery-test.js',
         'test/create-decipher-test.js',

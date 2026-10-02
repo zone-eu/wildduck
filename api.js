@@ -25,8 +25,8 @@ const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
-
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
 const addressesRoutes = require('./lib/api/addresses');
@@ -48,6 +48,7 @@ const domainaliasRoutes = require('./lib/api/domainaliases');
 const dkimRoutes = require('./lib/api/dkim');
 const certsRoutes = require('./lib/api/certs');
 const webhooksRoutes = require('./lib/api/webhooks');
+const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
@@ -127,6 +128,7 @@ let auditHandler;
 let settingsHandler;
 let mcpTokenHandler;
 let notifier;
+let apnClient;
 let loggelf;
 
 const serverOptions = {
@@ -669,6 +671,8 @@ module.exports = done => {
         settingsHandler
     });
 
+    apnClient = ApnClient.get({ config: config.imap && config.imap.aps, database: db.database, loggelf: message => loggelf(message) });
+
     messageHandler = new MessageHandler({
         database: db.database,
         users: db.users,
@@ -676,6 +680,7 @@ module.exports = done => {
         gridfs: db.gridfs,
         attachments: config.attachments,
         settingsHandler,
+        apn: apnClient,
         loggelf: message => loggelf(message)
     });
 
@@ -755,6 +760,7 @@ module.exports = done => {
     dkimRoutes(db, server);
     certsRoutes(db, server);
     webhooksRoutes(db, server);
+    pushsubscriptionsRoutes(db, server, apnClient);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
     mcpTokensRoutes(server, mcpTokenHandler);
