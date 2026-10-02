@@ -119,7 +119,7 @@ module.exports = function (response, asArray, isLogging) {
             case 'SECTION':
                 val = (node.value || '').toString('binary');
 
-                if (imapFormalSyntax.verify(val.charAt(0) === '\\' ? val.substr(1) : val, imapFormalSyntax['ATOM-CHAR']()) >= 0) {
+                if (imapFormalSyntax.needsQuoting(val)) {
                     val = imapFormalSyntax.quote(val);
                 }
 

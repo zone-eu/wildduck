@@ -25,6 +25,9 @@ function excludeChars(source, exclude) {
     return sourceArr.join('');
 }
 
+// filled on first use from ATOM-CHAR, which is built from the grammar
+let atomChars = false;
+
 module.exports = {
     CHAR() {
         let value = expandRange(0x01, 0x7f);
@@ -181,6 +184,53 @@ module.exports = {
         }
 
         return isUtf8(Buffer.from(value, 'binary'));
+    },
+
+    /**
+     * Checks whether a value is an atom.
+     *
+     * RFC 3501 9: atom = 1*ATOM-CHAR, and ATOM-CHAR is 7 bit. Commands are read as binary strings,
+     * so the parser accepts 8-bit bytes in atoms, and the high bit alone is not a reason to answer
+     * with a quoted string: a quoted string is a different production, and in an atom-only
+     * position such as flag-keyword it is not valid at all. A value above U+00FF never came off
+     * the wire, so it is held to the 7-bit rule.
+     */
+    isAtom(value) {
+        value = (value || '').toString();
+        if (!value.length) {
+            return false;
+        }
+
+        if (!atomChars) {
+            atomChars = new Set(this['ATOM-CHAR']());
+        }
+
+        for (let i = 0, len = value.length; i < len; i++) {
+            let code = value.charCodeAt(i);
+            if (code >= 0x80 && code <= 0xff) {
+                continue;
+            }
+            if (!atomChars.has(value.charAt(i))) {
+                return false;
+            }
+        }
+
+        return true;
+    },
+
+    /**
+     * Checks whether a value has to be quoted to take the place of an atom.
+     *
+     * An empty value carries only a section, as in [PERMANENTFLAGS (...)], and emits nothing.
+     * RFC 3501 9: flag = "\" atom / flag-keyword, so a system flag is a backslash plus an atom.
+     */
+    needsQuoting(value) {
+        value = (value || '').toString();
+        if (value.charAt(0) === '\\') {
+            value = value.slice(1);
+        }
+
+        return !!value.length && !this.isAtom(value);
     },
 
     verify(str, allowedChars) {

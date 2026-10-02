@@ -301,6 +301,38 @@ describe('IMAP Quoting', function () {
 
         expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'ATOM', value: 'a\tb' }] })).to.equal('* CMD "a\tb"');
     });
+
+    it('should keep an ATOM value that is only 8-bit unquoted', function () {
+        // RFC 3501 9: a quoted string is a different production from an atom, so quoting a value
+        // in an atom-only position such as flag-keyword answers with something that is not a flag
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'ATOM', value: 'töö' }] })).to.equal('* CMD töö');
+
+        expect(
+            imapHandler.compiler({
+                tag: '*',
+                command: 'CMD',
+                attributes: [
+                    [
+                        { type: 'ATOM', value: '\\Seen' },
+                        { type: 'ATOM', value: 'Junk' }
+                    ]
+                ]
+            })
+        ).to.equal('* CMD (\\Seen Junk)');
+    });
+
+    it('should emit nothing for an ATOM value that only carries a section', function () {
+        expect(
+            imapHandler.compiler({
+                tag: '*',
+                command: 'OK',
+                attributes: [
+                    { type: 'ATOM', value: '', section: [{ type: 'ATOM', value: 'ALERT' }] },
+                    { type: 'TEXT', value: 'hello' }
+                ]
+            })
+        ).to.equal('* OK [ALERT] hello');
+    });
 });
 
 describe('IMAP Logging mode', function () {

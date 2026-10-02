@@ -2,6 +2,7 @@
 
 const Indexer = require('./indexer/indexer');
 const imapHandler = require('./handler/imap-handler');
+const imapFormalSyntax = require('./handler/imap-formal-syntax');
 const libmime = require('libmime');
 const punycode = require('punycode.js');
 const iconv = require('iconv-lite');
@@ -879,14 +880,18 @@ module.exports.sendCapabilityResponse = connection => {
     connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
 };
 
-// RFC 3501 9: flag-keyword = atom = 1*ATOM-CHAR, so a keyword can not contain atom-specials:
-// "(" / ")" / "{" / SP / CTL / list-wildcards / quoted-specials / resp-specials. Such a value would
-// be emitted as a quoted string in FLAGS and PERMANENTFLAGS, which is not valid there.
-// 8-bit bytes stay allowed, the parser accepts them in atoms as well.
-// eslint-disable-next-line no-control-regex
-const INVALID_KEYWORD_CHAR = /[\u0000-\u001f\u007f (){%*"\\\]]/;
+// RFC 3501 9: flag-keyword = atom, so a keyword holding an atom-special could only be compiled as
+// a quoted string, which is not a flag at all. A leading backslash fails the same check, keywords
+// may not look like system flags.
+const isValidKeyword = keyword => imapFormalSyntax.isAtom(keyword);
 
-module.exports.isValidKeyword = keyword => !!keyword && !INVALID_KEYWORD_CHAR.test(keyword);
+// RFC 3501 9: flag = "\Answered" / ... / "\" atom / flag-keyword. A flag that can not be compiled
+// as an atom is left out of the response. STORE and APPEND refuse such keywords, so only a message
+// or a mailbox keyword registry written before that validation can still carry one.
+const isEmittableFlag = flag => !imapFormalSyntax.needsQuoting(flag) && !!(flag || '').toString().length;
+
+module.exports.isValidKeyword = isValidKeyword;
+module.exports.isEmittableFlag = isEmittableFlag;
 
 // RFC 3501 6.3.2: "No changes to the permanent state of the mailbox ... are permitted" for a
 // mailbox opened with EXAMINE, and 6.4.3 / 6.4.6 list NO as the failure result for EXPUNGE and

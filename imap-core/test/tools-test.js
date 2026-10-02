@@ -156,6 +156,25 @@ describe('#isValidKeyword', function () {
     });
 });
 
+describe('#isEmittableFlag', function () {
+    it('should accept a system flag and an atom keyword', function () {
+        expect(imapTools.isEmittableFlag('\\Seen')).to.be.true;
+        expect(imapTools.isEmittableFlag('\\Deleted')).to.be.true;
+        expect(imapTools.isEmittableFlag('Junk')).to.be.true;
+        expect(imapTools.isEmittableFlag('$Forwarded')).to.be.true;
+        expect(imapTools.isEmittableFlag('töö')).to.be.true;
+    });
+
+    it('should reject a keyword that can not be compiled as an atom', function () {
+        // RFC 3501 9: flag-keyword = atom, so these could only go out as quoted strings
+        expect(imapTools.isEmittableFlag('a]b')).to.be.false;
+        expect(imapTools.isEmittableFlag('a b')).to.be.false;
+        expect(imapTools.isEmittableFlag('a(b')).to.be.false;
+        expect(imapTools.isEmittableFlag('')).to.be.false;
+        expect(imapTools.isEmittableFlag(false)).to.be.false;
+    });
+});
+
 describe('#isValidUtf8', function () {
     const formalSyntax = require('../lib/handler/imap-formal-syntax'); // eslint-disable-line global-require
 
