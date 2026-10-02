@@ -1,7 +1,7 @@
 'use strict';
 
 const imapHandler = require('../handler/imap-handler');
-const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing } = require('../imap-tools');
+const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing, sendDelimiterResponse } = require('../imap-tools');
 
 // tag LIST (SPECIAL-USE) "" "%" RETURN (SPECIAL-USE)
 
@@ -191,21 +191,7 @@ module.exports = {
 
         if (!path && !filterSpecialUseFlags) {
             // return delimiter only
-            let response = {
-                tag: '*',
-                command: commandName,
-                attributes: [
-                    [
-                        {
-                            type: 'atom',
-                            value: '\\Noselect'
-                        }
-                    ],
-                    '/',
-                    '/'
-                ]
-            };
-            this.send(imapHandler.compiler(response));
+            sendDelimiterResponse(this, commandName);
             return callback(null, {
                 response: 'OK'
             });

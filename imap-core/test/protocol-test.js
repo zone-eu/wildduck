@@ -411,6 +411,27 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('LSUB', function () {
+        it('should list delimiter', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" ""', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(1);
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect) "/" "/"\r\n') >= 0).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    // the connection must still be alive for the next command
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should list all mailboxes', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" "*"', 'T3 LOGOUT'];
 

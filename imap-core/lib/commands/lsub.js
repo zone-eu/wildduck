@@ -1,7 +1,7 @@
 'use strict';
 
 const imapHandler = require('../handler/imap-handler');
-const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing } = require('../imap-tools');
+const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing, sendDelimiterResponse } = require('../imap-tools');
 
 // tag LSUB "" "%"
 
@@ -89,9 +89,9 @@ module.exports = {
 
         if (!path) {
             // return delimiter only
-            return lsubResponse(null, {
-                path: '/',
-                flags: '\\Noselect'
+            sendDelimiterResponse(this, 'LSUB');
+            return callback(null, {
+                response: 'OK'
             });
         }
 
