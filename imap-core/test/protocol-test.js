@@ -1873,6 +1873,34 @@ describe('IMAP Protocol integration tests', function () {
                     }
                 );
             });
+
+            it('should mark a message as seen for RFC822.TEXT but not for RFC822.HEADER', function (done) {
+                // RFC 3501 6.4.5: RFC822.TEXT is "functionally equivalent to BODY[TEXT]", which sets
+                // \Seen, while RFC822.HEADER is equivalent to BODY.PEEK[HEADER]
+                let cmds = [
+                    'T1 LOGIN testuser pass',
+                    'T2 SELECT INBOX',
+                    'T3 FETCH 1 RFC822.TEXT',
+                    'T4 FETCH 1 (FLAGS)',
+                    'T5 FETCH 4 RFC822.HEADER',
+                    'T6 FETCH 4 (FLAGS)',
+                    'T7 LOGOUT'
+                ];
+
+                testClient(
+                    {
+                        commands: cmds,
+                        secure: true,
+                        port
+                    },
+                    function (resp) {
+                        resp = resp.toString();
+                        expect(/^\* 1 FETCH \(FLAGS \(\\Seen\)\)$/m.test(resp)).to.be.true;
+                        expect(/^\* 4 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
+                        done();
+                    }
+                );
+            });
         });
 
         describe('UID', function () {
@@ -2274,7 +2302,9 @@ describe('IMAP Protocol integration tests', function () {
                     function (resp) {
                         resp = resp.toString();
 
-                        expect(resp.indexOf('\r\n* 4 FETCH (RFC822.TEXT {14}\r\nHello World!\r\n)\r\n') >= 0).to.be.true;
+                        // RFC 3501 6.4.5: RFC822.TEXT is equivalent to BODY[TEXT], so \Seen is set
+                        // implicitly and the new flags are reported back
+                        expect(resp.indexOf('\r\n* 4 FETCH (RFC822.TEXT {14}\r\nHello World!\r\n FLAGS (\\Seen))\r\n') >= 0).to.be.true;
                         expect(/^T3 OK/m.test(resp)).to.be.true;
                         done();
                     }
