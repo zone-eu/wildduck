@@ -2814,6 +2814,36 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse an unsupported CHARSET', function (done) {
+            // RFC 3501 6.4.4: "If the server does not support the specified [CHARSET], it MUST
+            // return a tagged NO response (not a BAD). This response SHOULD contain the BADCHARSET
+            // response code"
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH CHARSET KOI8-R SUBJECT hello',
+                'T4 SEARCH CHARSET UTF-8 ALL',
+                'T5 SEARCH CHARSET "US-ASCII" ALL',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[BADCHARSET \(US-ASCII UTF-8\)\] Unsupported charset$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    expect(resp.match(/^\* SEARCH 1 2 3 4 5 6$/gm).length).to.equal(2);
+                    done();
+                }
+            );
+        });
+
         it('should find with a sequence set inside parentheses', function (done) {
             // RFC 3501 9: sequence-set is a valid last element of a parenthesised search-key
             let cmds = [
