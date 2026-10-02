@@ -1731,6 +1731,25 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse a keyword that is not a valid atom', function (done) {
+            // RFC 3501 9: flag-keyword = atom, such a value would go out quoted in FLAGS
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 +FLAGS (MyFlag)', 'T4 STORE 1 +FLAGS (a]b)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 BAD Invalid flag argument for STORE$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should set some flags with modifier', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1:* (UNCHANGEDSINCE 99) FLAGS (MyFlag1 MyFlag2)', 'T4 LOGOUT'];
 

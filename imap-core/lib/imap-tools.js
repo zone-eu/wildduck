@@ -879,6 +879,15 @@ module.exports.sendCapabilityResponse = connection => {
     connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
 };
 
+// RFC 3501 9: flag-keyword = atom = 1*ATOM-CHAR, so a keyword can not contain atom-specials:
+// "(" / ")" / "{" / SP / CTL / list-wildcards / quoted-specials / resp-specials. Such a value would
+// be emitted as a quoted string in FLAGS and PERMANENTFLAGS, which is not valid there.
+// 8-bit bytes stay allowed, the parser accepts them in atoms as well.
+// eslint-disable-next-line no-control-regex
+const INVALID_KEYWORD_CHAR = /[\u0000-\u001f\u007f (){%*"\\\]]/;
+
+module.exports.isValidKeyword = keyword => !!keyword && !INVALID_KEYWORD_CHAR.test(keyword);
+
 // RFC 3501 6.3.2: "No changes to the permanent state of the mailbox ... are permitted" for a
 // mailbox opened with EXAMINE, and 6.4.3 / 6.4.6 list NO as the failure result for EXPUNGE and
 // STORE. An OK would tell the client the change was made.

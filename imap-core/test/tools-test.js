@@ -130,3 +130,28 @@ describe('#validateSequence', function () {
         expect(imapTools.validateSequence('a')).to.be.false;
     });
 });
+
+describe('#isValidKeyword', function () {
+    it('should accept an atom', function () {
+        expect(imapTools.isValidKeyword('MyFlag')).to.be.true;
+        expect(imapTools.isValidKeyword('$label1')).to.be.true;
+        expect(imapTools.isValidKeyword('NonJunk')).to.be.true;
+        // the parser accepts 8-bit bytes in atoms, so keywords keep accepting them too
+        expect(imapTools.isValidKeyword('töö')).to.be.true;
+    });
+
+    it('should reject a value that is not an atom', function () {
+        // RFC 3501 9: flag-keyword = atom, so no atom-specials
+        expect(imapTools.isValidKeyword('')).to.be.false;
+        expect(imapTools.isValidKeyword('a b')).to.be.false;
+        expect(imapTools.isValidKeyword('a(b')).to.be.false;
+        expect(imapTools.isValidKeyword('a)b')).to.be.false;
+        expect(imapTools.isValidKeyword('a{b')).to.be.false;
+        expect(imapTools.isValidKeyword('a]b')).to.be.false;
+        expect(imapTools.isValidKeyword('a*b')).to.be.false;
+        expect(imapTools.isValidKeyword('a%b')).to.be.false;
+        expect(imapTools.isValidKeyword('a"b')).to.be.false;
+        expect(imapTools.isValidKeyword('a\\b')).to.be.false;
+        expect(imapTools.isValidKeyword('a\u0001b')).to.be.false;
+    });
+});
