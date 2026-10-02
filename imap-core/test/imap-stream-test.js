@@ -112,6 +112,31 @@ describe('IMAP stream pipelining', function () {
         });
     });
 
+    it('should flush a trailing partial line in the normal command shape', function (done) {
+        const parser = new IMAPStream();
+        const seen = [];
+
+        parser.oncommand = (command, callback) => {
+            seen.push(command);
+            return (callback || (() => false))();
+        };
+
+        parser.write(Buffer.from('A1 NOOP\r\nA2 NOOP', 'binary'), err => {
+            if (err) {
+                return done(err);
+            }
+
+            parser.end();
+
+            setImmediate(() => {
+                expect(seen).to.have.length(2);
+                // not a raw Buffer, which has no tag and used to be logged as an invalid tag
+                expect(seen[1]).to.deep.equal({ value: 'A2 NOOP', final: true });
+                done();
+            });
+        });
+    });
+
     it('should surface negative literal sizes to the command handler', function (done) {
         const parser = new IMAPStream();
         let seen = false;

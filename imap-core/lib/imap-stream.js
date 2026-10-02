@@ -247,7 +247,8 @@ class IMAPStream extends Writable {
         if (this._remainder) {
             line = this._remainder;
             this._remainder = '';
-            this.oncommand(Buffer.from(line, 'binary'));
+            // same shape as every other path, a raw Buffer has no tag
+            this.oncommand({ value: line, final: true }, () => false);
         }
     }
 }
