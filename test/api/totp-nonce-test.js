@@ -16,18 +16,24 @@ const authRoutes = require('../../lib/api/auth');
 const webauthnRoutes = require('../../lib/api/2fa/webauthn');
 const UserHandler = require('../../lib/user-handler');
 
-function getAuthenticateRoute(userHandler) {
+function getAuthenticateRoute(userHandler, mcpTokenHandler) {
+    return getAuthRoute(userHandler, mcpTokenHandler, '/authenticate', 'authenticate');
+}
+
+function getAuthRoute(userHandler, mcpTokenHandler, path, name) {
     const routes = [];
     const server = {
         post(spec, handler) {
             routes.push({ spec, handler });
         },
-        del() {},
+        del(spec, handler) {
+            routes.push({ spec, handler });
+        },
         get() {}
     };
 
-    authRoutes({}, server, userHandler);
-    return routes.find(route => route.spec.path === '/authenticate' && route.spec.name === 'authenticate');
+    authRoutes({}, server, userHandler, mcpTokenHandler);
+    return routes.find(route => route.spec.path === path && route.spec.name === name);
 }
 
 function getWebAuthnRoute(userHandler, path, name) {
@@ -141,10 +147,118 @@ describe('Authenticate Strict 2FA Handling', function () {
                 user.toString(),
                 {
                     methods: ['totp'],
-                    tokenRequested: true
+                    tokenRequested: true,
+                    tokenScope: 'master'
                 }
             ]
         ]);
+    });
+
+    it('should return a dedicated MCP token for the mcp scope', async () => {
+        config.strict2fa = true;
+
+        const user = new ObjectId();
+        const mcpToken = `wdmcp_1${'a'.repeat(64)}deadbeef`;
+        const calls = [];
+
+        const route = getAuthenticateRoute(
+            {
+                asyncAuthenticate: async (username, password, scope) => [
+                    {
+                        user,
+                        username,
+                        address: 'mcpuser@example.com',
+                        scope,
+                        require2fa: false,
+                        require2faEnabled: false,
+                        requirePasswordChange: false
+                    },
+                    user
+                ],
+                generateAuthToken: async () => {
+                    throw new Error('generateAuthToken should not be called for the mcp scope');
+                }
+            },
+            {
+                createSession: async authUser => {
+                    calls.push(authUser.toString());
+                    return mcpToken;
+                }
+            }
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: '/authenticate',
+                route: { spec: route.spec },
+                params: {
+                    username: 'mcpuser',
+                    password: 'mcpsecret',
+                    scope: 'mcp',
+                    token: true,
+                    sess: 'session-id',
+                    ip: '192.0.2.1'
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body).to.include({ success: true, scope: 'mcp', token: mcpToken });
+        expect(calls).to.deep.equal([user.toString()]);
+    });
+
+    it('should bind an MCP token request to the pending 2FA nonce', async () => {
+        config.strict2fa = true;
+
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        let pendingData;
+        const route = getAuthenticateRoute({
+            asyncAuthenticate: async () => [
+                {
+                    user,
+                    username: 'mcptotpuser',
+                    address: 'mcptotpuser@example.com',
+                    scope: 'mcp',
+                    require2fa: ['totp'],
+                    require2faEnabled: true,
+                    requirePasswordChange: false
+                },
+                user
+            ],
+            generatePending2faNonce: async (authUser, data) => {
+                pendingData = data;
+                return twoFactorNonce;
+            }
+        });
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: '/authenticate',
+                route: { spec: route.spec },
+                params: {
+                    username: 'mcptotpuser',
+                    password: 'mcpsecret',
+                    scope: 'mcp',
+                    token: true
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.not.exist;
+        expect(res.body.totpNonce).to.equal(twoFactorNonce);
+        expect(pendingData).to.deep.equal({ methods: ['totp'], tokenRequested: true, tokenScope: 'mcp' });
     });
 
     it('should return a token and standalone TOTP nonce when strict2fa is disabled', async () => {
@@ -206,10 +320,319 @@ describe('Authenticate Strict 2FA Handling', function () {
                 user.toString(),
                 {
                     methods: ['totp'],
-                    tokenRequested: false
+                    tokenRequested: false,
+                    masterTokenHash: crypto.createHash('sha256').update(accessToken).digest('hex')
                 }
             ]
         ]);
+    });
+});
+
+describe('Master token MCP exchange', function () {
+    const user = new ObjectId();
+    const mcpToken = `wdmcp_1${'a'.repeat(64)}deadbeef`;
+
+    it('mints an independent MCP session after MFA assurance', async () => {
+        let mintedFor;
+        let mintedData;
+        const sess = crypto.randomBytes(20).toString('hex');
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async (authUser, data) => {
+                    mintedFor = authUser;
+                    mintedData = data;
+                    return mcpToken;
+                }
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', sess, ip: '192.0.2.1' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: {
+                    user: user.toString(),
+                    authVersion: 7,
+                    assuranceRecorded: true,
+                    mfaRequired: true,
+                    mfaVerified: true,
+                    passwordChangeRequired: false
+                },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(mintedFor).to.equal(user.toString());
+        expect(mintedData).to.deep.equal({ sess, ip: '192.0.2.1' });
+        expect(res.body).to.deep.equal({
+            success: true,
+            scope: 'mcp',
+            id: crypto.createHash('sha256').update(mcpToken).digest('hex'),
+            token: mcpToken
+        });
+    });
+
+    it('declares sess and ip on the request body, not the path, of the mint route', async () => {
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async () => mcpToken
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('sess');
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('ip');
+        expect(route.spec.validationObjs.pathParams).to.have.property('scope');
+        expect(route.spec.validationObjs.requestBody).to.have.property('sess');
+        expect(route.spec.validationObjs.requestBody).to.have.property('ip');
+    });
+
+    it('accepts sess and ip from the request body when minting', async () => {
+        let mintedFor;
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async authUser => {
+                    mintedFor = authUser;
+                    return mcpToken;
+                }
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', sess: 'sess-123', ip: '192.0.2.1' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: {
+                    user: user.toString(),
+                    authVersion: 7,
+                    assuranceRecorded: true,
+                    mfaRequired: true,
+                    mfaVerified: true,
+                    passwordChangeRequired: false
+                },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(mintedFor).to.equal(user.toString());
+        expect(res.body).to.deep.equal({
+            success: true,
+            scope: 'mcp',
+            id: crypto.createHash('sha256').update(mcpToken).digest('hex'),
+            token: mcpToken
+        });
+    });
+
+    it('rejects an invalid sess or ip from the request body when minting', async () => {
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async () => {
+                    throw new Error('must not mint');
+                }
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', sess: 'x'.repeat(256), ip: 'not-an-ip' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: {
+                    user: user.toString(),
+                    authVersion: 7,
+                    assuranceRecorded: true,
+                    mfaRequired: true,
+                    mfaVerified: true,
+                    passwordChangeRequired: false
+                },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(400);
+        expect(res.body.code).to.equal('InputValidationError');
+    });
+
+    it('refuses a master session whose required MFA is not verified', async () => {
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async () => {
+                    throw new Error('must not mint');
+                }
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: {
+                    user: user.toString(),
+                    authVersion: 7,
+                    assuranceRecorded: true,
+                    mfaRequired: true,
+                    mfaVerified: false,
+                    passwordChangeRequired: false
+                },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(403);
+        expect(res.body.code).to.equal('MfaRequired');
+    });
+
+    it('lets any master session for the user revoke the MCP session by identifier', async () => {
+        const tokenId = crypto.createHash('sha256').update(mcpToken).digest('hex');
+        let revoked;
+        const route = getAuthRoute(
+            {},
+            {
+                revokeSession: async (authUser, id) => {
+                    revoked = [authUser, id];
+                    return true;
+                }
+            },
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', token: tokenId },
+                role: 'user',
+                user: user.toString(),
+                accessToken: { user: user.toString() },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(revoked).to.deep.equal([user.toString(), tokenId]);
+    });
+
+    it('declares sess and ip on the request body, not the path, of the revoke route', async () => {
+        const route = getAuthRoute(
+            {},
+            {
+                revokeSession: async () => true
+            },
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
+        );
+
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('sess');
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('ip');
+        expect(route.spec.validationObjs.pathParams).to.have.property('scope');
+        expect(route.spec.validationObjs.pathParams).to.have.property('token');
+        expect(route.spec.validationObjs.requestBody).to.have.property('sess');
+        expect(route.spec.validationObjs.requestBody).to.have.property('ip');
+    });
+
+    it('accepts sess and ip from the request body when revoking', async () => {
+        const tokenId = crypto.createHash('sha256').update(mcpToken).digest('hex');
+        let revoked;
+        const route = getAuthRoute(
+            {},
+            {
+                revokeSession: async (authUser, id) => {
+                    revoked = [authUser, id];
+                    return true;
+                }
+            },
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', token: tokenId, sess: 'sess-123', ip: '192.0.2.1' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: { user: user.toString() },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(revoked).to.deep.equal([user.toString(), tokenId]);
     });
 });
 
