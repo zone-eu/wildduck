@@ -180,14 +180,24 @@ module.exports = (response, isLogging) => {
                     }
                     break;
                 }
-                case 'STRING':
-                    if (isLogging && node.value.length > 20) {
+                case 'STRING': {
+                    if (isLogging && node.value && node.value.length > 20) {
                         resp.push(Buffer.from('"(* ' + node.value.length + 'B string *)"'));
-                    } else {
-                        // JSON.stringify conveniently adds enclosing quotes and escapes any "\ occurrences
-                        resp.push(Buffer.from(JSON.stringify((node.value || '').toString('binary')), 'binary'));
+                        break;
                     }
+
+                    // RFC 3501 9 only allows DQUOTE and backslash to be escaped inside a quoted
+                    // string, so a value that holds CR or LF has to go out as a literal instead
+                    let value = (node.value || '').toString('binary');
+                    if (imapFormalSyntax.needsLiteral(value)) {
+                        resp.push(Buffer.from('{' + Buffer.byteLength(value, 'binary') + '}\r\n', 'binary'));
+                        resp.push(Buffer.from(value, 'binary'));
+                        break;
+                    }
+
+                    resp.push(Buffer.from(imapFormalSyntax.quote(value), 'binary'));
                     break;
+                }
 
                 case 'TEXT':
                 case 'SEQUENCE':
@@ -207,7 +217,7 @@ module.exports = (response, isLogging) => {
                     val = (node.value || '').toString();
 
                     if (imapFormalSyntax.verify(val.charAt(0) === '\\' ? val.substr(1) : val, imapFormalSyntax['ATOM-CHAR']()) >= 0) {
-                        val = JSON.stringify(val);
+                        val = imapFormalSyntax.quote(val);
                     }
 
                     resp.push(Buffer.from(val));

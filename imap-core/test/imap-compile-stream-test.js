@@ -669,3 +669,25 @@ function resolveStream(stream, callback) {
     stream.on('error', err => callback(err));
     stream.on('end', () => callback(null, Buffer.concat(chunks, chunklen)));
 }
+
+describe('IMAP Stream Quoting', function () {
+    const compile = response =>
+        new Promise((resolve, reject) => {
+            let chunks = [];
+            let output = imapHandler.compileStream(response);
+            output.on('data', chunk => chunks.push(chunk));
+            output.on('end', () => resolve(Buffer.concat(chunks).toString('binary')));
+            output.on('error', reject);
+        });
+
+    it('should not use JSON escapes inside a quoted string', async () => {
+        // RFC 3501 9 only allows " and \ to be escaped inside a quoted string
+        expect(await compile({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'a\tb' }] })).to.equal('* CMD "a\tb"');
+
+        expect(await compile({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'q"u\\x' }] })).to.equal('* CMD "q\\"u\\\\x"');
+    });
+
+    it('should send a value with CR or LF as a literal', async () => {
+        expect(await compile({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'c\nd' }] })).to.equal('* CMD {3}\r\nc\nd');
+    });
+});
