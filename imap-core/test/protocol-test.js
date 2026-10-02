@@ -330,6 +330,28 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should keep the mailbox attributes with RETURN (SPECIAL-USE)', function (done) {
+            // RFC 5258 3: a return option controls what extra information is returned, it does not
+            // suppress the mailbox attributes. RFC 3501 7.2.2 relies on \Noselect being present
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Parent/Child', 'T3 LIST "" "*" RETURN (SPECIAL-USE)', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n* LIST (\\Noselect \\HasChildren) "/" "Parent"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Parent/Child"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren \\Sent) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should list all mailboxes using XLIST', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 XLIST "" "*"', 'T3 LOGOUT'];
 
