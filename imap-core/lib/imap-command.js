@@ -309,7 +309,8 @@ class IMAPCommand {
             }
 
             try {
-                this.parsed = imapHandler.parser(this.payload, { literals: this.literals });
+                // RFC 6855 3: reject octet sequences with the high bit set that are not valid UTF-8
+                this.parsed = imapHandler.parser(this.payload, { literals: this.literals, validateUtf8: true });
             } catch (E) {
                 if (this.connection && typeof this.connection.loggelf === 'function') {
                     // Log IMAP parser failures where the raw command can not be tokenized into a valid request.
