@@ -42,7 +42,8 @@ module.exports = function (grunt) {
         'test/metrics-config-test.js',
         'test/prometheus-test.js',
         'test/roles-test.js',
-        'test/tools-test.js'
+        'test/tools-test.js',
+        'test/user-handler-auth-test.js'
     ];
 
     // Project configuration.

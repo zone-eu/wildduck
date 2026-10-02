@@ -320,6 +320,31 @@ describe('IMAPCommand', function () {
         });
     });
 
+    it('should pass an authentication backend failure through with its response code', function (done) {
+        const { connection, writes } = createConnection({
+            state: 'Not Authenticated',
+            serverOptions: { ignoreSTARTTLS: true }
+        });
+
+        // RFC 5530: a backend outage is UNAVAILABLE, not AUTHENTICATIONFAILED
+        connection._server.onAuth = (login, session, cb) => {
+            let err = new Error('Temporary authentication failure');
+            err.response = 'NO';
+            err.code = 'UNAVAILABLE';
+            cb(err);
+        };
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 LOGIN testuser secret' }, err => {
+            expect(err).to.not.exist;
+            expect(writes).to.have.length(1);
+            expect(writes[0].tag).to.equal('A1');
+            expect(writes[0].command).to.equal('NO');
+            expect(writes[0].attributes[0].section[0].value).to.equal('UNAVAILABLE');
+            done();
+        });
+    });
+
     it('should record the protocol error that disconnects the client', function (done) {
         const { connection, responses } = createConnection();
         const records = [];
