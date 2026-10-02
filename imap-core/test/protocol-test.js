@@ -1103,6 +1103,27 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should accept a literal after a zero length literal', function (done) {
+            // RFC 3501 4.3: {0} is a legal literal and must not break the next command that uses one
+            let cmds = ['T1 ID ("name" {0}\r\n)', 'T2 ID ("name" {4}\r\ntest)', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 OK/m.test(resp)).to.be.true;
+                    // without the fix the stale literal state answers T2 with BAD E24
+                    expect(/BAD/.test(resp)).to.be.false;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 
     describe('STORE', function () {

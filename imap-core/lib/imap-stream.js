@@ -174,6 +174,9 @@ class IMAPStream extends Writable {
             if (!isNaN(match[1])) {
                 this._literal = new PassThrough();
 
+                // scope the flag to this literal; {0} never reaches the consuming branch to clear it
+                this._literalReady = false;
+
                 this.oncommand(
                     {
                         value: line,
