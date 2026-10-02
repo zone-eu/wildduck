@@ -215,6 +215,12 @@ module.exports.searchMapping = {
     }
 };
 
+// RFC 3501 9: seq-number = nz-number / "*", so zero is not a valid sequence number or UID.
+// Leading zeros are still accepted, they name the same non-zero message
+const SEQ_NUMBER = '(?:0*[1-9]\\d*|\\*)';
+const SEQ_ITEM = `${SEQ_NUMBER}(?::${SEQ_NUMBER})?`;
+const SEQ_RANGE = new RegExp(`^${SEQ_ITEM}(?:,${SEQ_ITEM})*$`);
+
 /**
  * Checks if a sequence range string is valid or not
  *
@@ -222,7 +228,7 @@ module.exports.searchMapping = {
  * @returns {Boolean} True if the string looks like a sequence range
  */
 module.exports.validateSequence = function (range) {
-    return !!(range.length && /^(\d+|\*)(:\d+|:\*)?(,(\d+|\*)(:\d+|:\*)?)*$/.test(range));
+    return !!(range.length && SEQ_RANGE.test(range));
 };
 
 module.exports.normalizeMailbox = function (mailbox, utf7Encoded) {

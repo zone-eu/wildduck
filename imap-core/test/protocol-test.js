@@ -2601,6 +2601,42 @@ describe('IMAP Protocol integration tests', function () {
         });
     });
 
+    describe('Sequence sets', function () {
+        it('should refuse a zero sequence number', function (done) {
+            // RFC 3501 9: seq-number = nz-number / "*", and mapping 0 to the first message
+            // silently operated on a message the client did not ask for
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 FETCH 0 FLAGS',
+                'T4 FETCH 1:0 FLAGS',
+                'T5 UID FETCH 0 FLAGS',
+                'T6 STORE 0 +FLAGS (\\Seen)',
+                'T7 FETCH 1 FLAGS',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 BAD Invalid sequence set for FETCH$/m.test(resp)).to.be.true;
+                    expect(/^T4 BAD Invalid sequence set for FETCH$/m.test(resp)).to.be.true;
+                    expect(/^T5 BAD Invalid sequence set for UID FETCH$/m.test(resp)).to.be.true;
+                    expect(/^T6 BAD Invalid sequence set for STORE$/m.test(resp)).to.be.true;
+                    // a valid sequence set still works
+                    expect(/^T7 OK/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
     describe('SEARCH command', function () {
         it('should succeed', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 SEARCH ALL', 'T4 UID SEARCH ALL', 'T7 LOGOUT'];
