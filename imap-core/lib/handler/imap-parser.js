@@ -151,6 +151,26 @@ class TokenParser {
             }
         };
 
+        // a sequence set must not end with a separator, and a bare "*" is only allowed as a range end
+        const checkSequenceComplete = (chr, pos) => {
+            let value = this.currentNode.value;
+            let what = chr === ' ' ? 'whitespace' : JSON.stringify(chr);
+
+            if (!RE_SINGLE_DIGIT.test(value.at(-1)) && value.at(-1) !== '*') {
+                let error = new Error(`Unexpected ${what} at position ${pos} [E27]`);
+                error.code = 'ParserError27';
+                error.parserContext = { input: this.str, pos, chr };
+                throw error;
+            }
+
+            if (value !== '*' && value.at(-1) === '*' && value.at(-2) !== ':') {
+                let error = new Error(`Unexpected ${what} at position ${pos} [E28]`);
+                error.code = 'ParserError28';
+                error.parserContext = { input: this.str, pos, chr };
+                throw error;
+            }
+        };
+
         for (i = 0, len = this.str.length; i < len; i++) {
             chr = this.str.charAt(i);
 
@@ -565,26 +585,24 @@ class TokenParser {
                 case STATE_SEQUENCE:
                     // space finishes the sequence set
                     if (chr === ' ') {
-                        if (!RE_SINGLE_DIGIT.test(this.currentNode.value.at(-1)) && this.currentNode.value.at(-1) !== '*') {
-                            let error = new Error(`Unexpected whitespace at position ${this.pos + i} [E27]`);
-                            error.code = 'ParserError27';
-                            error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                            throw error;
-                        }
-
-                        if (this.currentNode.value !== '*' && this.currentNode.value.at(-1) === '*' && this.currentNode.value.at(-2) !== ':') {
-                            let error = new Error(`Unexpected whitespace at position ${this.pos + i} [E28]`);
-                            error.code = 'ParserError28';
-                            error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                            throw error;
-                        }
+                        checkSequenceComplete(chr, this.pos + i);
 
                         this.currentNode.isClosed = true;
                         this.currentNode.endPos = this.pos + i - 1;
                         this.currentNode = this.currentNode.parentNode;
                         this.state = STATE_NORMAL;
                         break;
-                    } else if (this.currentNode.parentNode && chr === ']' && this.currentNode.parentNode.type === 'SECTION') {
+                    } else if (
+                        this.currentNode.parentNode &&
+                        // RFC 3501 9: a sequence-set is a valid last element of a parenthesised search-key
+                        ((chr === ')' && this.currentNode.parentNode.type === 'LIST') || (chr === ']' && this.currentNode.parentNode.type === 'SECTION'))
+                    ) {
+                        if (chr === ')') {
+                            // the ] terminator stays unvalidated on purpose, it has always accepted
+                            // an incomplete set inside a section and clients may rely on that
+                            checkSequenceComplete(chr, this.pos + i);
+                        }
+
                         this.currentNode.endPos = this.pos + i - 1;
                         this.currentNode = this.currentNode.parentNode;
 
