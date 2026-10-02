@@ -243,6 +243,27 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse an unsupported mechanism with NO', function (done) {
+            // RFC 3501 6.2.2: "If the requested authentication mechanism is not supported, the
+            // server SHOULD reject the AUTHENTICATE command by sending a tagged NO response."
+            let cmds = ['T1 AUTHENTICATE LOGIN', 'T2 FOOBAR', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 NO \[CANNOT\] Unsupported authentication mechanism$/m.test(resp)).to.be.true;
+                    // an unknown command is still a syntax error
+                    expect(/^T2 BAD Unknown command: FOOBAR$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should not trim the password', function (done) {
             // RFC 4616 2: "The authcid and passwd productions are form-free", SAFE includes SP
             let cmds = ['T1 AUTHENTICATE PLAIN ' + Buffer.from('\x00testuser\x00pass ', 'utf-8').toString('base64'), 'T2 LOGOUT'];

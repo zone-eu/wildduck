@@ -117,9 +117,13 @@ class IMAPCommand {
                 }
 
                 if (!commands.has(this.command)) {
-                    let err = new Error('Unknown command');
+                    // RFC 3501 6.2.2: "If the requested authentication mechanism is not supported,
+                    // the server SHOULD reject the AUTHENTICATE command by sending a tagged NO"
+                    let unsupportedMechanism = /^AUTHENTICATE \S/.test(this.command);
+
+                    let err = new Error(unsupportedMechanism ? 'Unsupported authentication mechanism' : 'Unknown command');
                     err.responseCode = 400;
-                    err.code = 'UnknownCommand';
+                    err.code = unsupportedMechanism ? 'UnsupportedMechanism' : 'UnknownCommand';
                     if (this.connection && typeof this.connection.loggelf === 'function') {
                         // Log tagged IMAP input that names a command this server does not implement.
                         let logEntry = createCommandFailureLogEntry(this.connection, err, {
@@ -128,7 +132,11 @@ class IMAPCommand {
                         });
                         this.connection.loggelf(logEntry);
                     }
-                    this.connection.send(this.tag + ' BAD Unknown command: ' + this.command);
+                    this.connection.send(
+                        unsupportedMechanism
+                            ? this.tag + ' NO [CANNOT] Unsupported authentication mechanism'
+                            : this.tag + ' BAD Unknown command: ' + this.command
+                    );
                     return callback(err);
                 }
             }
