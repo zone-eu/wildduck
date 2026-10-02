@@ -846,6 +846,47 @@ describe('IMAP Command Parser', function () {
             ]);
         });
 
+        it('should read a wildcard that is not a sequence set as an atom', function () {
+            // RFC 3501 9: list-char = ATOM-CHAR / list-wildcards / resp-specials, so an unquoted
+            // list-mailbox may hold "*" and "%" anywhere. The command validates the value
+            expect(imapHandler.parser('TAG1 LIST "" INBOX/*').attributes).to.deep.equal([
+                {
+                    type: 'STRING',
+                    value: ''
+                },
+                {
+                    type: 'ATOM',
+                    value: 'INBOX/*'
+                }
+            ]);
+
+            expect(imapHandler.parser('TAG1 LIST "" INBOX/%').attributes[1]).to.deep.equal({
+                type: 'ATOM',
+                value: 'INBOX/%'
+            });
+
+            expect(imapHandler.parser('TAG1 LIST "" *INBOX').attributes[1]).to.deep.equal({
+                type: 'ATOM',
+                value: '*INBOX'
+            });
+
+            expect(imapHandler.parser('TAG1 CMD *4,5 TEST').attributes[0]).to.deep.equal({
+                type: 'ATOM',
+                value: '*4,5'
+            });
+
+            // a bare "*" is still a sequence set
+            expect(imapHandler.parser('TAG1 CMD * TEST').attributes[0]).to.deep.equal({
+                type: 'SEQUENCE',
+                value: '*'
+            });
+
+            expect(imapHandler.parser('TAG1 CMD *:4 TEST').attributes[0]).to.deep.equal({
+                type: 'SEQUENCE',
+                value: '*:4'
+            });
+        });
+
         it('should close a sequence set with a list terminator', function () {
             // RFC 3501 9: sequence-set is a valid last element of a parenthesised search-key
             expect(imapHandler.parser('TAG1 SEARCH OR (UID 1:5) FLAGGED').attributes).to.deep.equal([
@@ -925,10 +966,6 @@ describe('IMAP Command Parser', function () {
 
             expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5: TEST');
-            }).to.throw(Error);
-
-            expect(function () {
-                imapHandler.parser('TAG1 CMD *4,5 TEST');
             }).to.throw(Error);
 
             expect(function () {

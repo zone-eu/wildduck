@@ -444,6 +444,28 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should accept an unquoted pattern with a wildcard', function (done) {
+            // RFC 3501 9: list-mailbox = 1*list-char / string, and list-char includes "%" and "*".
+            // Python imaplib does not quote its arguments
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE INBOX/Sub', 'T3 LIST "" INBOX/*', 'T4 LSUB "" INBOX/%', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "INBOX/Sub"\r\n') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX/Sub"\r\n') >= 0).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should keep the mailbox attributes with RETURN (SPECIAL-USE)', function (done) {
             // RFC 5258 3: a return option controls what extra information is returned, it does not
             // suppress the mailbox attributes. RFC 3501 7.2.2 relies on \Noselect being present

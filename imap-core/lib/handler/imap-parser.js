@@ -6,6 +6,8 @@ const imapFormalSyntax = require('./imap-formal-syntax');
 
 const STATE_ATOM = 0x001;
 const STATE_LITERAL = 0x002;
+// characters that may follow a lone "*" inside a sequence set, anything else makes it an atom
+const SEQUENCE_FOLLOWERS = [':', ',', ' ', ')', ']', '\r', '\n'];
 const STATE_NORMAL = 0x003;
 const STATE_PARTIAL = 0x004;
 const STATE_SEQUENCE = 0x005;
@@ -271,13 +273,19 @@ class TokenParser {
                             break;
 
                         // * starts a new sequence
-                        case '*':
+                        case '*': {
+                            // RFC 3501 9: list-mailbox may contain "*" anywhere, so a "*" only
+                            // starts a sequence set when nothing but a sequence can follow it
+                            let nextChr = this.str.charAt(i + 1);
+                            let startsSequence = nextChr === '' || SEQUENCE_FOLLOWERS.includes(nextChr);
+
                             this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                            this.currentNode.type = 'SEQUENCE';
+                            this.currentNode.type = startsSequence ? 'SEQUENCE' : 'ATOM';
                             this.currentNode.value = chr;
-                            this.currentNode.isClosed = false;
-                            this.state = STATE_SEQUENCE;
+                            this.currentNode.isClosed = !startsSequence;
+                            this.state = startsSequence ? STATE_SEQUENCE : STATE_ATOM;
                             break;
+                        }
 
                         // normally a space should never occur
                         case ' ':
@@ -399,7 +407,10 @@ class TokenParser {
                         imapFormalSyntax['ATOM-CHAR']().indexOf(chr) < 0 &&
                         chr.charCodeAt(0) < 0x80 && // allow 8bit (presumably unicode) bytes
                         chr !== ']' &&
-                        !(chr === '*' && this.currentNode.value === '\\') &&
+                        // RFC 3501 9: list-char = ATOM-CHAR / list-wildcards / resp-specials, so an
+                        // unquoted list-mailbox such as INBOX/* is valid
+                        chr !== '%' &&
+                        chr !== '*' &&
                         (!this.parent || !this.parent.command || !['NO', 'BAD', 'OK'].includes(this.parent.command))
                     ) {
                         let error = new Error(`Unexpected char at position ${this.pos + i} [E16: ${JSON.stringify(chr)}]`);
