@@ -795,17 +795,23 @@ describe('IMAP Command Parser', function () {
             ]);
         });
 
+        it('should accept a leading zero', function () {
+            // RFC 3501 9: number = 1*DIGIT, leading zeros and all
+            expect(imapHandler.parser('TAG1 CMD BODY[]<01>').attributes[0].partial).to.deep.equal([1]);
+            expect(imapHandler.parser('TAG1 CMD BODY[]<0.01>').attributes[0].partial).to.deep.equal([0, 1]);
+        });
+
         it('should fail', function () {
             expect(function () {
-                imapHandler.parser('TAG1 CMD BODY[]<01>');
-            }).to.throw(Error);
-
-            expect(function () {
-                imapHandler.parser('TAG1 CMD BODY[]<0.01>');
-            }).to.throw(Error);
-
-            expect(function () {
                 imapHandler.parser('TAG1 CMD BODY[]<0.1.>');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 CMD BODY[]<0.1.2>');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 CMD BODY[]<a>');
             }).to.throw(Error);
         });
     });
@@ -979,6 +985,51 @@ describe('IMAP Command Parser', function () {
             expect(function () {
                 imapHandler.parser('TAG1 CMD 5, TEST');
             }).to.throw(Error);
+        });
+    });
+
+    describe('Lax but valid syntax', function () {
+        it('should accept a resp-special as the first char of an astring', function () {
+            // RFC 3501 9: ASTRING-CHAR = ATOM-CHAR / resp-specials, and "]" is a resp-special
+            expect(imapHandler.parser('TAG1 SELECT ]ab').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: ']ab'
+                }
+            ]);
+        });
+
+        it('should accept a bare tilde as an atom', function () {
+            // RFC 3501 9: "~" is an ATOM-CHAR, it only marks a literal8 when a "{" follows
+            expect(imapHandler.parser('TAG1 CMD ~ A').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: '~'
+                },
+                {
+                    type: 'ATOM',
+                    value: 'A'
+                }
+            ]);
+
+            expect(imapHandler.parser('TAG1 CMD (~)').attributes).to.deep.equal([[{ type: 'ATOM', value: '~' }]]);
+        });
+
+        it('should accept a leading zero in a literal octet count', function () {
+            expect(imapHandler.parser('TAG1 CMD {04}\r\nabcd').attributes).to.deep.equal([
+                {
+                    type: 'LITERAL',
+                    value: 'abcd'
+                }
+            ]);
+
+            // and a zero length literal still works
+            expect(imapHandler.parser('TAG1 CMD {0}\r\n').attributes).to.deep.equal([
+                {
+                    type: 'LITERAL',
+                    value: ''
+                }
+            ]);
         });
     });
 
