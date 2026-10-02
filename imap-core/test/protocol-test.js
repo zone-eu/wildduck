@@ -776,6 +776,36 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should append a UTF8 wrapped message', function (done) {
+            // RFC 6855 4: utf8-literal = "UTF8" SP "(" literal8 ")", RFC 4466: literal8 = "~{" number "}" CRLF *OCTET
+            let message = Buffer.from(
+                'From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: Tere \xc3\xb5\xc3\xa4\r\n\r\nWORLD!',
+                'binary'
+            );
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 ENABLE UTF8=ACCEPT',
+                'T3 APPEND INBOX UTF8 (~{' + message.length + '}\r\n' + message.toString('binary') + ')',
+                'T4 APPEND INBOX UTF8 ({' + message.length + '}\r\n' + message.toString('binary') + ')',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[APPENDUID /m.test(resp)).to.be.true;
+                    // the plain literal form of the same wrapper is accepted too
+                    expect(/^T4 OK \[APPENDUID /m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should reject appending an empty literal message', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 STATUS INBOX (MESSAGES)', 'T3 APPEND INBOX {0}', [''], 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
 
