@@ -54,7 +54,8 @@ module.exports = {
 
         let flags = [].concat(command.attributes[pos + 2] || []).map(flag => ((flag && flag.value) || '').toString());
 
-        let unchangedSince = 0;
+        // false means the modifier was not given at all, 0 is a valid value with its own meaning
+        let unchangedSince = false;
         let silent = false;
 
         // extensions are available as the optional argument at index 1
@@ -65,7 +66,8 @@ module.exports = {
                 return callback(new Error('Invalid modifier for STORE'));
             }
             unchangedSince = Number(extensions[1]);
-            if (unchangedSince && !this.selected.condstoreEnabled) {
+            // RFC 7162 3.1.3: the modifier itself enables CONDSTORE, whatever the value is
+            if (!this.selected.condstoreEnabled) {
                 this.condstoreEnabled = this.selected.condstoreEnabled = true;
             }
         }
@@ -129,7 +131,7 @@ module.exports = {
             _flags: flags.join(', '),
             _store_action: action,
             _silent: silent ? 'yes' : '',
-            _modseq: unchangedSince
+            _modseq: unchangedSince === false ? '' : unchangedSince
         };
 
         this._server.onStore(
@@ -170,7 +172,7 @@ module.exports = {
                 let message = success === true ? 'STORE completed' : false;
                 if (modified && modified.length) {
                     message = 'Conditional STORE failed';
-                } else if (message && unchangedSince) {
+                } else if (message && unchangedSince !== false) {
                     message = 'Conditional STORE completed';
                 }
 

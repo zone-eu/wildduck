@@ -1360,6 +1360,27 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should fail a conditional store with UNCHANGEDSINCE 0', function (done) {
+            // RFC 7162 3.1.3: "Use of UNCHANGEDSINCE with a modification sequence of 0 always fails
+            // if the metadata item exists. A system flag MUST always be considered existent"
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 (UNCHANGEDSINCE 0) +FLAGS (\\Flagged)', 'T4 FETCH 1 (FLAGS)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[MODIFIED 1\] Conditional STORE failed$/m.test(resp)).to.be.true;
+                    // the flag must not have been applied
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should return MODIFIED when conditional STORE also targets expunged messages', function (done) {
             let mailbox = 'condstore-race';
             let message = Buffer.from('From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: HELLO!\r\n\r\nWORLD!');
@@ -1484,7 +1505,31 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
-        it('should set some flags with modifier', function (done) {
+        it('should fail a conditional uid store with UNCHANGEDSINCE 0', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 UID STORE 101 (UNCHANGEDSINCE 0) +FLAGS (\\Flagged)',
+                'T4 UID FETCH 101 (FLAGS)',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[MODIFIED 101\] Conditional UID STORE failed$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(\) UID 101\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should set all flags with modifier', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID STORE 1:* (UNCHANGEDSINCE 10000) FLAGS (MyFlag1 MyFlag2)', 'T4 LOGOUT'];
 
             testClient(
