@@ -557,6 +557,44 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('CREATE', function () {
+        it('should create a mailbox declared with a trailing hierarchy delimiter', function (done) {
+            // RFC 3501 6.3.3: servers that do not require the declaration MUST ignore it,
+            // "In any case, the name created is without the trailing hierarchy delimiter."
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE "Foo/"', 'T3 SELECT Foo', 'T4 LIST "" "Foo*"', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK CREATE completed$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo"\r\n') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a mailbox name that is only a hierarchy delimiter', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE "/"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should create new mailbox', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE testfolder', 'T3 CREATE parent/child', 'T4 CREATE testfolder', 'T5 LIST "" "*"', 'T6 LOGOUT'];
 

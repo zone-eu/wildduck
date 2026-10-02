@@ -30,30 +30,26 @@ module.exports = {
             });
         }
 
-        if (!path) {
-            // nothing to check for if mailbox is not defined
-            return callback(null, {
-                response: 'NO',
-                code: 'CANNOT',
-                message: 'No folder name given'
-            });
-        }
-
-        // ignore commands that try to create hierarchy
-        if (/\/$/.test(path)) {
-            return callback(null, {
-                response: 'OK',
-                code: 'CANNOT',
-                message: 'Ignoring hierarchy declaration'
-            });
-        }
-
-        // ignore commands with adjacent spaces
+        // reject names with adjacent hierarchy separators
         if (/\/{2,}/.test(path)) {
             return callback(null, {
                 response: 'NO',
                 code: 'CANNOT',
                 message: 'Adjacent hierarchy separators are not supported'
+            });
+        }
+
+        // RFC 3501 6.3.3: a trailing hierarchy delimiter only declares that the client intends to
+        // create mailboxes below this name, "the name created is without the trailing hierarchy
+        // delimiter". Servers that do not require the declaration MUST ignore it
+        path = path.replace(/\/$/, '');
+
+        if (!path) {
+            // empty, or nothing left after stripping the trailing delimiter
+            return callback(null, {
+                response: 'NO',
+                code: 'CANNOT',
+                message: 'No folder name given'
             });
         }
 
