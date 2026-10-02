@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.50.0"
+        "version": "1.51.4"
     },
     "servers": [
         {
@@ -371,10 +371,11 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "metaData": {
                                         "type": "object",
@@ -747,10 +748,11 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "disabled": {
                                         "type": "boolean",
@@ -7104,19 +7106,48 @@
                 }
             }
         },
-        "/authenticate/mcp/{token}": {
+        "/authenticate/{scope}/{token}": {
             "delete": {
                 "tags": [
                     "Authentication"
                 ],
-                "summary": "Revoke an MCP authentication token",
-                "description": "Revokes an independent MCP login session owned by the authenticated master-token user.",
-                "operationId": "deleteMcpAuthenticationToken",
+                "summary": "Revoke a scoped authentication token",
+                "description": "Revokes an independent scoped login session owned by the authenticated master-token user.",
+                "operationId": "deleteScopedAuthenticationToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sess": {
+                                        "type": "string",
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": true
+                },
                 "parameters": [
+                    {
+                        "name": "scope",
+                        "in": "path",
+                        "description": "Authentication scope of the token to revoke",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     {
                         "name": "token",
                         "in": "path",
-                        "description": "MCP session identifier returned when the token was created",
+                        "description": "Token identifier returned when the token was created",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -9245,6 +9276,198 @@
                 }
             }
         },
+        "/users/{user}/mcp-tokens": {
+            "post": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "Create MCP Access Token",
+                "description": "Creates a read-only MCP personal access token. The plaintext token is returned only by this response.",
+                "operationId": "createMcpToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Human-readable token description"
+                                    },
+                                    "expires": {
+                                        "type": "string",
+                                        "description": "Optional fixed expiration time in the future",
+                                        "format": "date-time"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "description": "Access level to grant. Only the read level exists today.",
+                                        "enum": [
+                                            "mcp:read"
+                                        ],
+                                        "default": "mcp:read"
+                                    }
+                                },
+                                "required": [
+                                    "description"
+                                ]
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateMcpTokenResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "List MCP Access Tokens",
+                "description": "Lists MCP token metadata without token hashes or plaintext secrets.",
+                "operationId": "getMcpTokens",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GetMcpTokensResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mcp-tokens/{token}": {
+            "delete": {
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "summary": "Revoke MCP Access Token",
+                "description": "Immediately revokes an MCP access token by its record ID.",
+                "operationId": "deleteMcpToken",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "path",
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "description": "ID of the MCP access token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sess",
+                        "in": "query",
+                        "description": "Session identifier for the logs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "description": "IP address for the logs ",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api-methods": {
             "get": {
                 "operationId": "api-methods",
@@ -9893,7 +10116,8 @@
                             "enum": [
                                 "imap",
                                 "pop3",
-                                "smtp"
+                                "smtp",
+                                "mcp"
                             ]
                         },
                         "description": "Disabled scopes for this user"
@@ -13728,7 +13952,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "Credential for the requested scope. MCP credentials are returned only after any configured TOTP or WebAuthn challenge; master-scope API tokens retain the strict2fa compatibility behavior."
+                        "description": "Credential for the requested scope. MCP credentials are returned only after any configured TOTP or WebAuthn challenge. master-scope API tokens retain the strict2fa compatibility behavior."
                     },
                     "twoFactorNonce": {
                         "type": "string",
@@ -15228,6 +15452,136 @@
                     "success",
                     "version",
                     "message"
+                ]
+            },
+            "CreateMcpTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the MCP access token"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable token description"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Access level of the token. Only the read level exists today; treat this as an open set.",
+                        "enum": [
+                            "mcp:read"
+                        ]
+                    },
+                    "audience": {
+                        "type": "string",
+                        "description": "Fixed MCP token audience",
+                        "enum": [
+                            "mcp"
+                        ]
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Token creation time",
+                        "format": "date-time"
+                    },
+                    "expires": {
+                        "type": "string",
+                        "description": "Fixed expiration time, if configured",
+                        "format": "date-time"
+                    },
+                    "lastUse": {
+                        "type": "string",
+                        "description": "Most recent rate-limited token-use timestamp",
+                        "format": "date-time"
+                    },
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "Plaintext bearer token. This value is returned only once."
+                    }
+                },
+                "required": [
+                    "id",
+                    "description",
+                    "role",
+                    "audience",
+                    "created",
+                    "success",
+                    "token"
+                ]
+            },
+            "McpTokenMetadata": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID of the MCP access token"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable token description"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Access level of the token. Only the read level exists today; treat this as an open set.",
+                        "enum": [
+                            "mcp:read"
+                        ]
+                    },
+                    "audience": {
+                        "type": "string",
+                        "description": "Fixed MCP token audience",
+                        "enum": [
+                            "mcp"
+                        ]
+                    },
+                    "created": {
+                        "type": "string",
+                        "description": "Token creation time",
+                        "format": "date-time"
+                    },
+                    "expires": {
+                        "type": "string",
+                        "description": "Fixed expiration time, if configured",
+                        "format": "date-time"
+                    },
+                    "lastUse": {
+                        "type": "string",
+                        "description": "Most recent rate-limited token-use timestamp",
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "id",
+                    "description",
+                    "role",
+                    "audience",
+                    "created"
+                ]
+            },
+            "GetMcpTokensResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/McpTokenMetadata"
+                        },
+                        "description": "MCP token metadata"
+                    }
+                },
+                "required": [
+                    "success",
+                    "results"
                 ]
             }
         },

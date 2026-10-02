@@ -388,6 +388,127 @@ describe('Master token MCP exchange', function () {
         });
     });
 
+    it('declares sess and ip on the request body, not the path, of the mint route', async () => {
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async () => mcpToken
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('sess');
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('ip');
+        expect(route.spec.validationObjs.pathParams).to.have.property('scope');
+        expect(route.spec.validationObjs.requestBody).to.have.property('sess');
+        expect(route.spec.validationObjs.requestBody).to.have.property('ip');
+    });
+
+    it('accepts sess and ip from the request body when minting', async () => {
+        let mintedFor;
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async authUser => {
+                    mintedFor = authUser;
+                    return mcpToken;
+                }
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', sess: 'sess-123', ip: '192.0.2.1' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: {
+                    user: user.toString(),
+                    authVersion: 7,
+                    assuranceRecorded: true,
+                    mfaRequired: true,
+                    mfaVerified: true,
+                    passwordChangeRequired: false
+                },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(mintedFor).to.equal(user.toString());
+        expect(res.body).to.deep.equal({
+            success: true,
+            scope: 'mcp',
+            id: crypto.createHash('sha256').update(mcpToken).digest('hex'),
+            token: mcpToken
+        });
+    });
+
+    it('rejects an invalid sess or ip from the request body when minting', async () => {
+        const route = getAuthRoute(
+            {
+                getAuthTokenRequirements: async () => ({
+                    authVersion: 7,
+                    mfaRequired: true,
+                    disabled: false,
+                    suspended: false,
+                    disabledScopes: []
+                })
+            },
+            {
+                createSession: async () => {
+                    throw new Error('must not mint');
+                }
+            },
+            '/authenticate/:scope',
+            'createScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', sess: 'x'.repeat(256), ip: 'not-an-ip' },
+                role: 'user',
+                user: user.toString(),
+                accessToken: {
+                    user: user.toString(),
+                    authVersion: 7,
+                    assuranceRecorded: true,
+                    mfaRequired: true,
+                    mfaVerified: true,
+                    passwordChangeRequired: false
+                },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(400);
+        expect(res.body.code).to.equal('InputValidationError');
+    });
+
     it('refuses a master session whose required MFA is not verified', async () => {
         const route = getAuthRoute(
             {
@@ -443,15 +564,65 @@ describe('Master token MCP exchange', function () {
                     return true;
                 }
             },
-            '/authenticate/mcp/:token',
-            'deleteMcpAuthenticationToken'
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
         );
 
         const res = getResponse();
         await route.handler(
             {
                 route: { spec: route.spec },
-                params: { token: tokenId },
+                params: { scope: 'mcp', token: tokenId },
+                role: 'user',
+                user: user.toString(),
+                accessToken: { user: user.toString() },
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(revoked).to.deep.equal([user.toString(), tokenId]);
+    });
+
+    it('declares sess and ip on the request body, not the path, of the revoke route', async () => {
+        const route = getAuthRoute(
+            {},
+            {
+                revokeSession: async () => true
+            },
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
+        );
+
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('sess');
+        expect(route.spec.validationObjs.pathParams).to.not.have.property('ip');
+        expect(route.spec.validationObjs.pathParams).to.have.property('scope');
+        expect(route.spec.validationObjs.pathParams).to.have.property('token');
+        expect(route.spec.validationObjs.requestBody).to.have.property('sess');
+        expect(route.spec.validationObjs.requestBody).to.have.property('ip');
+    });
+
+    it('accepts sess and ip from the request body when revoking', async () => {
+        const tokenId = crypto.createHash('sha256').update(mcpToken).digest('hex');
+        let revoked;
+        const route = getAuthRoute(
+            {},
+            {
+                revokeSession: async (authUser, id) => {
+                    revoked = [authUser, id];
+                    return true;
+                }
+            },
+            '/authenticate/:scope/:token',
+            'deleteScopedAuthenticationToken'
+        );
+
+        const res = getResponse();
+        await route.handler(
+            {
+                route: { spec: route.spec },
+                params: { scope: 'mcp', token: tokenId, sess: 'sess-123', ip: '192.0.2.1' },
                 role: 'user',
                 user: user.toString(),
                 accessToken: { user: user.toString() },
