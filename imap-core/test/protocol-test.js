@@ -2814,6 +2814,37 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should handle NOT and OR around a text search key', function (done) {
+            // RFC 3501 6.4.4: NOT and OR apply to every search key, BODY and TEXT included.
+            // MongoDB only allows $text in the root of a query, so those uids are resolved apart
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH BODY hello',
+                'T4 SEARCH NOT BODY hello',
+                'T5 SEARCH OR BODY zzzz SUBJECT test6',
+                'T6 SEARCH OR BODY hello BODY zzzz',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 3 4 5 6$/m.test(resp)).to.be.true;
+                    // the complement, which used to come back empty
+                    expect(/^\* SEARCH 1 2$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 6$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 3 4 5 6$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should match NOT on a header key as the complement of the key', function (done) {
             // RFC 3501 6.4.4: "NOT <search-key>: Messages that do not match the specified search
             // key", and a string key matches when the string is a substring of the field. Message 3
