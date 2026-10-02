@@ -873,6 +873,35 @@ module.exports.sendCapabilityResponse = connection => {
     connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
 };
 
+// RFC 7162 3.1.2: * OK [HIGHESTMODSEQ n]
+module.exports.sendHighestModseq = (connection, modseq) => {
+    connection.send(
+        imapHandler.compiler({
+            tag: '*',
+            command: 'OK',
+            attributes: [
+                {
+                    type: 'section',
+                    section: [
+                        {
+                            type: 'atom',
+                            value: 'HIGHESTMODSEQ'
+                        },
+                        {
+                            type: 'atom',
+                            value: String(modseq)
+                        }
+                    ]
+                },
+                {
+                    type: 'text',
+                    value: 'Highest'
+                }
+            ]
+        })
+    );
+};
+
 // RFC 3501 6.3.8: an empty mailbox name is a request for the hierarchy delimiter and the root name
 module.exports.sendDelimiterResponse = (connection, commandName) => {
     connection.send(
