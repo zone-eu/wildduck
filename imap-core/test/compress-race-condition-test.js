@@ -151,26 +151,21 @@ function trackParserCommands(connection) {
     };
 }
 
-function activateCompression(connection) {
+function runCompress(connection, mechanism) {
     return new Promise((resolve, reject) => {
         const command = {
-            attributes: [{ value: 'DEFLATE' }]
+            attributes: [{ value: mechanism || 'DEFLATE' }]
         };
 
-        compress.handler.call(connection, command, (err, response) => {
-            if (err) {
-                return reject(err);
-            }
-
-            try {
-                expect(response.response).to.equal('OK');
-            } catch (expectErr) {
-                return reject(expectErr);
-            }
-
-            setImmediate(resolve);
-        });
+        compress.handler.call(connection, command, (err, response) => (err ? reject(err) : resolve(response)));
     });
+}
+
+async function activateCompression(connection) {
+    const response = await runCompress(connection);
+    expect(response.response).to.equal('OK');
+    // the pipes are only switched on the next tick
+    await new Promise(resolve => setImmediate(resolve));
 }
 
 function createCompressedClient(mockSocket) {
@@ -201,10 +196,7 @@ function createCompressedClient(mockSocket) {
 }
 
 function waitForOpen(waitPromise, connectionState) {
-    return Promise.race([
-        waitPromise.then(() => 'open'),
-        connectionState.closePromise.then(() => 'closed')
-    ]).then(result => {
+    return Promise.race([waitPromise.then(() => 'open'), connectionState.closePromise.then(() => 'closed')]).then(result => {
         expect(result).to.equal('open');
         expect(connectionState.isClosed()).to.be.false;
     });
@@ -404,6 +396,38 @@ describe('COMPRESS command race condition tests', function () {
         expect(connection._deflate).to.exist;
         expect(connection._inflate).to.exist;
         expect(connection._inflateLimit).to.exist;
+    });
+
+    it('should refuse a second COMPRESS DEFLATE without touching the active deflater', async function () {
+        const { connection } = createCompressedConnection();
+
+        await activateCompression(connection);
+
+        const deflate = connection._deflate;
+        const inflate = connection._inflate;
+
+        const response = await runCompress(connection);
+
+        expect(response.response).to.equal('BAD');
+        expect(response.code).to.equal('COMPRESSIONACTIVE');
+        expect(connection._deflate).to.equal(deflate);
+        expect(connection._inflate).to.equal(inflate);
+    });
+
+    it('should refuse a COMPRESS DEFLATE pipelined before the pipes are switched', async function () {
+        const { connection } = createCompressedConnection();
+
+        // first COMPRESS is accepted but this.compression only flips on the next tick
+        const first = await runCompress(connection);
+        expect(first.response).to.equal('OK');
+        expect(connection.compression).to.be.false;
+
+        const second = await runCompress(connection);
+        expect(second.response).to.equal('BAD');
+        expect(second.code).to.equal('COMPRESSIONACTIVE');
+
+        await new Promise(resolve => setImmediate(resolve));
+        expect(connection.compression).to.be.true;
     });
 
     it('should close compressed connection when inflated input exceeds configured limit', async function () {
