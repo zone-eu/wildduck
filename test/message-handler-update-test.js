@@ -39,7 +39,7 @@ function loadModulesWithPublishStub(published) {
 }
 
 describe('MessageHandler message updates', function () {
-    function buildHandler(MessageHandler) {
+    function buildHandler(MessageHandler, checkUpdate, messageOverrides) {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const message = new ObjectId();
@@ -47,6 +47,8 @@ describe('MessageHandler message updates', function () {
 
         let nextCalls = 0;
         let notified = [];
+        let fires = 0;
+        let quotaUpdates = [];
         let calls = {
             mailboxFinds: 0,
             mailboxUpdates: 0,
@@ -55,6 +57,18 @@ describe('MessageHandler message updates', function () {
 
         let handler = Object.create(MessageHandler.prototype);
         handler.redis = false;
+        handler.loggelf = () => false;
+        handler.users = {
+            collection(name) {
+                expect(name).to.equal('users');
+                return {
+                    findOneAndUpdate(query, update) {
+                        quotaUpdates.push(update.$inc.storageUsed);
+                        return Promise.resolve({ value: { storageUsed: update.$inc.storageUsed } });
+                    }
+                };
+            }
+        };
         handler.settingsHandler = {
             get: () => Promise.resolve(100)
         };
@@ -63,7 +77,9 @@ describe('MessageHandler message updates', function () {
                 notified.push(...entries);
                 return callback();
             },
-            fire() {}
+            fire() {
+                fires++;
+            }
         };
         handler.database = {
             collection(name) {
@@ -113,7 +129,13 @@ describe('MessageHandler message updates', function () {
                                                 }
                                                 return callback(null, {
                                                     _id: message,
-                                                    uid: 42
+                                                    uid: 42,
+                                                    size: 1000,
+                                                    envelope: ['Mon, 24 Aug 2026 09:00:00 +0000', 'subject'],
+                                                    mimeTree: {
+                                                        header: ['From: sender@example.com', 'Date: Mon, 24 Aug 2026 09:00:00 +0000 (GMT)']
+                                                    },
+                                                    ...messageOverrides
                                                 });
                                             },
                                             close(callback) {
@@ -128,9 +150,13 @@ describe('MessageHandler message updates', function () {
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
                                 expect(query.uid).to.equal(42);
-                                expect(update.$set.flagged).to.be.true;
-                                expect(update.$set.modseq).to.equal(7);
-                                expect(update.$addToSet.flags.$each).to.deep.equal(['\\Flagged']);
+                                if (checkUpdate) {
+                                    checkUpdate(update);
+                                } else {
+                                    expect(update.$set.flagged).to.be.true;
+                                    expect(update.$set.modseq).to.equal(7);
+                                    expect(update.$addToSet.flags.$each).to.deep.equal(['\\Flagged']);
+                                }
 
                                 return callback(null, {
                                     value: {
@@ -149,7 +175,7 @@ describe('MessageHandler message updates', function () {
             }
         };
 
-        return { handler, user, mailbox, message, notified, calls };
+        return { handler, user, mailbox, message, notified, fires: () => fires, quotaUpdates, calls };
     }
 
     function updateAsync(handler, user, mailbox, changes) {
@@ -187,6 +213,89 @@ describe('MessageHandler message updates', function () {
         } finally {
             restore();
         }
+    });
+
+    it('updates every stored Date representation and notifies mailbox clients', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const sendTime = new Date('2026-08-25T12:00:00.000Z');
+        const { handler, user, mailbox, notified, fires, quotaUpdates, calls } = buildHandler(MessageHandler, update => {
+            expect(update.$set.hdate).to.equal(sendTime);
+            // parsed headers store the raw header value, not a Date object
+            expect(update.$set['mimeTree.parsedHeader.date']).to.equal('Tue, 25 Aug 2026 12:00:00 +0000');
+            expect(update.$set['mimeTree.header']).to.deep.equal(['From: sender@example.com', 'Date: Tue, 25 Aug 2026 12:00:00 +0000']);
+            expect(update.$set.envelope).to.deep.equal(['Tue, 25 Aug 2026 12:00:00 +0000', 'subject']);
+            // the replaced Date line is 6 bytes shorter than the stored one
+            expect(update.$set.size).to.equal(994);
+            expect(update.$set.modseq).to.equal(7);
+        });
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            date: sendTime
+        });
+
+        expect(updated).to.equal(1);
+        expect(calls.mailboxUpdates).to.equal(1);
+        expect(calls.messageUpdates).to.equal(1);
+        expect(notified).to.have.lengthOf(1);
+        expect(notified[0].command).to.equal('FETCH');
+        expect(notified[0].uid).to.equal(42);
+        // carried over to the search index, which otherwise only tracks flag changes
+        expect(notified[0].hdate).to.equal(sendTime);
+        expect(fires()).to.equal(1);
+        // the stored message got smaller, so the quota must follow
+        expect(quotaUpdates).to.deep.equal([-6]);
+    });
+
+    it('adds a Date header to a message that does not have one', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const sendTime = new Date('2026-08-25T12:00:00.000Z');
+        const { handler, user, mailbox, quotaUpdates } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$set['mimeTree.header']).to.deep.equal(['From: sender@example.com', 'Date: Tue, 25 Aug 2026 12:00:00 +0000']);
+                // the added header line plus the CRLF that joins it to the previous line
+                expect(update.$set.size).to.equal(1039);
+            },
+            { mimeTree: { header: ['From: sender@example.com'] } }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, { date: sendTime });
+
+        expect(updated).to.equal(1);
+        expect(quotaUpdates).to.deep.equal([39]);
+    });
+
+    it('rejects an invalid date without applying a partial update', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, calls } = buildHandler(MessageHandler);
+
+        let err;
+        try {
+            await updateAsync(handler, user, mailbox, { date: 'not a date' });
+        } catch (e) {
+            err = e;
+        }
+
+        expect(err).to.exist;
+        expect(err.message).to.equal('Invalid date value');
+        expect(calls.mailboxUpdates).to.equal(0);
+        expect(calls.messageUpdates).to.equal(0);
+    });
+
+    it('leaves the quota alone when the message has no stored size', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, quotaUpdates } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$set).not.to.have.property('size');
+            },
+            { size: undefined }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, { date: new Date('2026-08-25T12:00:00.000Z') });
+
+        expect(updated).to.equal(1);
+        expect(quotaUpdates).to.deep.equal([]);
     });
 
     it('publishes marked.ham when markHam=true is the only requested action', async function () {

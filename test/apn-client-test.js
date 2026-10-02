@@ -59,15 +59,19 @@ function mockDatabase(subscriptions) {
                     }
                     return {
                         toArray() {
-                            return Promise.resolve(matched);
+                            return Promise.resolve(matched.map(sub => ({ ...sub })));
                         }
                     };
                 },
                 deleteMany(query) {
-                    let ids = query._id.$in || [];
                     let count = 0;
-                    for (let id of ids) {
-                        let idx = subscriptions.findIndex(s => s._id === id);
+                    for (let match of query.$or) {
+                        let idx = subscriptions.findIndex(
+                            sub =>
+                                sub._id === match._id &&
+                                (sub.registrationVersion || null) === match.registrationVersion &&
+                                (sub.updated ? sub.updated.getTime() : null) === (match.updated ? match.updated.getTime() : null)
+                        );
                         if (idx >= 0) {
                             subscriptions.splice(idx, 1);
                             count++;
@@ -253,10 +257,11 @@ describe('ApnClient', function () {
         });
 
         it('should handle 410 Gone with reason', async function () {
-            requestHandler = respondWith(410, JSON.stringify({ reason: 'Unregistered' }));
+            requestHandler = respondWith(410, JSON.stringify({ reason: 'Unregistered', timestamp: 1234567890000 }));
             let result = await createClient()._push(VALID_TOKEN, 'account-1');
             expect(result.status).to.equal(410);
             expect(result.reason).to.equal('Unregistered');
+            expect(result.timestamp).to.equal(1234567890000);
         });
 
         it('should handle 400 Bad Request with reason', async function () {
@@ -378,6 +383,33 @@ describe('ApnClient', function () {
                 } else {
                     expect(subs).to.have.length(2);
                 }
+            });
+        }
+
+        for (let status of [410, 400]) {
+            it(`should preserve a registration refreshed during a ${status} push`, async function () {
+                let subs = subsFor(['INBOX']);
+                subs[0].updated = new Date(1234567890000);
+                subs[0].registrationVersion = 'old';
+                requestHandler = stream => {
+                    // Re-register within the same millisecond; the version must still change.
+                    subs[0].registrationVersion = 'new';
+                    stream.respond({ ':status': status });
+                    stream.end(JSON.stringify({ reason: status === 410 ? 'Unregistered' : 'BadDeviceToken' }));
+                };
+                await createClient({ database: mockDatabase(subs) })._flushNotifications('user-1', ['INBOX']);
+                expect(subs).to.have.length(1);
+                expect(subs[0].registrationVersion).to.equal('new');
+            });
+        }
+
+        for (let [updated, removed] of [[1234567889999, true], [1234567890001, false]]) {
+            it(`should ${removed ? 'remove an older' : 'preserve a newer'} registration relative to APNs invalidation`, async function () {
+                let subs = subsFor(['INBOX']);
+                subs[0].updated = new Date(updated);
+                requestHandler = respondWith(410, JSON.stringify({ reason: 'Unregistered', timestamp: 1234567890000 }));
+                await createClient({ database: mockDatabase(subs) })._flushNotifications('user-1', ['INBOX']);
+                expect(subs).to.have.length(removed ? 0 : 1);
             });
         }
 

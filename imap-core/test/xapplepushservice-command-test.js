@@ -85,6 +85,15 @@ describe('XAPPLEPUSHSERVICE command handler', function () {
             expect(calls).to.have.length(0);
         });
 
+        for (let value of ['INBOX', '"INBOX"', '""']) {
+            it(`should reject scalar mailboxes ${value} before registration`, async function () {
+                const { connection, calls } = createConnection();
+                const response = await run(connection, validLine(value));
+                expect(response.response).to.equal('BAD');
+                expect(calls).to.have.length(0);
+            });
+        }
+
         it('should skip NIL entries inside the mailboxes list without crashing', async function () {
             const { connection, calls } = createConnection();
             const response = await run(connection, validLine('(INBOX NIL Notes)'));

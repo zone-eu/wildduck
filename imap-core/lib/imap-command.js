@@ -5,6 +5,7 @@ const metrics = require('../../lib/metrics');
 const imapHandler = require('./handler/imap-handler');
 const MAX_MESSAGE_SIZE = 1 * 1024 * 1024;
 const MAX_BAD_COMMANDS = 50;
+const LARGE_COMMAND_SIZE = 64 * 1024;
 
 const commands = new Map([
     /*eslint-disable global-require*/
@@ -343,6 +344,7 @@ class IMAPCommand {
                 this.connection.session.commandCounters[this.command]++;
             }
 
+            let payload = imapHandler.compiler(this.parsed, false, true);
             this.connection.logger.debug(
                 {
                     tnx: 'client',
@@ -350,8 +352,21 @@ class IMAPCommand {
                 },
                 '[%s] C:',
                 this.connection.id,
-                imapHandler.compiler(this.parsed, false, true)
+                payload
             );
+
+            if (this.payload.length > LARGE_COMMAND_SIZE) {
+                this.connection.loggelf({
+                    short_message: '[IMAPCMD] Command larger than 64 kB',
+                    _service: 'imap',
+                    _command: this.command,
+                    _tag: this.tag,
+                    _payload: payload,
+                    _command_length: this.payload.length,
+                    _sess: this.connection.id,
+                    _remoteAddress: this.connection.remoteAddress
+                });
+            }
 
             this.validateCommand(this.parsed, handler, err => {
                 if (err) {

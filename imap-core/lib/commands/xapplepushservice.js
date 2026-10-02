@@ -111,6 +111,13 @@ module.exports = {
             }
         }
 
+        if (data.mailboxes !== undefined && !Array.isArray(data.mailboxes)) {
+            return callback(null, {
+                response: 'BAD',
+                message: 'Mailboxes must be a list'
+            });
+        }
+
         const version = data['aps-version'];
         const accountID = data['aps-account-id'];
         const deviceToken = data['aps-device-token'];

@@ -1,5 +1,92 @@
 # Changelog
 
+## [1.51.4](https://github.com/zone-eu/wildduck/compare/v1.51.3...v1.51.4) (2026-09-27)
+
+
+### Bug Fixes
+
+* bump deps ([#1186](https://github.com/zone-eu/wildduck/issues/1186)) ([cb2f6a1](https://github.com/zone-eu/wildduck/commit/cb2f6a18cf425beb604e03abb1b109b091313251))
+* bump deps, remove unnecessary deps ([#1178](https://github.com/zone-eu/wildduck/issues/1178)) ([80f3b2b](https://github.com/zone-eu/wildduck/commit/80f3b2b6e0274cd85e3d81ac1d3723111a989099))
+* docs(migration): mention checking inbox placement after the move ([#1179](https://github.com/zone-eu/wildduck/issues/1179)) ([cdc9490](https://github.com/zone-eu/wildduck/commit/cdc9490e8de36fbe6dcd45fb5e1d91faaa888154))
+* ZMS-102: Try to improve search, fix maildropper tests ([#1183](https://github.com/zone-eu/wildduck/issues/1183)) ([63cb0f6](https://github.com/zone-eu/wildduck/commit/63cb0f644a801782065d5675691043e014689ef1))
+* ZMS-106: Log imap commands bigger than 64kb, log imap command even if cancelled to due being too long,  ([#1184](https://github.com/zone-eu/wildduck/issues/1184)) ([bfcb7ac](https://github.com/zone-eu/wildduck/commit/bfcb7ac7f58c3128f845c6fd6fc5b94fe1b19e19))
+* ZMS-107: Fix search-apply task randomly stopping moving of messages ([#1185](https://github.com/zone-eu/wildduck/issues/1185)) ([f95a1fb](https://github.com/zone-eu/wildduck/commit/f95a1fb3e5698af8f00764e6c1a6c072283ee8a6))
+* ZMS-88: Remove unneeded or unused indexes ([#1177](https://github.com/zone-eu/wildduck/issues/1177)) ([45a38da](https://github.com/zone-eu/wildduck/commit/45a38da3b98cd2551afb46bfe058524c90157f7b))
+
+## [1.51.3](https://github.com/zone-eu/wildduck/compare/v1.51.2...v1.51.3) (2026-09-22)
+
+
+### Bug Fixes
+
+* **proxy:** guard the raw socket while parsing the PROXY header ([#1158](https://github.com/zone-eu/wildduck/issues/1158)) ([7fb2650](https://github.com/zone-eu/wildduck/commit/7fb265095621fd06ff07779025d4d9649a1963a4))
+* ZMS-105: Fix search-apply task instability, now applies all changes ([#1175](https://github.com/zone-eu/wildduck/issues/1175)) ([15c43de](https://github.com/zone-eu/wildduck/commit/15c43de34cbf43603b1ebace68e628e605169b2d))
+
+## [1.51.2](https://github.com/zone-eu/wildduck/compare/v1.51.1...v1.51.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* ZMS-103: Fix imap line too long bad response tagging. Add tests, add logging ([#1171](https://github.com/zone-eu/wildduck/issues/1171)) ([5ac428c](https://github.com/zone-eu/wildduck/commit/5ac428c8cbf7e48ce7c1d3d7e11ef609bb1dcc93))
+* ZMS-104: add updateThreadAll to update all messages in a thread regardles of mailbox ([#1173](https://github.com/zone-eu/wildduck/issues/1173)) ([56036d9](https://github.com/zone-eu/wildduck/commit/56036d90977757091588f676e065f6a12efb7968))
+
+## [1.51.1](https://github.com/zone-eu/wildduck/compare/v1.51.0...v1.51.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* bump deps ([#1167](https://github.com/zone-eu/wildduck/issues/1167)) ([614ab26](https://github.com/zone-eu/wildduck/commit/614ab2677d3a808b8a6df90eb9c6d0f803a6fee9))
+* ZMS-101: fix seen value for get message listing endpoint when threads are collapsed ([#1168](https://github.com/zone-eu/wildduck/issues/1168)) ([8e27f3e](https://github.com/zone-eu/wildduck/commit/8e27f3e7aa0c29882bca6f2df386bc2df8d480cc))
+
+## [1.51.0](https://github.com/zone-eu/wildduck/compare/v1.50.2...v1.51.0) (2026-09-06)
+
+
+### Features
+
+* **mcp:** ZMS-96: add read-only MCP service ([#1161](https://github.com/zone-eu/wildduck/issues/1161)) ([990b4f0](https://github.com/zone-eu/wildduck/commit/990b4f00a1b2952e31e3fc622a9a45ad94dbf8de))
+
+## [1.50.2](https://github.com/zone-eu/wildduck/compare/v1.50.1...v1.50.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* htmlToText add it into try catch block to fix maximum call stack exceeded on big html messages ([#1155](https://github.com/zone-eu/wildduck/issues/1155)) ([4986803](https://github.com/zone-eu/wildduck/commit/4986803b33425a3685e3c089b23e3807a2055cde))
+
+## [1.50.1](https://github.com/zone-eu/wildduck/compare/v1.50.0...v1.50.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **api-list-unsubscribe:** fix list-unsubscribe header parser for get message endpoints ([#1146](https://github.com/zone-eu/wildduck/issues/1146)) ([30d3894](https://github.com/zone-eu/wildduck/commit/30d38942ff065181df743904f02029869c9977b1))
+* **api-put-queue:** ZMS-87 add endpoint to update message in queue ([#1150](https://github.com/zone-eu/wildduck/issues/1150)) ([58ee055](https://github.com/zone-eu/wildduck/commit/58ee05541946fda93e6a25db9df75ac03c8464b3))
+* **api-search:** ZMS-94: keep $text queries plannable inside OR branches ([#1152](https://github.com/zone-eu/wildduck/issues/1152)) ([a7ba203](https://github.com/zone-eu/wildduck/commit/a7ba203465e15cbf7a1559861081dbb537b0727c))
+* fix filter handler overrides and filter precedence ([#1147](https://github.com/zone-eu/wildduck/issues/1147)) ([515b467](https://github.com/zone-eu/wildduck/commit/515b467b0d20734b07ff85894bdb120f63631ade))
+* **prometheus:** ZMS-93: Add prometheus as separate service so it is separate from general API ([#1151](https://github.com/zone-eu/wildduck/issues/1151)) ([1a6d3ca](https://github.com/zone-eu/wildduck/commit/1a6d3caad73248e58ec6f3c8b02bd8167c6b9acf))
+* ZMS-99: when updating message with collapseThreads true also update all messages in thread ([#1153](https://github.com/zone-eu/wildduck/issues/1153)) ([d927208](https://github.com/zone-eu/wildduck/commit/d927208bc45719c4ccae53fca2f7388b60c3decc))
+
+## [1.50.0](https://github.com/zone-eu/wildduck/compare/v1.49.6...v1.50.0) (2026-08-19)
+
+
+### Features
+
+* **node-version:** fix workflows, raise nodejs min requirement ([#1144](https://github.com/zone-eu/wildduck/issues/1144)) ([fcd22d3](https://github.com/zone-eu/wildduck/commit/fcd22d3828e936d48bb5c6686f851cf8616964bc))
+
+
+### Bug Fixes
+
+* fix hasDrafts for non collapsed threads message listing view ([#1141](https://github.com/zone-eu/wildduck/issues/1141)) ([c4ce616](https://github.com/zone-eu/wildduck/commit/c4ce616acc04dd09032d9ef3a8329941e076ad8e))
+
+## [1.49.6](https://github.com/zone-eu/wildduck/compare/v1.49.5...v1.49.6) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api-collapseThreads:** ZMS-86: Message listing non-collapsed list return correct hasDrafts ([#1129](https://github.com/zone-eu/wildduck/issues/1129)) ([6a9874c](https://github.com/zone-eu/wildduck/commit/6a9874c539acbfb3ca46f05a34f3c5feb00b1735))
+* **api:** avoid moving full documents through the collapseThreads aggregation ([#1135](https://github.com/zone-eu/wildduck/issues/1135)) ([da1499d](https://github.com/zone-eu/wildduck/commit/da1499d834ba8b0d4af6fc152a20dc448ca2bd7e))
+* **audit:** reject store() when the GridFS upload stream errors ([#1130](https://github.com/zone-eu/wildduck/issues/1130)) ([a8d1c4f](https://github.com/zone-eu/wildduck/commit/a8d1c4f1b8b8f3aaca068d7e5ca28341ee53ce04))
+* bump deps ([#1139](https://github.com/zone-eu/wildduck/issues/1139)) ([cc172c7](https://github.com/zone-eu/wildduck/commit/cc172c74f51eb2245c23fdbd139757c8c82d22cb))
+* **deps:** pin yargs to 17.7.2, v18 is ESM only ([0ebb842](https://github.com/zone-eu/wildduck/commit/0ebb842c3bdb125463acd0ae4e4c482857bb941a))
+* ZMS-52: Add prometheus support ([#1093](https://github.com/zone-eu/wildduck/issues/1093)) ([5cce359](https://github.com/zone-eu/wildduck/commit/5cce359d2da8808eb4548c75bb944561c5dc33ba))
+
 ## [1.49.5](https://github.com/zone-eu/wildduck/compare/v1.49.4...v1.49.5) (2026-07-22)
 
 

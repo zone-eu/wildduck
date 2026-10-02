@@ -13,3 +13,8 @@ collection="zone-queue"
 # Must be shared with haraka-plugin-wildduck
 # If not set then looping is not tracked
 #loopSecret="secret value"
+
+# How long a message is allowed to stay in the queue before the MTA drops it, in milliseconds.
+# Scheduling a delivery past this point is rejected, as the MTA expires queue entries by insertion
+# time and does so without generating a bounce. Must match the `maxQueueTime` value of ZoneMTA
+maxQueueTime=2592000000

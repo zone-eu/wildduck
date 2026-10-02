@@ -105,6 +105,7 @@ describe('on-xapplepushservice handler', function () {
 
         expect(doc.created).to.be.instanceof(Date);
         expect(doc.updated).to.be.instanceof(Date);
+        expect(doc.registrationVersion).to.be.a('string');
     });
 
     it('should update an existing registration without creating a duplicate', async () => {
@@ -122,6 +123,7 @@ describe('on-xapplepushservice handler', function () {
 
         const after = docs[0];
         expect(after._id.toString()).to.equal(before._id.toString());
+        expect(after.registrationVersion).to.not.equal(before.registrationVersion);
         expect(after.accountId).to.equal(ACCOUNT_2);
         expect(after.mailboxes).to.be.undefined;
         expect(after.mailboxIds.map(id => id.toString())).to.deep.equal([inboxId.toString()]);

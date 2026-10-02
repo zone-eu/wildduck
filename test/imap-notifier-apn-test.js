@@ -11,6 +11,7 @@ const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const ImapNotifier = require('../lib/imap-notifier');
 const ApnClient = require('../lib/apn-client');
+const MessageHandler = require('../lib/message-handler');
 
 // 64-char hex device token accepted by the client
 const VALID_TOKEN = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
@@ -145,6 +146,31 @@ describe('ImapNotifier APNs integration', function () {
     function existsEntry() {
         return { command: 'EXISTS', message: new ObjectId(), uid: 1, modseq: 5 };
     }
+
+    it('should initialize APNs for shared-library delivery without an apn option', async function () {
+        let user = new ObjectId();
+        let mailbox = { _id: new ObjectId(), user };
+        let { apn, pushCalls } = createSetup([{ _id: '1', user, deviceToken: VALID_TOKEN, accountId: 'acc-1', mailboxIds: [mailbox._id] }]);
+        let originalGet = ApnClient.get;
+        let database = mockNotifierDatabase();
+        let handler;
+        try {
+            ApnClient.get = options => {
+                expect(options.database).to.equal(database);
+                return apn;
+            };
+            handler = new MessageHandler({ database, redis: mockRedis(), attachmentStorage: {}, settingsHandler: {} });
+        } finally {
+            ApnClient.get = originalGet;
+        }
+        try {
+            await addEntries(handler.notifier, mailbox, [existsEntry()]);
+            await new Promise(resolve => setTimeout(resolve, FLUSH_WAIT));
+            expect(pushCalls).to.have.length(1);
+        } finally {
+            apn.close();
+        }
+    });
 
     it('should push when a new message arrives in a subscribed mailbox', async function () {
         let user = new ObjectId();
