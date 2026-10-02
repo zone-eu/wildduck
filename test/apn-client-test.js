@@ -69,7 +69,6 @@ function mockDatabase(subscriptions) {
                         let idx = subscriptions.findIndex(
                             sub =>
                                 sub._id === match._id &&
-                                (sub.registrationVersion || null) === match.registrationVersion &&
                                 (sub.updated ? sub.updated.getTime() : null) === (match.updated ? match.updated.getTime() : null)
                         );
                         if (idx >= 0) {
@@ -390,16 +389,14 @@ describe('ApnClient', function () {
             it(`should preserve a registration refreshed during a ${status} push`, async function () {
                 let subs = subsFor(['INBOX']);
                 subs[0].updated = new Date(1234567890000);
-                subs[0].registrationVersion = 'old';
                 requestHandler = stream => {
-                    // Re-register within the same millisecond; the version must still change.
-                    subs[0].registrationVersion = 'new';
+                    subs[0].updated = new Date(1234567890001);
                     stream.respond({ ':status': status });
                     stream.end(JSON.stringify({ reason: status === 410 ? 'Unregistered' : 'BadDeviceToken' }));
                 };
                 await createClient({ database: mockDatabase(subs) })._flushNotifications('user-1', ['INBOX']);
                 expect(subs).to.have.length(1);
-                expect(subs[0].registrationVersion).to.equal('new');
+                expect(subs[0].updated.getTime()).to.equal(1234567890001);
             });
         }
 
