@@ -136,6 +136,35 @@ module.exports = {
         return value;
     },
 
+    /**
+     * True when a value can not be sent as a quoted string and has to go out as a literal.
+     * RFC 3501 4.3: "A quoted string is a sequence of zero or more 7-bit characters, excluding CR
+     * and LF", and 9 defines QUOTED-CHAR over TEXT-CHAR, which is any CHAR except CR and LF.
+     */
+    needsLiteral(value) {
+        return /[\r\n]/.test(value);
+    },
+
+    /**
+     * Quotes a value for the IMAP wire format.
+     *
+     * RFC 3501 9: QUOTED-CHAR = <any TEXT-CHAR except quoted-specials> / "\" quoted-specials, and
+     * quoted-specials = DQUOTE / "\". Only those two may be escaped, unlike a JSON string which
+     * also escapes TAB and every control character. The NUL character "MUST NOT be used at any
+     * time", so it is dropped.
+     */
+    quote(value) {
+        return (
+            '"' +
+            value
+                .toString()
+                // eslint-disable-next-line no-control-regex
+                .replace(/\u0000/g, '')
+                .replace(/(["\\])/g, '\\$1') +
+            '"'
+        );
+    },
+
     verify(str, allowedChars) {
         for (let i = 0, len = str.length; i < len; i++) {
             if (allowedChars.indexOf(str.charAt(i)) < 0) {

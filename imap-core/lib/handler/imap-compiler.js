@@ -12,6 +12,19 @@ module.exports = function (response, asArray, isLogging) {
     let resp = (response.tag || '') + (response.command ? ' ' + response.command : '');
     let val;
     let lastType;
+    // RFC 3501 9 only allows DQUOTE and backslash to be escaped inside a quoted string, so a value
+    // that holds CR or LF has to go out as a literal instead
+    let pushString = function (value) {
+        if (imapFormalSyntax.needsLiteral(value)) {
+            resp += '{' + Buffer.byteLength(value, 'binary') + '}\r\n';
+            respParts.push(resp);
+            resp = value;
+            lastType = 'LITERAL';
+            return;
+        }
+        resp += imapFormalSyntax.quote(value);
+    };
+
     let walk = function (node, options) {
         options = options || {};
 
@@ -54,7 +67,7 @@ module.exports = function (response, asArray, isLogging) {
             if (isLogging && node.length > 20) {
                 resp += '"(* ' + node.length + 'B string *)"';
             } else {
-                resp += JSON.stringify(node.toString('binary'));
+                pushString(node.toString('binary'));
             }
             return;
         }
@@ -87,10 +100,10 @@ module.exports = function (response, asArray, isLogging) {
                 break;
 
             case 'STRING':
-                if (isLogging && node.value.length > 20) {
+                if (isLogging && node.value && node.value.length > 20) {
                     resp += '"(* ' + node.value.length + 'B string *)"';
                 } else {
-                    resp += JSON.stringify(node.value || '');
+                    pushString((node.value || '').toString('binary'));
                 }
                 break;
             case 'TEXT':
@@ -107,7 +120,7 @@ module.exports = function (response, asArray, isLogging) {
                 val = (node.value || '').toString('binary');
 
                 if (imapFormalSyntax.verify(val.charAt(0) === '\\' ? val.substr(1) : val, imapFormalSyntax['ATOM-CHAR']()) >= 0) {
-                    val = JSON.stringify(val);
+                    val = imapFormalSyntax.quote(val);
                 }
 
                 resp += val;
