@@ -144,8 +144,9 @@ module.exports = {
                 if (param.value.toUpperCase() === 'BODY' && param.section) {
                     // BODY[...]
                     markAsSeen = true;
-                } else if (param.value.toUpperCase() === 'RFC822') {
-                    // RFC822
+                } else if (['RFC822', 'RFC822.TEXT'].includes(param.value.toUpperCase())) {
+                    // RFC 3501 6.4.5: RFC822.TEXT is functionally equivalent to BODY[TEXT], which
+                    // sets \Seen. RFC822.HEADER is equivalent to BODY.PEEK[HEADER] and must not
                     markAsSeen = true;
                 }
             }
