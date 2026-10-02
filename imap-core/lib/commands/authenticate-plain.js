@@ -89,6 +89,12 @@ function authenticate(connection, token, requireClientToken, callback) {
                     'PLAIN',
                     err.message
                 );
+
+                if (err.response) {
+                    // the handler built a complete response, keep its response code
+                    return callback(null, err);
+                }
+
                 return callback(err);
             }
 
