@@ -248,7 +248,7 @@ module.exports.normalizeMailbox = function (mailbox, utf7Encoded) {
     return mailbox;
 };
 
-module.exports.generateFolderListing = function (folders, skipHierarchy) {
+module.exports.generateFolderListing = function (folders) {
     let items = new Map();
     let parents = [];
 
@@ -306,7 +306,7 @@ module.exports.generateFolderListing = function (folders, skipHierarchy) {
 
     // Adds \HasChildren flag for parent folders
     parents.forEach(path => {
-        if (!items.has(path) && !skipHierarchy) {
+        if (!items.has(path)) {
             // add virtual hierarchy folders
             items.set(path, {
                 flags: ['\\Noselect'],

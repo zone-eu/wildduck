@@ -54,7 +54,8 @@ module.exports = {
                 });
             }
 
-            filterFolders(generateFolderListing(list, true), query).forEach(folder => {
+            // RFC 3501 6.3.9: a "%" wildcard must return the \Noselect parent of a subscribed child
+            filterFolders(generateFolderListing(list), query).forEach(folder => {
                 if (!folder) {
                     return;
                 }

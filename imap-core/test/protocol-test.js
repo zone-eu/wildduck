@@ -465,9 +465,10 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(5);
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(6);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect \\HasChildren) "/" "[Gmail]"\r\n') >= 0).to.be.true;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     done();
                 }
@@ -485,8 +486,10 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(4);
+                    // RFC 3501 6.3.9: the parent of a subscribed child is returned with \Noselect
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(5);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect \\HasChildren) "/" "[Gmail]"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.false;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     done();
@@ -508,6 +511,27 @@ describe('IMAP Protocol integration tests', function () {
                     expect(resp.match(/^\* LSUB /gm).length).to.equal(1);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should return the unsubscribed parent of a subscribed child for %', function (done) {
+            // RFC 3501 6.3.9: "A "%" wildcard to LSUB must return foo, not foo/bar, in the LSUB
+            // response, and it MUST be flagged with the \Noselect attribute."
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Parent/Child', 'T3 LSUB "" "%"', 'T4 LSUB "" "*"', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect \\HasChildren) "/" "Parent"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "Parent/Child"\r\n') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
                     done();
                 }
             );
@@ -1686,7 +1710,7 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(6);
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(7);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.true;
@@ -1716,7 +1740,7 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(5);
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(6);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.false;
