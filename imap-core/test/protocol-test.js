@@ -881,6 +881,25 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse to delete a special use mailbox with CANNOT', function (done) {
+            // RFC 5530: CANNOT is "can never succeed", TEMPFAIL would tell the client to retry
+            let cmds = ['T1 LOGIN testuser pass', 'T2 DELETE Trash', 'T3 DELETE INBOX', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    expect(/^T3 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should disconnect deleted mailbox clients', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE testfolder', 'T3 SELECT testfolder', 'T4 DELETE testfolder'];
 
