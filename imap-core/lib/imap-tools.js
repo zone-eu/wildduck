@@ -873,6 +873,15 @@ module.exports.sendCapabilityResponse = connection => {
     connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
 };
 
+// RFC 3501 6.3.2: "No changes to the permanent state of the mailbox ... are permitted" for a
+// mailbox opened with EXAMINE, and 6.4.3 / 6.4.6 list NO as the failure result for EXPUNGE and
+// STORE. An OK would tell the client the change was made.
+module.exports.READ_ONLY_RESPONSE = Object.freeze({
+    response: 'NO',
+    code: 'CANNOT',
+    message: 'Mailbox is read-only'
+});
+
 // RFC 7162 3.1.2: * OK [HIGHESTMODSEQ n]
 module.exports.sendHighestModseq = (connection, modseq) => {
     connection.send(
