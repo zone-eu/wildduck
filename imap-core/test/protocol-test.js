@@ -1093,6 +1093,98 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should report COPYUID for a UID COPY', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID COPY 101 Trash', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[COPYUID \d+ 101 1\] UID COPY completed$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not report an empty COPYUID when nothing matched', function (done) {
+            // RFC 4315 4: resp-code-copy takes two non-empty uid-sets
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID COPY 99999 Trash', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK UID COPY completed$/m.test(resp)).to.be.true;
+                    expect(/COPYUID/.test(resp)).to.be.false;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('MOVE', function () {
+        it('should move messages and report COPYUID', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 101 Trash', 'T4 STATUS Trash (MESSAGES)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[COPYUID \d+ 101 1\] UID MOVE completed$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 EXPUNGE$/m.test(resp)).to.be.true;
+                    expect(/^\* STATUS Trash \(MESSAGES 1\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not report an empty COPYUID when nothing matched', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 99999 Trash', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK UID MOVE completed$/m.test(resp)).to.be.true;
+                    expect(/COPYUID/.test(resp)).to.be.false;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a move to a nonexistent mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 101 zzz', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[TRYCREATE\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 
     describe('STATUS', function () {
