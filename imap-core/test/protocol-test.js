@@ -2935,6 +2935,36 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should still match a text search after the message is flagged \\Deleted', function (done) {
+            // RFC 3501 2.3.2: \Deleted only marks a message for removal, it stays in the mailbox
+            // until EXPUNGE, and 6.4.4 has BODY match any message that contains the string
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 STORE 3 +FLAGS (\\Deleted)',
+                'T4 SEARCH BODY hello',
+                'T5 SEARCH NOT BODY hello',
+                'T6 STORE 3 -FLAGS (\\Deleted)',
+                'T7 SEARCH BODY hello',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    // message 3 used to drop out of the fulltext index as soon as it was deleted
+                    expect(resp.match(/^\* SEARCH 3 4 5 6$/gm).length).to.equal(2);
+                    expect(/^\* SEARCH 1 2$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should match NOT on a header key as the complement of the key', function (done) {
             // RFC 3501 6.4.4: "NOT <search-key>: Messages that do not match the specified search
             // key", and a string key matches when the string is a substring of the field. Message 3

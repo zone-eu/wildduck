@@ -381,7 +381,10 @@ indexes:
               headers.value: text
               text: text
           partialFilterExpression:
-              searchable: true # ignore messages marked with \Deleted flag
+              # every stored message is searchable. RFC 3501 6.4.4 has BODY and TEXT match any
+              # message in the mailbox, and 2.3.2 makes \Deleted only a marker, so a message
+              # stays in this index until it is expunged
+              searchable: true
 
     - collection: messages
       index:
