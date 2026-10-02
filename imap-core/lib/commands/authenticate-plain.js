@@ -60,7 +60,8 @@ function authenticate(connection, token, requireClientToken, callback) {
     }
 
     let username = (data[1] || '').toString().trim();
-    let password = (data[2] || '').toString().trim();
+    // RFC 4616 2: "The authcid and passwd productions are form-free", SAFE includes SP
+    let password = (data[2] || '').toString();
     let clientToken = (data[3] || '').toString().trim() || false;
 
     // Do auth
