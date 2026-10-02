@@ -982,6 +982,30 @@ describe('IMAP Command Parser', function () {
         });
     });
 
+    describe('Literal values', function () {
+        it('should throw a parser error when a literal value is missing', function () {
+            // a TypeError here would escape the BAD path that every other parser error takes
+            let error;
+            try {
+                imapHandler.parser('TAG1 CMD {4}\r\n', { literals: [] });
+            } catch (err) {
+                error = err;
+            }
+
+            expect(error).to.exist;
+            expect(error.code).to.equal('ParserError35');
+        });
+
+        it('should use a precached literal value', function () {
+            expect(imapHandler.parser('TAG1 CMD {4}\r\n', { literals: [Buffer.from('test')] }).attributes).to.deep.equal([
+                {
+                    type: 'LITERAL',
+                    value: 'test'
+                }
+            ]);
+        });
+    });
+
     describe('Escaped quotes', function () {
         it('should succeed', function () {
             expect(imapHandler.parser('* 331 FETCH (ENVELOPE ("=?ISO-8859-1?Q?\\"G=FCnter__Hammerl\\"?="))').attributes).to.deep.equal([

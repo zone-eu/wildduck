@@ -554,6 +554,13 @@ class TokenParser {
                             this.state = STATE_NORMAL;
                             checkSP();
                         } else if (this.options.literals) {
+                            if (!this.options.literals.length) {
+                                let error = new Error(`Missing literal value at position ${this.pos + i} [E35]`);
+                                error.code = 'ParserError35';
+                                error.parserContext = { input: this.str, pos: this.pos + i, chr };
+                                throw error;
+                            }
+
                             // use the next precached literal values
                             this.currentNode.value = this.options.literals.shift();
 
