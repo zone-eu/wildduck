@@ -2042,6 +2042,36 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should find with a sequence set inside parentheses', function (done) {
+            // RFC 3501 9: sequence-set is a valid last element of a parenthesised search-key
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH OR (UID 101:103) FLAGGED',
+                'T4 SEARCH NOT (1:3)',
+                'T5 UID SEARCH OR (UID 101:102) (UID 104:105)',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 1 2 3$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 101 102 104 105$/m.test(resp)).to.be.true;
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should find with MODSEQ', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 SEARCH MODSEQ 1000', 'T4 LOGOUT'];
 

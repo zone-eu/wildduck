@@ -846,9 +846,77 @@ describe('IMAP Command Parser', function () {
             ]);
         });
 
+        it('should close a sequence set with a list terminator', function () {
+            // RFC 3501 9: sequence-set is a valid last element of a parenthesised search-key
+            expect(imapHandler.parser('TAG1 SEARCH OR (UID 1:5) FLAGGED').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: 'OR'
+                },
+                [
+                    {
+                        type: 'ATOM',
+                        value: 'UID'
+                    },
+                    {
+                        type: 'SEQUENCE',
+                        value: '1:5'
+                    }
+                ],
+                {
+                    type: 'ATOM',
+                    value: 'FLAGGED'
+                }
+            ]);
+
+            expect(imapHandler.parser('TAG1 SEARCH NOT (1:3)').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: 'NOT'
+                },
+                [
+                    {
+                        type: 'SEQUENCE',
+                        value: '1:3'
+                    }
+                ]
+            ]);
+
+            expect(imapHandler.parser('TAG1 SEARCH (1,3)').attributes).to.deep.equal([
+                [
+                    {
+                        type: 'SEQUENCE',
+                        value: '1,3'
+                    }
+                ]
+            ]);
+
+            expect(imapHandler.parser('TAG1 SEARCH (1:*)').attributes).to.deep.equal([
+                [
+                    {
+                        type: 'SEQUENCE',
+                        value: '1:*'
+                    }
+                ]
+            ]);
+        });
+
         it('should fail', function () {
             expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5:');
+            }).to.throw(Error);
+
+            // an incomplete sequence set stays invalid in front of a list terminator
+            expect(function () {
+                imapHandler.parser('TAG1 SEARCH (1:)');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 SEARCH (1,)');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 SEARCH (5,*)');
             }).to.throw(Error);
 
             expect(function () {
