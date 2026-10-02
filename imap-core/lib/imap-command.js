@@ -4,6 +4,9 @@ const errors = require('../../lib/errors.js');
 const metrics = require('../../lib/metrics');
 const imapHandler = require('./handler/imap-handler');
 const MAX_MESSAGE_SIZE = 1 * 1024 * 1024;
+// Literal size cap for everything except APPEND. RFC 3501 sets no limit and RFC 2683 3.2.1.5 asks
+// servers to accept at least 8000 octets of command text
+const MAX_COMMAND_LITERAL_SIZE = 16 * 1024;
 const MAX_BAD_COMMANDS = 50;
 const LARGE_COMMAND_SIZE = 64 * 1024;
 
@@ -166,7 +169,7 @@ class IMAPCommand {
             let maxAllowed = Math.max(Number(this.connection._server.options.maxMessage) || 0, MAX_MESSAGE_SIZE);
             if (
                 // Allow large literals for selected commands only
-                (!['APPEND'].includes(this.command) && command.expecting > 1024) ||
+                (!['APPEND'].includes(this.command) && command.expecting > MAX_COMMAND_LITERAL_SIZE) ||
                 // Deny all literals bigger than maxMessage
                 command.expecting > maxAllowed
             ) {

@@ -2602,6 +2602,35 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('Argument validation', function () {
+        it('should accept a command literal up to the cap and refuse a larger one', function (done) {
+            // RFC 3501 sets no literal size limit and RFC 2683 3.2.1.5 asks servers to accept at
+            // least 8000 octets of command text
+            let text = 'x'.repeat(1030);
+            let tooBig = 'x'.repeat(17000);
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH TEXT {' + text.length + '}\r\n' + text,
+                'T4 SEARCH TEXT {' + tooBig.length + '}\r\n' + tooBig,
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK SEARCH completed$/m.test(resp)).to.be.true;
+                    // but there is still a cap
+                    expect(/^T4 NO Literal too large$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should refuse a partial with a zero octet count', function (done) {
             // RFC 3501 9: section ["<" number "." nz-number ">"], a zero count was treated as
             // "no limit" and returned the whole section
