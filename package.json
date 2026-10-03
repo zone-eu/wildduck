@@ -6,6 +6,7 @@
     "scripts": {
         "test": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli -n 13 flushdb && npm run runtest",
         "test:proto": "NODE_ENV=test grunt proto",
+        "test:s3": "NODE_ENV=test mocha --exit test/attachment-storage-test.js test/attachment-s3-test.js test/attachment-s3-http-test.js test/attachment-s3-moto-test.js test/attachment-s3-migration-test.js test/attachment-s3-protocol-test.js",
         "printconf": "NODE_CONFIG_ONLY=true npm start",
         "runtest": "NODE_ENV=test grunt",
         "runci": "npm run printconf && npm run runtest",
@@ -44,6 +45,8 @@
         "supertest": "7.3.0"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.1142.0",
+        "@aws-sdk/lib-storage": "^3.1142.0",
         "@fidm/x509": "1.2.1",
         "@modelcontextprotocol/node": "2.1.0",
         "@modelcontextprotocol/server": "2.1.0",
