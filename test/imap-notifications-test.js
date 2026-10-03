@@ -7,6 +7,7 @@ const supertest = require('supertest');
 const chai = require('chai');
 const config = require('@zone-eu/wild-config');
 const { ImapFlow } = require('imapflow');
+const tls = require('tls');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -36,6 +37,70 @@ describe('IMAP cross session notifications', function () {
         });
         await client.connect();
         return client;
+    };
+
+    // driven over a raw socket so the session sits in an explicit IDLE command for the whole test
+    const rawConnect = async () => {
+        const socket = tls.connect({ host: '127.0.0.1', port: config.imap.port, rejectUnauthorized: false });
+        let buffer = '';
+
+        socket.on('data', chunk => {
+            buffer += chunk.toString('binary');
+        });
+
+        // keeps a socket error from throwing between waits
+        socket.on('error', () => false);
+
+        const waitFor = pattern =>
+            new Promise((resolve, reject) => {
+                let timer;
+
+                const settle = (err, value) => {
+                    clearTimeout(timer);
+                    socket.removeListener('data', onData);
+                    socket.removeListener('error', settle);
+                    return err ? reject(err) : resolve(value);
+                };
+
+                function onData() {
+                    if (pattern.test(buffer)) {
+                        settle(null, buffer);
+                    }
+                }
+
+                timer = setTimeout(() => settle(new Error('Timed out waiting for ' + pattern)), 15000);
+
+                // the listener that fills the buffer is registered first, so it has already run
+                socket.on('data', onData);
+                socket.on('error', settle);
+                onData();
+            });
+
+        await new Promise((resolve, reject) => {
+            socket.once('secureConnect', resolve);
+            socket.once('error', reject);
+        });
+        await waitFor(/^\* OK /m);
+
+        return {
+            waitFor,
+            exec: (command, pattern) => {
+                buffer = '';
+                socket.write(command + '\r\n');
+                return waitFor(pattern);
+            },
+            close: () => socket.destroy()
+        };
+    };
+
+    // the journal is written in batches, so the notifications arrive over several rounds
+    const collect = async (client, count, read) => {
+        const deadline = Date.now() + 60000;
+        while (read() < count && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await client.noop();
+        }
+        return read();
     };
 
     before(async () => {
@@ -92,12 +157,7 @@ describe('IMAP cross session notifications', function () {
             await storer.mailboxOpen('INBOX');
             await storer.messageFlagsAdd('1:*', ['\\Flagged'], { uid: true });
 
-            for (let i = 0; i < 10 && flagged < MESSAGE_COUNT; i++) {
-                await new Promise(resolve => setTimeout(resolve, 300));
-                await watcher.noop();
-            }
-
-            expect(flagged).to.equal(MESSAGE_COUNT);
+            expect(await collect(watcher, MESSAGE_COUNT, () => flagged)).to.equal(MESSAGE_COUNT);
         } finally {
             await watcher.logout();
             await storer.logout();
@@ -118,17 +178,40 @@ describe('IMAP cross session notifications', function () {
             await mover.mailboxOpen('INBOX');
             await mover.messageMove('1:*', trashPath, { uid: true });
 
-            // the journal is written in batches, give the watcher time to collect all of them
-            for (let i = 0; i < 10 && expunged < MESSAGE_COUNT; i++) {
-                await new Promise(resolve => setTimeout(resolve, 300));
-                await watcher.noop();
-            }
-
-            expect(expunged).to.equal(MESSAGE_COUNT);
+            expect(await collect(watcher, MESSAGE_COUNT, () => expunged)).to.equal(MESSAGE_COUNT);
             expect(watcher.mailbox.exists).to.equal(0);
         } finally {
             await watcher.logout();
             await mover.logout();
+        }
+    });
+
+    it('should push EXISTS to a session that is idling', async () => {
+        // RFC 2177: the point of IDLE is that the server may send updates at any time while the
+        // command runs, without waiting for the client to poll
+        const idler = await rawConnect();
+
+        try {
+            await idler.exec('A1 LOGIN ' + username + ' ' + PASSWORD, /^A1 OK/m);
+
+            // the earlier tests in this file change how many messages INBOX holds
+            const selected = await idler.exec('A2 SELECT INBOX', /^A2 OK/m);
+            const existing = Number(/^\* (\d+) EXISTS$/m.exec(selected)[1]);
+
+            await idler.exec('A3 IDLE', /^\+ /m);
+
+            // nothing is sent from this connection while the message is uploaded over the API
+            await server
+                .post(`/users/${userId}/mailboxes/${inboxId}/messages`)
+                .set('Content-Type', 'message/rfc822')
+                .send('From: sender@example.com\r\nTo: receiver@example.com\r\nSubject: pushed\r\n\r\npushed\r\n')
+                .expect(200);
+
+            await idler.waitFor(new RegExp('^\\* ' + (existing + 1) + ' EXISTS$', 'm'));
+
+            await idler.exec('DONE', /^A3 OK/m);
+        } finally {
+            idler.close();
         }
     });
 });
