@@ -26,38 +26,11 @@ const PENDING_BODY = new Set([
     'synthetic:digest',
     'synthetic:header_only',
     'synthetic:empty_part_blank',
-    'synthetic:empty_part_noblank',
     'synthetic:transport_padding',
     'synthetic:boundary_never_appears',
     'synthetic:preamble_blank_line',
-    'synthetic:header_only_nosep',
     'synthetic:text_no_final_crlf',
-    'synthetic:text_final_crlf',
-    'synthetic:text_trailing_blank',
-    'synthetic:root_rfc822',
     'synthetic:missing_close'
-]);
-
-const PENDING_SIZES = new Set([
-    'fixture:append.eml',
-    'fixture:fix2.eml',
-    'fixture:fix3.eml',
-    'fixture:mimetorture.eml',
-    'fixture:nodemailer.eml',
-    'fixture:ryan_finnie_mime_torture.eml',
-    'fixture:simple.eml',
-    'synthetic:digest',
-    'synthetic:header_only',
-    'synthetic:header_only_nosep',
-    'synthetic:empty_part_blank',
-    'synthetic:empty_part_noblank',
-    'synthetic:transport_padding',
-    'synthetic:text_no_final_crlf',
-    'synthetic:text_final_crlf',
-    'synthetic:text_trailing_blank',
-    'synthetic:root_rfc822',
-    'synthetic:attached_rfc822_upper',
-    'synthetic:attached_rfc822'
 ]);
 
 function describeDiff(actual, expected) {
@@ -94,9 +67,6 @@ describe('Indexer fidelity', function () {
             });
 
             it('announces exactly the bytes it emits for every section', async function () {
-                if (PENDING_SIZES.has(name)) {
-                    this.skip();
-                }
                 for (let selector of listSelectors(tree)) {
                     let result = runSelector(indexer, tree, selector);
                     if (!result || result.type !== 'stream') {

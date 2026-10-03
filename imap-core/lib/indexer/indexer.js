@@ -5,6 +5,7 @@ const PassThrough = stream.PassThrough;
 const BodyStructure = require('./body-structure');
 const createEnvelope = require('./create-envelope');
 const parseMimeTree = require('./parse-mime-tree');
+const { walkTree } = require('./tree-walker');
 const libmime = require('libmime');
 const libcharset = require('libmime/lib/charset');
 const libqp = require('libqp');
@@ -14,8 +15,6 @@ const { htmlToText } = require('html-to-text');
 const crypto = require('crypto');
 
 const MAX_HTML_PARSE_LENGTH = 2 * 1024 * 1024; // do not parse HTML messages larger than 2MB to plaintext
-
-const NEWLINE = Buffer.from('\r\n');
 
 class Indexer {
     constructor(options) {
@@ -41,87 +40,36 @@ class Indexer {
     }
 
     /**
-     * Returns expected size for a node
+     * Returns the size of the message a tree rebuilds to
      *
      * @param  {Object} mimeTree Parsed mimeTree object (or sub node)
      * @param  {Boolean} textOnly If true, do not include the message header in the response
-     * @return {String} Expected message size
+     * @param  {Object} [options]
+     * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
+     * @return {Number} Message size in bytes
      */
-    getSize(mimeTree, textOnly) {
+    getSize(mimeTree, textOnly, options) {
+        options = options || {};
         let size = 0;
-        let first = true;
-        let root = true;
-
-        // make sure that mixed body + mime gets rebuilt correctly
-        let append = (data, force) => {
-            if (Array.isArray(data)) {
-                data = data.join('\r\n');
-            }
-            if (data || force) {
-                size += Buffer.byteLength((first ? '' : '\r\n') + (data || ''), 'binary');
-                first = false;
-            }
-        };
-
-        let walk = (node, next) => {
-            if (!textOnly || !root) {
-                append(formatHeaders(node.header).join('\r\n') + '\r\n');
-            }
-
-            let finalize = () => {
-                if (node.boundary) {
-                    append(`--${node.boundary}--\r\n`);
-                }
-
-                append();
-                next();
-            };
-
-            root = false;
-            if (node.size || node.attachmentId) {
-                if (!node.boundary) {
-                    append(false, true); // force newline
-                }
-                size += node.size;
-            }
-
-            if (node.boundary) {
-                append(`--${node.boundary}`);
-            }
-
-            if (Array.isArray(node.childNodes)) {
-                let pos = 0;
-                let processChildNodes = () => {
-                    if (pos >= node.childNodes.length) {
-                        return finalize();
-                    }
-                    let childNode = node.childNodes[pos++];
-                    walk(childNode, () => {
-                        if (pos < node.childNodes.length) {
-                            append(`--${node.boundary}`);
-                        }
-                        return processChildNodes();
-                    });
-                };
-                processChildNodes();
-            } else {
-                finalize();
-            }
-        };
-
-        walk(mimeTree, () => false);
-
+        for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal })) {
+            size += piece.size;
+        }
         return size;
     }
 
     /**
      * Builds a parsed mime tree into a rfc822 message
      *
+     * The stream emits exactly the bytes getSize() counts for the same tree and options, or the
+     * window of them selected by startFrom and maxLength
+     *
      * @param  {Object} mimeTree Parsed mimeTree object
      * @param  {Boolean} textOnly If true, do not include the message header in the response
      * @param  {Object} [options]
-     * @param  {Boolean} skipExternal If true, do not include the external nodes
-     * @return {Stream} Message stream
+     * @param  {Number} [options.startFrom] First byte of the message to emit
+     * @param  {Number} [options.maxLength] Number of bytes to emit
+     * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
+     * @return {Object} `{ type: 'stream', value: Stream, expectedLength: Number }`
      */
     rebuild(mimeTree, textOnly, options) {
         options = options || {};
@@ -131,255 +79,51 @@ class Indexer {
 
         let startFrom = Math.max(Number(options.startFrom) || 0, 0);
         let maxLength = Math.max(Number(options.maxLength) || 0, 0);
+        let end = maxLength ? startFrom + maxLength : Infinity;
 
         output.isLimited = !!(options.startFrom || options.maxLength);
 
-        let curWritePos = 0;
-        let writeLength = 0;
-
-        let getCurrentBounds = size => {
-            if (curWritePos + size < startFrom) {
-                curWritePos += size;
-                return false;
-            }
-
-            if (maxLength && writeLength >= maxLength) {
-                writeLength += size;
-                return false;
-            }
-
-            let startFromBounds = curWritePos < startFrom ? startFrom - curWritePos : 0;
-
-            let maxLengthBounds = maxLength ? maxLength - writeLength : 0;
-            maxLengthBounds = Math.min(size - startFromBounds, maxLengthBounds);
-            if (maxLengthBounds < 0) {
-                maxLengthBounds = 0;
-            }
-
-            return {
-                startFrom: startFromBounds,
-                maxLength: maxLengthBounds
-            };
-        };
-
         let write = async chunk => {
-            if (!chunk || !chunk.length) {
+            if (!chunk || !chunk.length || aborted || output.destroyed) {
                 return;
-            }
-
-            if (curWritePos >= startFrom) {
-                // already allowed to write
-                curWritePos += chunk.length;
-            } else if (curWritePos + chunk.length <= startFrom) {
-                // not yet ready to write, skip
-                curWritePos += chunk.length;
-                return;
-            } else {
-                // chunk is in the middle
-                let useBytes = curWritePos + chunk.length - startFrom;
-                curWritePos += chunk.length;
-                chunk = chunk.slice(-useBytes);
-            }
-
-            if (maxLength) {
-                if (writeLength >= maxLength) {
-                    // can not write anymore
-                    return;
-                } else if (writeLength + chunk.length <= maxLength) {
-                    // can still write chunks, so do nothing
-                    writeLength += chunk.length;
-                } else {
-                    // chunk is in the middle
-                    let allowedBytes = maxLength - writeLength;
-                    writeLength += chunk.length;
-                    chunk = chunk.slice(0, allowedBytes);
-                }
             }
 
             if (output.write(chunk) === false) {
                 await new Promise(resolve => {
-                    output.once('drain', resolve());
+                    let done = () => {
+                        output.removeListener('drain', done);
+                        output.removeListener('close', done);
+                        resolve();
+                    };
+                    output.on('drain', done);
+                    output.on('close', done);
                 });
             }
         };
 
         let processStream = async () => {
-            let firstLine = true;
-            let isRootNode = true;
-            let remainder = false;
+            // position in the full message of the next piece
+            let pos = 0;
 
-            // make sure that mixed body + mime gets rebuilt correctly
-            let emit = async (data, force) => {
-                if (remainder || data || force) {
-                    if (!firstLine) {
-                        await write(NEWLINE);
-                    } else {
-                        firstLine = false;
-                    }
-
-                    if (remainder && remainder.length) {
-                        await write(remainder);
-                    }
-
-                    if (data) {
-                        await write(Buffer.isBuffer(data) ? data : Buffer.from(data, 'binary'));
-                    }
-                }
-                remainder = false;
-            };
-
-            let walk = async node => {
-                if (aborted) {
+            for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal })) {
+                if (aborted || output.destroyed || pos >= end) {
                     return;
                 }
 
-                if (!textOnly || !isRootNode) {
-                    await emit(formatHeaders(node.header).join('\r\n') + '\r\n');
-                }
+                // the part of this piece that falls inside the requested window
+                let from = Math.max(startFrom - pos, 0);
+                let to = Math.min(end - pos, piece.size);
 
-                isRootNode = false;
-                if (Buffer.isBuffer(node.body)) {
-                    // node Buffer
-                    remainder = node.body;
-                } else if (node.body && node.body.buffer) {
-                    // mongodb Binary
-                    remainder = node.body.buffer;
-                } else if (typeof node.body === 'string') {
-                    // binary string
-                    remainder = Buffer.from(node.body, 'binary');
-                } else {
-                    // whatever
-                    remainder = node.body;
-                }
-
-                if (node.boundary) {
-                    // this is a multipart node, so start with initial boundary before continuing
-                    await emit(`--${node.boundary}`);
-                } else if (node.attachmentId && !options.skipExternal) {
-                    await emit(false, true); // force newline between header and contents
-
-                    let attachmentId = node.attachmentId;
-                    if (mimeTree.attachmentMap && mimeTree.attachmentMap[node.attachmentId]) {
-                        attachmentId = mimeTree.attachmentMap[node.attachmentId];
-                    }
-                    let attachmentData;
-                    try {
-                        attachmentData = await this.getAttachment(attachmentId);
-                    } catch (err) {
-                        if (err.code === 'FileNotFound') {
-                            this.loggelf({
-                                short_message: 'Attachment missing',
-                                _mail_action: 'attachment_missing',
-                                _attachment_id: attachmentId
-                            });
-
-                            // attachment was not found from storage, use empty placeholder instead
-                            attachmentData = {
-                                contentType: 'application/octet-stream',
-                                transferEncoding: '8bit',
-                                length: 0,
-                                count: 0,
-                                hash: attachmentId,
-                                metadata: {
-                                    lineLen: 0
-                                }
-                            };
-                        } else {
-                            throw err;
-                        }
-                    }
-
-                    let attachmentSize = node.size;
-                    // we need to calculate expected length as the original does not apply anymore
-                    // original size matches input data but decoding/encoding is not 100% lossless so we need to
-                    // calculate the actual possible output size
-                    if (attachmentData.metadata && attachmentData.metadata.decoded && attachmentData.metadata.lineLen) {
-                        let b64Size = Math.ceil(attachmentData.length / 3) * 4;
-                        let lineBreaks = Math.floor(b64Size / attachmentData.metadata.lineLen);
-
-                        // extra case where base64 string ends at line end
-                        // in this case we do not need the ending line break
-                        if (lineBreaks && b64Size % attachmentData.metadata.lineLen === 0) {
-                            lineBreaks--;
-                        }
-
-                        attachmentSize = b64Size + lineBreaks * 2;
-                    }
-
-                    let readBounds = getCurrentBounds(attachmentSize);
-                    if (readBounds) {
-                        // move write pointer ahead by skipped base64 bytes
-                        let bytes = Math.min(readBounds.startFrom, node.size);
-                        curWritePos += bytes;
-
-                        // only process attachment if we are reading inside existing bounds
-                        if (node.size > readBounds.startFrom) {
-                            let attachmentStream = this.attachmentStorage.createReadStream(attachmentId, attachmentData, readBounds);
-                            await new Promise((resolve, reject) => {
-                                attachmentStream.once('error', err => {
-                                    if (err.code === 'ENOENT') {
-                                        this.loggelf({
-                                            short_message: 'Attachment missing',
-                                            _mail_action: 'attachment_missing',
-                                            _attachment_id: attachmentId
-                                        });
-                                        return resolve();
-                                    }
-                                    reject(err);
-                                });
-
-                                attachmentStream.once('end', () => {
-                                    // update read offset counters
-
-                                    let bytes = 'outputBytes' in attachmentStream ? attachmentStream.outputBytes : readBounds.maxLength;
-
-                                    if (bytes) {
-                                        curWritePos += bytes;
-                                        if (maxLength) {
-                                            writeLength += bytes;
-                                        }
-                                    }
-                                    resolve();
-                                });
-
-                                attachmentStream.pipe(output, {
-                                    end: false
-                                });
-                            });
-                        }
+                if (to > from) {
+                    if (piece.data) {
+                        await write(this.fitToSize(piece.data, piece.size, piece.node).subarray(from, to));
+                    } else {
+                        await this.writeAttachment(piece, mimeTree, from, to - from, write, () => aborted || output.destroyed);
                     }
                 }
 
-                if (Array.isArray(node.childNodes)) {
-                    let pos = 0;
-                    for (let childNode of node.childNodes) {
-                        await walk(childNode);
-
-                        if (aborted) {
-                            return;
-                        }
-
-                        if (pos++ < node.childNodes.length - 1) {
-                            // emit boundary unless last item
-                            await emit(`--${node.boundary}`);
-                        }
-                    }
-                }
-
-                if (node.boundary) {
-                    await emit(`--${node.boundary}--\r\n`);
-                }
-
-                await emit();
-            };
-
-            await walk(mimeTree);
-
-            if (mimeTree.lineCount > 1) {
-                await write(NEWLINE);
+                pos += piece.size;
             }
-
-            output.end();
         };
 
         setImmediate(() => {
@@ -400,8 +144,91 @@ class Indexer {
         return {
             type: 'stream',
             value: output,
-            expectedLength: this.getSize(mimeTree, textOnly)
+            expectedLength: this.getSize(mimeTree, textOnly, options)
         };
+    }
+
+    /**
+     * Returns `data` as exactly `size` bytes. The two only differ for a corrupt tree whose stored body
+     * does not match its stored size; the stored size wins because the message size and the quota hold it
+     */
+    fitToSize(data, size, node) {
+        if (data.length === size) {
+            return data;
+        }
+
+        this.loggelf({
+            short_message: 'Stored body size mismatch',
+            _mail_action: 'body_size_mismatch',
+            _expected: size,
+            _received: data.length,
+            _attachment_id: node && node.attachmentId
+        });
+
+        if (data.length > size) {
+            return data.subarray(0, size);
+        }
+        return Buffer.concat([data, filler(size - data.length)]);
+    }
+
+    /**
+     * Writes `length` bytes of an attachment body starting at `relStart`, counted from the start of the
+     * body as it appears in the message. The attachment occupies exactly the stored size of its node, so
+     * a stream that delivers more is cut and one that delivers less is padded with line breaks
+     */
+    async writeAttachment(piece, mimeTree, relStart, length, write, isAborted) {
+        let attachmentId = piece.attachmentId;
+        if (mimeTree.attachmentMap && mimeTree.attachmentMap[attachmentId]) {
+            attachmentId = mimeTree.attachmentMap[attachmentId];
+        }
+
+        let attachmentData;
+        try {
+            attachmentData = await this.getAttachment(attachmentId);
+        } catch (err) {
+            if (err.code !== 'FileNotFound') {
+                throw err;
+            }
+            attachmentData = false;
+        }
+
+        let received = 0;
+
+        if (attachmentData) {
+            let stream = this.attachmentStorage.createReadStream(attachmentId, attachmentData, { startFrom: relStart, maxLength: length });
+            try {
+                for await (let chunk of stream) {
+                    if (isAborted()) {
+                        stream.destroy();
+                        return;
+                    }
+                    let take = Math.min(chunk.length, length - received);
+                    if (take > 0) {
+                        received += take;
+                        await write(chunk.subarray(0, take));
+                    }
+                    // anything beyond `length` is not part of the message
+                }
+            } catch (err) {
+                if (err.code !== 'ENOENT') {
+                    throw err;
+                }
+                attachmentData = false;
+            }
+        }
+
+        if (!attachmentData) {
+            this.loggelf({
+                short_message: 'Attachment missing',
+                _mail_action: 'attachment_missing',
+                _attachment_id: attachmentId
+            });
+        }
+
+        if (received < length) {
+            // attachment was not found, or the storage returned fewer bytes than the message holds
+            await write(filler(length - received));
+        }
     }
 
     /**
@@ -869,6 +696,13 @@ class Indexer {
                 return '';
         }
     }
+}
+
+/**
+ * Line break bytes used to fill a gap when a stored body is shorter than the message says
+ */
+function filler(length) {
+    return Buffer.from('\r\n'.repeat(Math.ceil(length / 2))).subarray(0, length);
 }
 
 function formatHeaders(headers) {

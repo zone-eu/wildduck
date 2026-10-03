@@ -12,37 +12,26 @@ const chai = require('chai');
 const expect = chai.expect;
 const Indexer = require('../lib/indexer/indexer');
 const compileStream = require('../lib/handler/imap-compile-stream');
-const { runSelector, materialize, wireLiteral, sha256, treeReviver } = require('./fixtures/indexer-cases');
+const { cases, runSelector, materialize, wireLiteral, sha256, treeReviver } = require('./fixtures/indexer-cases');
 
 chai.config.includeStack = true;
 
 const indexer = new Indexer();
 const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/legacy-v1-trees.json'), 'utf8'), treeReviver);
 
-// Cases where the v1 walker still emits a different number of bytes than it announces. Removed by the
-// commit that aligns rebuild() with getSize() for v1 trees.
-const PENDING_SIZES = new Set([
-    'fixture:append.eml',
-    'fixture:fix2.eml',
-    'fixture:fix3.eml',
-    'fixture:nodemailer.eml',
-    'fixture:simple.eml',
-    'synthetic:digest',
-    'synthetic:header_only',
-    'synthetic:header_only_nosep',
-    'synthetic:empty_part_blank',
-    'synthetic:empty_part_noblank',
-    'synthetic:transport_padding',
-    'synthetic:text_no_final_crlf',
-    'synthetic:text_final_crlf',
-    'synthetic:text_trailing_blank',
-    'synthetic:root_rfc822',
-    'synthetic:attached_rfc822_upper',
-    'synthetic:attached_rfc822'
-]);
-
-// Sections whose v1 rendering changes on purpose, with the bytes they must render instead
+// Sections whose v1 rendering changes on purpose, with the bytes they must render instead. The old
+// rebuild wrote a separator line for an empty part body that the old size calculation never counted; the
+// LengthLimiter then cut the end of the message to compensate. v1 trees can not tell an empty body with a
+// separator line from one without, so both now render without it, which is the layout the stored size
+// describes.
 const RENDER_CHANGES = {};
+for (let name of ['synthetic:empty_part_blank', 'synthetic:empty_part_noblank']) {
+    let expected = cases['synthetic:empty_part_noblank'].expected;
+    RENDER_CHANGES[name] = {
+        '': expected,
+        text: expected.subarray(expected.indexOf('\r\n\r\n') + 4)
+    };
+}
 
 function selectorFor(key) {
     if (key === 'text') {
@@ -70,9 +59,6 @@ describe('Indexer legacy v1 trees', function () {
             });
 
             it('emits exactly the announced number of bytes', async function () {
-                if (PENDING_SIZES.has(name)) {
-                    this.skip();
-                }
                 for (let key of Object.keys(sections)) {
                     let { size, bytes } = await materialize(runSelector(indexer, tree, selectorFor(key)));
                     expect(bytes.length, `section ${key || 'BODY[]'}`).to.equal(size);
