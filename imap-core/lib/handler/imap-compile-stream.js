@@ -54,21 +54,21 @@ module.exports = (response, isLogging) => {
                 maxLength = maxLength || 0;
                 expectedLength = maxLength ? Math.min(expectedLength, startFrom + maxLength) : expectedLength;
 
+                // a limiter that has to pad or truncate means the announced literal length and the
+                // message bytes disagree. The literal stays well formed, the consumer gets told
+                let limiter;
                 if (stream.isLimited) {
                     // stream is already limited
-                    let limiter = new LengthLimiter(expectedLength - startFrom, ' ', 0);
-                    stream.pipe(limiter).pipe(output, {
-                        end: false
-                    });
-                    limiter.once('end', () => resolve());
+                    limiter = new LengthLimiter(expectedLength - startFrom, ' ', 0);
                 } else {
                     // force limites
-                    let limiter = new LengthLimiter(expectedLength, ' ', startFrom);
-                    stream.pipe(limiter).pipe(output, {
-                        end: false
-                    });
-                    limiter.once('end', () => resolve());
+                    limiter = new LengthLimiter(expectedLength, ' ', startFrom);
                 }
+                limiter.on('mismatch', info => output.emit('literalMismatch', info));
+                stream.pipe(limiter).pipe(output, {
+                    end: false
+                });
+                limiter.once('end', () => resolve());
 
                 // pass errors to output
                 stream.once('error', reject);

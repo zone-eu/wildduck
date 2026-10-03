@@ -14,6 +14,8 @@ class LengthLimiter extends Transform {
         this.byteCounter = byteCounter || 0;
         this.startFrom = startFrom || 0;
         this.finished = false;
+        // bytes that arrived after the expected length was already reached
+        this.dropped = 0;
         Transform.call(this);
     }
 
@@ -22,7 +24,12 @@ class LengthLimiter extends Transform {
             chunk = Buffer.from(chunk, encoding);
         }
 
-        if (!chunk || !chunk.length || this.finished) {
+        if (!chunk || !chunk.length) {
+            return done();
+        }
+
+        if (this.finished) {
+            this.dropped += chunk.length;
             return done();
         }
 
@@ -56,6 +63,7 @@ class LengthLimiter extends Transform {
         let remaining = chunk.slice(this.expectedLength - this.byteCounter);
         this.push(buf);
         this.finished = true;
+        this.dropped += remaining.length;
         this.emit('done', remaining);
         return setImmediate(done);
     }
@@ -66,8 +74,12 @@ class LengthLimiter extends Transform {
             if (this.expectedLength > this.byteCounter) {
                 let buf = Buffer.from(this.padding.repeat(this.expectedLength - this.byteCounter));
                 this.push(buf);
+                // the announced octet count was honoured, but the bytes are not the message
+                this.emit('mismatch', { kind: 'padded', expected: this.expectedLength, received: this.byteCounter });
             }
             this.finished = true;
+        } else if (this.dropped) {
+            this.emit('mismatch', { kind: 'truncated', expected: this.expectedLength, received: this.expectedLength + this.dropped });
         }
         done();
     }
