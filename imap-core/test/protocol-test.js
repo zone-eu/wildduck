@@ -2710,6 +2710,147 @@ describe('IMAP Protocol integration tests', function () {
         });
     });
 
+    describe('IDLE', function () {
+        it('should answer the continuation request and end on DONE', function (done) {
+            // RFC 2177: the server sends a continuation request, and the client ends the command
+            // with "DONE". The tagged response only arrives once idling stops
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 IDLE', 'DONE', 'T4 NOOP', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\+ idling$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK IDLE terminated$/m.test(resp)).to.be.true;
+                    // the connection is usable again afterwards
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a continuation that is not DONE', function (done) {
+            // RFC 2177: "DONE" is the only thing that terminates the command
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 IDLE', 'FOO', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\+ idling$/m.test(resp)).to.be.true;
+                    expect(/^T3 BAD /m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should idle without a selected mailbox', function (done) {
+            // RFC 2177 2: IDLE is valid in the authenticated state as well
+            let cmds = ['T1 LOGIN testuser pass', 'T2 IDLE', 'DONE', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\+ idling$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK IDLE terminated$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('QUOTA', function () {
+        it('should report the quota root and the storage quota', function (done) {
+            // RFC 2087 4.3: GETQUOTAROOT answers an untagged QUOTAROOT for the mailbox and an
+            // untagged QUOTA for each root it names
+            let cmds = ['T1 LOGIN testuser pass', 'T2 GETQUOTAROOT INBOX', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* QUOTAROOT "INBOX" ""$/m.test(resp)).to.be.true;
+                    expect(/^\* QUOTA "" \(STORAGE \d+ \d+\)$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report the quota of the root itself', function (done) {
+            // RFC 2087 4.2: GETQUOTA answers the untagged QUOTA of the named root
+            let cmds = ['T1 LOGIN testuser pass', 'T2 GETQUOTA ""', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* QUOTA "" \(STORAGE \d+ \d+\)$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse GETQUOTAROOT for a mailbox that does not exist', function (done) {
+            // RFC 5530: NONEXISTENT is the code for a mailbox name that does not exist
+            let cmds = ['T1 LOGIN testuser pass', 'T2 GETQUOTAROOT nosuchbox', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse SETQUOTA', function (done) {
+            // RFC 2087 4.1: a server that does not let the client set quota answers NO, and
+            // RFC 5530 CANNOT says the request can never succeed as it stands
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETQUOTA "" (STORAGE 100)', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
     describe('Argument validation', function () {
         it('should accept a command literal up to the cap and refuse a larger one', function (done) {
             // RFC 3501 sets no literal size limit and RFC 2683 3.2.1.5 asks servers to accept at
