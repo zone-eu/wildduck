@@ -1188,6 +1188,17 @@ describe('Search term match tests', function () {
         });
     });
 
+    describe('INTERNALDATE', function () {
+        it('should read a stored date that is a string', function (done) {
+            // the argument names no zone, the stored value brings its own
+            matchSearchQuery({ idate: '2013-09-14T21:22:28Z' }, { key: 'internaldate', value: '14-Sep-2013', operator: '=' }, (err, matched) => {
+                expect(err).to.not.exist;
+                expect(matched).to.be.true;
+                done();
+            });
+        });
+    });
+
     describe('DATE', function () {
         let raw = 'Subject: test\r\nDate: 1999-01-01\r\n\r\nHello world!';
 
@@ -1312,6 +1323,50 @@ describe('Search term match tests', function () {
                     done();
                 }
             );
+        });
+
+        // RFC 3501 6.4.4: the Date header is compared "disregarding time and timezone", so the
+        // calendar date the sender wrote decides, not the UTC instant it maps to
+        const match = (message, value, operator, expected, done) =>
+            matchSearchQuery(message, { key: 'date', value, operator }, (err, matched) => {
+                expect(err).to.not.exist;
+                expect(matched).to.equal(expected);
+                done();
+            });
+
+        const east = { mimeTree: indexer.parseMimeTree('Subject: east\r\nDate: Sun, 15 Sep 2013 01:30:00 +0300\r\n\r\nbody') };
+        const west = { mimeTree: indexer.parseMimeTree('Subject: west\r\nDate: Mon, 16 Sep 2013 23:30:00 -0500\r\n\r\nbody') };
+
+        it('should match the day a sender east of UTC wrote', function (done) {
+            // the instant is 14 Sep 22:30 UTC, the sender wrote the 15th
+            match(east, '15-Sep-2013', '=', true, done);
+        });
+
+        it('should not match the UTC day of a sender east of UTC', function (done) {
+            match(east, '14-Sep-2013', '=', false, done);
+        });
+
+        it('should match the day a sender west of UTC wrote', function (done) {
+            // the instant is 17 Sep 04:30 UTC, the sender wrote the 16th
+            match(west, '16-Sep-2013', '=', true, done);
+        });
+
+        it('should not match the UTC day of a sender west of UTC', function (done) {
+            match(west, '17-Sep-2013', '=', false, done);
+        });
+
+        it('should read a date-text argument as UTC', function (done) {
+            // "1-Feb-1994" names no zone, so it may not be read in the server's local time
+            match({ mimeTree: indexer.parseMimeTree('Subject: t\r\nDate: Tue, 1 Feb 1994 00:30:00 +0000\r\n\r\nbody') }, '1-Feb-1994', '=', true, done);
+        });
+
+        it('should prefer the stored calendar day', function (done) {
+            match({ hdateDay: new Date(Date.UTC(2013, 8, 15)) }, '15-Sep-2013', '=', true, done);
+        });
+
+        it('should use the instant when the header is not available', function (done) {
+            // no mimeTree and no raw, so the zone the sender wrote in can not be recovered
+            match({ hdate: new Date('2013-09-14T22:30:00Z') }, '14-Sep-2013', '=', true, done);
         });
     });
 
