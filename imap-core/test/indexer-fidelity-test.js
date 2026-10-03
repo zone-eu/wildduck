@@ -16,23 +16,6 @@ chai.config.includeStack = true;
 
 const indexer = new Indexer();
 
-// Cases the walker still gets wrong. Every entry is removed by the commit that fixes it.
-const PENDING_BODY = new Set([
-    'fixture:append.eml',
-    'synthetic:epilogue',
-    'synthetic:epilogue_blank',
-    'synthetic:nested_tight',
-    'synthetic:headerless_part',
-    'synthetic:digest',
-    'synthetic:header_only',
-    'synthetic:empty_part_blank',
-    'synthetic:transport_padding',
-    'synthetic:boundary_never_appears',
-    'synthetic:preamble_blank_line',
-    'synthetic:text_no_final_crlf',
-    'synthetic:missing_close'
-]);
-
 function describeDiff(actual, expected) {
     let i = 0;
     while (i < actual.length && i < expected.length && actual[i] === expected[i]) {
@@ -58,9 +41,6 @@ describe('Indexer fidelity', function () {
             });
 
             it('rebuilds BODY[] to the delivered bytes', async function () {
-                if (PENDING_BODY.has(name)) {
-                    this.skip();
-                }
                 let { size, bytes } = await materialize(runSelector(indexer, tree, BODY));
                 expect(bytes.equals(expected), describeDiff(bytes, expected)).to.be.true;
                 expect(size).to.equal(expected.length);
@@ -78,9 +58,6 @@ describe('Indexer fidelity', function () {
             });
 
             it('serves BODY[] through the literal path without length corrections', async function () {
-                if (PENDING_BODY.has(name)) {
-                    this.skip();
-                }
                 let wire = await wireLiteral(compileStream, runSelector(indexer, tree, BODY));
                 expect(wire.mismatches).to.deep.equal([]);
                 expect(wire.announced).to.equal(expected.length);
@@ -88,9 +65,6 @@ describe('Indexer fidelity', function () {
             });
 
             it('serves every partial window of BODY[]', async function () {
-                if (PENDING_BODY.has(name)) {
-                    this.skip();
-                }
                 // every origin for small messages, a prime step for large ones so the seams move through
                 // every column of wrapped content
                 let step = expected.length > 4096 ? 97 : 1;

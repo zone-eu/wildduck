@@ -2,16 +2,34 @@
 
 const addressparser = require('nodemailer/lib/addressparser');
 
+// Format version of the trees this parser writes. Trees without a version are the layout written before
+// 2026-10 (v1); indexer/tree-walker.js keeps rendering those the way they were stored.
+const TREE_VERSION = 2;
+
+const LINE_BREAK = /(\r\n|\n|\r)$/;
+
 /**
  * Parses a RFC822 message into a structured object (JSON compatible)
  *
  * @constructor
  * @param {String|Buffer} rfc822 Raw body of the message
+ * @param {Object} [options]
+ * @param {Boolean} [options.embedded] The input is the body of a message/rfc822 part, not a whole message
  */
 class MIMEParser {
-    constructor(rfc822) {
+    constructor(rfc822, options) {
+        options = options || {};
+
         // ensure the input is a binary string
         this.rfc822 = (rfc822 || '').toString('binary');
+
+        // every line of a message ends with a line break. A message that does not end with one is
+        // completed here, so the stored size and the rebuilt bytes describe a well formed message.
+        // The body of an embedded message ends where the enclosing delimiter starts, the line break
+        // before that delimiter belongs to the delimiter, so such a body is kept as it is
+        if (!options.embedded && this.rfc822.length && !LINE_BREAK.test(this.rfc822)) {
+            this.rfc822 += '\r\n';
+        }
 
         this._br = '';
         this._pos = 0;
@@ -37,9 +55,21 @@ class MIMEParser {
             line = this.readLine();
 
             switch (this._node.state) {
-                case 'header': // process header section
+                case 'header': {
+                    // process header section
                     if (this.rawBody) {
                         this.rawBody += prevBr + line;
+                    }
+
+                    // RFC 2046 5.1.1: a delimiter right after the header lines, with no blank line in
+                    // between, ends a part that has no body section at all
+                    let delimiter = this._node.parentBoundary && this.matchDelimiter(line, this._node.parentBoundary);
+                    if (delimiter) {
+                        this.processNodeHeader();
+                        this.processContentType();
+                        this._node.state = 'body';
+                        this.processDelimiter(delimiter);
+                        break;
                     }
 
                     if (!line) {
@@ -47,37 +77,65 @@ class MIMEParser {
                         this.processContentType();
 
                         this._node.state = 'body';
+                        // an empty line ended by a line break is the blank line that separates the header
+                        // from the body. The empty remainder after the last line break of the input is not
+                        this._node.hasBody = this._br !== false;
                     } else {
                         this._node.header.push(line);
                     }
                     break;
+                }
 
-                case 'body': // process body section
+                case 'body': {
+                    // process body section
                     this.rawBody += prevBr + line;
 
-                    if (this._node.parentBoundary && (line === '--' + this._node.parentBoundary || line === '--' + this._node.parentBoundary + '--')) {
-                        if (
-                            this._node.parsedHeader['content-type'].value === 'message/rfc822' &&
-                            (!this._node.parsedHeader['content-transfer-encoding'] ||
-                                ['7bit', '8bit', 'binary'].includes(this._node.parsedHeader['content-transfer-encoding']))
-                        ) {
-                            this._node.message = parse(this._node.body.join(''));
-                        }
-
-                        if (line === '--' + this._node.parentBoundary) {
-                            this._node = this.createNode(this._node.parentNode);
-                        } else {
-                            this._node = this._node.parentNode;
-                        }
-                    } else if (this._node.boundary && line === '--' + this._node.boundary) {
-                        this._node = this.createNode(this._node);
-                    } else {
-                        // push the line with previous linebreak value
-                        // if the array is joined together to a one string,
-                        // then the linebreaks in the string are the 'original' ones
-                        this._node.body.push((this._node.body.length ? prevBr : '') + line);
+                    let delimiter = this._node.parentBoundary && this.matchDelimiter(line, this._node.parentBoundary);
+                    if (delimiter) {
+                        this.processDelimiter(delimiter);
+                        break;
                     }
+
+                    if (this._node.boundary) {
+                        let own = this.matchDelimiter(line, this._node.boundary);
+                        if (own && !own.close) {
+                            let child = this.createNode(this._node);
+                            child.pad = own.pad;
+                            this._node = child;
+                            break;
+                        }
+                        if (own && own.close) {
+                            // a close delimiter without any part: the multipart has no children
+                            this._node.closePad = own.pad;
+                            this._node.terminated = true;
+                            this._node.state = 'epilogue';
+                            break;
+                        }
+                    }
+
+                    // push the line with previous linebreak value
+                    // if the array is joined together to a one string,
+                    // then the linebreaks in the string are the 'original' ones
+                    this._node.body.push((this._node.body.length ? prevBr : '') + line);
                     break;
+                }
+
+                case 'epilogue': {
+                    // RFC 2046 5.1.1: everything after the close delimiter up to the next delimiter of
+                    // the enclosing multipart (or the end of the message) is the epilogue
+                    this.rawBody += prevBr + line;
+
+                    let delimiter = this._node.parentBoundary && this.matchDelimiter(line, this._node.parentBoundary);
+                    if (delimiter) {
+                        this.processDelimiter(delimiter);
+                        break;
+                    }
+
+                    // every epilogue line keeps the line break that precedes it, the first one being the
+                    // line break that ends the close delimiter line
+                    this._node.epilogue.push(prevBr + line);
+                    break;
+                }
 
                 default:
                     // never should be reached
@@ -106,6 +164,82 @@ class MIMEParser {
     }
 
     /**
+     * Checks whether a line is a delimiter of a boundary. RFC 2046 5.1.1: `--boundary` or `--boundary--`,
+     * optionally followed by transport padding (spaces and tabs) that receivers must accept.
+     *
+     * @param {String} line Line of the message
+     * @param {String} boundary Boundary to look for
+     * @return {Object|Boolean} `{ close, pad }`, or false when the line is not a delimiter of this boundary
+     */
+    matchDelimiter(line, boundary) {
+        let prefix = '--' + boundary;
+        if (!line.startsWith(prefix)) {
+            return false;
+        }
+
+        let rest = line.slice(prefix.length);
+        let close = false;
+        if (rest.startsWith('--')) {
+            close = true;
+            rest = rest.slice(2);
+        }
+
+        if (/[^ \t]/.test(rest)) {
+            // something other than padding after the boundary, so a different boundary or body text
+            return false;
+        }
+
+        return { close, pad: rest };
+    }
+
+    /**
+     * Ends the current node at a delimiter of the enclosing multipart and moves on to the next part
+     * or to the epilogue of that multipart
+     *
+     * @param {Object} delimiter Result of matchDelimiter()
+     */
+    processDelimiter(delimiter) {
+        let node = this._node;
+
+        if (node.state === 'body' && !node.body.length) {
+            // nothing between the header and the delimiter: the blank line that ended the header was
+            // the line break that belongs to the delimiter, there is no body section
+            node.hasBody = false;
+        }
+
+        this.parseEmbeddedMessage(node);
+
+        let parent = node.parentNode;
+        if (!delimiter.close) {
+            let next = this.createNode(parent);
+            next.pad = delimiter.pad;
+            this._node = next;
+        } else {
+            parent.closePad = delimiter.pad;
+            parent.terminated = true;
+            parent.state = 'epilogue';
+            this._node = parent;
+        }
+    }
+
+    /**
+     * Parses the body of a message/rfc822 node into `node.message`. RFC 2046 5.2.1 only allows the
+     * identity encodings for such a body, RFC 2045 5.1 and 6.1 make the type and encoding names case
+     * insensitive
+     */
+    parseEmbeddedMessage(node) {
+        let contentType = node.parsedHeader['content-type'];
+        if (!contentType || (contentType.value || '').toLowerCase() !== 'message/rfc822') {
+            return;
+        }
+        let encoding = (node.parsedHeader['content-transfer-encoding'] || '').toString().trim().toLowerCase();
+        if (encoding && !['7bit', '8bit', 'binary'].includes(encoding)) {
+            return;
+        }
+        node.message = parse(Array.isArray(node.body) ? node.body.join('') : node.body, { embedded: true });
+    }
+
+    /**
      * Join body arrays into strings. Removes unnecessary fields
      * from the tree (circular references prohibit conversion to JSON)
      */
@@ -115,36 +249,24 @@ class MIMEParser {
             this.processContentType();
         }
 
-        if (this.tree.parsedHeader && this.tree.parsedHeader['content-type'].value === 'message/rfc822') {
-            this.tree.message = parse(this.tree.body.join(''));
-        }
-
         let walker = node => {
             if (node.body) {
-                if (node.parentNode === this.tree && node.parsedHeader['content-type'].value === 'message/rfc822') {
-                    node.message = parse(node.body.join(''));
+                if (node.parentNode === this.tree) {
+                    // the message itself may be a message/rfc822 entity
+                    this.parseEmbeddedMessage(node);
                 }
 
-                if (node.body && node.body.length && node.multipart) {
-                    // find last character from an array of strings
-                    let lastChar;
-                    let lastIndex = 0;
-                    for (let i = node.body.length - 1; i >= 0; i--) {
-                        if (typeof node.body[i] === 'string' && node.body[i].length) {
-                            lastChar = node.body[i].at(-1);
-                            lastIndex = i;
-                            break;
-                        }
-                    }
-                    if (lastChar && lastChar !== '\n') {
-                        // ensure that non-multipart body text always ends with a newline
-                        node.body[lastIndex] += '\n';
-                    }
+                let lines = node.body;
+
+                if (node.boundary && lines.length && node.childNodes.length) {
+                    // the line break between the preamble and the first delimiter belongs to the
+                    // delimiter and was dropped with it, but the preamble lines end with their own
+                    lines[lines.length - 1] += '\n';
                 }
 
-                node.lineCount = node.body.length ? node.body.length - 1 : 0;
+                node.lineCount = lines.length ? lines.length - 1 : 0;
                 node.body = Buffer.from(
-                    node.body
+                    lines
                         .join('')
                         // ensure proper line endings
                         .replace(/\r?\n/g, '\r\n'),
@@ -152,6 +274,33 @@ class MIMEParser {
                 );
                 node.size = node.body.length;
             }
+
+            if (Array.isArray(node.epilogue) && node.epilogue.length) {
+                node.epilogue = Buffer.from(node.epilogue.join('').replace(/\r?\n/g, '\r\n'), 'binary');
+            } else {
+                delete node.epilogue;
+            }
+
+            if (node.boundary && !node.terminated) {
+                // no close delimiter was seen, the last part runs to the end of the message
+                node.unterminated = true;
+            }
+            delete node.terminated;
+
+            if (node.hasBody) {
+                // the common case is not stored
+                delete node.hasBody;
+            } else {
+                node.hasBody = false;
+            }
+
+            if (!node.pad) {
+                delete node.pad;
+            }
+            if (!node.closePad) {
+                delete node.closePad;
+            }
+
             node.childNodes.forEach(walker);
 
             // remove unneeded properties
@@ -175,6 +324,8 @@ class MIMEParser {
             header: [],
             parsedHeader: {},
             body: [],
+            epilogue: [],
+            hasBody: false,
             multipart: false,
             parentBoundary: parentNode.boundary,
             boundary: false,
@@ -221,9 +372,11 @@ class MIMEParser {
             }
         }
 
-        // always ensure the presence of Content-Type
+        // always ensure the presence of Content-Type. RFC 2046 5.1.5: inside a digest the default
+        // is message/rfc822 instead of text/plain
         if (!this._node.parsedHeader['content-type']) {
-            this._node.parsedHeader['content-type'] = 'text/plain';
+            let parentSubtype = ((this._node.parentNode && this._node.parentNode.multipart) || '').toString().toLowerCase();
+            this._node.parsedHeader['content-type'] = parentSubtype === 'digest' ? 'message/rfc822' : 'text/plain';
         }
 
         // parse additional params for Content-Type and Content-Disposition
@@ -364,17 +517,21 @@ class MIMEParser {
     }
 }
 
-function parse(rfc822) {
-    let parser = new MIMEParser(rfc822);
+function parse(rfc822, options) {
+    let parser = new MIMEParser(rfc822, options);
     let response;
 
     parser.parse();
     parser.finalizeTree();
 
     response = parser.tree.childNodes[0] || false;
+    if (response) {
+        response.v = TREE_VERSION;
+    }
     return response;
 }
 
 parse.MIMEParser = MIMEParser;
+parse.TREE_VERSION = TREE_VERSION;
 
 module.exports = parse;

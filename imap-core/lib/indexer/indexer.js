@@ -46,12 +46,13 @@ class Indexer {
      * @param  {Boolean} textOnly If true, do not include the message header in the response
      * @param  {Object} [options]
      * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
+     * @param  {Number} [options.version] Tree format version when `mimeTree` is a node of a larger tree
      * @return {Number} Message size in bytes
      */
     getSize(mimeTree, textOnly, options) {
         options = options || {};
         let size = 0;
-        for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal })) {
+        for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal, version: options.version })) {
             size += piece.size;
         }
         return size;
@@ -105,7 +106,7 @@ class Indexer {
             // position in the full message of the next piece
             let pos = 0;
 
-            for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal })) {
+            for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal, version: options.version })) {
                 if (aborted || output.destroyed || pos >= end) {
                     return;
                 }
@@ -624,6 +625,9 @@ class Indexer {
         if (!node) {
             return '';
         }
+
+        // a node of the tree does not carry the tree format version, the root does
+        options = Object.assign({}, options, { version: options.version || mimeTree.v });
 
         switch (selector.type) {
             case '':

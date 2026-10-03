@@ -115,6 +115,98 @@ function* walkV1(tree, options) {
     yield* walk(tree, true);
 }
 
+function headerLines(node) {
+    let header = node.header || [];
+    return Array.isArray(header) ? header : [].concat(header || []);
+}
+
+function toBuffer(value) {
+    if (Buffer.isBuffer(value)) {
+        return value;
+    }
+    if (value && value.buffer && Buffer.isBuffer(value.buffer)) {
+        return value.buffer;
+    }
+    if (typeof value === 'string') {
+        return Buffer.from(value, 'binary');
+    }
+    return EMPTY;
+}
+
+/**
+ * Trees written with a version (parse-mime-tree.js TREE_VERSION 2) describe the message exactly:
+ *
+ *     entity    = header-lines [ CRLF body ]            ; "CRLF body" present unless hasBody is false
+ *     body      = bytes | preamble *( delimiter entity CRLF ) close-delimiter epilogue
+ *     delimiter = "--" boundary pad CRLF
+ *
+ * The CRLF after an entity belongs to the delimiter that follows it (RFC 2046 5.1.1), a part body never
+ * includes it. A multipart that never saw its close delimiter (`unterminated`) ends with the last part
+ * running to the end of the message, and one without any delimiter at all is just its preamble.
+ */
+function* walkV2(tree, options) {
+    const piece = data => ({ data, size: data.length });
+    const text = str => piece(Buffer.from(str, 'binary'));
+
+    const walk = function* (node, isRoot) {
+        let withHeader = !options.textOnly || !isRoot;
+
+        if (withHeader) {
+            let header = headerLines(node);
+            if (header.length) {
+                yield text(header.join('\r\n') + '\r\n');
+            }
+        }
+
+        if (node.hasBody === false) {
+            return;
+        }
+
+        if (withHeader) {
+            // the blank line between header and body
+            yield piece(CRLF);
+        }
+
+        if (node.boundary) {
+            let size = bodySize(node);
+            if (size) {
+                // preamble, verbatim
+                yield { data: bodyBuffer(node), size };
+            }
+
+            let children = Array.isArray(node.childNodes) ? node.childNodes : [];
+            for (let i = 0; i < children.length; i++) {
+                let child = children[i];
+                yield text('--' + node.boundary + (child.pad || '') + '\r\n');
+                yield* walk(child, false);
+                if (!node.unterminated || i < children.length - 1) {
+                    // the line break that belongs to the next delimiter
+                    yield piece(CRLF);
+                }
+            }
+
+            if (!node.unterminated) {
+                yield text('--' + node.boundary + '--' + (node.closePad || ''));
+                let epilogue = toBuffer(node.epilogue);
+                if (epilogue.length) {
+                    yield piece(epilogue);
+                }
+            }
+        } else if (node.attachmentId) {
+            if (!options.skipExternal) {
+                yield { node, attachmentId: node.attachmentId, size: bodySize(node) };
+            }
+        } else {
+            let size = bodySize(node);
+            if (size) {
+                yield { data: bodyBuffer(node), size };
+            }
+        }
+    };
+
+    yield* walk(tree, true);
+}
+
 /**
  * Yields the byte pieces of a message
  *
@@ -122,10 +214,16 @@ function* walkV1(tree, options) {
  * @param {Object} [options]
  * @param {Boolean} [options.textOnly] Leave out the header of the root node (BODY[TEXT], BODY[n])
  * @param {Boolean} [options.skipExternal] Leave out bodies that live in the attachment storage
+ * @param {Number} [options.version] Tree format version, defaults to the `v` of the tree itself (1 when absent)
  */
 function* walkTree(tree, options) {
     options = options || {};
-    yield* walkV1(tree, options);
+    let version = Number(options.version || (tree && tree.v)) || 1;
+    if (version >= 2) {
+        yield* walkV2(tree, options);
+    } else {
+        yield* walkV1(tree, options);
+    }
 }
 
 module.exports = { walkTree, bodyBuffer, bodySize, headerBlock, CRLF };

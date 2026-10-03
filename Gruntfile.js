@@ -24,6 +24,7 @@ module.exports = function (grunt) {
         'imap-core/test/imap-stream-test.js',
         'imap-core/test/onconnect-test.js',
         'imap-core/test/parse-mime-tree-test.js',
+        'imap-core/test/parse-mime-tree-v2-test.js',
         'imap-core/test/proxy-socket-error-test.js',
         'imap-core/test/search-test.js',
         'imap-core/test/socket-timeout-test.js',
