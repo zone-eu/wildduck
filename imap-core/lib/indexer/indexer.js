@@ -530,13 +530,18 @@ class Indexer {
      * @return {Object}          Mime node
      */
     resolveContentNode(mimeTree, path) {
-        if (!mimeTree.childNodes && path === '1') {
-            path = '';
-        }
-
-        let pathNumbers = (path || '').toString().split('.');
+        let pathNumbers = (path || '').toString().split('.').filter(entry => entry);
         let contentNode = mimeTree;
         let pathNumber;
+
+        if (!mimeTree.childNodes && pathNumbers.length) {
+            // RFC 3501 6.4.5: a non-multipart message only has a part 1, which is the message itself. A
+            // message/rfc822 message has nested part numbers under it (1.1, 1.2, ...)
+            if (pathNumbers[0] !== '1') {
+                return false;
+            }
+            pathNumbers.shift();
+        }
 
         while ((pathNumber = pathNumbers.shift())) {
             pathNumber = Number(pathNumber) - 1;
@@ -651,33 +656,34 @@ class Indexer {
                 }
                 return '';
 
-            case 'header.fields': {
-                // BODY[HEADER.FIELDS.NOT (Key1 Key2 KeyN)] only selected header keys
-                if (!selector.headers || !selector.headers.length) {
-                    return '\r\n\r\n';
-                }
-                let headers =
-                    formatHeaders(node.header)
-                        .filter(line => {
-                            let key = line.split(':').shift().toLowerCase().trim();
-                            return selector.headers.indexOf(key) >= 0;
-                        })
-                        .join('\r\n') + '\r\n\r\n';
-                return headers;
-            }
+            case 'header.fields':
             case 'header.fields.not': {
-                // BODY[HEADER.FIELDS.NOT (Key1 Key2 KeyN)] all but selected header keys
-                if (!selector.headers || !selector.headers.length) {
-                    return formatHeaders(node.header).join('\r\n') + '\r\n\r\n';
+                // BODY[HEADER.FIELDS (Key1 Key2 KeyN)] only selected header keys,
+                // BODY[HEADER.FIELDS.NOT (Key1 Key2 KeyN)] all but selected header keys.
+                // RFC 3501 6.4.5: with a part number these refer to the header of the encapsulated
+                // message, not to the MIME header of the part
+                let header;
+                if (!selector.path) {
+                    header = formatHeaders(node.header);
+                } else if (node.message) {
+                    header = formatHeaders(node.message.header);
+                } else {
+                    return '';
                 }
-                let headers =
-                    formatHeaders(node.header)
+
+                let wanted = selector.type === 'header.fields';
+                if (!selector.headers || !selector.headers.length) {
+                    return (wanted ? '' : header.join('\r\n')) + '\r\n\r\n';
+                }
+
+                return (
+                    header
                         .filter(line => {
                             let key = line.split(':').shift().toLowerCase().trim();
-                            return selector.headers.indexOf(key) < 0;
+                            return selector.headers.indexOf(key) >= 0 === wanted;
                         })
-                        .join('\r\n') + '\r\n\r\n';
-                return headers;
+                        .join('\r\n') + '\r\n\r\n'
+                );
             }
 
             case 'mime':

@@ -33,6 +33,14 @@ for (let name of ['synthetic:empty_part_blank', 'synthetic:empty_part_noblank'])
     };
 }
 
+// Sections the v1 walker served but that do not exist. BODY[2] of a top-level message/rfc822 message
+// resolved into the second part of the embedded message, which RFC 3501 6.4.5 numbers 1.2
+const REMOVED_SECTIONS = {
+    'synthetic:root_rfc822': new Set(['2'])
+};
+
+const isRemoved = (name, key) => REMOVED_SECTIONS[name] && REMOVED_SECTIONS[name].has(key);
+
 function selectorFor(key) {
     if (key === 'text') {
         return { path: '', type: 'text' };
@@ -52,6 +60,10 @@ describe('Indexer legacy v1 trees', function () {
         describe(name, function () {
             it('announces the sizes the v1 walker announced', function () {
                 for (let key of Object.keys(sections)) {
+                    if (isRemoved(name, key)) {
+                        expect(runSelector(indexer, tree, selectorFor(key)), `section ${key}`).to.equal('');
+                        continue;
+                    }
                     let result = runSelector(indexer, tree, selectorFor(key));
                     expect(result && result.type, key).to.equal('stream');
                     expect(result.expectedLength, `section ${key || 'BODY[]'}`).to.equal(sections[key].size);
@@ -60,6 +72,9 @@ describe('Indexer legacy v1 trees', function () {
 
             it('emits exactly the announced number of bytes', async function () {
                 for (let key of Object.keys(sections)) {
+                    if (isRemoved(name, key)) {
+                        continue;
+                    }
                     let { size, bytes } = await materialize(runSelector(indexer, tree, selectorFor(key)));
                     expect(bytes.length, `section ${key || 'BODY[]'}`).to.equal(size);
                 }
@@ -67,6 +82,9 @@ describe('Indexer legacy v1 trees', function () {
 
             it('serves every section as before', async function () {
                 for (let key of Object.keys(sections)) {
+                    if (isRemoved(name, key)) {
+                        continue;
+                    }
                     let wire = await wireLiteral(compileStream, runSelector(indexer, tree, selectorFor(key)));
                     let changed = RENDER_CHANGES[name] && RENDER_CHANGES[name][key];
                     if (changed) {

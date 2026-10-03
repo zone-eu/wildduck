@@ -9,6 +9,64 @@ const TREE_VERSION = 2;
 const LINE_BREAK = /(\r\n|\n|\r)$/;
 
 /**
+ * Splits a structured header value (RFC 2045 5.1 Content-Type and friends) at a separator character,
+ * leaving quoted strings intact and dropping RFC 822 comments outside of them. With no separator the
+ * whole value comes back as one part with its comments removed.
+ *
+ * @param {String} value Header value
+ * @param {String} [separator] Character to split at, outside quotes and comments
+ * @returns {Array} Parts
+ */
+function splitStructuredValue(value, separator) {
+    let parts = [];
+    let current = '';
+    let quoted = false;
+    let depth = 0;
+
+    for (let i = 0; i < value.length; i++) {
+        let chr = value.charAt(i);
+
+        if (quoted) {
+            current += chr;
+            if (chr === '\\' && i + 1 < value.length) {
+                // quoted-pair, keep the escaped character for the value parser
+                current += value.charAt(++i);
+            } else if (chr === '"') {
+                quoted = false;
+            }
+            continue;
+        }
+
+        if (depth) {
+            // inside a comment, which may nest and may hold quoted-pairs
+            if (chr === '\\') {
+                i++;
+            } else if (chr === '(') {
+                depth++;
+            } else if (chr === ')') {
+                depth--;
+            }
+            continue;
+        }
+
+        if (chr === '"') {
+            quoted = true;
+            current += chr;
+        } else if (chr === '(') {
+            depth = 1;
+        } else if (separator && chr === separator) {
+            parts.push(current);
+            current = '';
+        } else {
+            current += chr;
+        }
+    }
+
+    parts.push(current);
+    return parts;
+}
+
+/**
  * Parses a RFC822 message into a structured object (JSON compatible)
  *
  * @constructor
@@ -386,8 +444,10 @@ class MIMEParser {
             }
         });
 
-        // ensure single value for selected fields
+        // ensure single value for selected fields. RFC 3501 7.4.2 wants a string for the date, so a
+        // duplicated Date header keeps the last one like the other single value fields
         [
+            'date',
             'in-reply-to',
             'message-id',
             'content-transfer-encoding',
@@ -401,6 +461,11 @@ class MIMEParser {
                 this._node.parsedHeader[key] = this._node.parsedHeader[key].pop();
             }
         });
+
+        if (this._node.parsedHeader['content-transfer-encoding']) {
+            // RFC 2045 6.1: the mechanism token may be followed by a comment, which is not part of it
+            this._node.parsedHeader['content-transfer-encoding'] = splitStructuredValue(this._node.parsedHeader['content-transfer-encoding'])[0].trim();
+        }
 
         // Parse address fields (join several fields with same key)
         ['from', 'sender', 'reply-to', 'to', 'cc', 'bcc'].forEach(key => {
@@ -435,7 +500,7 @@ class MIMEParser {
 
         let charsetRequired = new WeakSet();
 
-        (headerValue || '').split(';').forEach((part, i) => {
+        splitStructuredValue(headerValue || '', ';').forEach((part, i) => {
             let key, value;
             if (!i) {
                 data.value = part.trim();
@@ -446,7 +511,14 @@ class MIMEParser {
             }
             value = part.split('=');
             key = (value.shift() || '').trim().toLowerCase();
-            value = value.join('=').replace(/^['"\s]*|['"\s]*$/g, '');
+            value = value.join('=').trim();
+            if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+                // RFC 2045 5.1 quoted-string: the quotes are not part of the value and a backslash
+                // quotes the character after it (RFC 822 3.3)
+                value = value.slice(1, -1).replace(/\\([\s\S])/g, '$1');
+            } else {
+                value = value.replace(/^['"\s]*|['"\s]*$/g, '');
+            }
 
             // Do not touch headers that have strange looking keys, keep these
             // only in the unparsed array

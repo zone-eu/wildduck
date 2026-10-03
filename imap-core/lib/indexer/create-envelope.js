@@ -13,7 +13,9 @@ const punycode = require('punycode.js');
  */
 module.exports = function (header) {
     let subject = Array.isArray(header.subject) ? header.subject.slice().reverse().filter(line => line.trim()).shift() : header.subject;
-    subject = Buffer.from(subject || '', 'binary').toString();
+    // the parsed header value is already a string, decoding it as bytes again would turn every
+    // non-ASCII character into U+FFFD (RFC 6532 raw UTF-8 subjects)
+    subject = (subject || '').toString();
 
     try {
         subject = Buffer.from(libmime.decodeWords(subject).trim());
@@ -21,8 +23,12 @@ module.exports = function (header) {
         // failed to parse subject, keep as is (most probably an unknown charset is used)
     }
 
+    // RFC 3501 7.4.2: the date is a string. Trees written before the parser reduced duplicate Date
+    // headers to one value may hold a list, the last header wins like everywhere else
+    let date = Array.isArray(header.date) ? header.date[header.date.length - 1] : header.date;
+
     return [
-        header.date || null,
+        date || null,
         subject,
         processAddress(header.from),
         processAddress(header.sender, header.from),
@@ -56,6 +62,15 @@ function processAddress(arr, defaults) {
             let name = addr.name || null;
             let user = (addr.address || '').split('@').shift() || null;
             let domain = (addr.address || '').split('@').pop() || null;
+
+            if (!addr.address && name) {
+                // a bare word without a domain ("To: localuser"). RFC 3501 7.4.2 reserves a NIL host
+                // for group markers, so the token becomes the mailbox with the placeholder host that
+                // Dovecot uses for the same input
+                user = name;
+                name = null;
+                domain = 'MISSING_DOMAIN';
+            }
 
             if (name) {
                 try {

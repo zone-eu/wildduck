@@ -31,13 +31,20 @@ class BodyStructure {
         options = options || {};
 
         let walker = node => {
-            switch ((node.parsedHeader['content-type'] || {}).type) {
+            let contentType = node.parsedHeader['content-type'] || {};
+            switch (contentType.type) {
                 case 'multipart':
-                    return this.processMultipartNode(node, options);
+                    if (node.multipart) {
+                        return this.processMultipartNode(node, options);
+                    }
+                    // RFC 3501 body-type-mpart needs at least one body: a multipart without a
+                    // boundary parameter has no parts and is described with the basic fields
+                    return this.processAttachmentNode(node, options);
                 case 'text':
                     return this.processTextNode(node, options);
                 case 'message':
-                    if (node.parsedHeader['content-type'].subtype === 'rfc822' && node.message && !options.attachmentRFC822) {
+                    // RFC 2045 5.1: the subtype is not case sensitive
+                    if ((contentType.subtype || '').toLowerCase() === 'rfc822' && node.message && !options.attachmentRFC822) {
                         return this.processRFC822Node(node, options);
                     }
                 // fall through
@@ -179,10 +186,25 @@ class BodyStructure {
     processMultipartNode(node, options) {
         options = options || {};
 
-        let data = ((node.childNodes && node.childNodes.map(tree => this.createBodystructure(tree, options))) || [[]]).concat([
-            // body subtype
-            options.upperCaseKeys ? (node.multipart && node.multipart.toUpperCase()) || null : node.multipart,
+        let parts = (node.childNodes && node.childNodes.map(tree => this.createBodystructure(tree, options))) || [];
+        if (!parts.length) {
+            // RFC 3501 9: body-type-mpart = 1*body SP media-subtype. A multipart whose boundary never
+            // appeared has no parts, so an empty text part stands in for them
+            parts = [this.createBodystructure({ parsedHeader: { 'content-type': { type: 'text', subtype: 'plain', params: { charset: 'us-ascii' }, hasParams: true } }, size: 0, lineCount: 0 }, options)];
+        }
 
+        let data = parts.concat([
+            // body subtype
+            options.upperCaseKeys ? (node.multipart && node.multipart.toUpperCase()) || null : node.multipart
+        ]);
+
+        if (options.body) {
+            // RFC 3501 7.4.2: BODY is BODYSTRUCTURE without extension data, and for a multipart the
+            // parameter list is the first extension field (body-ext-mpart)
+            return data;
+        }
+
+        data = data.concat([
             // body parameter parenthesized list
             (node.parsedHeader['content-type'] &&
                 node.parsedHeader['content-type'].hasParams &&
@@ -200,14 +222,8 @@ class BodyStructure {
                 null
         ]);
 
-        if (options.body) {
-            return data;
-        } else {
-            let resp = data
-                // skip body MD5 from extension fields
-                .concat(this.getExtensionFields(node, options).slice(1));
-            return resp;
-        }
+        // skip body MD5 from extension fields
+        return data.concat(this.getExtensionFields(node, options).slice(1));
     }
 
     /**

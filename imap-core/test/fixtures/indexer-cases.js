@@ -98,6 +98,10 @@ function listSelectors(tree) {
 
     let walk = (node, prefix) => {
         let children = (node.message && node.message.childNodes) || node.childNodes || [];
+        if (node.message && !prefix) {
+            // RFC 3501 6.4.5: a top-level message/rfc822 message is part 1, its parts are 1.n
+            prefix = '1';
+        }
         children.forEach((child, i) => {
             let p = prefix ? `${prefix}.${i + 1}` : `${i + 1}`;
             selectors.push({ key: p, path: p, type: '' });

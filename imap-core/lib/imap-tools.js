@@ -634,6 +634,15 @@ module.exports.getQueryResponse = function (query, message, options) {
                         if (Array.isArray(entry)) {
                             return walk(entry);
                         }
+                        if (typeof entry === 'string') {
+                            // RFC 6855 3: no UTF-8 in quoted strings unless the client enabled it.
+                            // Header values that are passed through as strings (Content-Description,
+                            // Content-ID, Content-Location, disposition type) may hold raw UTF-8
+                            if (/[^\u0000-\u007f]/.test(entry)) {  // eslint-disable-line no-control-regex
+                                arr[i] = libmime.encodeWords(entry, false, Infinity);
+                            }
+                            return;
+                        }
                         if (!entry || typeof entry !== 'object') {
                             return;
                         }
@@ -655,7 +664,7 @@ module.exports.getQueryResponse = function (query, message, options) {
                 if (message.envelope) {
                     value = message.envelope;
                     // cast invalidly stored In-Reply-To (8) and Message-ID (9) to strings
-                    for (let index of [9, 10]) {
+                    for (let index of [8, 9]) {
                         if (value[index] && Array.isArray(value[index])) {
                             value[index] = value[index].pop() || null;
                         }
