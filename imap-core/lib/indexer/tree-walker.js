@@ -5,9 +5,9 @@
 // getSize() adds the piece sizes up and rebuild() writes the pieces, so the announced size of a message
 // and the bytes served for it come from the same traversal and can not disagree.
 //
-// A piece is either `{ data, size }` for bytes held in the tree, or `{ node, attachmentId, size }` for a
-// body that lives in the attachment storage, where `size` is the stored size of the node: the number of
-// bytes the body had in the message, which the message document and the user quota were computed from.
+// A piece is either `{ data, size }` for bytes held in the tree, or `{ attachmentId, size }` for a body
+// that lives in the attachment storage, where `size` is the stored size of the node: the number of bytes
+// the body had in the message, which the message document and the user quota were computed from.
 
 const CRLF = Buffer.from('\r\n');
 const EMPTY = Buffer.alloc(0);
@@ -30,7 +30,7 @@ function toBuffer(value) {
 }
 
 function headerLines(node) {
-    return [].concat(node.header || []);
+    return node.header || [];
 }
 
 const piece = data => ({ data, size: data.length });
@@ -46,7 +46,7 @@ function childNodes(node) {
 function* leafPieces(node, options) {
     if (node.attachmentId) {
         if (!options.skipExternal) {
-            yield { node, attachmentId: node.attachmentId, size: typeof node.size === 'number' && node.size >= 0 ? node.size : 0 };
+            yield { attachmentId: node.attachmentId, size: typeof node.size === 'number' && node.size >= 0 ? node.size : 0 };
         }
         return;
     }

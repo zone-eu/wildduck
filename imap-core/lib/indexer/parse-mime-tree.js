@@ -98,7 +98,6 @@ class MIMEParser {
         this._bareLf = false;
 
         this.tree = {
-            rootNode: true,
             childNodes: []
         };
         this._node = this.createNode(this.tree);
@@ -208,18 +207,20 @@ class MIMEParser {
      * @return {Object|Boolean} `{ multipart, close, pad }`, or false when the line is not a delimiter
      */
     matchDelimiter(line) {
-        if (line.charCodeAt(0) !== 0x2d || line.charCodeAt(1) !== 0x2d) {
+        if (!line.startsWith('--')) {
             return false;
         }
 
         let node = this._node;
-        let innermost = node.boundary && node.state !== 'header' ? node : node.parentNode;
+        // a boundary is only known once the header has ended
+        let innermost = node.boundary ? node : node.parentNode;
         for (let multipart = innermost; multipart.boundary; multipart = multipart.parentNode) {
-            if (!line.startsWith(multipart.delimiter)) {
+            let delimiter = '--' + multipart.boundary;
+            if (!line.startsWith(delimiter)) {
                 continue;
             }
 
-            let rest = line.slice(multipart.delimiter.length);
+            let rest = line.slice(delimiter.length);
             let close = rest.startsWith('--');
             if (close) {
                 rest = rest.slice(2);
@@ -258,7 +259,11 @@ class MIMEParser {
                 // its own (RFC 2046 5.1.1 wants one before every delimiter): the line break that ended
                 // the last header line, or the previous delimiter line, is the only one there is
                 this.endHeader();
-                node.bare = true;
+                // the multiparts a lost close delimiter leaves open between this part and the one the
+                // delimiter belongs to end with this part, so they end bare too
+                for (let open = node; open !== multipart; open = open.parentNode) {
+                    open.bare = true;
+                }
             }
         } else if (node.body.length) {
             // the preamble ends here. The line break between the preamble and the delimiter belongs to
@@ -333,7 +338,6 @@ class MIMEParser {
             // remove unneeded properties
             delete node.parentNode;
             delete node.state;
-            delete node.delimiter;
             if (!node.childNodes.length) {
                 delete node.childNodes;
             }
@@ -418,10 +422,10 @@ class MIMEParser {
             node.parsedHeader['content-type'] = parentSubtype === 'digest' ? 'message/rfc822' : 'text/plain';
         }
 
-        // parse additional params for Content-Type and Content-Disposition
+        // parse additional params for Content-Type and Content-Disposition, the last header wins
         ['content-type', 'content-disposition'].forEach(key => {
             if (node.parsedHeader[key]) {
-                node.parsedHeader[key] = this.parseValueParams([].concat(node.parsedHeader[key] || []).pop());
+                node.parsedHeader[key] = this.parseValueParams([].concat(node.parsedHeader[key]).pop());
             }
         });
 
@@ -450,14 +454,8 @@ class MIMEParser {
 
         // Parse address fields (join several fields with same key)
         ['from', 'sender', 'reply-to', 'to', 'cc', 'bcc'].forEach(key => {
-            let addresses = [];
             if (node.parsedHeader[key]) {
-                [].concat(node.parsedHeader[key] || []).forEach(value => {
-                    if (value) {
-                        addresses = addresses.concat(addressparser(value) || []);
-                    }
-                });
-                node.parsedHeader[key] = addresses;
+                node.parsedHeader[key] = [].concat(node.parsedHeader[key]).flatMap(value => (value && addressparser(value)) || []);
             }
         });
     }
@@ -485,9 +483,9 @@ class MIMEParser {
             let key, value;
             if (!i) {
                 data.value = part.trim();
-                data.subtype = data.value.split('/');
-                data.type = (data.subtype.shift() || '').toLowerCase();
-                data.subtype = data.subtype.join('/');
+                let [type, ...subtype] = data.value.split('/');
+                data.type = type.toLowerCase();
+                data.subtype = subtype.join('/');
                 return;
             }
             value = part.split('=');
@@ -516,9 +514,8 @@ class MIMEParser {
                 if (!continuations[name]) {
                     continuations[name] = [];
 
-                    // Additionally allow RFC2231 encoded values
-                    if (key.match(/^([^*]+)\*(?:\d+\*)?$/)) {
-                        // must have charset
+                    // a trailing asterisk marks an RFC 2231 encoded value, which must carry a charset
+                    if (key.endsWith('*')) {
                         charsetRequired.add(name);
                     }
                 }
@@ -568,7 +565,6 @@ class MIMEParser {
         if (contentType.type === 'multipart' && contentType.params.boundary) {
             node.multipart = contentType.subtype;
             node.boundary = contentType.params.boundary;
-            node.delimiter = '--' + node.boundary;
             // until the close delimiter is seen
             node.unterminated = true;
         }

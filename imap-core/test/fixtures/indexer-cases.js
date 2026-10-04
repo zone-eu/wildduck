@@ -67,6 +67,9 @@ const synthetic = {
     // a part whose header lines are directly followed by the next delimiter, without a blank line and
     // without a line break of its own (RFC 2046 5.1.1 wants one before every delimiter)
     bare_part: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n--b\r\nContent-Type: text/plain\r\n\r\np2\r\n--b--\r\n',
+    // a bare part at the end of an inner multipart whose close delimiter was lost
+    nested_bare_lost_close:
+        'Content-Type: multipart/mixed; boundary="o"\r\n\r\n--o\r\nContent-Type: multipart/mixed; boundary="i"\r\n\r\n--i\r\nContent-Type: text/plain\r\n\r\np1\r\n--i\r\nContent-Type: text/plain\r\n--o\r\nContent-Type: text/plain\r\n\r\np2\r\n--o--\r\n',
     // two delimiters in a row: a part with nothing in it at all
     empty_bare_part: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\n--b\r\nContent-Type: text/plain\r\n\r\np2\r\n--b--\r\n',
     // a close delimiter without any part, after a preamble

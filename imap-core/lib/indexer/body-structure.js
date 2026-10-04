@@ -45,12 +45,9 @@ class BodyStructure {
         let contentType = node.parsedHeader['content-type'] || {};
         switch (contentType.type) {
             case 'multipart':
-                if (node.multipart) {
-                    return this.processMultipartNode(node);
-                }
-                // RFC 3501 body-type-mpart needs at least one body: a multipart without a boundary
-                // parameter has no parts and is described with the basic fields
-                return this.processLeaf(node, []);
+                // a multipart without a boundary parameter has no parts and is described with the
+                // basic fields (RFC 3501 body-type-mpart needs at least one body)
+                return partsOf(node) ? this.processMultipartNode(node) : this.processLeaf(node, []);
             case 'text':
                 return this.processLeaf(node, [node.lineCount]);
             case 'message':

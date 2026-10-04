@@ -30,20 +30,21 @@ const MAX_INLINE_TEXT_SIZE = 300 * 1024;
  */
 const headerSection = node => headerLines(node).join('\r\n') + '\r\n\r\n';
 
+/**
+ * Number of bytes a sequence of pieces adds up to
+ */
+function sizeOf(pieces) {
+    let size = 0;
+    for (let piece of pieces) {
+        size += piece.size;
+    }
+    return size;
+}
+
 class Indexer {
     constructor(options) {
         this.options = options || {};
-        this.fetchOptions = this.options.fetchOptions || {};
-
         this.attachmentStorage = this.options.attachmentStorage;
-
-        // create logger
-        this.logger = this.options.logger || {
-            info: () => false,
-            debug: () => false,
-            error: () => false
-        };
-
         this.loggelf = this.options.loggelf || (() => false);
     }
 
@@ -54,11 +55,7 @@ class Indexer {
      * @return {Number} Message size in bytes
      */
     getSize(mimeTree) {
-        let size = 0;
-        for (let piece of walkTree(mimeTree)) {
-            size += piece.size;
-        }
-        return size;
+        return sizeOf(walkTree(mimeTree));
     }
 
     /**
@@ -80,7 +77,7 @@ class Indexer {
         options = options || {};
 
         let pieces = [...walkTree(mimeTree, { textOnly, node: options.node, skipExternal: options.skipExternal })];
-        let expectedLength = pieces.reduce((sum, piece) => sum + piece.size, 0);
+        let expectedLength = sizeOf(pieces);
         let { start, end } = byteWindow(options, expectedLength);
 
         // the pieces inside the window and the part of each that falls into it. Attachments inside the
@@ -178,13 +175,16 @@ class Indexer {
      * a missing attachment is served as line breaks
      */
     async *attachmentChunks(id, lookup, relStart, length, isAborted) {
-        let attachmentData = await lookup;
-        if (!attachmentData) {
+        let missing = () =>
             this.loggelf({
                 short_message: 'Attachment missing',
                 _mail_action: 'attachment_missing',
                 _attachment_id: id
             });
+
+        let attachmentData = await lookup;
+        if (!attachmentData) {
+            missing();
             yield filler(length);
             return;
         }
@@ -214,11 +214,7 @@ class Indexer {
                 throw err;
             }
             // the file went missing between the lookup and the read
-            this.loggelf({
-                short_message: 'Attachment missing',
-                _mail_action: 'attachment_missing',
-                _attachment_id: id
-            });
+            missing();
             yield filler(length - limiter.byteCounter);
         } finally {
             // an abandoned fetch must not leave the storage stream (and its cursor) open
@@ -237,7 +233,7 @@ class Indexer {
     }
 
     getMaildata(mimeTree) {
-        let magic = parseInt(crypto.randomBytes(2).toString('hex'), 16);
+        let magic = crypto.randomInt(0x10000);
         let maildata = {
             nodes: [],
             attachments: [],
@@ -274,53 +270,51 @@ class Indexer {
 
             // decode inline text for the preview and the search index
             if (isInlineText && hasBody) {
-                {
-                    let charset = params.charset || 'windows-1257';
-                    let content = node.body;
+                let charset = params.charset || 'windows-1257';
+                let content = node.body;
 
-                    if (transferEncoding === 'base64') {
-                        content = libbase64.decode(content.toString());
-                    } else if (transferEncoding === 'quoted-printable') {
-                        content = libqp.decode(content.toString());
-                    }
+                if (transferEncoding === 'base64') {
+                    content = libbase64.decode(content.toString());
+                } else if (transferEncoding === 'quoted-printable') {
+                    content = libqp.decode(content.toString());
+                }
 
-                    if (
-                        !['ascii', 'usascii', 'utf8'].includes(
-                            charset
-                                .replace(/[^a-z0-9]+/g, '')
-                                .trim()
-                                .toLowerCase()
-                        )
-                    ) {
-                        content = libcharset.decode(content, charset);
-                    }
+                if (
+                    !['ascii', 'usascii', 'utf8'].includes(
+                        charset
+                            .replace(/[^a-z0-9]+/g, '')
+                            .trim()
+                            .toLowerCase()
+                    )
+                ) {
+                    content = libcharset.decode(content, charset);
+                }
 
-                    if (flowed) {
-                        content = libmime.decodeFlowed(content.toString(), delSp);
-                    } else {
-                        content = content.toString();
-                    }
+                if (flowed) {
+                    content = libmime.decodeFlowed(content.toString(), delSp);
+                } else {
+                    content = content.toString();
+                }
 
-                    if (contentType === 'text/html') {
-                        htmlContent.push(content.trim());
-                        if (!alternative) {
-                            try {
-                                if (content && content.length < MAX_HTML_PARSE_LENGTH) {
-                                    let text = htmlToText(content);
-                                    textContent.push(text.trim());
-                                }
-                            } catch (E) {
-                                // ignore
+                if (contentType === 'text/html') {
+                    htmlContent.push(content.trim());
+                    if (!alternative) {
+                        try {
+                            if (content && content.length < MAX_HTML_PARSE_LENGTH) {
+                                let text = htmlToText(content);
+                                textContent.push(text.trim());
                             }
+                        } catch (E) {
+                            // ignore
                         }
-                    } else {
-                        textContent.push(content.trim());
-                        if (!alternative) {
-                            htmlContent.push(textToHtml(content));
-                        }
+                    }
+                } else {
+                    textContent.push(content.trim());
+                    if (!alternative) {
+                        htmlContent.push(textToHtml(content));
                     }
                 }
-            }
+                }
 
             // remove attachments and very large text nodes from the mime tree
             if (!isMultipart && hasBody && (!isInlineText || node.size > MAX_INLINE_TEXT_SIZE)) {
@@ -386,17 +380,13 @@ class Indexer {
             str.replace(/\bcid:([^\s"']+)/g, (match, cid) => {
                 if (cidMap.has(cid)) {
                     let attachment = cidMap.get(cid);
-                    return `attachment:${attachment.id.toString()}`;
+                    return `attachment:${attachment.id}`;
                 }
                 return match;
             });
 
-        maildata.html = htmlContent.filter(str => str.trim()).map(updateCidLinks);
-        maildata.text = textContent
-            .filter(str => str.trim())
-            .map(updateCidLinks)
-            .join('\n')
-            .trim();
+        maildata.html = htmlContent.filter(Boolean).map(updateCidLinks);
+        maildata.text = textContent.filter(Boolean).map(updateCidLinks).join('\n').trim();
 
         return maildata;
     }
