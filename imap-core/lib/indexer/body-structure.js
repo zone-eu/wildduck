@@ -13,13 +13,15 @@ const PLACEHOLDER_PART = parseMimeTree(Buffer.from('Content-Type: text/plain; ch
  * undefined for anything else
  *
  * @param {Object} node A tree node
+ * @param {Boolean} [placeholder=true] Number the placeholder of a multipart without parts. Trees written
+ *        before the tree format had a version (v1) were served without it and keep that numbering
  * @returns {Array|undefined} Part nodes
  */
-function partsOf(node) {
+function partsOf(node, placeholder) {
     if (node.childNodes) {
         return node.childNodes;
     }
-    return node.boundary ? [PLACEHOLDER_PART] : undefined;
+    return node.boundary && placeholder !== false ? [PLACEHOLDER_PART] : undefined;
 }
 
 class BodyStructure {

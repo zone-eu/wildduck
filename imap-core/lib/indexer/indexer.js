@@ -472,6 +472,8 @@ class Indexer {
     resolveContentNode(mimeTree, path) {
         // the message whose parts the next number counts
         let scope = mimeTree;
+        // v1 trees were served without the placeholder part of a multipart without parts
+        let placeholder = (Number(mimeTree.v) || 1) >= 2;
         let node = mimeTree;
 
         for (let number of (path || '').toString().split('.')) {
@@ -480,13 +482,13 @@ class Indexer {
                 return false;
             }
 
-            let parts = partsOf(scope);
+            let parts = partsOf(scope, placeholder);
             node = parts ? parts[index] : index === 0 ? scope : undefined;
             if (!node) {
                 return false;
             }
 
-            scope = node.message || (partsOf(node) ? node : false);
+            scope = node.message || (partsOf(node, placeholder) ? node : false);
         }
 
         return node;

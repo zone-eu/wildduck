@@ -557,10 +557,8 @@ class MIMEParser {
      */
     processContentType() {
         let node = this._node;
+        // processNodeHeader() always sets a Content-Type
         let contentType = node.parsedHeader['content-type'];
-        if (!contentType) {
-            return;
-        }
 
         if (contentType.type === 'multipart' && contentType.params.boundary) {
             node.multipart = contentType.subtype;
