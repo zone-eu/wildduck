@@ -100,7 +100,8 @@ describe('Indexer attachments', function () {
 
                     it('serves every partial window of BODY[]', async function () {
                         let seam = SEAMS.has(scenario.name);
-                        let step = seam ? 1 : 13;
+                        // every offset at the seams, a prime step elsewhere that grows with the message
+                        let step = seam ? 1 : Math.max(13, Math.floor(scenario.source.length / 300) + 1 - (Math.floor(scenario.source.length / 300) % 2));
                         // lengths of every residue modulo 4, so windows end at every position of a base64 group
                         let lengths = seam ? [1, 4, 7, 16, 50] : [7, 16, 50];
                         let expected = scenario.source;

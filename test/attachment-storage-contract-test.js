@@ -27,7 +27,9 @@ const SELECTED = new Set([
     'base64 single short line',
     'base64 wrapped at an unusual line length',
     'base64 with uneven wrapping',
-    'quoted-printable attachment'
+    'quoted-printable attachment',
+    'large inline text part stored verbatim',
+    'large inline base64 text part stored decoded'
 ]);
 
 function store(indexer, source) {
@@ -99,7 +101,8 @@ describe('GridFS attachment storage contract', function () {
 
             it('serves every partial window of BODY[]', async function () {
                 let expected = scenario.source;
-                for (let origin = 0; origin < expected.length; origin += 7) {
+                let step = Math.max(7, Math.floor(expected.length / 300) + 1 - (Math.floor(expected.length / 300) % 2));
+                for (let origin = 0; origin < expected.length; origin += step) {
                     for (let length of [7, 16, 50]) {
                         let options = { startFrom: origin, maxLength: length };
                         let wire = await wireLiteral(compileStream, runSelector(indexer, tree, BODY, options), options);

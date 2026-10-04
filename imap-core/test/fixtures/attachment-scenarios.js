@@ -115,6 +115,19 @@ add(
     ])
 );
 
+// inline text above the size limit is moved to the storage too, verbatim or decoded
+add(
+    'large inline text part stored verbatim',
+    multipart([text, part(['Content-Type: text/plain; charset=utf-8'], ('line of text that repeats\r\n'.repeat(13000) + 'last line').replace(/x/g, 'y'))]),
+    { decoded: false }
+);
+
+add(
+    'large inline base64 text part stored decoded',
+    multipart([text, part(['Content-Type: text/html; charset=utf-8', 'Content-Transfer-Encoding: base64'], base64Body(payload(330000, 11), { trailing: 1 }))]),
+    { decoded: true, lineLen: 76, decodedLength: 330000 }
+);
+
 add(
     'attachment as the whole message body',
     'Content-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\nSubject: root attachment\r\n\r\n' + base64Body(payload(1140, 3), { trailing: 1 }),
