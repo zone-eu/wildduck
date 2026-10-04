@@ -107,6 +107,22 @@ describe('MIME tree v2 structure', function () {
         expect(tree.epilogue.toString('binary')).to.equal('\r\n--b\r\nagain\r\n--b--\r\n');
     });
 
+    it('ends an inner multipart whose close delimiter was lost at the enclosing delimiter', function () {
+        let tree = parseMimeTree(
+            Buffer.from(
+                'Content-Type: multipart/mixed; boundary="o"\r\n\r\n--o\r\nContent-Type: multipart/alternative; boundary="i"\r\n\r\n--i\r\nContent-Type: text/plain\r\n\r\ntext\r\n--o\r\nContent-Type: application/pdf\r\n\r\nPDF\r\n--o--\r\n',
+                'binary'
+            )
+        );
+        expect(tree.childNodes.length).to.equal(2);
+        let inner = tree.childNodes[0];
+        expect(inner.unterminated).to.equal(true);
+        expect(inner.childNodes.length).to.equal(1);
+        expect(inner.childNodes[0].body.toString('binary')).to.equal('text');
+        expect(tree.childNodes[1].body.toString('binary')).to.equal('PDF');
+        expect(tree.unterminated).to.be.undefined;
+    });
+
     it('treats a bare CR as content', function () {
         let tree = parse('bare_cr');
         expect(tree.body.toString('binary')).to.equal('l1\rstill l1\r\nl2\r\n');

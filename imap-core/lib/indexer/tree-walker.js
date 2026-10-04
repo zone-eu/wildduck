@@ -30,9 +30,11 @@ function toBuffer(value) {
 }
 
 function headerLines(node) {
-    let header = node.header || [];
-    return Array.isArray(header) ? header : [].concat(header || []);
+    return [].concat(node.header || []);
 }
+
+const piece = data => ({ data, size: data.length });
+const text = str => piece(Buffer.from(str, 'binary'));
 
 function childNodes(node) {
     return Array.isArray(node.childNodes) ? node.childNodes : [];
@@ -78,8 +80,7 @@ function* walkV1(root, options) {
 
     const line = function* (str) {
         yield* separator();
-        let data = Buffer.from(str, 'binary');
-        yield { data, size: data.length };
+        yield text(str);
     };
 
     const walk = function* (node, isRoot) {
@@ -98,10 +99,9 @@ function* walkV1(root, options) {
         yield* separator();
         let preamble = toBuffer(node.body);
         if (preamble.length) {
-            yield { data: preamble, size: preamble.length };
+            yield piece(preamble);
         }
-        let delimiter = Buffer.from('--' + node.boundary, 'binary');
-        yield { data: delimiter, size: delimiter.length };
+        yield text('--' + node.boundary);
 
         let children = childNodes(node);
         for (let i = 0; i < children.length; i++) {
@@ -130,9 +130,6 @@ function* walkV1(root, options) {
  * running to the end of the message, and one without any delimiter at all is just its preamble.
  */
 function* walkV2(root, options) {
-    const piece = data => ({ data, size: data.length });
-    const text = str => piece(Buffer.from(str, 'binary'));
-
     const walk = function* (node, isRoot) {
         let withHeader = !options.textOnly || !isRoot;
 
@@ -204,4 +201,4 @@ function* walkTree(root, options) {
     }
 }
 
-module.exports = { walkTree, toBuffer, headerLines, CRLF };
+module.exports = { walkTree, headerLines };

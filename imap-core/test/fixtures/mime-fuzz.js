@@ -61,6 +61,36 @@ class Rng {
 
 const ensureFinalBreak = buf => (buf.length && !buf.subarray(-2).equals(Buffer.from('\r\n')) ? Buffer.concat([buf, Buffer.from('\r\n')]) : buf);
 
+/**
+ * Makes the serialised bytes of a model end with a line break: finds the innermost entity that ends
+ * them (through unterminated multiparts and embedded messages), gives it the break, and serialises every
+ * enclosing message/rfc822 body again
+ */
+function completeTail(model) {
+    let chain = [];
+    let tail = model;
+    for (;;) {
+        if (tail.kind === 'rfc822' && tail.message) {
+            chain.push(tail);
+            tail = tail.message;
+        } else if (tail.kind === 'multipart' && tail.children.length && tail.unterminated) {
+            tail = tail.children[tail.children.length - 1];
+        } else {
+            break;
+        }
+    }
+    if (tail.kind === 'multipart') {
+        if (!tail.unterminated) {
+            tail.epilogue = Buffer.concat([tail.epilogue || Buffer.alloc(0), Buffer.from('\r\n')]);
+        }
+    } else if (tail.hasBody) {
+        tail.body = ensureFinalBreak(tail.body);
+    }
+    for (let i = chain.length - 1; i >= 0; i--) {
+        chain[i].body = serialize(chain[i].message);
+    }
+}
+
 const ASCII_TEXT = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,;:!?()[]<>=+-/@#$%&*_"\'';
 const BOUNDARY_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'()+_,-./:=?";
 const WORDS = ['tere', 'hello', 'Tõivu', '中文', 'résumé', 'Ångström', 'x', 'line', 'of', 'text', '--not-a-boundary', 'From ', '.', '=3D', '?='];
@@ -285,9 +315,7 @@ function generateNode(rng, options) {
             // the message ends with the last part, which then ends with a line break
             model.unterminated = true;
             model.epilogue = null;
-            if (last.hasBody) {
-                last.body = ensureFinalBreak(last.body);
-            }
+            completeTail(last);
         } else {
             model.closePad = rng.chance(0.05) ? ' ' : '';
             let epilogueKind = rng.next();
@@ -326,29 +354,8 @@ function generateNode(rng, options) {
             model.message = inner;
         }
         if (options.topLevel && !options.embedded && model.message && !model.body.subarray(-2).equals(Buffer.from('\r\n'))) {
-            // the embedded message gains the final break of the outer message, so its model must too:
-            // find the innermost entity that ends the message, give it the break, and serialise every
-            // enclosing message/rfc822 body again
-            let chain = [];
-            let tail = model;
-            for (;;) {
-                if (tail.kind === 'rfc822' && tail.message) {
-                    chain.push(tail);
-                    tail = tail.message;
-                } else if (tail.kind === 'multipart' && tail.children.length && tail.unterminated) {
-                    tail = tail.children[tail.children.length - 1];
-                } else {
-                    break;
-                }
-            }
-            if (tail.kind === 'multipart') {
-                tail.epilogue = Buffer.concat([tail.epilogue || Buffer.alloc(0), Buffer.from('\r\n')]);
-            } else if (tail.hasBody) {
-                tail.body = ensureFinalBreak(tail.body);
-            }
-            for (let i = chain.length - 1; i >= 0; i--) {
-                chain[i].body = serialize(chain[i].message);
-            }
+            // the embedded message gains the final break of the outer message, so its model must too
+            completeTail(model);
         }
         return finish(model);
     }
@@ -390,8 +397,9 @@ function generateNode(rng, options) {
         return finish(model);
     }
 
-    // text
-    model.contentType = rng.chance(0.15) && !options.topLevel ? null : { value: rng.pick(['text/plain', 'text/html', 'TEXT/Plain', 'text/x-custom']) };
+    // text. Without a Content-Type header the part defaults to text/plain, except inside a digest where
+    // the default is message/rfc822 (that case is the headerless kind)
+    model.contentType = rng.chance(0.15) && !options.topLevel && !options.digest ? null : { value: rng.pick(['text/plain', 'text/html', 'TEXT/Plain', 'text/x-custom']) };
     model.header = headerLines(rng, model.contentType, rng.pick([null, null, '7bit', '8bit']), options);
     model.body = textBody(rng);
     return finish(model);

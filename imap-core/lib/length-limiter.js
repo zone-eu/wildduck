@@ -5,7 +5,8 @@ const Transform = streams.Transform;
 
 // make sure that a stream piped to this transform stream
 // always emits a fixed amounts of bytes. Either by truncating
-// input or emitting padding characters
+// input or emitting padding: a character, or a function that returns
+// the bytes for a given length
 class LengthLimiter extends Transform {
     constructor(expectedLength, padding, startFrom, byteCounter) {
         super();
@@ -72,8 +73,8 @@ class LengthLimiter extends Transform {
         if (!this.finished) {
             // add padding if incoming stream stopped too early
             if (this.expectedLength > this.byteCounter) {
-                let buf = Buffer.from(this.padding.repeat(this.expectedLength - this.byteCounter));
-                this.push(buf);
+                let missing = this.expectedLength - this.byteCounter;
+                this.push(typeof this.padding === 'function' ? this.padding(missing) : Buffer.from(this.padding.repeat(missing)));
                 // the announced octet count was honoured, but the bytes are not the message
                 this.emit('mismatch', { kind: 'padded', expected: this.expectedLength, received: this.byteCounter });
             }

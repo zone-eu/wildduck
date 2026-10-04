@@ -94,6 +94,8 @@ class MIMEParser {
         // the line break that ended the last line read, false once the input is used up
         this._br = '';
         this._pos = 0;
+        // whether any line ended with a bare LF, which is stored as CRLF
+        this._bareLf = false;
 
         this.tree = {
             rootNode: true,
@@ -121,9 +123,7 @@ class MIMEParser {
                     case 'header':
                         if (!line) {
                             // the blank line that separates the header from the body
-                            this.processNodeHeader();
-                            this.processContentType();
-                            this._node.state = 'body';
+                            this.endHeader();
                         } else {
                             this._node.header.push(line);
                         }
@@ -180,15 +180,29 @@ class MIMEParser {
 
         let line = this.rfc822.slice(this._pos, lineEnd);
         this._br = this.rfc822.slice(lineEnd, end + 1);
+        if (lineEnd === end) {
+            this._bareLf = true;
+        }
         this._pos = end + 1;
         return line;
     }
 
     /**
-     * Checks whether a line is a delimiter of the innermost open multipart: the one the current node
-     * belongs to, or the current node itself while it is collecting its preamble or epilogue.
+     * Ends the header of the current node: its blank line was read, or a delimiter took its place
+     */
+    endHeader() {
+        this.processNodeHeader();
+        this.processContentType();
+        this._node.state = 'body';
+    }
+
+    /**
+     * Checks whether a line is a delimiter of an open multipart: the current node while it collects its
+     * preamble or epilogue, the multipart the current node belongs to, or any multipart above that (a
+     * lost close delimiter leaves the inner multipart open, the enclosing delimiter still ends it).
      * RFC 2046 5.1.1: `--boundary` or `--boundary--`, optionally followed by transport padding (spaces
-     * and tabs) that receivers must accept.
+     * and tabs) that receivers must accept. After the close delimiter, lines that look like the own
+     * delimiter are epilogue text.
      *
      * @param {String} line Line of the message
      * @return {Object|Boolean} `{ multipart, close, pad }`, or false when the line is not a delimiter
@@ -199,43 +213,31 @@ class MIMEParser {
         }
 
         let node = this._node;
-        // a multipart in its body state is collecting its preamble, in its epilogue state its epilogue;
-        // its own boundary opens parts in the first case only. A part always looks for its parent
-        let multipart = node.boundary && node.state !== 'header' ? node : node.parentNode;
-        if (!multipart || !multipart.boundary || !line.startsWith(multipart.delimiter)) {
-            if (multipart === node && node.parentNode.boundary) {
-                // the preamble of a multipart may also end with the delimiter of the enclosing one
-                return this.matchDelimiterOf(node.parentNode, line);
+        let innermost = node.boundary && node.state !== 'header' ? node : node.parentNode;
+        for (let multipart = innermost; multipart.boundary; multipart = multipart.parentNode) {
+            if (!line.startsWith(multipart.delimiter)) {
+                continue;
             }
-            return false;
+
+            let rest = line.slice(multipart.delimiter.length);
+            let close = rest.startsWith('--');
+            if (close) {
+                rest = rest.slice(2);
+            }
+
+            if (/[^ \t]/.test(rest)) {
+                // something other than padding after the boundary, so a different boundary or text
+                continue;
+            }
+
+            if (multipart.state === 'epilogue') {
+                return false;
+            }
+
+            return { multipart, close, pad: rest };
         }
 
-        return this.matchDelimiterOf(multipart, line);
-    }
-
-    matchDelimiterOf(multipart, line) {
-        if (!line.startsWith(multipart.delimiter)) {
-            return false;
-        }
-
-        let rest = line.slice(multipart.delimiter.length);
-        let close = false;
-        if (rest.startsWith('--')) {
-            close = true;
-            rest = rest.slice(2);
-        }
-
-        if (/[^ \t]/.test(rest)) {
-            // something other than padding after the boundary, so a different boundary or body text
-            return false;
-        }
-
-        if (multipart.state === 'epilogue') {
-            // after the close delimiter, lines that look like the own delimiter are epilogue text
-            return false;
-        }
-
-        return { multipart, close, pad: rest };
+        return false;
     }
 
     /**
@@ -255,13 +257,10 @@ class MIMEParser {
                 // a delimiter right after the header lines, with no blank line and no line break of
                 // its own (RFC 2046 5.1.1 wants one before every delimiter): the line break that ended
                 // the last header line, or the previous delimiter line, is the only one there is
-                this.processNodeHeader();
-                this.processContentType();
-                node.state = 'body';
+                this.endHeader();
                 node.bare = true;
             }
-            this.parseEmbeddedMessage(node);
-        } else if (node.body.length && node.state === 'body') {
+        } else if (node.body.length) {
             // the preamble ends here. The line break between the preamble and the delimiter belongs to
             // the delimiter, but the preamble lines end with their own
             node.body[node.body.length - 1] += prevBr;
@@ -297,7 +296,7 @@ class MIMEParser {
         if (encoding && !['7bit', '8bit', 'binary'].includes(encoding)) {
             return;
         }
-        node.message = parse(Array.isArray(node.body) ? node.body.join('') : node.body, { embedded: true });
+        node.message = parse(node.body, { embedded: true });
     }
 
     /**
@@ -306,30 +305,27 @@ class MIMEParser {
      */
     finalizeTree() {
         if (this._node.state === 'header') {
-            this.processNodeHeader();
-            this.processContentType();
+            this.endHeader();
         }
 
         let walker = node => {
-            if (node.parentNode === this.tree) {
-                // the message itself may be a message/rfc822 entity
-                this.parseEmbeddedMessage(node);
-            }
-
-            // RFC 2046 5.1.1: a node has a body section when anything followed the blank line after its
-            // header. A separator followed by the end of the input leaves the trailing empty line in the
-            // body, a separator followed directly by a delimiter leaves nothing, and a multipart without
-            // preamble has parts or a close delimiter
-            if (!node.body.length && !node.childNodes.length && node.unterminated !== false && (!node.boundary || node.unterminated)) {
+            // a body section holds lines, parts, or at least a close delimiter. A blank line followed by
+            // the end of the input leaves the trailing empty line in the body, one followed directly by
+            // a delimiter leaves nothing
+            let closed = node.boundary && !node.unterminated;
+            if (!(node.body.length || node.childNodes.length || closed)) {
                 node.hasBody = false;
             }
 
             node.lineCount = node.body.length ? node.body.length - 1 : 0;
-            node.body = Buffer.from(node.body.join('').replace(LINE_BREAKS, '\r\n'), 'binary');
+            node.body = Buffer.from(this.normalizeBreaks(node.body.join('')), 'binary');
             node.size = node.body.length;
 
+            // a message/rfc822 entity, the message itself included, carries its parsed message
+            this.parseEmbeddedMessage(node);
+
             if (node.epilogue) {
-                node.epilogue = Buffer.from(node.epilogue.join('').replace(LINE_BREAKS, '\r\n'), 'binary');
+                node.epilogue = Buffer.from(this.normalizeBreaks(node.epilogue.join('')), 'binary');
             }
 
             node.childNodes.forEach(walker);
@@ -343,6 +339,13 @@ class MIMEParser {
             }
         };
         this.tree.childNodes.forEach(walker);
+    }
+
+    /**
+     * Stores every line break as CRLF. Input that only had CRLF breaks is returned as it is
+     */
+    normalizeBreaks(str) {
+        return this._bareLf ? str.replace(LINE_BREAKS, '\r\n') : str;
     }
 
     /**
@@ -370,13 +373,15 @@ class MIMEParser {
     processNodeHeader() {
         let node = this._node;
 
-        // RFC 5322 2.2.3: a line that starts with whitespace continues the previous header field
+        // RFC 5322 2.2.3: a line that starts with whitespace continues the previous header field. The
+        // lines are copied: as slices of the input they would keep the whole message string alive for
+        // as long as the tree lives
         let header = [];
         for (let line of node.header) {
             if (header.length && /^\s/.test(line)) {
                 header[header.length - 1] += '\r\n' + line;
             } else {
-                header.push(line);
+                header.push(Buffer.from(line, 'binary').toString('binary'));
             }
         }
         node.header = header;
@@ -572,15 +577,12 @@ class MIMEParser {
 
 function parse(rfc822, options) {
     let parser = new MIMEParser(rfc822, options);
-    let response;
 
     parser.parse();
     parser.finalizeTree();
 
-    response = parser.tree.childNodes[0] || false;
-    if (response) {
-        response.v = TREE_VERSION;
-    }
+    let response = parser.tree.childNodes[0];
+    response.v = TREE_VERSION;
     return response;
 }
 

@@ -8,6 +8,20 @@ const parseMimeTree = require('./parse-mime-tree');
 // no parts, so this empty text part stands in for them
 const PLACEHOLDER_PART = parseMimeTree(Buffer.from('Content-Type: text/plain; charset=us-ascii\r\n\r\n'));
 
+/**
+ * The parts of a node as IMAP numbers them: the parts of a multipart (the placeholder when it has none),
+ * undefined for anything else
+ *
+ * @param {Object} node A tree node
+ * @returns {Array|undefined} Part nodes
+ */
+function partsOf(node) {
+    if (node.childNodes) {
+        return node.childNodes;
+    }
+    return node.boundary ? [PLACEHOLDER_PART] : undefined;
+}
+
 class BodyStructure {
     /**
      * Generates an object out of parsed mime tree, that can be serialized into a BODYSTRUCTURE string
@@ -106,7 +120,7 @@ class BodyStructure {
     }
 
     /**
-     * Generates a list of extension fields any non-multipart part should have
+     * Generates the extension fields every part has (a non-multipart part also has an MD5 before them)
      *
      * @param {Object} node A tree node of the parsed mime tree
      * @return {Array} A list of extension fields
@@ -117,9 +131,6 @@ class BodyStructure {
         let disposition = node.parsedHeader['content-disposition'];
 
         return [
-            // body MD5
-            node.parsedHeader['content-md5'] || null,
-
             // body disposition
             (disposition && [this.key(disposition.value), this.paramList(disposition)]) || null,
 
@@ -143,15 +154,7 @@ class BodyStructure {
      * @return {Array} BODYSTRUCTURE for a multipart part
      */
     processMultipartNode(node) {
-        let parts = (node.childNodes && node.childNodes.map(child => this.createBodystructure(child))) || [];
-        if (!parts.length) {
-            parts = [this.createBodystructure(PLACEHOLDER_PART)];
-        }
-
-        let data = parts.concat([
-            // body subtype
-            this.key(node.multipart)
-        ]);
+        let data = [...partsOf(node).map(child => this.createBodystructure(child)), this.key(node.multipart)];
 
         if (this.options.body) {
             // RFC 3501 7.4.2: BODY is BODYSTRUCTURE without extension data, and for a multipart the
@@ -159,10 +162,7 @@ class BodyStructure {
             return data;
         }
 
-        return data
-            .concat([this.paramList(node.parsedHeader['content-type'])])
-            // multiparts have no MD5
-            .concat(this.getExtensionFields(node).slice(1));
+        return [...data, this.paramList(node.parsedHeader['content-type']), ...this.getExtensionFields(node)];
     }
 
     /**
@@ -174,9 +174,9 @@ class BodyStructure {
      * @return {Array} BODYSTRUCTURE for the part
      */
     processLeaf(node, extra) {
-        let data = this.getBasicFields(node).concat(extra);
+        let data = [...this.getBasicFields(node), ...extra];
         if (!this.options.body) {
-            data = data.concat(this.getExtensionFields(node));
+            data = [...data, node.parsedHeader['content-md5'] || null, ...this.getExtensionFields(node)];
         }
         return data;
     }
@@ -184,3 +184,4 @@ class BodyStructure {
 
 // Expose to the world
 module.exports = BodyStructure;
+module.exports.partsOf = partsOf;

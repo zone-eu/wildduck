@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { partsOf } = require('../../lib/indexer/body-structure');
 
 // a line break is LF with an optional CR before it, stored as CRLF. Anything else is content
 const normalize = source => Buffer.from(Buffer.from(source).toString('binary').replace(/\r?\n/g, '\r\n'), 'binary');
@@ -109,7 +110,7 @@ function listSelectors(tree) {
     ];
 
     let walk = (node, prefix) => {
-        let children = (node.message && node.message.childNodes) || node.childNodes || [];
+        let children = (node.message && partsOf(node.message)) || partsOf(node) || [];
         if (node.message && !prefix) {
             // RFC 3501 6.4.5: a top-level message/rfc822 message is part 1, its parts are 1.n
             prefix = '1';

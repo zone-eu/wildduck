@@ -1,13 +1,15 @@
 'use strict';
 
-const { PassThrough } = require('stream');
+const { Readable } = require('stream');
 const { buffer: streamToBuffer } = require('stream/consumers');
 const BodyStructure = require('./body-structure');
+const { partsOf } = BodyStructure;
 const createEnvelope = require('./create-envelope');
 const { decodeWordsSafe } = createEnvelope;
 const parseMimeTree = require('./parse-mime-tree');
 const { walkTree, headerLines } = require('./tree-walker');
-const { filler, decodedLength } = require('../../../lib/attachments/base64-codec');
+const LengthLimiter = require('../length-limiter');
+const { byteWindow, filler, decodedLength } = require('../../../lib/attachments/base64-codec');
 const libmime = require('libmime');
 const libcharset = require('libmime/lib/charset');
 const libqp = require('libqp');
@@ -49,16 +51,11 @@ class Indexer {
      * Returns the size of the message a tree rebuilds to
      *
      * @param  {Object} mimeTree Parsed mimeTree object
-     * @param  {Boolean} textOnly If true, do not include the header of the rendered node
-     * @param  {Object} [options]
-     * @param  {Object} [options.node] A node of the tree to render instead of the whole message
-     * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
      * @return {Number} Message size in bytes
      */
-    getSize(mimeTree, textOnly, options) {
-        options = options || {};
+    getSize(mimeTree) {
         let size = 0;
-        for (let piece of walkTree(mimeTree, { textOnly, node: options.node, skipExternal: options.skipExternal })) {
+        for (let piece of walkTree(mimeTree)) {
             size += piece.size;
         }
         return size;
@@ -84,101 +81,64 @@ class Indexer {
 
         let pieces = [...walkTree(mimeTree, { textOnly, node: options.node, skipExternal: options.skipExternal })];
         let expectedLength = pieces.reduce((sum, piece) => sum + piece.size, 0);
+        let { start, end } = byteWindow(options, expectedLength);
 
-        let output = new PassThrough();
-        let aborted = false;
-
-        let startFrom = Math.max(Number(options.startFrom) || 0, 0);
-        let maxLength = Math.max(Number(options.maxLength) || 0, 0);
-        let end = Math.min(maxLength ? startFrom + maxLength : expectedLength, expectedLength);
-
-        output.isLimited = !!(options.startFrom || options.maxLength);
-
-        // look the attachments inside the window up at once instead of one at a time when reached
+        // the pieces inside the window and the part of each that falls into it. Attachments inside the
+        // window are looked up at once instead of one at a time when reached
+        let window = [];
         let lookups = new Map();
         let pos = 0;
         for (let piece of pieces) {
-            if (piece.attachmentId && pos < end && pos + piece.size > startFrom) {
-                let id = this.resolveAttachmentId(mimeTree, piece.attachmentId);
-                if (!lookups.has(id)) {
-                    let lookup = this.lookupAttachment(id);
+            let from = Math.max(start - pos, 0);
+            let to = Math.min(end - pos, piece.size);
+            pos += piece.size;
+            if (to <= from) {
+                continue;
+            }
+            let entry = { piece, from, to };
+            if (piece.attachmentId) {
+                entry.id = this.resolveAttachmentId(mimeTree, piece.attachmentId);
+                if (!lookups.has(entry.id)) {
+                    let lookup = this.lookupAttachment(entry.id);
                     // the rejection is handled where the lookup is awaited
                     lookup.catch(() => false);
-                    lookups.set(id, lookup);
+                    lookups.set(entry.id, lookup);
                 }
+                entry.lookup = lookups.get(entry.id);
             }
-            pos += piece.size;
+            window.push(entry);
         }
 
-        let write = async chunk => {
-            if (!chunk || !chunk.length || aborted || output.destroyed) {
-                return;
-            }
-
-            if (output.write(chunk) === false) {
-                await new Promise(resolve => {
-                    let done = () => {
-                        output.removeListener('drain', done);
-                        output.removeListener('close', done);
-                        resolve();
-                    };
-                    output.on('drain', done);
-                    output.on('close', done);
-                });
-            }
-        };
-
-        let processStream = async () => {
-            // position in the full message of the next piece
-            let pos = 0;
-            // consecutive in-memory pieces inside the window go out as one write
+        let output;
+        let chunks = async function* () {
+            // consecutive in-memory pieces go out as one chunk
             let pending = [];
-            let flush = async () => {
-                if (pending.length) {
-                    let data = pending.length === 1 ? pending[0] : Buffer.concat(pending);
-                    pending = [];
-                    await write(data);
-                }
+            let flush = () => {
+                let data = pending.length === 1 ? pending[0] : Buffer.concat(pending);
+                pending = [];
+                return data;
             };
 
-            for (let piece of pieces) {
-                if (aborted || output.destroyed || pos >= end) {
-                    break;
+            for (let { piece, from, to, id, lookup } of window) {
+                if (piece.data) {
+                    pending.push(from === 0 && to === piece.size ? piece.data : piece.data.subarray(from, to));
+                    continue;
                 }
-
-                // the part of this piece that falls inside the requested window
-                let from = Math.max(startFrom - pos, 0);
-                let to = Math.min(end - pos, piece.size);
-
-                if (to > from) {
-                    if (piece.data) {
-                        pending.push(from === 0 && to === piece.size ? piece.data : piece.data.subarray(from, to));
-                    } else {
-                        await flush();
-                        await this.writeAttachment(piece, mimeTree, lookups, from, to - from, write, () => aborted || output.destroyed);
-                    }
+                if (pending.length) {
+                    yield flush();
                 }
-
-                pos += piece.size;
+                yield* this.attachmentChunks(id, lookup, from, to - from, () => output.destroyed);
             }
 
-            await flush();
-        };
+            if (pending.length) {
+                yield flush();
+            }
+        }.bind(this);
 
-        setImmediate(() => {
-            processStream()
-                .then(() => {
-                    output.end();
-                })
-                .catch(err => {
-                    output.emit('error', err);
-                });
-        });
-
+        output = Readable.from(chunks(), { objectMode: false });
+        output.isLimited = !!(options.startFrom || options.maxLength);
         // if called then stops resolving rest of the message
-        output.abort = () => {
-            aborted = true;
-        };
+        output.abort = () => output.destroy();
 
         return {
             type: 'stream',
@@ -212,56 +172,57 @@ class Indexer {
     }
 
     /**
-     * Writes `length` bytes of an attachment body starting at `relStart`, counted from the start of the
+     * Yields `length` bytes of an attachment body starting at `relStart`, counted from the start of the
      * body as it appears in the message. The attachment occupies exactly the stored size of its node, so
-     * a storage that delivers more or less than asked for is logged, cut and padded with line breaks
+     * a storage that delivers more or less than asked for is logged, cut and padded with line breaks, and
+     * a missing attachment is served as line breaks
      */
-    async writeAttachment(piece, mimeTree, lookups, relStart, length, write, isAborted) {
-        let id = this.resolveAttachmentId(mimeTree, piece.attachmentId);
-        let attachmentData = await (lookups.get(id) || this.lookupAttachment(id));
-
-        let received = 0;
-
-        if (attachmentData) {
-            let stream = this.attachmentStorage.createReadStream(id, attachmentData, { startFrom: relStart, maxLength: length });
-            try {
-                for await (let chunk of stream) {
-                    if (isAborted()) {
-                        stream.destroy();
-                        return;
-                    }
-                    let take = Math.min(chunk.length, length - received);
-                    received += chunk.length;
-                    if (take > 0) {
-                        await write(take === chunk.length ? chunk : chunk.subarray(0, take));
-                    }
-                }
-            } catch (err) {
-                if (err.code !== 'ENOENT') {
-                    throw err;
-                }
-                attachmentData = false;
-            }
-        }
-
+    async *attachmentChunks(id, lookup, relStart, length, isAborted) {
+        let attachmentData = await lookup;
         if (!attachmentData) {
             this.loggelf({
                 short_message: 'Attachment missing',
                 _mail_action: 'attachment_missing',
                 _attachment_id: id
             });
-        } else if (received !== length) {
+            yield filler(length);
+            return;
+        }
+
+        let stream = this.attachmentStorage.createReadStream(id, attachmentData, { startFrom: relStart, maxLength: length });
+        let limiter = new LengthLimiter(length, filler);
+        limiter.on('mismatch', info =>
             this.loggelf({
                 short_message: 'Attachment length mismatch',
                 _mail_action: 'attachment_length_mismatch',
                 _attachment_id: id,
-                _expected: length,
-                _received: received
-            });
-        }
+                _expected: info.expected,
+                _received: info.received
+            })
+        );
+        stream.once('error', err => limiter.destroy(err));
 
-        if (received < length) {
-            await write(filler(length - received));
+        try {
+            for await (let chunk of stream.pipe(limiter)) {
+                if (isAborted()) {
+                    return;
+                }
+                yield chunk;
+            }
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                throw err;
+            }
+            // the file went missing between the lookup and the read
+            this.loggelf({
+                short_message: 'Attachment missing',
+                _mail_action: 'attachment_missing',
+                _attachment_id: id
+            });
+            yield filler(length - limiter.byteCounter);
+        } finally {
+            // an abandoned fetch must not leave the storage stream (and its cursor) open
+            stream.destroy();
         }
     }
 
@@ -309,9 +270,11 @@ class Indexer {
             let isMultipart = contentType.split('/')[0] === 'multipart';
             let isInlineText = INLINE_TEXT_TYPES.includes(contentType) && (!disposition || disposition === 'inline');
 
+            let hasBody = !!(node.body && node.body.length);
+
             // decode inline text for the preview and the search index
-            if (isInlineText) {
-                if (node.body && node.body.length) {
+            if (isInlineText && hasBody) {
+                {
                     let charset = params.charset || 'windows-1257';
                     let content = node.body;
 
@@ -360,7 +323,7 @@ class Indexer {
             }
 
             // remove attachments and very large text nodes from the mime tree
-            if (!isMultipart && node.body && node.body.length && (!isInlineText || node.size > MAX_INLINE_TEXT_SIZE)) {
+            if (!isMultipart && hasBody && (!isInlineText || node.size > MAX_INLINE_TEXT_SIZE)) {
                 let attachmentId = 'ATT' + String(++idcount).padStart(5, '0');
 
                 let filename = (parsedDisposition && parsedDisposition.params.filename) || params.name || false;
@@ -527,18 +490,13 @@ class Indexer {
                 return false;
             }
 
-            if (scope.childNodes) {
-                node = scope.childNodes[index];
-                if (!node) {
-                    return false;
-                }
-            } else if (index === 0) {
-                node = scope;
-            } else {
+            let parts = partsOf(scope);
+            node = parts ? parts[index] : index === 0 ? scope : undefined;
+            if (!node) {
                 return false;
             }
 
-            scope = node.message || (node.childNodes ? node : false);
+            scope = node.message || (partsOf(node) ? node : false);
         }
 
         return node;
@@ -585,43 +543,34 @@ class Indexer {
         // the root carries the format version and the attachment map a node is rendered with
         let render = (target, textOnly) => this.rebuild(mimeTree, textOnly, Object.assign({}, options, { node: target }));
 
+        // RFC 3501 6.4.5: HEADER and TEXT with a part number refer to the encapsulated message of a
+        // message/rfc822 part, not to the part itself
+        let message = selector.path ? node.message : node;
+
         switch (selector.type) {
             case '':
             case 'content':
                 // BODY[] is the whole message, BODY[1.2.3] a part without its MIME header
                 return render(node, !!selector.path);
 
-            case 'text':
-                // BODY[TEXT] is the message without its header, BODY[1.2.3.TEXT] the embedded message of
-                // a message/rfc822 part without its header
-                if (!selector.path) {
-                    return render(node, true);
-                }
-                return node.message ? render(node.message, true) : '';
-
             case 'mime':
                 // BODY[1.2.3.MIME] is the MIME header of the part
                 return headerSection(node);
 
+            case 'text':
+                return message ? render(message, true) : '';
+
             case 'header':
+                return message ? headerSection(message) : '';
+
             case 'header.fields':
             case 'header.fields.not': {
-                // RFC 3501 6.4.5: with a part number these refer to the header of the encapsulated
-                // message, not to the MIME header of the part
-                let target = selector.path ? node.message : node;
-                if (!target) {
+                if (!message) {
                     return '';
                 }
-                if (selector.type === 'header' || !selector.headers || !selector.headers.length) {
-                    // BODY[HEADER], or a field list that selects everything or nothing
-                    return selector.type === 'header.fields' ? '\r\n\r\n' : headerSection(target);
-                }
                 let wanted = selector.type === 'header.fields';
-                let header = headerLines(target).filter(line => {
-                    let key = line.split(':').shift().toLowerCase().trim();
-                    return selector.headers.includes(key) === wanted;
-                });
-                return header.join('\r\n') + '\r\n\r\n';
+                let headers = selector.headers || [];
+                return headerLines(message).filter(line => headers.includes(line.split(':').shift().toLowerCase().trim()) === wanted).join('\r\n') + '\r\n\r\n';
             }
 
             default:
@@ -633,7 +582,7 @@ class Indexer {
 function textToHtml(str) {
     let encoded = he.encode(str, { useNamedReferences: true });
     // normalise line endings, drop trailing whitespace, paragraphs at blank lines, breaks at the rest
-    let text = encoded.replace(/\r?\n/g, '\n').trim().replace(/[ \t]+$/gm, '').trim().replace(/\n\n+/g, '</p><p>').trim().replace(/\n/g, '<br/>');
+    let text = encoded.replace(/\r?\n/g, '\n').trim().replace(/[ \t]+$/gm, '').replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br/>');
     return `<p>${text}</p>`;
 }
 

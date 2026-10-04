@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const { Readable } = require('stream');
 const libbase64 = require('libbase64');
-const { inspectBase64, createReadWindow } = require('../../../lib/attachments/base64-codec');
+const { prepareStoredBody, createReadWindow } = require('../../../lib/attachments/base64-codec');
 
 /**
  * The acceptance rule used before base64-codec existed: look at the first line only and allow the line
@@ -67,24 +67,14 @@ class MemoryAttachmentStorage {
         let hash = crypto.createHash('sha256').update(attachment.body).digest();
         let key = hash.toString('hex');
 
-        let metadata = { esize: attachment.body.length, transferEncoding: attachment.transferEncoding };
-        let data = attachment.body;
+        let { data, metadata } = prepareStoredBody(attachment, { decodeBase64: this.decodeBase64 && !this.legacyDecoding });
 
-        if (attachment.transferEncoding === 'base64' && this.decodeBase64) {
-            if (this.legacyDecoding) {
-                let lineLen = legacyLineLength(attachment);
-                if (lineLen) {
-                    metadata.decoded = true;
-                    metadata.lineLen = lineLen;
-                    data = libbase64.decode(attachment.body.toString('latin1'));
-                }
-            } else {
-                let base64 = inspectBase64(attachment.body);
-                if (base64) {
-                    metadata.decoded = true;
-                    metadata.lineLen = base64.lineLen;
-                    data = base64.data;
-                }
+        if (this.legacyDecoding && attachment.transferEncoding === 'base64' && this.decodeBase64) {
+            let lineLen = legacyLineLength(attachment);
+            if (lineLen) {
+                metadata.decoded = true;
+                metadata.lineLen = lineLen;
+                data = libbase64.decode(attachment.body.toString('latin1'));
             }
         }
 

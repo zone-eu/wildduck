@@ -78,6 +78,14 @@ describe('BODY[section]', function () {
         expect(await section(tree, { path: '1.3', type: '' })).to.equal('');
     });
 
+    it('numbers the placeholder part of a multipart without parts like BODYSTRUCTURE does', async function () {
+        // BODYSTRUCTURE announces an empty text/plain part 1, so BODY[1] is empty and not the preamble
+        let tree = parse('boundary_never_appears');
+        expect(await section(tree, { path: '1', type: '' })).to.equal('');
+        expect(await section(tree, { path: '1', type: 'mime' })).to.equal('Content-Type: text/plain; charset=us-ascii\r\n\r\n');
+        expect(await section(tree, { path: '2', type: '' })).to.equal('');
+    });
+
     it('treats part 1 of a non-multipart message as the message body', async function () {
         let tree = parse('text_final_crlf');
         expect(await section(tree, { path: '1', type: '' })).to.equal('l1\r\nl2\r\nl3\r\n');
