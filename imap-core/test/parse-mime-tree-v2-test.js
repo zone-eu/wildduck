@@ -123,6 +123,44 @@ describe('MIME tree v2 structure', function () {
         expect(tree.unterminated).to.be.undefined;
     });
 
+    it('drops nested comments and quoted-pairs inside comments from parameter values', function () {
+        let tree = parseMimeTree(Buffer.from('Content-Type: text/plain; charset="utf-8" (a (nested) comment \\) with an escaped paren); name="x.txt"\r\n\r\nhi\r\n', 'binary'));
+        expect(tree.parsedHeader['content-type'].params).to.deep.equal({ charset: 'utf-8', name: 'x.txt' });
+    });
+
+    it('parses parameter values at the edges of the syntax', function () {
+        let params = value => parseMimeTree(Buffer.from('Content-Type: text/plain; ' + value + '\r\n\r\nhi\r\n', 'binary')).parsedHeader['content-type'].params;
+        // an empty quoted string is an empty value
+        expect(params('charset=""')).to.deep.equal({ charset: '' });
+        // a quote that is never closed is not a quoted string, stray quotes are trimmed
+        expect(params('name="a.txt')).to.deep.equal({ name: 'a.txt' });
+        expect(params('name=a.txt"')).to.deep.equal({ name: 'a.txt' });
+        // a quoted-pair keeps the escaped character
+        expect(params('name="a\\"b"')).to.deep.equal({ name: 'a"b' });
+        // keys of 100 characters or more, and keys with odd characters, are ignored
+        expect(params('k' + 'x'.repeat(98) + '=1; k' + 'y'.repeat(99) + '=2')).to.deep.equal({ ['k' + 'x'.repeat(98)]: '1' });
+        expect(params('a b=1; c=2')).to.deep.equal({ c: '2' });
+    });
+
+    it('ignores header keys of 100 characters or more', function () {
+        let tree = parseMimeTree(Buffer.from('X' + 'a'.repeat(98) + ': kept\r\nX' + 'b'.repeat(99) + ': dropped\r\n\r\nhi\r\n', 'binary'));
+        expect(Object.keys(tree.parsedHeader)).to.include('x' + 'a'.repeat(98));
+        expect(Object.keys(tree.parsedHeader)).to.not.include('x' + 'b'.repeat(99));
+        // the raw header lines are all kept for the rebuild
+        expect(tree.header.length).to.equal(2);
+    });
+
+    it('only treats multipart types with a boundary as multiparts', function () {
+        let text = parseMimeTree(Buffer.from('Content-Type: text/plain; boundary="b"\r\n\r\n--b\r\nnot a part\r\n--b--\r\n', 'binary'));
+        expect(text.boundary).to.equal(false);
+        expect(text.childNodes).to.be.undefined;
+        expect(text.body.toString('binary')).to.equal('--b\r\nnot a part\r\n--b--\r\n');
+
+        let noBoundary = parseMimeTree(Buffer.from('Content-Type: multipart/mixed\r\n\r\n--b\r\nbody\r\n', 'binary'));
+        expect(noBoundary.boundary).to.equal(false);
+        expect(noBoundary.multipart).to.equal(false);
+    });
+
     it('treats a bare CR as content', function () {
         let tree = parse('bare_cr');
         expect(tree.body.toString('binary')).to.equal('l1\rstill l1\r\nl2\r\n');

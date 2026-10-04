@@ -86,6 +86,16 @@ describe('BODY[section]', function () {
         expect(await section(tree, { path: '2', type: '' })).to.equal('');
     });
 
+    it('renders bodies stored as binary strings and rejects unknown selectors', async function () {
+        // some stores hand the body back as a binary string
+        let tree = parse('text_final_crlf');
+        let asString = Object.assign({}, tree, { body: tree.body.toString('binary') });
+        expect(await section(asString, { type: '' })).to.equal(cases['synthetic:text_final_crlf'].expected.toString('binary'));
+        expect(indexer.getContents(tree, { type: 'nonsense' })).to.equal('');
+        let buf = await new Promise((resolve, reject) => indexer.bodyQuery(tree, { type: 'header' }, (err, data) => (err ? reject(err) : resolve(data))));
+        expect(buf.toString()).to.equal('From: a@b.c\r\n\r\n');
+    });
+
     it('treats part 1 of a non-multipart message as the message body', async function () {
         let tree = parse('text_final_crlf');
         expect(await section(tree, { path: '1', type: '' })).to.equal('l1\r\nl2\r\nl3\r\n');

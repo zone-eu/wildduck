@@ -6,6 +6,9 @@
     "scripts": {
         "test": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli -n 13 flushdb && npm run runtest",
         "test:proto": "NODE_ENV=test grunt proto",
+        "test:indexer": "NODE_ENV=test mocha --exit --reporter dot imap-core/test/attachment-codec-test.js imap-core/test/parse-mime-tree-test.js imap-core/test/parse-mime-tree-v2-test.js imap-core/test/indexer-*-test.js imap-core/test/body-structure-test.js imap-core/test/create-envelope-test.js imap-core/test/get-contents-test.js imap-core/test/get-query-response-test.js imap-core/test/imap-indexer-test.js",
+        "test:indexer-coverage": "NODE_ENV=test c8 --reporter=text --include 'imap-core/lib/indexer/**' --include 'lib/attachments/**' --include imap-core/lib/length-limiter.js mocha --exit --reporter dot imap-core/test/attachment-codec-test.js imap-core/test/parse-mime-tree-test.js imap-core/test/parse-mime-tree-v2-test.js imap-core/test/indexer-*-test.js imap-core/test/body-structure-test.js imap-core/test/create-envelope-test.js imap-core/test/get-contents-test.js imap-core/test/get-query-response-test.js imap-core/test/imap-indexer-test.js",
+        "test:mutation": "node imap-core/test/mutation/run.js",
         "printconf": "NODE_CONFIG_ONLY=true npm start",
         "runtest": "NODE_ENV=test grunt",
         "runci": "npm run printconf && npm run runtest",
@@ -28,6 +31,7 @@
     "devDependencies": {
         "@modelcontextprotocol/client": "2.3.0",
         "ajv": "8.20.0",
+        "c8": "12.0.0",
         "chai": "4.3.10",
         "docsify-cli": "5.0.0",
         "eslint": "8.57.0",

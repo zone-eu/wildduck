@@ -10,6 +10,7 @@ module.exports = function (grunt) {
     };
     // imap-core tests that need no MongoDB, Redis or running server
     const imapUnitTests = [
+        'imap-core/test/attachment-codec-test.js',
         'imap-core/test/compress-race-condition-test.js',
         'imap-core/test/body-structure-test.js',
         'imap-core/test/create-envelope-test.js',
@@ -21,9 +22,13 @@ module.exports = function (grunt) {
         'imap-core/test/imap-compiler-test.js',
         'imap-core/test/imap-indexer-test.js',
         'imap-core/test/indexer-attachments-test.js',
+        'imap-core/test/indexer-corpus-test.js',
         'imap-core/test/indexer-fidelity-test.js',
         'imap-core/test/indexer-fuzz-test.js',
         'imap-core/test/indexer-legacy-test.js',
+        'imap-core/test/indexer-legacy-differential-test.js',
+        'imap-core/test/indexer-maildata-test.js',
+        'imap-core/test/indexer-ranges-test.js',
         'imap-core/test/imap-line-limit-test.js',
         'imap-core/test/imap-parser-test.js',
         'imap-core/test/imap-stream-test.js',
