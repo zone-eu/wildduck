@@ -4,6 +4,9 @@ const errors = require('../../lib/errors.js');
 const metrics = require('../../lib/metrics');
 const imapHandler = require('./handler/imap-handler');
 const MAX_MESSAGE_SIZE = 1 * 1024 * 1024;
+// Literal size cap for everything except APPEND. RFC 3501 sets no limit and RFC 2683 3.2.1.5 asks
+// servers to accept at least 8000 octets of command text
+const MAX_COMMAND_LITERAL_SIZE = 16 * 1024;
 const MAX_BAD_COMMANDS = 50;
 const LARGE_COMMAND_SIZE = 64 * 1024;
 
@@ -130,9 +133,13 @@ class IMAPCommand {
                 }
 
                 if (!commands.has(this.command)) {
-                    let err = new Error('Unknown command');
+                    // RFC 3501 6.2.2: "If the requested authentication mechanism is not supported,
+                    // the server SHOULD reject the AUTHENTICATE command by sending a tagged NO"
+                    let unsupportedMechanism = /^AUTHENTICATE \S/.test(this.command);
+
+                    let err = new Error(unsupportedMechanism ? 'Unsupported authentication mechanism' : 'Unknown command');
                     err.responseCode = 400;
-                    err.code = 'UnknownCommand';
+                    err.code = unsupportedMechanism ? 'UnsupportedMechanism' : 'UnknownCommand';
                     if (this.connection && typeof this.connection.loggelf === 'function') {
                         // Log tagged IMAP input that names a command this server does not implement.
                         let logEntry = createCommandFailureLogEntry(this.connection, err, {
@@ -141,7 +148,11 @@ class IMAPCommand {
                         });
                         this.connection.loggelf(logEntry);
                     }
-                    this.connection.send(this.tag + ' BAD Unknown command: ' + this.command);
+                    this.connection.send(
+                        unsupportedMechanism
+                            ? this.tag + ' NO [CANNOT] Unsupported authentication mechanism'
+                            : this.tag + ' BAD Unknown command: ' + this.command
+                    );
                     return callback(err);
                 }
             }
@@ -171,7 +182,7 @@ class IMAPCommand {
             let maxAllowed = Math.max(Number(this.connection._server.options.maxMessage) || 0, MAX_MESSAGE_SIZE);
             if (
                 // Allow large literals for selected commands only
-                (!['APPEND'].includes(this.command) && command.expecting > 1024) ||
+                (!['APPEND'].includes(this.command) && command.expecting > MAX_COMMAND_LITERAL_SIZE) ||
                 // Deny all literals bigger than maxMessage
                 command.expecting > maxAllowed
             ) {
@@ -383,7 +394,8 @@ class IMAPCommand {
             }
 
             try {
-                this.parsed = imapHandler.parser(this.payload, { literals: this.literals });
+                // RFC 6855 3: reject octet sequences with the high bit set that are not valid UTF-8
+                this.parsed = imapHandler.parser(this.payload, { literals: this.literals, validateUtf8: true });
             } catch (E) {
                 if (this.connection && typeof this.connection.loggelf === 'function') {
                     // Log IMAP parser failures where the raw command can not be tokenized into a valid request.
@@ -475,64 +487,81 @@ class IMAPCommand {
                 }
 
                 if (typeof handler.handler === 'function') {
-                    handler.handler.call(
-                        this.connection,
-                        this.parsed,
-                        (err, response) => {
-                            if (err) {
-                                let payload = imapHandler.compiler(this.parsed, false, true);
-                                if (this.connection && typeof this.connection.loggelf === 'function') {
-                                    // Log command handler failures that return BAD/NO without destroying the IMAP connection.
-                                    let logEntry = createCommandFailureLogEntry(this.connection, err, {
-                                        _command: this.command,
-                                        _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
-                                    });
-                                    this.connection.loggelf(logEntry);
-                                }
-                                this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
-                                if (!err.response || err.response === 'BAD') {
-                                    if (!this.countBadResponses()) {
-                                        recordMetric(err.response || err.code || 'error');
-                                        // stop processing
-                                        return;
-                                    }
-                                }
-                                recordMetric(err.response || err.code || 'error');
-                                return next(err);
-                            }
+                    // set once the tagged response has been written, so a later exception does not produce a second one
+                    let responseSent = false;
+                    let fail = E => this.sendServerBug(E, responseSent, recordMetric, next);
 
-                            // send EXPUNGE, EXISTS etc queued notices
-                            this.sendNotifications(handler, () => {
-                                // send command ready response
-                                this.connection.writeStream.write({
-                                    tag: this.tag,
-                                    command: response.response,
-                                    attributes: []
-                                        .concat(
-                                            response.code
-                                                ? {
-                                                      type: 'SECTION',
-                                                      section: [
-                                                          {
-                                                              type: 'TEXT',
-                                                              value: response.code
-                                                          }
-                                                      ]
-                                                  }
-                                                : []
-                                        )
-                                        .concat({
-                                            type: 'TEXT',
-                                            value: response.message || this.command + ' completed'
-                                        })
+                    let handlerCallback = (err, response) => {
+                        if (err) {
+                            let payload = imapHandler.compiler(this.parsed, false, true);
+                            if (this.connection && typeof this.connection.loggelf === 'function') {
+                                // Log command handler failures that return BAD/NO without destroying the IMAP connection.
+                                let logEntry = createCommandFailureLogEntry(this.connection, err, {
+                                    _command: this.command,
+                                    _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
                                 });
+                                this.connection.loggelf(logEntry);
+                            }
+                            this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
+                            if (!err.response || err.response === 'BAD') {
+                                if (!this.countBadResponses()) {
+                                    recordMetric(err.response || err.code || 'error');
+                                    // stop processing
+                                    return;
+                                }
+                            }
+                            recordMetric(err.response || err.code || 'error');
+                            return next(err);
+                        }
 
-                                recordMetric(response.response || 'ok');
-                                next();
+                        // send EXPUNGE, EXISTS etc queued notices
+                        this.sendNotifications(handler, () => {
+                            // send command ready response
+                            this.connection.writeStream.write({
+                                tag: this.tag,
+                                command: response.response,
+                                attributes: []
+                                    .concat(
+                                        response.code
+                                            ? {
+                                                  type: 'SECTION',
+                                                  section: [
+                                                      {
+                                                          type: 'TEXT',
+                                                          value: response.code
+                                                      }
+                                                  ]
+                                              }
+                                            : []
+                                    )
+                                    .concat({
+                                        type: 'TEXT',
+                                        value: response.message || this.command + ' completed'
+                                    })
                             });
-                        },
-                        next
-                    );
+                            responseSent = true;
+
+                            recordMetric(response.response || 'ok');
+                            next();
+                        });
+                    };
+
+                    // A command handler must never take the connection down with it. Anything that escapes
+                    // from the handler or from the response callback is a bug in the server (RFC 5530 SERVERBUG).
+                    let safeCallback = (err, response) => {
+                        try {
+                            handlerCallback(err, response);
+                        } catch (E) {
+                            fail(E);
+                        }
+                    };
+
+                    try {
+                        handler.handler.call(this.connection, this.parsed, safeCallback, next);
+                    } catch (E) {
+                        fail(E);
+                    }
+
                     if (this.command === 'LOGOUT') {
                         recordMetric('ok');
                     }
@@ -543,6 +572,37 @@ class IMAPCommand {
                 }
             });
         });
+    }
+
+    sendServerBug(err, responseSent, recordMetric, next) {
+        if (this.connection && typeof this.connection.loggelf === 'function') {
+            // Log exceptions that escaped a command handler. These are server bugs, not client errors.
+            this.connection.loggelf(
+                createCommandFailureLogEntry(this.connection, err, {
+                    _command: this.command,
+                    _server_bug: 'yes'
+                })
+            );
+        }
+
+        this.connection.logger.error(
+            {
+                err,
+                tnx: 'command',
+                cid: this.connection.id
+            },
+            '[%s] Unhandled exception in %s: %s',
+            this.connection.id,
+            this.command,
+            err.message
+        );
+
+        if (!responseSent) {
+            this.connection.send(this.tag + ' NO [SERVERBUG] Internal server error');
+        }
+
+        recordMetric('serverbug');
+        next();
     }
 
     sendNotifications(handler, callback) {
