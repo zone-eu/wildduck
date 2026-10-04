@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// a line break is LF with an optional CR before it, stored as CRLF. Anything else is content
 const normalize = source => Buffer.from(Buffer.from(source).toString('binary').replace(/\r?\n/g, '\r\n'), 'binary');
 
 const ensureFinalCrlf = buf => (buf.length && buf.subarray(-2).toString('binary') !== '\r\n' ? Buffer.concat([buf, Buffer.from('\r\n')]) : buf);
@@ -62,6 +63,17 @@ const synthetic = {
     attached_rfc822: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\np1\r\n--b\r\nContent-Type: message/rfc822\r\n\r\nFrom: inner@x.y\r\nSubject: inner subj\r\n\r\ninner body\r\n--b--\r\n',
     // truncated in transport: no close delimiter at all
     missing_close: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\np1\r\n',
+    // a part whose header lines are directly followed by the next delimiter, without a blank line and
+    // without a line break of its own (RFC 2046 5.1.1 wants one before every delimiter)
+    bare_part: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n--b\r\nContent-Type: text/plain\r\n\r\np2\r\n--b--\r\n',
+    // two delimiters in a row: a part with nothing in it at all
+    empty_bare_part: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\n--b\r\nContent-Type: text/plain\r\n\r\np2\r\n--b--\r\n',
+    // a close delimiter without any part, after a preamble
+    preamble_then_close: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\npre\r\n--b--\r\n',
+    // lines that look like the own delimiter after the close delimiter are epilogue text
+    delimiters_in_epilogue: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\np1\r\n--b--\r\n--b\r\nagain\r\n--b--\r\n',
+    // a bare CR is content, not a line break
+    bare_cr: 'From: a@b.c\r\n\r\nl1\rstill l1\r\nl2\r\n',
     // LF only input is normalised to CRLF
     lf_only: 'Content-Type: multipart/mixed; boundary="b"\n\n--b\nContent-Type: text/plain\n\np1\n--b--\n',
     // part bodies may legitimately end with a blank line, which stays part of the body

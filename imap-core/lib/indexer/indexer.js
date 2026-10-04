@@ -1,11 +1,13 @@
 'use strict';
 
-const stream = require('stream');
-const PassThrough = stream.PassThrough;
+const { PassThrough } = require('stream');
+const { buffer: streamToBuffer } = require('stream/consumers');
 const BodyStructure = require('./body-structure');
 const createEnvelope = require('./create-envelope');
+const { decodeWordsSafe } = createEnvelope;
 const parseMimeTree = require('./parse-mime-tree');
-const { walkTree } = require('./tree-walker');
+const { walkTree, headerLines } = require('./tree-walker');
+const { filler, decodedLength } = require('../../../lib/attachments/base64-codec');
 const libmime = require('libmime');
 const libcharset = require('libmime/lib/charset');
 const libqp = require('libqp');
@@ -16,18 +18,22 @@ const crypto = require('crypto');
 
 const MAX_HTML_PARSE_LENGTH = 2 * 1024 * 1024; // do not parse HTML messages larger than 2MB to plaintext
 
+// text nodes that are kept in the tree and decoded for the message preview
+const INLINE_TEXT_TYPES = ['text/plain', 'text/html', 'text/rfc822-headers', 'message/delivery-status'];
+// inline text larger than this is moved to the attachment storage like an attachment
+const MAX_INLINE_TEXT_SIZE = 300 * 1024;
+
+/**
+ * RFC 822 header section: the header lines and the blank line that ends them
+ */
+const headerSection = node => headerLines(node).join('\r\n') + '\r\n\r\n';
+
 class Indexer {
     constructor(options) {
         this.options = options || {};
         this.fetchOptions = this.options.fetchOptions || {};
 
         this.attachmentStorage = this.options.attachmentStorage;
-
-        if (this.attachmentStorage) {
-            this.getAttachment = async (...args) => await this.attachmentStorage.get(...args);
-        } else {
-            this.getAttachment = async () => ({});
-        }
 
         // create logger
         this.logger = this.options.logger || {
@@ -42,17 +48,17 @@ class Indexer {
     /**
      * Returns the size of the message a tree rebuilds to
      *
-     * @param  {Object} mimeTree Parsed mimeTree object (or sub node)
-     * @param  {Boolean} textOnly If true, do not include the message header in the response
+     * @param  {Object} mimeTree Parsed mimeTree object
+     * @param  {Boolean} textOnly If true, do not include the header of the rendered node
      * @param  {Object} [options]
+     * @param  {Object} [options.node] A node of the tree to render instead of the whole message
      * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
-     * @param  {Number} [options.version] Tree format version when `mimeTree` is a node of a larger tree
      * @return {Number} Message size in bytes
      */
     getSize(mimeTree, textOnly, options) {
         options = options || {};
         let size = 0;
-        for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal, version: options.version })) {
+        for (let piece of walkTree(mimeTree, { textOnly, node: options.node, skipExternal: options.skipExternal })) {
             size += piece.size;
         }
         return size;
@@ -65,8 +71,9 @@ class Indexer {
      * window of them selected by startFrom and maxLength
      *
      * @param  {Object} mimeTree Parsed mimeTree object
-     * @param  {Boolean} textOnly If true, do not include the message header in the response
+     * @param  {Boolean} textOnly If true, do not include the header of the rendered node
      * @param  {Object} [options]
+     * @param  {Object} [options.node] A node of the tree to render instead of the whole message
      * @param  {Number} [options.startFrom] First byte of the message to emit
      * @param  {Number} [options.maxLength] Number of bytes to emit
      * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
@@ -75,14 +82,33 @@ class Indexer {
     rebuild(mimeTree, textOnly, options) {
         options = options || {};
 
+        let pieces = [...walkTree(mimeTree, { textOnly, node: options.node, skipExternal: options.skipExternal })];
+        let expectedLength = pieces.reduce((sum, piece) => sum + piece.size, 0);
+
         let output = new PassThrough();
         let aborted = false;
 
         let startFrom = Math.max(Number(options.startFrom) || 0, 0);
         let maxLength = Math.max(Number(options.maxLength) || 0, 0);
-        let end = maxLength ? startFrom + maxLength : Infinity;
+        let end = Math.min(maxLength ? startFrom + maxLength : expectedLength, expectedLength);
 
         output.isLimited = !!(options.startFrom || options.maxLength);
+
+        // look the attachments inside the window up at once instead of one at a time when reached
+        let lookups = new Map();
+        let pos = 0;
+        for (let piece of pieces) {
+            if (piece.attachmentId && pos < end && pos + piece.size > startFrom) {
+                let id = this.resolveAttachmentId(mimeTree, piece.attachmentId);
+                if (!lookups.has(id)) {
+                    let lookup = this.lookupAttachment(id);
+                    // the rejection is handled where the lookup is awaited
+                    lookup.catch(() => false);
+                    lookups.set(id, lookup);
+                }
+            }
+            pos += piece.size;
+        }
 
         let write = async chunk => {
             if (!chunk || !chunk.length || aborted || output.destroyed) {
@@ -105,10 +131,19 @@ class Indexer {
         let processStream = async () => {
             // position in the full message of the next piece
             let pos = 0;
+            // consecutive in-memory pieces inside the window go out as one write
+            let pending = [];
+            let flush = async () => {
+                if (pending.length) {
+                    let data = pending.length === 1 ? pending[0] : Buffer.concat(pending);
+                    pending = [];
+                    await write(data);
+                }
+            };
 
-            for (let piece of walkTree(mimeTree, { textOnly, skipExternal: options.skipExternal, version: options.version })) {
+            for (let piece of pieces) {
                 if (aborted || output.destroyed || pos >= end) {
-                    return;
+                    break;
                 }
 
                 // the part of this piece that falls inside the requested window
@@ -117,14 +152,17 @@ class Indexer {
 
                 if (to > from) {
                     if (piece.data) {
-                        await write(this.fitToSize(piece.data, piece.size, piece.node).subarray(from, to));
+                        pending.push(from === 0 && to === piece.size ? piece.data : piece.data.subarray(from, to));
                     } else {
-                        await this.writeAttachment(piece, mimeTree, from, to - from, write, () => aborted || output.destroyed);
+                        await flush();
+                        await this.writeAttachment(piece, mimeTree, lookups, from, to - from, write, () => aborted || output.destroyed);
                     }
                 }
 
                 pos += piece.size;
             }
+
+            await flush();
         };
 
         setImmediate(() => {
@@ -145,58 +183,47 @@ class Indexer {
         return {
             type: 'stream',
             value: output,
-            expectedLength: this.getSize(mimeTree, textOnly, options)
+            expectedLength
         };
     }
 
     /**
-     * Returns `data` as exactly `size` bytes. The two only differ for a corrupt tree whose stored body
-     * does not match its stored size; the stored size wins because the message size and the quota hold it
+     * Storage id of an attachment node: the tree maps the node's ATTnnnnn id to the stored hash
      */
-    fitToSize(data, size, node) {
-        if (data.length === size) {
-            return data;
-        }
+    resolveAttachmentId(mimeTree, attachmentId) {
+        return (mimeTree.attachmentMap && mimeTree.attachmentMap[attachmentId]) || attachmentId;
+    }
 
-        this.loggelf({
-            short_message: 'Stored body size mismatch',
-            _mail_action: 'body_size_mismatch',
-            _expected: size,
-            _received: data.length,
-            _attachment_id: node && node.attachmentId
-        });
-
-        if (data.length > size) {
-            return data.subarray(0, size);
+    /**
+     * Metadata of a stored attachment, false when the storage does not have it
+     */
+    async lookupAttachment(id) {
+        if (!this.attachmentStorage) {
+            return false;
         }
-        return Buffer.concat([data, filler(size - data.length)]);
+        try {
+            return await this.attachmentStorage.get(id);
+        } catch (err) {
+            if (err.code === 'FileNotFound') {
+                return false;
+            }
+            throw err;
+        }
     }
 
     /**
      * Writes `length` bytes of an attachment body starting at `relStart`, counted from the start of the
      * body as it appears in the message. The attachment occupies exactly the stored size of its node, so
-     * a stream that delivers more is cut and one that delivers less is padded with line breaks
+     * a storage that delivers more or less than asked for is logged, cut and padded with line breaks
      */
-    async writeAttachment(piece, mimeTree, relStart, length, write, isAborted) {
-        let attachmentId = piece.attachmentId;
-        if (mimeTree.attachmentMap && mimeTree.attachmentMap[attachmentId]) {
-            attachmentId = mimeTree.attachmentMap[attachmentId];
-        }
-
-        let attachmentData;
-        try {
-            attachmentData = await this.getAttachment(attachmentId);
-        } catch (err) {
-            if (err.code !== 'FileNotFound') {
-                throw err;
-            }
-            attachmentData = false;
-        }
+    async writeAttachment(piece, mimeTree, lookups, relStart, length, write, isAborted) {
+        let id = this.resolveAttachmentId(mimeTree, piece.attachmentId);
+        let attachmentData = await (lookups.get(id) || this.lookupAttachment(id));
 
         let received = 0;
 
         if (attachmentData) {
-            let stream = this.attachmentStorage.createReadStream(attachmentId, attachmentData, { startFrom: relStart, maxLength: length });
+            let stream = this.attachmentStorage.createReadStream(id, attachmentData, { startFrom: relStart, maxLength: length });
             try {
                 for await (let chunk of stream) {
                     if (isAborted()) {
@@ -204,11 +231,10 @@ class Indexer {
                         return;
                     }
                     let take = Math.min(chunk.length, length - received);
+                    received += chunk.length;
                     if (take > 0) {
-                        received += take;
-                        await write(chunk.subarray(0, take));
+                        await write(take === chunk.length ? chunk : chunk.subarray(0, take));
                     }
-                    // anything beyond `length` is not part of the message
                 }
             } catch (err) {
                 if (err.code !== 'ENOENT') {
@@ -222,12 +248,19 @@ class Indexer {
             this.loggelf({
                 short_message: 'Attachment missing',
                 _mail_action: 'attachment_missing',
-                _attachment_id: attachmentId
+                _attachment_id: id
+            });
+        } else if (received !== length) {
+            this.loggelf({
+                short_message: 'Attachment length mismatch',
+                _mail_action: 'attachment_length_mismatch',
+                _attachment_id: id,
+                _expected: length,
+                _received: received
             });
         }
 
         if (received < length) {
-            // attachment was not found, or the storage returned fewer bytes than the message holds
             await write(filler(length - received));
         }
     }
@@ -242,9 +275,6 @@ class Indexer {
         return parseMimeTree(rfc822);
     }
 
-    /**
-     * Decode text/plain and text/html parts, separate node bodies from the tree
-     */
     getMaildata(mimeTree) {
         let magic = parseInt(crypto.randomBytes(2).toString('hex'), 16);
         let maildata = {
@@ -262,40 +292,27 @@ class Indexer {
         let cidMap = new Map();
 
         let walk = (node, alternative, related) => {
-            let flowed = false;
-            let delSp = false;
-
             let parsedContentType = node.parsedHeader['content-type'];
             let parsedDisposition = node.parsedHeader['content-disposition'];
+            let params = (parsedContentType && parsedContentType.params) || {};
             let transferEncoding = (node.parsedHeader['content-transfer-encoding'] || '7bit').toLowerCase().trim();
 
-            let contentType = ((parsedContentType && parsedContentType.value) || (node.rootNode ? 'text/plain' : 'application/octet-stream'))
-                .toLowerCase()
-                .trim();
+            let contentType = ((parsedContentType && parsedContentType.value) || 'application/octet-stream').toLowerCase().trim();
 
             alternative = alternative || contentType === 'multipart/alternative';
             related = related || contentType === 'multipart/related';
 
-            if (parsedContentType && parsedContentType.params.format && parsedContentType.params.format.toLowerCase().trim() === 'flowed') {
-                flowed = true;
-                if (parsedContentType.params.delsp && parsedContentType.params.delsp.toLowerCase().trim() === 'yes') {
-                    delSp = true;
-                }
-            }
+            let flowed = (params.format || '').toLowerCase().trim() === 'flowed';
+            let delSp = flowed && (params.delsp || '').toLowerCase().trim() === 'yes';
 
             let disposition = ((parsedDisposition && parsedDisposition.value) || '').toLowerCase().trim() || false;
-            let isInlineText = false;
             let isMultipart = contentType.split('/')[0] === 'multipart';
+            let isInlineText = INLINE_TEXT_TYPES.includes(contentType) && (!disposition || disposition === 'inline');
 
-            // If the current node is HTML or Plaintext then allow larger content included in the mime tree
-            // Also decode text/html value
-            if (
-                ['text/plain', 'text/html', 'text/rfc822-headers', 'message/delivery-status'].includes(contentType) &&
-                (!disposition || disposition === 'inline')
-            ) {
-                isInlineText = true;
+            // decode inline text for the preview and the search index
+            if (isInlineText) {
                 if (node.body && node.body.length) {
-                    let charset = parsedContentType.params.charset || 'windows-1257';
+                    let charset = params.charset || 'windows-1257';
                     let content = node.body;
 
                     if (transferEncoding === 'base64') {
@@ -343,24 +360,15 @@ class Indexer {
             }
 
             // remove attachments and very large text nodes from the mime tree
-            if (!isMultipart && node.body && node.body.length && (!isInlineText || node.size > 300 * 1024)) {
-                let attachmentId = `ATT${leftPad(++idcount, '0', 5)}`;
+            if (!isMultipart && node.body && node.body.length && (!isInlineText || node.size > MAX_INLINE_TEXT_SIZE)) {
+                let attachmentId = 'ATT' + String(++idcount).padStart(5, '0');
 
-                let filename =
-                    (node.parsedHeader['content-disposition'] &&
-                        node.parsedHeader['content-disposition'].params &&
-                        node.parsedHeader['content-disposition'].params.filename) ||
-                    (node.parsedHeader['content-type'] && node.parsedHeader['content-type'].params && node.parsedHeader['content-type'].params.name) ||
-                    false;
+                let filename = (parsedDisposition && parsedDisposition.params.filename) || params.name || false;
 
                 let contentId = (node.parsedHeader['content-id'] || '').toString().replace(/<|>/g, '').trim();
 
                 if (filename) {
-                    try {
-                        filename = libmime.decodeWords(filename).trim();
-                    } catch (E) {
-                        // failed to parse filename, keep as is (most probably an unknown charset is used)
-                    }
+                    filename = decodeWordsSafe(filename).trim();
                 } else {
                     filename = crypto.randomBytes(4).toString('hex') + '.' + libmime.detectExtension(contentType);
                 }
@@ -380,9 +388,8 @@ class Indexer {
                     body: node.body
                 });
 
-                // do not include text content and multipart elements in the attachment list
-                if (!isInlineText && !/^(multipart)\//i.test(contentType)) {
-                    // list in the attachments array
+                // text content is not listed as an attachment
+                if (!isInlineText) {
                     maildata.attachments.push({
                         id: attachmentId,
                         filename,
@@ -391,8 +398,8 @@ class Indexer {
                         transferEncoding,
                         cid: contentId ? `<${contentId}>` : null,
                         related,
-                        // approximite size in kilobytes
-                        sizeKb: Math.ceil((transferEncoding === 'base64' ? this.expectedB64Size(node.size) : node.size) / 1024)
+                        // approximate size in kilobytes
+                        sizeKb: Math.ceil((transferEncoding === 'base64' ? decodedLength(node.size) : node.size) / 1024)
                     });
                 }
 
@@ -400,16 +407,14 @@ class Indexer {
                 node.attachmentId = attachmentId;
             }
 
-            // message/rfc822
+            // the parts of an embedded message are indexed like the parts of the message
             if (node.message) {
                 node = node.message;
             }
 
-            if (Array.isArray(node.childNodes)) {
-                node.childNodes.forEach(childNode => {
-                    walk(childNode, alternative, related);
-                });
-            }
+            (node.childNodes || []).forEach(childNode => {
+                walk(childNode, alternative, related);
+            });
         };
 
         walk(mimeTree, false, false);
@@ -453,31 +458,22 @@ class Indexer {
                 }
                 mimeTree.attachmentMap[node.attachmentId] = id;
 
-                let attachmentInfo = maildata.attachments && maildata.attachments.find(a => a.id === node.attachmentId); // get reference to attachment info
-
-                if (attachmentInfo && node.body) {
+                let attachmentInfo = maildata.attachments.find(a => a.id === node.attachmentId);
+                if (attachmentInfo) {
                     attachmentInfo.size = node.body.length;
+                    if (fileContentHash) {
+                        attachmentInfo.fileContentHash = fileContentHash;
+                    }
                 }
 
-                if (attachmentInfo && fileContentHash) {
-                    attachmentInfo.fileContentHash = fileContentHash;
-                }
+                // the bytes are in the storage now, no need to keep them until the message is inserted
+                node.body = null;
 
                 return storeNode();
             });
         };
 
         storeNode();
-    }
-
-    expectedB64Size(b64size) {
-        b64size = Number(b64size) || 0;
-        if (!b64size || b64size <= 0) {
-            return 0;
-        }
-
-        let newlines = Math.floor(b64size / 78);
-        return Math.ceil(((b64size - newlines * 2) / 4) * 3);
     }
 
     /**
@@ -487,29 +483,18 @@ class Indexer {
      * @return {Array} BODY object as a structured Array
      */
     getBody(mimeTree) {
-        // BODY – BODYSTRUCTURE without extension data
-        let body = new BodyStructure(mimeTree, {
-            upperCaseKeys: true,
-            body: true
-        });
-
-        return body.create();
+        // BODY: BODYSTRUCTURE without extension data
+        return new BodyStructure(mimeTree, { upperCaseKeys: true, body: true }).create();
     }
 
     /**
-     * Generates IMAP compatible BODYSTRUCUTRE object from message tree
+     * Generates IMAP compatible BODYSTRUCTURE object from message tree
      *
      * @param  {Object} mimeTree Parsed mimeTree object
      * @return {Array} BODYSTRUCTURE object as a structured Array
      */
     getBodyStructure(mimeTree) {
-        // full BODYSTRUCTURE
-        let bodystructure = new BodyStructure(mimeTree, {
-            upperCaseKeys: true,
-            skipContentLocation: false
-        });
-
-        return bodystructure.create();
+        return new BodyStructure(mimeTree, { upperCaseKeys: true }).create();
     }
 
     /**
@@ -523,77 +508,51 @@ class Indexer {
     }
 
     /**
-     * Resolves numeric path to a node in the parsed MIME tree
+     * Resolves numeric path to a node in the parsed MIME tree. RFC 3501 6.4.5: the parts of a multipart
+     * are numbered from 1, a non-multipart message has one part which is the message itself, and the
+     * parts of a message/rfc822 part are numbered under it
      *
      * @param  {Object} mimeTree Parsed mimeTree object
      * @param  {String} path     Dot-separated numeric path
-     * @return {Object}          Mime node
+     * @return {Object|Boolean}  Mime node, or false when there is no such part
      */
     resolveContentNode(mimeTree, path) {
-        let pathNumbers = (path || '').toString().split('.').filter(entry => entry);
-        let contentNode = mimeTree;
-        let pathNumber;
+        // the message whose parts the next number counts
+        let scope = mimeTree;
+        let node = mimeTree;
 
-        if (!mimeTree.childNodes && pathNumbers.length) {
-            // RFC 3501 6.4.5: a non-multipart message only has a part 1, which is the message itself. A
-            // message/rfc822 message has nested part numbers under it (1.1, 1.2, ...)
-            if (pathNumbers[0] !== '1') {
+        for (let number of (path || '').toString().split('.')) {
+            let index = Number(number) - 1;
+            if (!scope || !(index >= 0)) {
                 return false;
             }
-            pathNumbers.shift();
-        }
 
-        while ((pathNumber = pathNumbers.shift())) {
-            pathNumber = Number(pathNumber) - 1;
-            if (contentNode.message) {
-                // redirect to message/rfc822
-                contentNode = contentNode.message;
-            }
-
-            if (contentNode.childNodes && contentNode.childNodes[pathNumber]) {
-                contentNode = contentNode.childNodes[pathNumber];
+            if (scope.childNodes) {
+                node = scope.childNodes[index];
+                if (!node) {
+                    return false;
+                }
+            } else if (index === 0) {
+                node = scope;
             } else {
                 return false;
             }
+
+            scope = node.message || (node.childNodes ? node : false);
         }
 
-        return contentNode;
+        return node;
     }
 
     bodyQuery(mimeTree, selector, callback) {
         let data = this.getContents(mimeTree, selector);
 
         if (data && data.type === 'stream') {
-            let sent = false;
-            let buffers = [];
-            let buflen = 0;
-
-            data.value.on('readable', () => {
-                let buf;
-                while ((buf = data.value.read())) {
-                    buffers.push(buf);
-                    buflen += buf.length;
-                }
-            });
-
-            data.value.on('error', err => {
-                if (sent) {
-                    return;
-                }
-                sent = true;
-                return callback(err);
-            });
-
-            data.value.on('end', () => {
-                if (sent) {
-                    return;
-                }
-                sent = true;
-                return callback(null, Buffer.concat(buffers, buflen));
-            });
-        } else {
-            return setImmediate(() => callback(null, Buffer.from((data || '').toString(), 'binary')));
+            streamToBuffer(data.value).then(buf => callback(null, buf), callback);
+            return;
         }
+
+        setImmediate(() => callback(null, Buffer.from((data || '').toString(), 'binary')));
     }
 
     /**
@@ -608,143 +567,74 @@ class Indexer {
      * @param  {Object} selector What data to return
      * @param  {Object} [options]
      * @param  {Boolean} options.skipExternal If true, do not include the external nodes
-     * @return {String} node contents
+     * @return {String|Object} node contents, or a stream result from rebuild()
      */
     getContents(mimeTree, selector, options) {
         options = options || {};
 
-        let node = mimeTree;
         if (typeof selector === 'string') {
-            selector = {
-                type: selector
-            };
+            selector = { type: selector };
         }
-        selector = selector || {
-            type: ''
-        };
+        selector = selector || { type: '' };
 
-        if (selector.path) {
-            node = this.resolveContentNode(mimeTree, selector.path);
-        }
-
+        let node = selector.path ? this.resolveContentNode(mimeTree, selector.path) : mimeTree;
         if (!node) {
             return '';
         }
 
-        // a node of the tree does not carry the tree format version, the root does
-        options = Object.assign({}, options, { version: options.version || mimeTree.v });
+        // the root carries the format version and the attachment map a node is rendered with
+        let render = (target, textOnly) => this.rebuild(mimeTree, textOnly, Object.assign({}, options, { node: target }));
 
         switch (selector.type) {
             case '':
             case 'content':
-                if (!selector.path) {
-                    // BODY[]
-                    node.attachmentMap = mimeTree.attachmentMap;
-                    return this.rebuild(node, false, options);
-                }
-                // BODY[1.2.3]
-                node.attachmentMap = mimeTree.attachmentMap;
-                return this.rebuild(node, true, options);
-
-            case 'header':
-                if (!selector.path) {
-                    // BODY[HEADER] mail header
-                    return formatHeaders(node.header).join('\r\n') + '\r\n\r\n';
-                } else if (node.message) {
-                    // BODY[1.2.3.HEADER] embedded message/rfc822 header
-                    return (node.message.header || []).join('\r\n') + '\r\n\r\n';
-                }
-                return '';
-
-            case 'header.fields':
-            case 'header.fields.not': {
-                // BODY[HEADER.FIELDS (Key1 Key2 KeyN)] only selected header keys,
-                // BODY[HEADER.FIELDS.NOT (Key1 Key2 KeyN)] all but selected header keys.
-                // RFC 3501 6.4.5: with a part number these refer to the header of the encapsulated
-                // message, not to the MIME header of the part
-                let header;
-                if (!selector.path) {
-                    header = formatHeaders(node.header);
-                } else if (node.message) {
-                    header = formatHeaders(node.message.header);
-                } else {
-                    return '';
-                }
-
-                let wanted = selector.type === 'header.fields';
-                if (!selector.headers || !selector.headers.length) {
-                    return (wanted ? '' : header.join('\r\n')) + '\r\n\r\n';
-                }
-
-                return (
-                    header
-                        .filter(line => {
-                            let key = line.split(':').shift().toLowerCase().trim();
-                            return selector.headers.indexOf(key) >= 0 === wanted;
-                        })
-                        .join('\r\n') + '\r\n\r\n'
-                );
-            }
-
-            case 'mime':
-                // BODY[1.2.3.MIME] mime node header
-                return formatHeaders(node.header).join('\r\n') + '\r\n\r\n';
+                // BODY[] is the whole message, BODY[1.2.3] a part without its MIME header
+                return render(node, !!selector.path);
 
             case 'text':
+                // BODY[TEXT] is the message without its header, BODY[1.2.3.TEXT] the embedded message of
+                // a message/rfc822 part without its header
                 if (!selector.path) {
-                    // BODY[TEXT] mail body without headers
-                    node.attachmentMap = mimeTree.attachmentMap;
-                    return this.rebuild(node, true, options);
-                } else if (node.message) {
-                    // BODY[1.2.3.TEXT] embedded message/rfc822 body without headers
-                    node.attachmentMap = mimeTree.attachmentMap;
-                    return this.rebuild(node.message, true, options);
+                    return render(node, true);
                 }
+                return node.message ? render(node.message, true) : '';
 
-                return '';
+            case 'mime':
+                // BODY[1.2.3.MIME] is the MIME header of the part
+                return headerSection(node);
+
+            case 'header':
+            case 'header.fields':
+            case 'header.fields.not': {
+                // RFC 3501 6.4.5: with a part number these refer to the header of the encapsulated
+                // message, not to the MIME header of the part
+                let target = selector.path ? node.message : node;
+                if (!target) {
+                    return '';
+                }
+                if (selector.type === 'header' || !selector.headers || !selector.headers.length) {
+                    // BODY[HEADER], or a field list that selects everything or nothing
+                    return selector.type === 'header.fields' ? '\r\n\r\n' : headerSection(target);
+                }
+                let wanted = selector.type === 'header.fields';
+                let header = headerLines(target).filter(line => {
+                    let key = line.split(':').shift().toLowerCase().trim();
+                    return selector.headers.includes(key) === wanted;
+                });
+                return header.join('\r\n') + '\r\n\r\n';
+            }
+
             default:
                 return '';
         }
     }
 }
 
-/**
- * Line break bytes used to fill a gap when a stored body is shorter than the message says
- */
-function filler(length) {
-    return Buffer.from('\r\n'.repeat(Math.ceil(length / 2))).subarray(0, length);
-}
-
-function formatHeaders(headers) {
-    headers = headers || [];
-    if (!Array.isArray(headers)) {
-        headers = [].concat(headers || []);
-    }
-    return headers;
-}
-
 function textToHtml(str) {
-    let encoded = he
-        // encode special chars
-        .encode(str, {
-            useNamedReferences: true
-        });
-    let text = `<p>${
-        encoded
-            .replace(/\r?\n/g, '\n')
-            .trim() // normalize line endings
-            .replace(/[ \t]+$/gm, '')
-            .trim() // trim empty line endings
-            .replace(/\n\n+/g, '</p><p>')
-            .trim() // insert <p> to multiple linebreaks
-            .replace(/\n/g, '<br/>') // insert <br> to single linebreaks
-    }</p>`;
-
-    return text;
-}
-
-function leftPad(val, chr, len) {
-    return chr.repeat(len - val.toString().length) + val;
+    let encoded = he.encode(str, { useNamedReferences: true });
+    // normalise line endings, drop trailing whitespace, paragraphs at blank lines, breaks at the rest
+    let text = encoded.replace(/\r?\n/g, '\n').trim().replace(/[ \t]+$/gm, '').trim().replace(/\n\n+/g, '</p><p>').trim().replace(/\n/g, '<br/>');
+    return `<p>${text}</p>`;
 }
 
 module.exports = Indexer;

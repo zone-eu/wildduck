@@ -6,22 +6,32 @@ const punycode = require('punycode.js');
 // This module converts message structure into an ENVELOPE object
 
 /**
+ * Decodes RFC 2047 encoded words in a header value, keeping the value as it is when it can not be
+ * decoded (an unknown charset, most of the time)
+ *
+ * @param {String} value Header value
+ * @returns {String} Decoded value
+ */
+function decodeWordsSafe(value) {
+    value = (value || '').toString();
+    try {
+        return libmime.decodeWords(value);
+    } catch (E) {
+        return value;
+    }
+}
+
+/**
  * Convert a message header object to an ENVELOPE object
  *
- * @param {Object} message A parsed mime tree node
+ * @param {Object} header A parsed mime tree node
  * @return {Object} ENVELOPE compatible object
  */
 module.exports = function (header) {
-    let subject = Array.isArray(header.subject) ? header.subject.slice().reverse().filter(line => line.trim()).shift() : header.subject;
-    // the parsed header value is already a string, decoding it as bytes again would turn every
-    // non-ASCII character into U+FFFD (RFC 6532 raw UTF-8 subjects)
-    subject = (subject || '').toString();
-
-    try {
-        subject = Buffer.from(libmime.decodeWords(subject).trim());
-    } catch (E) {
-        // failed to parse subject, keep as is (most probably an unknown charset is used)
-    }
+    // the last non-empty Subject header wins. The parsed value is already a string, decoding it as
+    // bytes again would turn every non-ASCII character into U+FFFD (RFC 6532 raw UTF-8 subjects)
+    let subject = Array.isArray(header.subject) ? header.subject.findLast(line => line.trim()) : header.subject;
+    subject = Buffer.from(decodeWordsSafe(subject).trim());
 
     // RFC 3501 7.4.2: the date is a string. Trees written before the parser reduced duplicate Date
     // headers to one value may hold a list, the last header wins like everywhere else
@@ -41,6 +51,8 @@ module.exports = function (header) {
     ];
 };
 
+module.exports.decodeWordsSafe = decodeWordsSafe;
+
 /**
  * Converts an address object to a list of arrays
  * [{name: 'User Name', address:'user@example.com'}] -> [['User Name', null, 'user', 'example.com']]
@@ -58,60 +70,36 @@ function processAddress(arr, defaults) {
     }
     let result = [];
     arr.forEach(addr => {
-        if (!addr.group) {
-            let name = addr.name || null;
-            let user = (addr.address || '').split('@').shift() || null;
-            let domain = (addr.address || '').split('@').pop() || null;
-
-            if (!addr.address && name) {
-                // a bare word without a domain ("To: localuser"). RFC 3501 7.4.2 reserves a NIL host
-                // for group markers, so the token becomes the mailbox with the placeholder host that
-                // Dovecot uses for the same input
-                user = name;
-                name = null;
-                domain = 'MISSING_DOMAIN';
-            }
-
-            if (name) {
-                try {
-                    name = Buffer.from(libmime.decodeWords(name));
-                } catch (E) {
-                    // failed to parse
-                }
-            }
-
-            if (user) {
-                try {
-                    user = Buffer.from(libmime.decodeWords(user));
-                } catch (E) {
-                    // failed to parse
-                }
-            }
-
-            if (domain) {
-                try {
-                    domain = Buffer.from(punycode.toUnicode(domain));
-                } catch (E) {
-                    domain = Buffer.from(domain);
-                }
-            }
-
-            result.push([name, null, user, domain]);
-        } else {
+        if (addr.group) {
             // Handle group syntax
-            let name = addr.name || '';
-            if (name) {
-                try {
-                    name = Buffer.from(libmime.decodeWords(name));
-                } catch (E) {
-                    // failed to parse
-                }
-            }
-
-            result.push([null, null, name, null]);
+            result.push([null, null, Buffer.from(decodeWordsSafe(addr.name)), null]);
             result = result.concat(processAddress(addr.group) || []);
             result.push([null, null, null, null]);
+            return;
         }
+
+        let name = addr.name || null;
+        let user = (addr.address || '').split('@').shift() || null;
+        let domain = (addr.address || '').split('@').pop() || null;
+
+        if (!addr.address && name) {
+            // a bare word without a domain ("To: localuser"). RFC 3501 7.4.2 reserves a NIL host
+            // for group markers, so the token becomes the mailbox with the placeholder host that
+            // Dovecot uses for the same input
+            user = name;
+            name = null;
+            domain = 'MISSING_DOMAIN';
+        }
+
+        if (domain) {
+            try {
+                domain = punycode.toUnicode(domain);
+            } catch (E) {
+                // keep as is
+            }
+        }
+
+        result.push([name ? Buffer.from(decodeWordsSafe(name)) : null, null, user ? Buffer.from(decodeWordsSafe(user)) : null, domain ? Buffer.from(domain) : null]);
     });
 
     return result;

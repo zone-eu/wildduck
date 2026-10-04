@@ -100,7 +100,7 @@ describe('GridFS attachment storage contract', function () {
             it('serves every partial window of BODY[]', async function () {
                 let expected = scenario.source;
                 for (let origin = 0; origin < expected.length; origin += 7) {
-                    for (let length of [7, 50]) {
+                    for (let length of [7, 16, 50]) {
                         let options = { startFrom: origin, maxLength: length };
                         let wire = await wireLiteral(compileStream, runSelector(indexer, tree, BODY, options), options);
                         expect(wire.mismatches, `<${origin}.${length}>`).to.deep.equal([]);

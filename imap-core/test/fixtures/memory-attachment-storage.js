@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const { Readable } = require('stream');
 const libbase64 = require('libbase64');
-const { inspectBase64, createEncodedStream } = require('../../../lib/attachments/base64-codec');
+const { inspectBase64, createReadWindow } = require('../../../lib/attachments/base64-codec');
 
 /**
  * The acceptance rule used before base64-codec existed: look at the first line only and allow the line
@@ -127,16 +127,7 @@ class MemoryAttachmentStorage {
             return stream;
         }
 
-        let read = (start, end) => chunked(file.data.subarray(start, end), this.chunkSize);
-        let metadata = (attachmentData && attachmentData.metadata) || {};
-
-        if (metadata.decoded) {
-            return createEncodedStream(read, { length: file.data.length, lineLen: metadata.lineLen, esize: metadata.esize }, options);
-        }
-
-        let start = Math.min(Math.max(Number(options.startFrom) || 0, 0), file.data.length);
-        let end = options.maxLength ? Math.min(start + Number(options.maxLength), file.data.length) : file.data.length;
-        return read(start, end);
+        return createReadWindow((start, end) => chunked(file.data.subarray(start, end), this.chunkSize), attachmentData, options);
     }
 
     async deleteManyAsync() {

@@ -77,12 +77,40 @@ describe('MIME tree v2 structure', function () {
         expect(parse('header_only_nosep').hasBody).to.equal(false);
     });
 
-    it('accepts a delimiter directly after the header lines as a part without a body', function () {
-        let tree = parseMimeTree(Buffer.from('Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n--b\r\nContent-Type: text/plain\r\n\r\np2\r\n--b--\r\n', 'binary'));
+    it('accepts a delimiter directly after the header lines as a bare part', function () {
+        let tree = parse('bare_part');
         expect(tree.childNodes.length).to.equal(2);
         expect(tree.childNodes[0].header).to.deep.equal(['Content-Type: text/plain']);
         expect(tree.childNodes[0].hasBody).to.equal(false);
+        // the line break that ended its last header line is the one before the delimiter
+        expect(tree.childNodes[0].bare).to.equal(true);
         expect(tree.childNodes[1].body.toString('binary')).to.equal('p2');
+        expect(tree.childNodes[1].bare).to.be.undefined;
+
+        let empty = parse('empty_bare_part');
+        expect(empty.childNodes.length).to.equal(2);
+        expect(empty.childNodes[0].header).to.deep.equal([]);
+        expect(empty.childNodes[0].hasBody).to.equal(false);
+        expect(empty.childNodes[0].bare).to.equal(true);
+    });
+
+    it('keeps the line break of a preamble that is followed by the close delimiter', function () {
+        let tree = parse('preamble_then_close');
+        expect(tree.childNodes).to.be.undefined;
+        expect(tree.unterminated).to.be.undefined;
+        expect(tree.body.toString('binary')).to.equal('pre\r\n');
+    });
+
+    it('treats delimiter lines after the close delimiter as epilogue text', function () {
+        let tree = parse('delimiters_in_epilogue');
+        expect(tree.childNodes.length).to.equal(1);
+        expect(tree.epilogue.toString('binary')).to.equal('\r\n--b\r\nagain\r\n--b--\r\n');
+    });
+
+    it('treats a bare CR as content', function () {
+        let tree = parse('bare_cr');
+        expect(tree.body.toString('binary')).to.equal('l1\rstill l1\r\nl2\r\n');
+        expect(tree.lineCount).to.equal(2);
     });
 
     it('accepts transport padding on delimiters and records it', function () {

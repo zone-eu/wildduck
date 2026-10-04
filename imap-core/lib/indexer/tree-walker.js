@@ -6,47 +6,52 @@
 // and the bytes served for it come from the same traversal and can not disagree.
 //
 // A piece is either `{ data, size }` for bytes held in the tree, or `{ node, attachmentId, size }` for a
-// body that lives in the attachment storage. `size` is the number of bytes the piece occupies in the
-// message. For stored bodies that is the stored `size` of the node, which is what the message document
-// and the user quota were computed from.
+// body that lives in the attachment storage, where `size` is the stored size of the node: the number of
+// bytes the body had in the message, which the message document and the user quota were computed from.
 
 const CRLF = Buffer.from('\r\n');
 const EMPTY = Buffer.alloc(0);
 
 /**
- * Returns the body bytes of a node as a Buffer, whatever the storage driver returned them as
+ * Returns bytes from the tree as a Buffer, whatever the storage driver returned them as
  */
-function bodyBuffer(node) {
-    let body = node.body;
-    if (Buffer.isBuffer(body)) {
-        return body;
+function toBuffer(value) {
+    if (Buffer.isBuffer(value)) {
+        return value;
     }
-    if (body && body.buffer && Buffer.isBuffer(body.buffer)) {
+    if (value && value.buffer && Buffer.isBuffer(value.buffer)) {
         // mongodb Binary
-        return body.buffer;
+        return value.buffer;
     }
-    if (typeof body === 'string') {
-        return Buffer.from(body, 'binary');
+    if (typeof value === 'string') {
+        return Buffer.from(value, 'binary');
     }
     return EMPTY;
 }
 
-/**
- * Number of bytes the body of a node occupies in the message
- */
-function bodySize(node) {
-    if (typeof node.size === 'number' && node.size >= 0) {
-        return node.size;
-    }
-    return bodyBuffer(node).length;
+function headerLines(node) {
+    let header = node.header || [];
+    return Array.isArray(header) ? header : [].concat(header || []);
 }
 
-function headerBlock(node) {
-    let header = node.header || [];
-    if (!Array.isArray(header)) {
-        header = [].concat(header || []);
+function childNodes(node) {
+    return Array.isArray(node.childNodes) ? node.childNodes : [];
+}
+
+/**
+ * The body of a non-multipart node: its attachment, or its bytes when it has any
+ */
+function* leafPieces(node, options) {
+    if (node.attachmentId) {
+        if (!options.skipExternal) {
+            yield { node, attachmentId: node.attachmentId, size: typeof node.size === 'number' && node.size >= 0 ? node.size : 0 };
+        }
+        return;
     }
-    return header.join('\r\n') + '\r\n';
+    let data = toBuffer(node.body);
+    if (data.length) {
+        yield { data, size: data.length };
+    }
 }
 
 /**
@@ -60,7 +65,7 @@ function headerBlock(node) {
  * CRLF for multi-line nodes, and attachment streams of a recomputed length) were never counted by the
  * old size calculation and are left out on purpose.
  */
-function* walkV1(tree, options) {
+function* walkV1(root, options) {
     let first = true;
 
     // every line except the first one is preceded by the CRLF that ends the previous line
@@ -79,58 +84,37 @@ function* walkV1(tree, options) {
 
     const walk = function* (node, isRoot) {
         if (!options.textOnly || !isRoot) {
-            yield* line(headerBlock(node));
+            yield* line(headerLines(node).join('\r\n') + '\r\n');
         }
 
-        let size = bodySize(node);
-
-        if (node.boundary) {
-            yield* separator();
-            if (size) {
-                yield { data: bodyBuffer(node), size };
-            }
-            let delimiter = Buffer.from('--' + node.boundary, 'binary');
-            yield { data: delimiter, size: delimiter.length };
-
-            let children = Array.isArray(node.childNodes) ? node.childNodes : [];
-            for (let i = 0; i < children.length; i++) {
-                yield* walk(children[i], false);
-                if (i < children.length - 1) {
-                    yield* line('--' + node.boundary);
-                }
-            }
-
-            yield* line('--' + node.boundary + '--\r\n');
-        } else if (node.attachmentId) {
-            if (!options.skipExternal) {
+        if (!node.boundary) {
+            for (let piece of leafPieces(node, options)) {
                 yield* separator();
-                yield { node, attachmentId: node.attachmentId, size };
+                yield piece;
             }
-        } else if (size) {
-            yield* separator();
-            yield { data: bodyBuffer(node), size };
+            return;
         }
+
+        yield* separator();
+        let preamble = toBuffer(node.body);
+        if (preamble.length) {
+            yield { data: preamble, size: preamble.length };
+        }
+        let delimiter = Buffer.from('--' + node.boundary, 'binary');
+        yield { data: delimiter, size: delimiter.length };
+
+        let children = childNodes(node);
+        for (let i = 0; i < children.length; i++) {
+            yield* walk(children[i], false);
+            if (i < children.length - 1) {
+                yield* line('--' + node.boundary);
+            }
+        }
+
+        yield* line('--' + node.boundary + '--\r\n');
     };
 
-    yield* walk(tree, true);
-}
-
-function headerLines(node) {
-    let header = node.header || [];
-    return Array.isArray(header) ? header : [].concat(header || []);
-}
-
-function toBuffer(value) {
-    if (Buffer.isBuffer(value)) {
-        return value;
-    }
-    if (value && value.buffer && Buffer.isBuffer(value.buffer)) {
-        return value.buffer;
-    }
-    if (typeof value === 'string') {
-        return Buffer.from(value, 'binary');
-    }
-    return EMPTY;
+    yield* walk(options.node || root, true);
 }
 
 /**
@@ -141,10 +125,11 @@ function toBuffer(value) {
  *     delimiter = "--" boundary pad CRLF
  *
  * The CRLF after an entity belongs to the delimiter that follows it (RFC 2046 5.1.1), a part body never
- * includes it. A multipart that never saw its close delimiter (`unterminated`) ends with the last part
+ * includes it. A bare entity (header lines directly followed by a delimiter) has no line break of its
+ * own to give. A multipart that never saw its close delimiter (`unterminated`) ends with the last part
  * running to the end of the message, and one without any delimiter at all is just its preamble.
  */
-function* walkV2(tree, options) {
+function* walkV2(root, options) {
     const piece = data => ({ data, size: data.length });
     const text = str => piece(Buffer.from(str, 'binary'));
 
@@ -167,63 +152,56 @@ function* walkV2(tree, options) {
             yield piece(CRLF);
         }
 
-        if (node.boundary) {
-            let size = bodySize(node);
-            if (size) {
-                // preamble, verbatim
-                yield { data: bodyBuffer(node), size };
-            }
+        if (!node.boundary) {
+            yield* leafPieces(node, options);
+            return;
+        }
 
-            let children = Array.isArray(node.childNodes) ? node.childNodes : [];
-            for (let i = 0; i < children.length; i++) {
-                let child = children[i];
-                yield text('--' + node.boundary + (child.pad || '') + '\r\n');
-                yield* walk(child, false);
-                if (!node.unterminated || i < children.length - 1) {
-                    // the line break that belongs to the next delimiter
-                    yield piece(CRLF);
-                }
-            }
+        let preamble = toBuffer(node.body);
+        if (preamble.length) {
+            yield piece(preamble);
+        }
 
-            if (!node.unterminated) {
-                yield text('--' + node.boundary + '--' + (node.closePad || ''));
-                let epilogue = toBuffer(node.epilogue);
-                if (epilogue.length) {
-                    yield piece(epilogue);
-                }
+        let children = childNodes(node);
+        for (let i = 0; i < children.length; i++) {
+            let child = children[i];
+            yield text('--' + node.boundary + (child.pad || '') + '\r\n');
+            yield* walk(child, false);
+            if ((!node.unterminated || i < children.length - 1) && !child.bare) {
+                // the line break that belongs to the next delimiter
+                yield piece(CRLF);
             }
-        } else if (node.attachmentId) {
-            if (!options.skipExternal) {
-                yield { node, attachmentId: node.attachmentId, size: bodySize(node) };
-            }
-        } else {
-            let size = bodySize(node);
-            if (size) {
-                yield { data: bodyBuffer(node), size };
+        }
+
+        if (!node.unterminated) {
+            yield text('--' + node.boundary + '--' + (node.closePad || ''));
+            let epilogue = toBuffer(node.epilogue);
+            if (epilogue.length) {
+                yield piece(epilogue);
             }
         }
     };
 
-    yield* walk(tree, true);
+    yield* walk(options.node || root, true);
 }
 
 /**
  * Yields the byte pieces of a message
  *
- * @param {Object} tree Parsed MIME tree, or a node of it for BODY[n]
+ * @param {Object} root Parsed MIME tree. Its format version decides the layout
  * @param {Object} [options]
- * @param {Boolean} [options.textOnly] Leave out the header of the root node (BODY[TEXT], BODY[n])
+ * @param {Object} [options.node] A node of the tree to render instead of the whole message (BODY[n])
+ * @param {Boolean} [options.textOnly] Leave out the header of the rendered node (BODY[TEXT], BODY[n])
  * @param {Boolean} [options.skipExternal] Leave out bodies that live in the attachment storage
- * @param {Number} [options.version] Tree format version, defaults to the `v` of the tree itself (1 when absent)
  */
-function* walkTree(tree, options) {
+function* walkTree(root, options) {
     options = options || {};
-    let version = Number(options.version || (tree && tree.v)) || 1;
+    let version = Number(root && root.v) || 1;
     if (version >= 2) {
-        yield* walkV2(tree, options);
+        yield* walkV2(root, options);
     } else {
-        yield* walkV1(tree, options);
+        yield* walkV1(root, options);
     }
 }
 
-module.exports = { walkTree, bodyBuffer, bodySize, headerBlock, CRLF };
+module.exports = { walkTree, toBuffer, headerLines, CRLF };
