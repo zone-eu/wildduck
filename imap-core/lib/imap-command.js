@@ -376,7 +376,8 @@ class IMAPCommand {
                     _payload: payload,
                     _command_length: this.payload.length,
                     _sess: this.connection.id,
-                    _remoteAddress: this.connection.remoteAddress
+                    _remoteAddress: this.connection.remoteAddress,
+                    _remotePort: this.connection.remotePort
                 });
             }
 
