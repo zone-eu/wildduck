@@ -9,7 +9,7 @@
 // in-memory model says what must be true after every step: each referenced attachment reads back byte for
 // byte, its counters match the references, nothing referenced is ever collected, and once every message is
 // gone and enough time has passed, nothing is left behind. Faults are injected along the way: S3 refusing
-// uploads and deletes, the collector stopping between any two of its steps, uploads leaving chunks behind,
+// uploads (the message is then not stored) and deletes, the collector stopping between any two of its steps, uploads leaving chunks behind,
 // and messages arriving, being copied or deleted, or a second process collecting while a collection runs.
 //
 // A failure prints the seed and the step; ATTACHMENT_MODEL_SEED=<seed> replays it. ATTACHMENT_MODEL_RUNS and
@@ -216,10 +216,20 @@ describe('Attachment store model', function () {
                 }
                 // attachments of a message are stored one after the other, like storeNodeBodies() does
                 let ids = [];
-                for (let payload of picked) {
-                    let id = await create(writer, payload, magic);
-                    expect(id.equals(payload.id), context()).to.be.true;
-                    ids.push(id);
+                try {
+                    for (let payload of picked) {
+                        let id = await create(writer, payload, magic);
+                        expect(id.equals(payload.id), context()).to.be.true;
+                        ids.push(id);
+                    }
+                } catch (err) {
+                    if (!/injected S3 upload failure/.test(err.message)) {
+                        throw err;
+                    }
+                    // the message is not stored: like the message handler, release what it already took
+                    faults.s3Put = 0;
+                    await writer.deleteManyAsync(ids, magic);
+                    return `store ${writer.type} failed on S3`;
                 }
                 faults.s3Put = 0;
                 messages.set(nextMessage++, { magic, ids });

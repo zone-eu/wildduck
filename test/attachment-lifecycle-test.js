@@ -435,44 +435,19 @@ describe('Attachment garbage collection', function () {
                     expect(await read(id)).to.equal(body.toString());
                 });
 
-                it('stores a new attachment in GridFS when the S3 upload fails', async function () {
+                it('fails the store when the S3 upload fails, and stores nothing', async function () {
                     storage.s3.client = {
                         send: async () => {
                             throw Object.assign(new Error('Service Unavailable'), { $metadata: { httpStatusCode: 503 } });
                         }
                     };
-                    let id = await create('stored while S3 is down', 2);
-                    let file = await files.findOne({ _id: id });
-                    expect(file.metadata.storage).to.not.exist;
-                    expect(file.metadata.c).to.equal(1);
-                    expect(await chunks.countDocuments({ files_id: id })).to.equal(1);
-                    expect(await read(id)).to.equal('stored while S3 is down');
-                    // the next message with it only adds a reference
-                    await create('stored while S3 is down', 3);
-                    expect((await files.findOne({ _id: id })).metadata.c).to.equal(2);
+                    let error = await create('stored while S3 is down', 2).catch(err => err);
+                    expect(error.message).to.equal('Service Unavailable');
+                    expect(await files.countDocuments({})).to.equal(0);
+                    expect(await chunks.countDocuments({})).to.equal(0);
                 });
 
-                it('sends new attachments straight to GridFS for a while after an S3 failure', async function () {
-                    let client = storage.s3.client;
-                    let requests = 0;
-                    storage.s3.client = {
-                        send: async () => {
-                            requests++;
-                            throw Object.assign(new Error('AccessDenied'), { $metadata: { httpStatusCode: 403 } });
-                        }
-                    };
-                    await create('first after the failure', 1);
-                    await create('second after the failure', 1);
-                    expect(requests).to.equal(1);
-
-                    // once the pause is over, S3 is tried again
-                    storage.s3.client = client;
-                    storage.s3PausedUntil = 0;
-                    let id = await create('after the pause', 1);
-                    expect((await files.findOne({ _id: id })).metadata.storage.backend).to.equal('s3');
-                });
-
-                it('does not fall back to GridFS when the catalog fails after the upload', async function () {
+                it('keeps the uploaded copy when the catalog fails after the upload', async function () {
                     let put = storage.s3.put.bind(storage.s3);
                     let uploaded;
                     storage.s3.put = async (...args) => (uploaded = await put(...args));
