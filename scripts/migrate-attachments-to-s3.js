@@ -130,12 +130,7 @@ async function main() {
                 try {
                     // a key is written once, so an object older than the grace period that no record points to
                     // can not become referenced any more
-                    const record = await files.findOne({ _id: id }, { projection: { 'metadata.storage': 1 } });
-                    if (
-                        record?.metadata?.storage?.backend === 's3' &&
-                        record.metadata.storage.bucket === s3.bucket &&
-                        record.metadata.storage.key === object.Key
-                    ) {
+                    if (await storage.catalog.references(id, object.Key)) {
                         stats.skipped++;
                         continue;
                     }
@@ -177,7 +172,7 @@ async function main() {
         }
         await lock.run(id, async assertOwned => {
             const current = await files.findOne({ _id: id });
-            if (!current || current.metadata?.storage?.state === 'deleting') {
+            if (!current) {
                 stats.skipped++;
                 return;
             }
@@ -191,7 +186,7 @@ async function main() {
                 }
                 const token = crypto.randomUUID();
                 const claim = await files.updateOne(
-                    { _id: id, 'metadata.storage.backend': { $ne: 's3' }, 'metadata.storage.state': { $ne: 'deleting' } },
+                    { _id: id, 'metadata.storage.backend': { $ne: 's3' } },
                     { $set: { 'metadata.storage': { backend: 'gridfs', migrationToken: token } } }
                 );
                 if (!claim.matchedCount) {

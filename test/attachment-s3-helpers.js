@@ -8,13 +8,13 @@ const net = require('net');
 const { spawn } = require('child_process');
 const { once } = require('events');
 const { setTimeout: delay } = require('timers/promises');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const Redis = require('ioredis');
 const yaml = require('js-yaml');
 const supertest = require('supertest');
 const { ImapFlow } = require('imapflow');
 const config = require('@zone-eu/wild-config');
-const { S3Client, CreateBucketCommand, DeleteBucketCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { S3Client, CreateBucketCommand, DeleteBucketCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const AttachmentStorage = require('../lib/attachment-storage');
 
 const root = path.resolve(__dirname, '..');
@@ -50,6 +50,27 @@ async function emptyBucket(client, bucket) {
         }
     } while (page.Contents?.length);
     await client.send(new DeleteBucketCommand({ Bucket: bucket }));
+}
+
+async function objectExists(client, bucket, key) {
+    try {
+        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+        return true;
+    } catch (err) {
+        if (err.$metadata?.httpStatusCode === 404) {
+            return false;
+        }
+        throw err;
+    }
+}
+
+// The collector only deletes GridFS chunks old enough to not belong to a new upload. Chunk age is the
+// timestamp of the chunk id, so a test that expects chunks to be collected gives them old ids
+async function ageChunks(chunks, filesId, time = new Date(0)) {
+    for (const chunk of await chunks.find({ files_id: filesId }).toArray()) {
+        await chunks.deleteOne({ _id: chunk._id });
+        await chunks.insertOne({ ...chunk, _id: ObjectId.createFromTime(Math.floor(time.getTime() / 1000)) });
+    }
 }
 
 class S3TestEnvironment {
@@ -123,7 +144,13 @@ class TestServer {
         }
         this.apiPort = await freePort();
         this.imapPort = await freePort();
-        const s3 = { bucket: this.environment.bucket, prefix: this.databaseName, endpoint: this.environment.endpoint, region: 'us-east-1', forcePathStyle: true };
+        const s3 = {
+            bucket: this.environment.bucket,
+            prefix: this.databaseName,
+            endpoint: this.environment.endpoint,
+            region: 'us-east-1',
+            forcePathStyle: true
+        };
         await fs.writeFile(
             this.configPath,
             JSON.stringify({
@@ -183,7 +210,10 @@ class TestServer {
     async createUser() {
         const username = `att_${this.environment.nonce}_${this.type}_${++this.userSequence}`;
         const password = 'attachment-test-password';
-        const response = await this.api.post('/users').send({ username, password, address: `${username}@example.test`, name: 'Attachment test' }).expect(200);
+        const response = await this.api
+            .post('/users')
+            .send({ username, password, address: `${username}@example.test`, name: 'Attachment test' })
+            .expect(200);
         const user = response.body.id;
         const mailboxes = await this.api.get(`/users/${user}/mailboxes`).expect(200);
         const inbox = mailboxes.body.results.find(mailbox => mailbox.path === 'INBOX');
@@ -244,4 +274,4 @@ class TestServer {
     }
 }
 
-module.exports = { S3TestEnvironment, collect, binaryParser, emptyBucket };
+module.exports = { S3TestEnvironment, collect, binaryParser, emptyBucket, objectExists, ageChunks };

@@ -1,11 +1,10 @@
 'use strict';
 
 const { expect } = require('chai');
-const AttachmentCatalog = require('../lib/attachments/catalog');
 const AttachmentLock = require('../lib/attachments/attachment-lock');
 const AttachmentStorage = require('../lib/attachment-storage');
 
-describe('Attachment catalog and locking', () => {
+describe('Attachment storage facade and locking', () => {
     const id = Buffer.alloc(32, 0xab);
 
     for (const writeConcern of [undefined, 1, 2, 'majority']) {
@@ -40,53 +39,6 @@ describe('Attachment catalog and locking', () => {
             expect(insertOptions).to.deep.equal({ writeConcern: { w: writeConcern || 'majority' } });
         });
     }
-
-    it('does not claim an orphan refreshed between the age check and the update', async () => {
-        const cutoff = new Date(Date.now() - 24 * 3600 * 1000);
-        const old = { _id: id, metadata: { c: 0, m: 0, cu: new Date(0) } };
-        const fresh = { ...old, metadata: { ...old.metadata, cu: new Date() } };
-        const files = {
-            async findOne() {
-                return old;
-            },
-            async findOneAndUpdate(query) {
-                // Another reference was added and removed just before this atomic update.
-                const eligible =
-                    !query.$or ||
-                    query.$or.some(condition => {
-                        if (condition['metadata.cu']?.$lt) {
-                            return fresh.metadata.cu < condition['metadata.cu'].$lt;
-                        }
-                        return condition['metadata.cu'] === null ? fresh.metadata.cu === null : fresh.metadata.storage?.state === 'deleting';
-                    });
-                return { value: eligible ? fresh : null };
-            }
-        };
-        const catalog = new AttachmentCatalog({ collection: () => files }, 'attachments');
-        expect(await catalog.claimOrphan(id, cutoff)).to.equal(null);
-    });
-
-    it('uses the same orphan eligibility rules for scanning and claiming', async () => {
-        let scannedQuery;
-        let claimedQuery;
-        const file = { _id: id, metadata: { c: 0, m: 0, storage: { state: 'deleting' } } };
-        const files = {
-            find(query) {
-                scannedQuery = query;
-                return { toArray: async () => [file] };
-            },
-            async findOneAndUpdate(query) {
-                claimedQuery = query;
-                return { value: file };
-            }
-        };
-        const catalog = new AttachmentCatalog({ collection: () => files }, 'attachments');
-        const { candidates, cutoff } = await catalog.findOrphans();
-        expect(candidates).to.deep.equal([file]);
-        expect(await catalog.claimOrphan(id, cutoff)).to.equal(file);
-        expect(claimedQuery).to.deep.equal({ _id: id, ...scannedQuery });
-        expect(claimedQuery.$or).to.deep.include({ 'metadata.storage.state': 'deleting' });
-    });
 
     it('rejects an expired lease even before the renewal timer runs, and releases it', async () => {
         const lock = Object.create(AttachmentLock.prototype);

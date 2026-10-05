@@ -18,6 +18,7 @@ const {
 } = require('@aws-sdk/client-s3');
 const AttachmentStorage = require('../lib/attachment-storage');
 const db = require('../lib/db');
+const { ageChunks } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
 const execFileAsync = promisify(execFile);
@@ -122,6 +123,7 @@ async function collect(stream) {
         await gridstore.deleteAsync(created.id, 31);
         await storage.deleteAsync(created.id, 37);
         await db.gridfs.collection(`${collectionName}.files`).updateOne({ _id: created.id }, { $set: { 'metadata.cu': new Date(0) } });
+        await ageChunks(db.gridfs.collection(`${collectionName}.chunks`), created.id);
         expect(await gridstore.deleteOrphanedAsync()).to.equal(1);
         expect(await db.gridfs.collection(`${collectionName}.files`).countDocuments({ _id: created.id })).to.equal(0);
         expect(await db.gridfs.collection(`${collectionName}.chunks`).countDocuments({ files_id: created.id })).to.equal(0);

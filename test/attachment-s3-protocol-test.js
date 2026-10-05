@@ -6,7 +6,7 @@ const { expect } = require('chai');
 const { simpleParser } = require('mailparser');
 const { ObjectId } = require('mongodb');
 const { HeadObjectCommand, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
-const { S3TestEnvironment, collect, binaryParser } = require('./attachment-s3-helpers');
+const { S3TestEnvironment, collect, binaryParser, ageChunks } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
 const binary = Buffer.from(Array.from({ length: 4097 }, (value, index) => index % 256));
@@ -330,6 +330,7 @@ const fixtures = [
                 expect(orphan.metadata.m).to.equal(0);
                 expect(await server.storage.deleteOrphanedAsync()).to.equal(0);
                 await server.database.collection('attachments.files').updateOne({ _id: id }, { $set: { 'metadata.cu': new Date(0) } });
+                await ageChunks(server.database.collection('attachments.chunks'), id);
                 expect(await server.storage.deleteOrphanedAsync()).to.equal(1);
                 expect(await server.database.collection('attachments.files').findOne({ _id: id })).to.equal(null);
                 expect(await server.database.collection('attachments.chunks').countDocuments({ files_id: id })).to.equal(0);
