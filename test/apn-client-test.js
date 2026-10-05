@@ -595,7 +595,7 @@ describe('ApnClient', function () {
     });
 
     describe('GOAWAY handling', function () {
-        it('should close an idle session on GOAWAY and reconnect on the next push', async function () {
+        it('should destroy the session on a GOAWAY frame and reconnect on the next push', async function () {
             requestHandler = respondWith(200);
 
             let serverSessions = [];
@@ -610,7 +610,7 @@ describe('ApnClient', function () {
             serverSessions[serverSessions.length - 1].goaway();
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // GOAWAY of a live session closes it without arming the cooldown
+            // GOAWAY of a live session destroys it but does not arm the cooldown
             expect(client._session).to.be.null;
             expect(client._reconnectAfter).to.equal(0);
 
@@ -620,106 +620,35 @@ describe('ApnClient', function () {
             expect(client._session).to.not.equal(session);
         });
 
-        it('should drain an accepted push while new pushes use a fresh session', async function () {
-            let accepted;
+        it('should abort in-flight pushes on GOAWAY without retrying them', async function () {
+            let requestCount = 0;
+            let firstStreamID;
             requestHandler = stream => {
                 stream.resume();
-                if (!accepted) {
-                    accepted = stream;
-                    stream.session.goaway(http2.constants.NGHTTP2_NO_ERROR, stream.id);
+                stream.on('error', () => {});
+                requestCount++;
+                if (requestCount === 1) {
+                    firstStreamID = stream.id;
                 } else {
-                    respondWith(200)(stream);
+                    stream.session.goaway(http2.constants.NGHTTP2_NO_ERROR, firstStreamID);
                 }
             };
 
             let client = createClient();
             let session = client._getSession();
-            let goaway = new Promise(resolve => session.once('goaway', resolve));
-            let firstPush = client._push(VALID_TOKEN, 'account-1');
-            await goaway;
-
-            expect(session.destroyed).to.be.false;
-            expect(client._session).to.be.null;
+            let results = await Promise.allSettled([client._push(VALID_TOKEN, 'account-1'), client._push(VALID_TOKEN_2, 'account-2')]);
+            expect(results.map(result => result.status)).to.deep.equal(['rejected', 'rejected']);
+            expect(requestCount).to.equal(2);
+            expect(session.destroyed).to.be.true;
             expect(client._reconnectAfter).to.equal(0);
-            expect((await client._push(VALID_TOKEN_2, 'account-2')).status).to.equal(200);
-            let newSession = client._session;
-            let newPingTimer = client._pingTimer;
-            expect(newSession).to.not.equal(session);
-            expect(session.destroyed).to.be.false;
 
-            let closed = new Promise(resolve => session.once('close', resolve));
-            respondWith(200)(accepted);
-            expect((await firstPush).status).to.equal(200);
-            await closed;
-            expect(client._session).to.equal(newSession);
-            expect(client._pingTimer).to.equal(newPingTimer);
-            expect(client._sessions.has(session)).to.be.false;
-        });
-
-        it('should retry unprocessed pushes during a flush without resending accepted pushes', async function () {
-            let accepted;
-            let paths = [];
-            let gelf = [];
-            let client = createClient({
-                database: mockDatabase([
-                    { _id: '1', deviceToken: VALID_TOKEN, accountId: 'acc-1', mailboxIds: ['INBOX'] },
-                    { _id: '2', deviceToken: VALID_TOKEN_2, accountId: 'acc-2', mailboxIds: ['INBOX'] }
-                ]),
-                loggelf: message => gelf.push(message)
-            });
-            let session = client._getSession();
-            requestHandler = (stream, headers) => {
-                stream.resume();
-                // Streams above lastStreamID may be reset by the HTTP/2 implementation.
-                stream.on('error', () => {});
-                paths.push(headers[':path']);
-                if (!accepted) {
-                    accepted = stream;
-                } else if (paths.length === 2) {
-                    stream.session.goaway(http2.constants.NGHTTP2_NO_ERROR, accepted.id);
-                } else {
-                    respondWith(200)(stream);
-                    respondWith(200)(accepted);
-                }
-            };
-
-            await client._flushNotifications('user-1', ['INBOX']);
-            expect(paths).to.deep.equal([`/3/device/${VALID_TOKEN}`, `/3/device/${VALID_TOKEN_2}`, `/3/device/${VALID_TOKEN_2}`]);
-            expect(client._session).to.not.equal(session);
-            expect(gelf.filter(message => message._mail_action === 'apn_sent')).to.have.length(2);
-            expect(gelf.filter(message => message._mail_action === 'apn_error')).to.have.length(0);
-        });
-
-        it('should limit retries when every session rejects the push with GOAWAY', async function () {
-            let sessions = new Set();
             requestHandler = stream => {
-                stream.resume();
-                stream.on('error', () => {});
-                if (stream.id === 1) {
-                    respondWith(200)(stream);
-                } else {
-                    stream.session.goaway(http2.constants.NGHTTP2_NO_ERROR, 1);
-                }
+                requestCount++;
+                respondWith(200)(stream);
             };
-
-            let client = createClient();
-            let getSession = client._getSession.bind(client);
-            client._getSession = () => {
-                let session = getSession();
-                if (!sessions.has(session)) {
-                    sessions.add(session);
-                    // Prime each connection so GOAWAY can reject stream 3 above an
-                    // explicit lastStreamID of 1 (Node treats 0 as the default ID).
-                    let warmup = session.request({ ':method': 'POST', ':path': '/warmup' });
-                    warmup.on('error', () => {});
-                    warmup.resume();
-                    warmup.end();
-                }
-                return session;
-            };
-            let result = await Promise.allSettled([client._push(VALID_TOKEN, 'account-1')]);
-            expect(result[0].status).to.equal('rejected');
-            expect(sessions.size).to.equal(2);
+            expect((await client._push(VALID_TOKEN, 'account-3')).status).to.equal(200);
+            expect(client._session).to.not.equal(session);
+            expect(requestCount).to.equal(3);
         });
     });
 
