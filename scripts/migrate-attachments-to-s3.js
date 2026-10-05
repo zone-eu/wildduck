@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { ObjectId } = require('mongodb');
-const { GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const config = require('@zone-eu/wild-config');
 const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
@@ -237,7 +237,8 @@ async function main() {
             if (!current.metadata.fileContentHash && !sourceChunk) {
                 throw new Error(`Cannot verify S3 payload without a checksum or GridFS chunks for ${hex}`);
             }
-            const destination = await hashStream((await s3.client.send(new GetObjectCommand({ Bucket: location.bucket, Key: location.key }))).Body);
+            // the same guarded read as a FETCH: a body that stops arriving fails after readTimeout instead of holding the lock
+            const destination = await hashStream(s3.openRange(location, current.length, 0, current.length));
             if (
                 destination.length !== current.length ||
                 (current.metadata.fileContentHash && !destination.checksum.equals(Buffer.from(current.metadata.fileContentHash, 'base64')))

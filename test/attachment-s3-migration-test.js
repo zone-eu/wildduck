@@ -5,6 +5,8 @@
 const { expect } = require('chai');
 const crypto = require('crypto');
 const path = require('path');
+const http = require('http');
+const fs = require('fs').promises;
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { HeadObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
@@ -188,6 +190,47 @@ describe('S3 migration without S3 settings', function () {
         expect(await exists(young)).to.equal(false);
         expect(await exists(file.metadata.storage.key)).to.equal(true);
         expect(await exists(foreign)).to.equal(true);
+    });
+
+    it('fails verification of an object whose body stops arriving instead of hanging', async () => {
+        const file = await migrate();
+        // an S3 endpoint that sends the headers of every object and then nothing more
+        const stalled = http.createServer((req, res) => {
+            req.resume();
+            res.writeHead(200, { 'Content-Length': file.length });
+            res.write('x');
+        });
+        await new Promise(resolve => stalled.listen(0, '127.0.0.1', resolve));
+        const configPath = `${fixture.configPath}.stalled.json`;
+        const settings = JSON.parse(await fs.readFile(fixture.configPath, 'utf8'));
+        settings.attachments.s3.readTimeout = 500;
+        await fs.writeFile(configPath, JSON.stringify(settings));
+        try {
+            const started = Date.now();
+            const error = await failure(
+                execFileAsync(
+                    process.execPath,
+                    [
+                        script,
+                        `--gridfs-bucket=${collectionName}`,
+                        `--config=${configPath}`,
+                        '--verify-only',
+                        `--s3-endpoint=http://127.0.0.1:${stalled.address().port}`
+                    ],
+                    {
+                        env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1' },
+                        timeout: 20000
+                    }
+                ),
+                1
+            );
+            expect(error.stderr).to.include('S3 sent no data');
+            expect(Date.now() - started).to.be.below(15000);
+        } finally {
+            stalled.closeAllConnections();
+            await new Promise(resolve => stalled.close(resolve));
+            await fs.unlink(configPath);
+        }
     });
 
     it('works through the store in pages of the given size', async () => {
