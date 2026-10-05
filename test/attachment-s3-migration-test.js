@@ -42,7 +42,8 @@ describe('S3 migration CLI arguments', function () {
         ['--dry-run=true'],
         ['--cleanup-chunks', '--yes=false'],
         ['--cleanup-chunks'],
-        ['--migrate', '--verify-only']
+        ['--migrate', '--verify-only'],
+        ['--dry-run', '--batch=0']
     ]) {
         it(`rejects ${args.join(' ')} before connecting to storage`, async () => {
             const error = await failure(execFileAsync(process.execPath, [script, ...args], { timeout: 5000 }), 2);
@@ -130,6 +131,23 @@ describe('S3 migration CLI arguments', function () {
             (await environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: storage.s3.key(excluded, '0123456789abcdef') })))
                 .ContentLength
         ).to.equal(6);
+    });
+
+    it('works through the store in pages of the given size', async () => {
+        for (let i = 0; i < 4; i++) {
+            await new Promise((resolve, reject) =>
+                storage.create({ body: Buffer.from(`paged attachment ${i}`), transferEncoding: '7bit', contentType: 'text/plain', magic: 41 }, err =>
+                    err ? reject(err) : resolve()
+                )
+            );
+        }
+        const result = await run(['--migrate', '--batch', '2']);
+        expect(result.stats.scanned).to.equal(5);
+        expect(result.stats.migrated).to.equal(5);
+        expect(await files.countDocuments({ 'metadata.storage.backend': 's3' })).to.equal(5);
+        expect((await run(['--verify-only', '--batch=3'])).stats.verified).to.equal(5);
+        // a limit that ends on a page boundary stops there
+        expect((await run(['--verify-only', '--batch=2', '--limit=4'])).stats.scanned).to.equal(4);
     });
 
     it('honors space-separated migration options, preserves counters and remains verifiable after cleanup', async () => {

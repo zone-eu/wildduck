@@ -11,6 +11,7 @@ const flagNames = new Set(['migrate', 'dry-run', 'verify-only', 'cleanup-chunks'
 const valueNames = new Set([
     'prefix',
     'limit',
+    'batch',
     'concurrency',
     'throttle-ms',
     'grace-hours',
@@ -48,6 +49,7 @@ for (let index = 0; index < args.length; index++) {
 }
 const mode = ['--migrate', '--dry-run', '--verify-only', '--cleanup-chunks', '--cleanup-unreferenced-s3'].filter(flag => flags.has(flag));
 const limit = Number(values.limit || 0);
+const batch = Number(values.batch || 1000);
 const concurrency = Number(values.concurrency || 2);
 const throttleMs = Number(values['throttle-ms'] || 0);
 const graceHours = Number(values['grace-hours'] || 24);
@@ -65,6 +67,9 @@ if (
     ((flags.has('--cleanup-chunks') || flags.has('--cleanup-unreferenced-s3')) && !flags.has('--yes')) ||
     !Number.isInteger(limit) ||
     limit < 0 ||
+    !Number.isInteger(batch) ||
+    batch < 1 ||
+    batch > 10000 ||
     !Number.isInteger(concurrency) ||
     concurrency < 1 ||
     concurrency > 32 ||
@@ -78,7 +83,7 @@ if (
         process.stderr.write(`${argumentError}\n`);
     }
     process.stderr.write(
-        'Usage: node scripts/migrate-attachments-to-s3.js (--dry-run|--migrate|--verify-only|--cleanup-chunks --yes|--cleanup-unreferenced-s3 --yes) [--prefix=0..ffff] [--limit=N] [--concurrency=1..32] [--throttle-ms=N] [--grace-hours=N] [--gridfs-bucket=NAME] [--s3-bucket=NAME --s3-prefix=NAME --s3-endpoint=URL]\n'
+        'Usage: node scripts/migrate-attachments-to-s3.js (--dry-run|--migrate|--verify-only|--cleanup-chunks --yes|--cleanup-unreferenced-s3 --yes) [--prefix=0..ffff] [--limit=N] [--batch=1..10000] [--concurrency=1..32] [--throttle-ms=N] [--grace-hours=N] [--gridfs-bucket=NAME] [--s3-bucket=NAME --s3-prefix=NAME --s3-endpoint=URL]\n'
     );
     process.exit(2);
 }
@@ -267,30 +272,48 @@ async function main() {
     }
 
     const active = new Set();
-    const cursor = files.find(query, { projection: { _id: 1 } }).sort({ _id: 1 });
-    for await (const file of cursor) {
-        if (limit && stats.scanned >= limit) {
-            break;
-        }
-        stats.scanned++;
-        const task = processFile(file)
-            .catch(err => {
-                stats.failed++;
-                process.stderr.write(`${file._id.toString('hex')}: ${err.message}\n`);
-            })
-            .finally(() => active.delete(task));
-        active.add(task);
-        if (active.size >= concurrency) {
-            await Promise.race(active);
-        }
-        if (throttleMs) {
-            await new Promise(resolve => setTimeout(resolve, throttleMs));
-        }
-        if (stats.scanned % 1000 === 0) {
-            process.stdout.write(`${JSON.stringify(stats)}\n`);
-        }
+    try {
+        // pages of ids instead of one cursor: working through a large store takes far longer than a server
+        // keeps an idle cursor open
+        let last = null;
+        let page;
+        do {
+            const pageQuery = last ? { ...query, _id: { ...(query._id || {}), $gt: last } } : query;
+            // never more than --limit still allows, and no query at all once it is reached (limit 0 means none)
+            const size = limit ? Math.min(batch, limit - stats.scanned) : batch;
+            if (size <= 0) {
+                break;
+            }
+            page = await files
+                .find(pageQuery, { projection: { _id: 1 } })
+                .sort({ _id: 1 })
+                .limit(size)
+                .toArray();
+            for (const file of page) {
+                stats.scanned++;
+                const task = processFile(file)
+                    .catch(err => {
+                        stats.failed++;
+                        process.stderr.write(`${file._id.toString('hex')}: ${err.message}\n`);
+                    })
+                    .finally(() => active.delete(task));
+                active.add(task);
+                if (active.size >= concurrency) {
+                    await Promise.race(active);
+                }
+                if (throttleMs) {
+                    await new Promise(resolve => setTimeout(resolve, throttleMs));
+                }
+                if (stats.scanned % 1000 === 0) {
+                    process.stdout.write(`${JSON.stringify(stats)}\n`);
+                }
+                last = file._id;
+            }
+        } while (page.length === batch);
+    } finally {
+        // never exit with uploads or cutovers half done, also when listing the next page failed
+        await Promise.all(active);
     }
-    await Promise.all(active);
     process.stdout.write(`${JSON.stringify(stats)}\n`);
     if (stats.failed) {
         process.exitCode = 1;
