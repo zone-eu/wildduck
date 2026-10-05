@@ -111,6 +111,9 @@ describe('Attachment store model', function () {
         // message id -> { magic, ids }: the references a stored message holds, one per attachment
         let messages = new Map();
         let nextMessage = 0;
+        // attachments whose leftover chunks nothing can remove: the store that met them failed and the attachment
+        // was not stored since. Without a record the collector does not know about them, like on master
+        let stranded = new Set();
         let step = 0;
         let log = [];
 
@@ -185,7 +188,14 @@ describe('Attachment store model', function () {
             new Promise((resolve, reject) =>
                 writer.create(
                     { body: payload.body, contentType: 'application/octet-stream', transferEncoding: payload.transferEncoding, lineCount: 1, magic },
-                    (err, id) => (err ? reject(err) : resolve(id))
+                    (err, id) => {
+                        if (err) {
+                            return reject(err);
+                        }
+                        // stored again, the collector removes the leftovers along with the record
+                        stranded.delete(id.toString('hex'));
+                        resolve(id);
+                    }
                 )
             );
 
@@ -202,9 +212,10 @@ describe('Attachment store model', function () {
                 if (writer.s3 && random.chance(0.15)) {
                     faults.s3Put = 1;
                 }
+                let leftover;
                 if (random.chance(0.1)) {
                     // an upload of the first one stopped ten minutes ago and left a chunk behind
-                    let leftover = picked[0];
+                    leftover = picked[0];
                     if (!(await files.findOne({ _id: leftover.id }))) {
                         await chunks.insertOne({
                             _id: objectIdAt(new Date(Date.now() - 10 * 60 * 1000)),
@@ -229,6 +240,9 @@ describe('Attachment store model', function () {
                     // the message is not stored: like the message handler, release what it already took
                     faults.s3Put = 0;
                     await writer.deleteManyAsync(ids, magic);
+                    if (leftover && !(await files.findOne({ _id: leftover.id }))) {
+                        stranded.add(leftover.id.toString('hex'));
+                    }
                     return `store ${writer.type} failed on S3`;
                 }
                 faults.s3Put = 0;
@@ -413,7 +427,9 @@ describe('Attachment store model', function () {
                 }
             }
             expect(await files.countDocuments({}), `records left (${context()})`).to.equal(0);
-            let leftChunks = await chunks.find({}, { projection: { data: false } }).toArray();
+            let leftChunks = (await chunks.find({}, { projection: { data: false } }).toArray()).filter(
+                chunk => !stranded.has(Buffer.from(chunk.files_id.buffer || chunk.files_id).toString('hex'))
+            );
             if (leftChunks.length && process.env.ATTACHMENT_MODEL_DEBUG) {
                 for (let chunk of leftChunks) {
                     let hex = Buffer.from(chunk.files_id.buffer || chunk.files_id).toString('hex');
