@@ -405,7 +405,8 @@ const fixtures = [
                                 socket.write(`a LOGIN ${account.username} ${account.password}\r\nb SELECT INBOX\r\n`);
                             } else if (stage === 1 && (replies += chunk.toString()).includes('\r\nb OK')) {
                                 stage = 2;
-                                socket.write(`c UID FETCH ${uid} BODY.PEEK[]\r\n`);
+                                // not PEEK: a message the client did not receive in full must stay unseen
+                                socket.write(`c UID FETCH ${uid} BODY[]\r\n`);
                             } else if (stage === 2 && (received += chunk.length) > 256 * 1024) {
                                 socket.destroy();
                                 resolve();
@@ -459,6 +460,7 @@ const fixtures = [
                             ...(replacePrevious ? { replacePrevious } : {})
                         })
                         .expect(200);
+                expect((await server.api.get(messagePath(account, uid)).expect(200)).body.seen).to.equal(false);
                 const first = (await createDraft()).body.message.id;
                 const info = (await server.api.get(messagePath(account, first)).expect(200)).body;
                 const id = Buffer.from(info.attachments[0].hash, 'hex');
