@@ -12,7 +12,7 @@ describe('Attachment storage facade and locking', () => {
             let insertOptions;
             let insertedFile;
             const files = {
-                findOne: async () => null,
+                findOneAndUpdate: async () => ({ value: null }),
                 async insertOne(file, options) {
                     insertedFile = file;
                     insertOptions = options;
@@ -28,7 +28,7 @@ describe('Attachment storage facade and locking', () => {
                 s3Client: {},
                 options: { type: 's3', writeConcern, s3: { bucket: 'test', prefix: 'test' } }
             });
-            storage.lock = { run: async (attachmentId, operation) => operation(() => {}) };
+            storage.lock = { run: async (attachmentId, operation) => operation() };
             storage.s3.put = async () => ({ bucket: 'test', key: 'key', length: 6 });
 
             await new Promise((resolve, reject) => {
@@ -62,32 +62,11 @@ describe('Attachment storage facade and locking', () => {
         expect(released).to.equal(true);
     });
 
-    it('checks lock ownership before adding a reference to an existing attachment', async () => {
-        const storage = Object.create(AttachmentStorage.prototype);
-        let incremented = false;
-        storage.catalog = {
-            find: async () => ({ length: 6, metadata: {} }),
-            increment: async () => {
-                incremented = true;
-            }
-        };
-        storage.lock = {
-            run: async (attachmentId, operation) =>
-                operation(() => {
-                    throw new Error('Lost attachment lock');
-                })
-        };
-        const err = await new Promise(resolve => storage.create({ body: Buffer.from('abcdef'), magic: 17 }, resolve));
-        expect(err.message).to.equal('Lost attachment lock');
-        expect(incremented).to.equal(false);
-    });
-
-    it('validates S3 locator lengths consistently for lookups, reads and deduplication', async () => {
+    it('validates S3 locator lengths consistently for lookups and reads', async () => {
         const storage = Object.create(AttachmentStorage.prototype);
         const file = { length: 6, metadata: { storage: { version: 1, backend: 's3', bucket: 'test', key: 'key', length: 5 } } };
         storage.s3 = {};
-        storage.catalog = { get: async () => file, find: async () => file };
-        storage.lock = { run: async (attachmentId, operation) => operation(() => {}) };
+        storage.catalog = { get: async () => file };
         try {
             await storage.get(id);
             throw new Error('Expected lookup failure');
@@ -95,7 +74,5 @@ describe('Attachment storage facade and locking', () => {
             expect(err.message).to.equal('S3 attachment metadata length mismatch');
         }
         expect(() => storage.createReadStream(id, file)).to.throw('S3 attachment metadata length mismatch');
-        const err = await new Promise(resolve => storage.create({ body: Buffer.from('abcdef'), magic: 17 }, resolve));
-        expect(err.message).to.equal('S3 attachment metadata length mismatch');
     });
 });

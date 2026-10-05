@@ -8,7 +8,7 @@
 
 const crypto = require('crypto');
 const { expect } = require('chai');
-const { S3Client, CreateBucketCommand } = require('@aws-sdk/client-s3');
+const { S3Client, CreateBucketCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
 const { emptyBucket, collect, objectExists, ageChunks, objectIdAt } = require('./attachment-s3-helpers');
@@ -151,8 +151,8 @@ describe('Attachment garbage collection', function () {
                 }
             });
 
-            function create(body, magic) {
-                return new Promise((resolve, reject) => storage.create(attachment(body, magic), (err, id) => (err ? reject(err) : resolve(id))));
+            function create(body, magic, target = storage) {
+                return new Promise((resolve, reject) => target.create(attachment(body, magic), (err, id) => (err ? reject(err) : resolve(id))));
             }
 
             // an attachment that lost its last reference a day ago, uploaded at least that long ago
@@ -263,6 +263,23 @@ describe('Attachment garbage collection', function () {
                 expect(await read(id)).to.equal('stored after the stop');
             });
 
+            it('adds a reference to a known attachment without taking a lock', async function () {
+                let id = await create('known attachment', 2);
+                let locks = 0;
+                let countLock = target => {
+                    let original = target.lock.waitAcquireLock.bind(target.lock);
+                    target.lock.waitAcquireLock = (...args) => {
+                        locks++;
+                        return original(...args);
+                    };
+                };
+                countLock(storage.gridstore);
+                countLock(storage.lock);
+                expect((await create('known attachment', 3)).equals(id)).to.be.true;
+                expect(locks).to.equal(0);
+                expect((await files.findOne({ _id: id })).metadata.c).to.equal(2);
+            });
+
             if (type === 'gridstore') {
                 const CHUNK = 255 * 1024;
 
@@ -329,6 +346,44 @@ describe('Attachment garbage collection', function () {
             }
 
             if (type === 's3') {
+                it('uploads a new attachment once when many messages carry it at the same time', async function () {
+                    let body = crypto.randomBytes(4000);
+                    let ids = await Promise.all(Array.from({ length: 8 }, (unused, writer) => create(body, writer + 1)));
+                    let file = await files.findOne({ _id: ids[0] });
+                    expect(file.metadata.c).to.equal(8);
+                    expect(file.metadata.m).to.equal(36);
+                    let listed = await s3Client.send(new ListObjectsV2Command({ Bucket: s3Bucket, Prefix: `${bucket}/` }));
+                    expect((listed.Contents || []).map(object => object.Key)).to.deep.equal([file.metadata.storage.key]);
+                });
+
+                it('adds a reference when a writer that holds no lock stores the attachment first', async function () {
+                    let body = Buffer.from('raced by an older writer');
+                    let id = crypto.createHash('sha256').update(body).digest();
+                    let put = storage.s3.put.bind(storage.s3);
+                    let uploaded;
+                    storage.s3.put = async (...args) => {
+                        uploaded = await put(...args);
+                        // an older version stores the same attachment in GridFS without taking the lock
+                        await new Promise((resolve, reject) => {
+                            let upload = storage.gridstore.gridstore.openUploadStreamWithId(id, null, {
+                                contentType: 'application/octet-stream',
+                                metadata: { c: 1, m: 4, cu: new Date(), esize: body.length, transferEncoding: '7bit' }
+                            });
+                            upload.once('error', reject);
+                            upload.once('finish', resolve);
+                            upload.end(body);
+                        });
+                        return uploaded;
+                    };
+                    expect((await create(body, 6)).equals(id)).to.be.true;
+                    let file = await files.findOne({ _id: id });
+                    expect(file.metadata.storage).to.not.exist;
+                    expect(file.metadata.c).to.equal(2);
+                    expect(file.metadata.m).to.equal(10);
+                    expect(await objectExists(s3Client, s3Bucket, uploaded.key)).to.be.false;
+                    expect(await read(id)).to.equal(body.toString());
+                });
+
                 it('deletes the object later when S3 fails after the record was removed', async function () {
                     let file = await orphan('s3 is down');
                     let deletePayload = storage.s3.deletePayload.bind(storage.s3);

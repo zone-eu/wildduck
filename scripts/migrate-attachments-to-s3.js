@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { ObjectId } = require('mongodb');
 const { GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const config = require('@zone-eu/wild-config');
 const db = require('../lib/db');
@@ -257,7 +258,9 @@ async function main() {
                     await files.updateOne({ _id: id }, { $set: { 'metadata.fileContentHash': destination.checksum.toString('base64') } });
                     assertOwned();
                 }
-                await chunks.deleteMany({ files_id: id });
+                // chunks written after the migration belong to a new upload of the same attachment, not to this copy.
+                // Chunk ids have second precision, the migrated chunks are not from a later second than migratedAt
+                await chunks.deleteMany({ files_id: id, _id: { $lt: ObjectId.createFromTime(Math.floor(migratedAt / 1000) + 1) } });
                 stats.cleaned++;
             }
         });
