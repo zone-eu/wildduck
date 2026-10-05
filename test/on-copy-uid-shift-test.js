@@ -8,6 +8,7 @@ const { ObjectId } = require('mongodb');
 
 const db = require('../lib/db');
 const onCopy = require('../lib/handlers/on-copy');
+const MessageHandler = require('../lib/message-handler');
 const metrics = require('../lib/metrics');
 
 describe('on-copy UID arrays', function () {
@@ -293,6 +294,7 @@ describe('on-copy UID arrays', function () {
             isMessageEncrypted: () => false,
             _getContentType: () => '',
             encryptAndPrepareMessageAsync: () => Promise.resolve(encryptResult),
+            storedDespiteError: id => MessageHandler.prototype.storedDespiteError.call({ database: db.database }, id),
             attachmentStorage: {
                 updateMany: (ids, count, magic) => {
                     calls.updateMany.push({ ids, count, magic });
@@ -480,7 +482,31 @@ describe('on-copy UID arrays', function () {
         expect(calls.deleteManyAsync).to.deep.equal([]);
     });
 
-    it('skips the message without inserting when the plaintext refcount increment fails', async function () {
+    it('keeps the refs but fails the COPY when it can not tell whether the copy was stored', async function () {
+        let sourceMessages = [
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailboxId,
+                uid: 10,
+                size: 100,
+                flags: [],
+                magic: 7,
+                mimeTree: { header: [], attachmentMap: { ATT00001: 'hash' } }
+            }
+        ];
+        let { server, messageHandler, calls } = setupCopyEnv({
+            sourceMessages,
+            insertOneImpl: () => Promise.reject(Object.assign(new Error('connection reset'), { name: 'MongoNetworkError' })),
+            findOneImpl: () => Promise.reject(new Error('still unreachable'))
+        });
+        let error = await runCopy(server, messageHandler, [10]).catch(err => err);
+        expect(error.message).to.equal('connection reset');
+        // the copy may exist, so its refs stay; but it is not reported or counted as copied
+        expect(calls.deleteManyAsync).to.deep.equal([]);
+        expect(calls.updateOneCopied).to.deep.equal([]);
+    });
+
+    it('fails the COPY without inserting when the plaintext refcount increment fails', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({
             sourceMessages: [
                 {
@@ -498,13 +524,13 @@ describe('on-copy UID arrays', function () {
             updateManyImpl: () => Promise.reject(Object.assign(new Error('refcount boom'), { code: 'AttachmentUpdateError' }))
         });
 
-        let { status, info } = await runCopy(server, messageHandler, [10]);
+        let error = await runCopy(server, messageHandler, [10]).catch(err => err);
 
-        expect(status).to.be.true;
+        // the client is told, instead of getting OK for a message that was not copied
+        expect(error.message).to.equal('refcount boom');
         // no under-counted copy is stored
         expect(calls.insertOne).to.have.lengthOf(0);
-        expect(info.sourceUid).to.deep.equal([]);
-        // nothing to release because the increment never took effect
+        // some increments may have been applied, so nothing is released
         expect(calls.deleteManyAsync).to.have.lengthOf(0);
         expect(calls.updateOneCopied).to.have.lengthOf(0);
     });
