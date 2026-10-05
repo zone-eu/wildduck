@@ -1,5 +1,16 @@
 # Operating WildDuck
 
+## Upgrading
+
+WildDuck stores every message as a parsed MIME tree and rebuilds the RFC 822 bytes on every fetch. Since version 1.52 the parser writes a versioned tree (`mimeTree.v = 2`, message documents get `v: "2.0"`) that records the multipart epilogue, parts without a body section and transport padding, so a rebuilt message is byte for byte what was delivered. Trees written by earlier versions have no `v` and are rendered the way they were stored; nothing has to be migrated.
+
+Every process that stores messages writes trees with the parser of its own `@zone-eu/wildduck` dependency, and every process that serves them has to understand that format. Upgrade in this order:
+
+1. WildDuck itself (IMAP, POP3, API, worker and task processes),
+2. `haraka-plugin-wildduck` and `zonemta-wildduck`, and any other service that embeds WildDuck handlers.
+
+A WildDuck node that is still on an older version renders a v2 tree with the old layout, so the announced message size and the bytes served disagree for messages with an epilogue or an empty part until that node is upgraded. The reverse order is safe.
+
 ## Logging
 
 WildDuck sends gelf-formatted log messages to a Graylog server. Set `log.gelf.enabled=true` in [config](https://github.com/zone-eu/wildduck/blob/2019fd9db6bce1c3167f08e363ab4225b8c8a296/config/default.toml#L59-L66) to use it. Also make sure that the same Gelf settings are set for _zonemta-wildduck_ and _haraka-plugin-wildduck_ in order to get consistent logs about messages throughout the system.

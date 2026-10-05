@@ -1,6 +1,7 @@
 'use strict';
 
 const Indexer = require('./indexer/indexer');
+const parseDate = require('./parse-date');
 const indexer = new Indexer();
 
 module.exports.matchSearchQuery = matchSearchQuery;
@@ -37,24 +38,33 @@ const queryHandlers = {
 
     // matches message header date
     date(message, query, callback) {
-        let date;
-        if (message.hdate) {
-            date = message.hdate;
+        let day;
+
+        if (message.hdateDay) {
+            // the calendar day the sender wrote, as the stored messages carry it
+            day = getShortDate(message.hdateDay);
         } else {
             let mimeTree = message.mimeTree;
-            if (!mimeTree) {
+            if (!mimeTree && message.raw) {
                 mimeTree = indexer.parseMimeTree(message.raw);
             }
-            date = mimeTree.parsedHeader.date || message.idate;
+
+            // RFC 3501 6.4.4 compares the Date header "disregarding time and timezone", so the
+            // instant alone can not answer it, the zone the header named is needed as well
+            let header = (mimeTree && [].concat(mimeTree.parsedHeader.date || []).pop()) || '';
+            let instant = message.hdate ? new Date(message.hdate) : parseDate(header, message.idate || new Date());
+
+            // without the header the zone it was written in is unknown, so the instant has to do
+            day = header ? getShortDate(parseDate.getCalendarDay(instant, header)) : getShortDate(instant);
         }
 
         switch (query.operator) {
             case '<':
-                return callback(null, getShortDate(date) < getShortDate(query.value));
+                return callback(null, day < getShortDate(query.value));
             case '=':
-                return callback(null, getShortDate(date) === getShortDate(query.value));
+                return callback(null, day === getShortDate(query.value));
             case '>=':
-                return callback(null, getShortDate(date) >= getShortDate(query.value));
+                return callback(null, day >= getShortDate(query.value));
         }
 
         return callback(null, false);
@@ -215,16 +225,26 @@ const queryHandlers = {
     }
 };
 
+// RFC 3501 9: date-text = date-day "-" date-month "-" date-year
+const DATE_TEXT = /^\d{1,2}-[A-Za-z]{3}-\d{4}$/;
+
 /**
- * Returns a date object with time set to 00:00 on UTC timezone
+ * Returns the UTC calendar day of a value as yyyy-mm-dd
  *
- * @param {String|Date} date Date to convert
- * @returns {Date} Date object without time
+ * RFC 3501 6.4.4 compares the date keys "disregarding time and timezone". A date-text argument
+ * names no zone, so it is read as UTC, the same way the MongoDB backed search reads it.
+ *
+ * @param {String|Number|Date} date Date to convert
+ * @returns {String} Calendar day
  */
 function getShortDate(date) {
     date = date || new Date();
-    if (typeof date === 'string' || typeof date === 'number') {
+    if (typeof date === 'number') {
         date = new Date(date);
+    } else if (typeof date === 'string') {
+        date = date.trim();
+        // only the search argument names no zone, any other string brings its own
+        date = new Date(DATE_TEXT.test(date) ? date + ' GMT' : date);
     }
     return date.toISOString().substr(0, 10);
 }

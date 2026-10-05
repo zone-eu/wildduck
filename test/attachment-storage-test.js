@@ -20,7 +20,7 @@ describe('Attachment catalog and locking', () => {
                 }
             };
             const redis = {
-                duplicate: () => ({ subscribe() {}, on() {} }),
+                duplicate: () => ({ subscribe: async () => {}, on() {} }),
                 defineCommand() {}
             };
             const storage = new AttachmentStorage({
