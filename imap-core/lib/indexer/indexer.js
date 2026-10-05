@@ -419,8 +419,6 @@ class Indexer {
                     }
                 }
 
-                // the bytes are in the storage now, no need to keep them until the message is inserted
-                node.body = null;
 
                 return storeNode();
             });

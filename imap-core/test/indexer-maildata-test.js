@@ -9,6 +9,7 @@ const chai = require('chai');
 const expect = chai.expect;
 const Indexer = require('../lib/indexer/indexer');
 const MemoryAttachmentStorage = require('./fixtures/memory-attachment-storage');
+const { materialize } = require('./fixtures/indexer-cases');
 
 chai.config.includeStack = true;
 
@@ -161,6 +162,22 @@ describe('getMaildata', function () {
             ['ATT00002', 30, 'test-content-hash']
         ]);
         expect(Object.keys(tree.attachmentMap)).to.deep.equal(['ATT00001', 'ATT00002']);
+    });
+
+    it('can store the same maildata for several recipients', async function () {
+        // the filter handler extracts once and stores the result for every recipient of a delivery
+        let storage = new MemoryAttachmentStorage();
+        let storing = new Indexer({ attachmentStorage: storage });
+        let source = Buffer.from(['Content-Type: multipart/mixed; boundary=b', '', '--b', 'Content-Type: application/pdf', '', 'PDF', '--b--', ''].join('\r\n'), 'binary');
+        let tree = storing.parseMimeTree(source);
+        let data = storing.getMaildata(tree);
+        for (let recipient = 0; recipient < 3; recipient++) {
+            let copy = JSON.parse(JSON.stringify(tree), (key, value) => (value && value.type === 'Buffer' ? Buffer.from(value.data) : value));
+            await new Promise((resolve, reject) => storing.storeNodeBodies(data, copy, err => (err ? reject(err) : resolve())));
+            let { bytes } = await materialize(storing.getContents(copy, false));
+            expect(bytes.equals(source), `recipient ${recipient}`).to.be.true;
+        }
+        expect([...storage.files.values()][0].count).to.equal(3);
     });
 
     it('indexes the parts of an attached message', function () {
