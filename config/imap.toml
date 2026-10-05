@@ -23,6 +23,12 @@ maxMB = 25
 # Set to 0 to disable the limit.
 maxLineLength = 16384
 
+# Max number of literal segments ({n} blocks) accepted within a single IMAP
+# command. A conforming client only ever sends a few; this refuses clients that
+# chain literals to exhaust memory. Set to 0 to disable the count check.
+# The cumulative literal size is always bounded by maxMB plus a small allowance.
+maxLiterals = 1000
+
 # delete messages from \Trash and \Junk after retention days
 retention = 30
 
