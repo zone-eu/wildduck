@@ -69,8 +69,15 @@ async function objectExists(client, bucket, key) {
 async function ageChunks(chunks, filesId, time = new Date(0)) {
     for (const chunk of await chunks.find({ files_id: filesId }).toArray()) {
         await chunks.deleteOne({ _id: chunk._id });
-        await chunks.insertOne({ ...chunk, _id: ObjectId.createFromTime(Math.floor(time.getTime() / 1000)) });
+        await chunks.insertOne({ ...chunk, _id: objectIdAt(time) });
     }
+}
+
+// a unique ObjectId that carries the given time, as an id created back then would
+function objectIdAt(time) {
+    const id = Buffer.from(new ObjectId().id);
+    id.writeUInt32BE(Math.floor(time.getTime() / 1000), 0);
+    return new ObjectId(id);
 }
 
 class S3TestEnvironment {
@@ -274,4 +281,4 @@ class TestServer {
     }
 }
 
-module.exports = { S3TestEnvironment, collect, binaryParser, emptyBucket, objectExists, ageChunks };
+module.exports = { S3TestEnvironment, collect, binaryParser, emptyBucket, objectExists, ageChunks, objectIdAt };

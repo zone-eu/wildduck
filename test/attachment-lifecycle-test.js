@@ -8,20 +8,23 @@
 
 const crypto = require('crypto');
 const { expect } = require('chai');
-const { ObjectId } = require('mongodb');
 const { S3Client, CreateBucketCommand } = require('@aws-sdk/client-s3');
 const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
-const { emptyBucket, collect, objectExists, ageChunks } = require('./attachment-s3-helpers');
+const { emptyBucket, collect, objectExists, ageChunks, objectIdAt } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
 const DAY = 24 * 3600 * 1000;
+
+function dayOldId() {
+    return objectIdAt(new Date(Date.now() - DAY));
+}
 
 // a tombstone is stale by the age of its id
 async function ageTombstones(trash) {
     for (let tombstone of await trash.find().toArray()) {
         await trash.deleteOne({ _id: tombstone._id });
-        await trash.insertOne({ ...tombstone, _id: ObjectId.createFromTime(Math.floor((Date.now() - DAY) / 1000)) });
+        await trash.insertOne({ ...tombstone, _id: dayOldId() });
     }
 }
 
@@ -259,6 +262,71 @@ describe('Attachment garbage collection', function () {
                 await storage.deleteOrphanedAsync();
                 expect(await read(id)).to.equal('stored after the stop');
             });
+
+            if (type === 'gridstore') {
+                const CHUNK = 255 * 1024;
+
+                const storesExactly = async (body, magic) => {
+                    let id = await create(body, magic);
+                    expect((await collect(storage.createReadStream(id, await storage.get(id)))).equals(body)).to.be.true;
+                    expect(await chunks.countDocuments({ files_id: id })).to.equal(Math.ceil(body.length / CHUNK));
+                    return id;
+                };
+
+                for (let [description, leftoverId] of [
+                    ['an upload that stopped a day ago', dayOldId],
+                    ['an upload that stopped ten minutes ago', () => objectIdAt(new Date(Date.now() - 10 * 60 * 1000))]
+                ]) {
+                    it(`stores a large attachment over chunks left by ${description}`, async function () {
+                        let body = crypto.randomBytes(3 * CHUNK + 1000);
+                        let id = crypto.createHash('sha256').update(body).digest();
+                        await chunks.insertMany([0, 1].map(n => ({ _id: leftoverId(), files_id: id, n, data: Buffer.from('leftover') })));
+                        await storesExactly(body, 1);
+                    });
+                }
+
+                it('waits for a live upload by a writer that does not lock instead of removing its chunks', async function () {
+                    let body = crypto.randomBytes(1000);
+                    let id = crypto.createHash('sha256').update(body).digest();
+                    // an older version uploads small attachments without the lock: its chunk is in place, its record follows
+                    await chunks.insertOne({ _id: objectIdAt(new Date(Date.now() - 2000)), files_id: id, n: 0, data: body });
+                    setTimeout(() => {
+                        files
+                            .insertOne({
+                                _id: id,
+                                length: body.length,
+                                chunkSize: CHUNK,
+                                uploadDate: new Date(),
+                                contentType: 'application/octet-stream',
+                                metadata: { c: 1, m: 5, cu: new Date(), esize: body.length, transferEncoding: '7bit' }
+                            })
+                            .catch(() => false);
+                    }, 300);
+                    expect((await create(body, 7)).equals(id)).to.be.true;
+                    let file = await files.findOne({ _id: id });
+                    expect(file.metadata.c).to.equal(2);
+                    expect((await collect(storage.createReadStream(id, await storage.get(id)))).equals(body)).to.be.true;
+                });
+
+                it('stores the same new attachment from many concurrent writers over leftover chunks', async function () {
+                    this.timeout(120000);
+                    for (let round = 0; round < 12; round++) {
+                        let body = crypto.randomBytes(round % 2 ? 2 * CHUNK + round : 1000 + round);
+                        let id = crypto.createHash('sha256').update(body).digest();
+                        if (round % 3) {
+                            let leftover = round % 3 === 1 ? dayOldId() : objectIdAt(new Date(Date.now() - 10 * 60 * 1000));
+                            await chunks.insertOne({ _id: leftover, files_id: id, n: 0, data: Buffer.from('leftover') });
+                        }
+                        let ids = await Promise.all(Array.from({ length: 6 }, (unused, writer) => create(body, writer + 1)));
+                        expect(ids.every(stored => stored.equals(id))).to.be.true;
+                        let file = await files.findOne({ _id: id });
+                        expect(file.metadata.c, `round ${round}`).to.equal(6);
+                        expect(file.metadata.m, `round ${round}`).to.equal(21);
+                        expect((await collect(storage.createReadStream(id, await storage.get(id)))).equals(body), `round ${round}`).to.be.true;
+                        expect(await chunks.countDocuments({ files_id: id }), `round ${round}`).to.equal(Math.ceil(body.length / CHUNK));
+                    }
+                });
+            }
 
             if (type === 's3') {
                 it('deletes the object later when S3 fails after the record was removed', async function () {
