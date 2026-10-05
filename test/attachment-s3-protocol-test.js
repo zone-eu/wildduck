@@ -352,6 +352,25 @@ const fixtures = [
                 const draft = (await server.api.get(messagePath(account, forwarded.body.message.id)).expect(200)).body;
                 expect(draft.attachments.map(attachment => attachment.sizeKb)).to.deep.equal([]);
 
+                // the whole message as a download does not come out short and complete either
+                const eml = await new Promise(resolve => {
+                    const request = http.get(`http://127.0.0.1:${server.apiPort}${messagePath(account, uid)}/message.eml`, response => {
+                        const chunks = [];
+                        response.on('data', chunk => chunks.push(chunk));
+                        response.on('end', () =>
+                            resolve({
+                                status: response.statusCode,
+                                complete: response.complete,
+                                length: Buffer.concat(chunks).length,
+                                announced: Number(response.headers['content-length'])
+                            })
+                        );
+                        response.on('error', () => resolve({ status: response.statusCode, complete: false }));
+                    });
+                    request.on('error', () => resolve({ status: 0, complete: false }));
+                });
+                expect(eml.status === 200 && eml.complete && eml.length !== eml.announced).to.equal(false);
+
                 // forwarding the message itself does not send it on with a placeholder
                 const forward = await server.api.post(`${messagePath(account, uid)}/forward`).send({ target: 1, addresses: ['someone@example.com'] });
                 // the S3 read notices the short object itself, GridFS leaves it to the rebuild
@@ -441,6 +460,7 @@ const fixtures = [
                     open = await openCursors();
                 }
                 expect(open).to.be.at.most(baseline);
+                expect((await server.api.get(messagePath(account, uid)).expect(200)).body.seen).to.equal(false);
                 const started = Date.now();
                 const fetched = await client.fetchOne(uid, { source: true }, { uid: true });
                 expect(fetched.source.equals(source)).to.equal(true);
@@ -460,7 +480,6 @@ const fixtures = [
                             ...(replacePrevious ? { replacePrevious } : {})
                         })
                         .expect(200);
-                expect((await server.api.get(messagePath(account, uid)).expect(200)).body.seen).to.equal(false);
                 const first = (await createDraft()).body.message.id;
                 const info = (await server.api.get(messagePath(account, first)).expect(200)).body;
                 const id = Buffer.from(info.attachments[0].hash, 'hex');
