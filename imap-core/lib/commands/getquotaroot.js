@@ -19,7 +19,7 @@ module.exports = {
         let path = Buffer.from((command.attributes[0] && command.attributes[0].value) || '', 'binary').toString();
         path = normalizeMailbox(path, !this.acceptUTF8Enabled);
 
-        if (typeof this._server.onGetQuota !== 'function') {
+        if (typeof this._server.onGetQuotaRoot !== 'function') {
             return callback(null, {
                 response: 'NO',
                 message: command.command + ' not implemented'

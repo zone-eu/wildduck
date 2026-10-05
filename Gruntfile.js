@@ -8,18 +8,25 @@ module.exports = function (grunt) {
         stdout: true,
         stderr: true
     };
+    // imap-core tests that need no MongoDB, Redis or running server
     const imapUnitTests = [
         'imap-core/test/compress-race-condition-test.js',
+        'imap-core/test/imap-command-test.js',
         'imap-core/test/imap-compile-stream-test.js',
+        'imap-core/test/imap-connection-test.js',
         'imap-core/test/imap-compiler-test.js',
         'imap-core/test/imap-id-command-test.js',
         'imap-core/test/imap-indexer-test.js',
+        'imap-core/test/imap-line-limit-test.js',
         'imap-core/test/imap-parser-test.js',
+        'imap-core/test/imap-stream-test.js',
         'imap-core/test/onconnect-test.js',
         'imap-core/test/parse-mime-tree-test.js',
+        'imap-core/test/proxy-socket-error-test.js',
         'imap-core/test/search-test.js',
         'imap-core/test/tools-test.js',
-        'imap-core/test/xapplepushservice-command-test.js'
+        'imap-core/test/xapplepushservice-command-test.js',
+        'imap-core/test/socket-timeout-test.js'
     ];
     const unitTests = [
         'test/apn-client-test.js',
@@ -42,7 +49,8 @@ module.exports = function (grunt) {
         'test/metrics-config-test.js',
         'test/prometheus-test.js',
         'test/roles-test.js',
-        'test/tools-test.js'
+        'test/tools-test.js',
+        'test/user-handler-auth-test.js'
     ];
 
     // Project configuration.
@@ -100,7 +108,8 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks('grunt-wait');
 
     // Tasks
-    const mochaTests = ['shell:mocha-imap', 'shell:mocha-imap-unit', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api'];
+    // mocha-imap globs every imap-core test, so the in-process ones must not be listed again here
+    const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api'];
     grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
     grunt.registerTask('testonly', ['shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
     // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
