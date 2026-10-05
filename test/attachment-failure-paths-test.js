@@ -147,9 +147,15 @@ describe('Attachment store failure paths', function () {
     });
 
     describe('GridFS store', function () {
-        it('fails when the lock for a new upload can not be taken', async function () {
-            storage.gridstore.lock.waitAcquireLock = (id, ttl, wait, callback) => callback(null, { success: false });
+        it('fails when the lock for a new upload can not be taken in time', async function () {
+            let waited;
+            storage.gridstore.lock.waitAcquireLock = (id, ttl, wait, callback) => {
+                waited = wait;
+                callback(null, { success: false });
+            };
             expect((await create(storage, 'no lock').catch(err => err)).message).to.equal('Failed to get lock');
+            // a limited wait, not forever
+            expect(waited).to.be.a('number').above(0);
         });
 
         it('fails when the database fails the reference update', async function () {
@@ -185,7 +191,8 @@ describe('Attachment store failure paths', function () {
             storage.gridstore.gridstore.openUploadStreamWithId = (...args) => (++attempts === 1 ? failingUpload(new Error('collision')) : upload(...args));
             let cleanup = storage.gridstore.cleanupGarbage.bind(storage.gridstore);
             let cleanups = 0;
-            storage.gridstore.cleanupGarbage = (id, started, next) => (++cleanups === 1 ? next(new Error('cleanup failed')) : cleanup(id, started, next));
+            storage.gridstore.cleanupGarbage = (id, started, owned, next) =>
+                ++cleanups === 1 ? next(new Error('cleanup failed')) : cleanup(id, started, owned, next);
             let id = await create(storage, 'cleanup fails once');
             expect(attempts).to.equal(2);
             expect((await storage.get(id)).count).to.equal(1);
@@ -193,7 +200,7 @@ describe('Attachment store failure paths', function () {
 
         it('does not remove anything after losing the lock of an upload', async function () {
             let cleanups = 0;
-            storage.gridstore.cleanupGarbage = (id, started, next) => {
+            storage.gridstore.cleanupGarbage = (id, started, owned, next) => {
                 cleanups++;
                 next();
             };
@@ -208,6 +215,51 @@ describe('Attachment store failure paths', function () {
                 return await create(storage, 'lost the lock').catch(err => err);
             });
             expect(result.message).to.equal('upload failed');
+            expect(cleanups).to.equal(0);
+        });
+
+        it('does not remove anything when the lock is lost while a retry waits', async function () {
+            let cleanups = 0;
+            storage.gridstore.cleanupGarbage = (id, started, owned, next) => {
+                cleanups++;
+                next();
+            };
+            let renewal = { success: true };
+            storage.gridstore.lock.extendLock = () => Promise.resolve(renewal);
+            let { result } = await captureIntervals(async captured => {
+                storage.gridstore.gridstore.openUploadStreamWithId = () => {
+                    // the upload fails while the lock is still held, then the lease is lost before the retry runs
+                    let upload = failingUpload(new Error('upload failed'));
+                    upload.once('error', () => {
+                        renewal = { success: false };
+                        captured[0]();
+                    });
+                    return upload;
+                };
+                return await create(storage, 'lost the lock while waiting').catch(err => err);
+            });
+            expect(result.message).to.equal('upload failed');
+            expect(cleanups).to.equal(0);
+        });
+
+        it('does not trust a lease that ran out while the process was stalled', async function () {
+            let cleanups = 0;
+            storage.gridstore.cleanupGarbage = (id, started, owned, next) => {
+                cleanups++;
+                next();
+            };
+            let now = Date.now;
+            try {
+                storage.gridstore.gridstore.openUploadStreamWithId = () => {
+                    // the process stalls longer than the lease lasts, no renewal ran meanwhile
+                    let later = now() + 3 * 60 * 1000;
+                    Date.now = () => later;
+                    return failingUpload(new Error('upload failed'));
+                };
+                expect((await create(storage, 'stalled past the lease').catch(err => err)).message).to.equal('upload failed');
+            } finally {
+                Date.now = now;
+            }
             expect(cleanups).to.equal(0);
         });
 
@@ -236,9 +288,11 @@ describe('Attachment store failure paths', function () {
                 }
             };
             let id = crypto.randomBytes(32);
-            expect((await new Promise(resolve => storage.gridstore.cleanupGarbage(id, Date.now(), resolve))).message).to.equal('files unavailable');
+            expect((await new Promise(resolve => storage.gridstore.cleanupGarbage(id, Date.now(), () => true, resolve))).message).to.equal('files unavailable');
             failOn = '.chunks';
-            expect((await new Promise(resolve => storage.gridstore.cleanupGarbage(id, Date.now(), resolve))).message).to.equal('chunks unavailable');
+            expect((await new Promise(resolve => storage.gridstore.cleanupGarbage(id, Date.now(), () => true, resolve))).message).to.equal(
+                'chunks unavailable'
+            );
         });
     });
 
