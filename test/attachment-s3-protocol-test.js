@@ -2,6 +2,9 @@
 /* global before, after */
 'use strict';
 
+const net = require('net');
+const http = require('http');
+const crypto = require('crypto');
 const { expect } = require('chai');
 const { simpleParser } = require('mailparser');
 const { ObjectId } = require('mongodb');
@@ -299,6 +302,88 @@ const fixtures = [
                 await server.api.get(`${messagePath(account, uid)}/attachments/ATT99999`).expect(404);
                 await server.api.get(`${messagePath(account, uid + 100)}/attachments/ATT00001`).expect(404);
                 await verify(server, account, client, uid, fixtures[0]);
+            });
+
+            it('releases storage reads when IMAP and API clients disconnect mid-download', async function () {
+                this.timeout(180000);
+                // larger than the first batch of a GridFS cursor (16 MB) and under the APPEND limit, so an abandoned read keeps a cursor open
+                const payload = crypto
+                    .randomBytes(17 * 1024 * 1024)
+                    .toString('base64')
+                    .replace(/.{76}/g, '$&\r\n');
+                const source = Buffer.from(
+                    'From: a@example.com\r\nTo: b@example.com\r\nSubject: abandoned\r\nMIME-Version: 1.0\r\n' +
+                        'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nhello\r\n' +
+                        '--b\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+                        payload +
+                        '\r\n--b--\r\n'
+                );
+                const uid = (await client.append('INBOX', source)).uid;
+                const info = (await server.api.get(messagePath(account, uid)).expect(200)).body;
+                // cursors left open on this server's attachment chunks; an S3 server reads none, its check is the refetch below
+                const openCursors = async () =>
+                    (
+                        await environment.mongo
+                            .db('admin')
+                            .aggregate([
+                                { $currentOp: { idleCursors: true, allUsers: true } },
+                                { $match: { type: 'idleCursor', ns: `${server.databaseName}.attachments.chunks` } }
+                            ])
+                            .toArray()
+                    ).length;
+                const baseline = await openCursors();
+
+                const abandonFetch = () =>
+                    new Promise((resolve, reject) => {
+                        const socket = net.connect(server.imapPort, '127.0.0.1');
+                        let stage = 0;
+                        let received = 0;
+                        let replies = '';
+                        socket.on('data', chunk => {
+                            if (stage === 0) {
+                                stage = 1;
+                                socket.write(`a LOGIN ${account.username} ${account.password}\r\nb SELECT INBOX\r\n`);
+                            } else if (stage === 1 && (replies += chunk.toString()).includes('\r\nb OK')) {
+                                stage = 2;
+                                socket.write(`c UID FETCH ${uid} BODY.PEEK[]\r\n`);
+                            } else if (stage === 2 && (received += chunk.length) > 256 * 1024) {
+                                socket.destroy();
+                                resolve();
+                            }
+                        });
+                        socket.on('error', reject);
+                    });
+                const abandonDownload = path =>
+                    new Promise((resolve, reject) => {
+                        const request = http.get(`http://127.0.0.1:${server.apiPort}${path}`, response => {
+                            let received = 0;
+                            response.on('data', chunk => {
+                                if ((received += chunk.length) > 256 * 1024) {
+                                    request.destroy();
+                                    resolve();
+                                }
+                            });
+                        });
+                        request.on('error', err => (err.code === 'ECONNRESET' ? resolve() : reject(err)));
+                    });
+
+                for (let i = 0; i < 6; i++) {
+                    await abandonFetch();
+                }
+                await abandonDownload(`${messagePath(account, uid)}/message.eml`);
+                await abandonDownload(`${messagePath(account, uid)}/attachments/${info.attachments[0].id}`);
+
+                // every abandoned read is released: no cursors stay open, no S3 connections stay taken
+                let open = await openCursors();
+                for (let wait = 0; open > baseline && wait < 50; wait++) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    open = await openCursors();
+                }
+                expect(open).to.be.at.most(baseline);
+                const started = Date.now();
+                const fetched = await client.fetchOne(uid, { source: true }, { uid: true });
+                expect(fetched.source.equals(source)).to.equal(true);
+                expect(Date.now() - started).to.be.below(20000);
             });
 
             it('replaces and deletes drafts, then collects only their unreferenced payload', async () => {

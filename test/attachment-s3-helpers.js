@@ -156,7 +156,9 @@ class TestServer {
             prefix: this.databaseName,
             endpoint: this.environment.endpoint,
             region: 'us-east-1',
-            forcePathStyle: true
+            forcePathStyle: true,
+            // small enough that leaked S3 connections show up quickly
+            maxSockets: 4
         };
         await fs.writeFile(
             this.configPath,
