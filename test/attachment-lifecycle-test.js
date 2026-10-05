@@ -12,7 +12,7 @@ const { S3Client, CreateBucketCommand, ListObjectsV2Command } = require('@aws-sd
 const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
 const Indexer = require('../imap-core/lib/indexer/indexer');
-const { emptyBucket, collect, objectExists, ageChunks, objectIdAt } = require('./attachment-s3-helpers');
+const { emptyBucket, collect, objectExists, ageChunks, objectIdAt, createAttachmentIndexes } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
 const DAY = 24 * 3600 * 1000;
@@ -134,7 +134,7 @@ describe('Attachment garbage collection', function () {
                 bucket = `attgc${crypto.randomBytes(4).toString('hex')}`;
                 files = db.gridfs.collection(`${bucket}.files`);
                 chunks = db.gridfs.collection(`${bucket}.chunks`);
-                await files.createIndex({ 'metadata.c': 1, 'metadata.m': 1, 'metadata.cu': 1 }, { name: 'related_attachments_cu' });
+                await createAttachmentIndexes(db.gridfs, bucket);
                 storage = new AttachmentStorage({
                     gridfs: db.gridfs,
                     redis: db.redis,

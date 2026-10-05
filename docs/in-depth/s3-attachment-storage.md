@@ -56,14 +56,21 @@ The script lists attachment ids in pages of `--batch` (default 1000) rather than
 
 ## Verification
 
-The focused tests are:
+`npm run test:attachments` runs every attachment test; `npm run test:attachments-coverage` adds a coverage report for `lib/attachment-storage.js`, `lib/attachments/` and the migration script. The S3 parts need `S3_TEST_ENDPOINT` pointing to an S3-compatible service and `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` set to `test`; without it they are skipped. MongoDB and Redis must be running as for the rest of the test suite.
 
 ```bash
-NODE_ENV=test ./node_modules/.bin/mocha --exit test/attachment-s3-test.js test/attachment-s3-http-test.js
-S3_TEST_ENDPOINT=http://127.0.0.1:19000 NODE_ENV=test ./node_modules/.bin/mocha --exit test/attachment-s3-moto-test.js
-S3_TEST_ENDPOINT=http://127.0.0.1:19000 npm run test:s3
+docker run -d -p 19000:5000 motoserver/moto
+S3_TEST_ENDPOINT=http://127.0.0.1:19000 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test npm run test:attachments
 ```
 
-The Moto test requires a local S3-compatible endpoint and the configured test MongoDB and Redis services. It creates an isolated temporary bucket and GridFS bucket and removes them afterward. The test also exercises the migration, verification, and delayed chunk cleanup command. The default test suite skips this endpoint-dependent test when `S3_TEST_ENDPOINT` is unset.
+Moto does not verify `x-amz-checksum-sha256`. To run the same tests against a store that does, use versitygw: `docker run -d -p 19200:7070 -e ROOT_ACCESS_KEY=test -e ROOT_SECRET_KEY=test versity/versitygw posix /data` and point `S3_TEST_ENDPOINT` at port 19200.
 
-The protocol suite reuses `test/attachment-s3-helpers.js` to start isolated WildDuck API and IMAP servers for both GridFS and S3. It uploads synthetic MIME messages through the API and IMAP APPEND, compares RFC822 bytes, BODYSTRUCTURE and attachment sizes across backends, and verifies decoded attachment downloads and partial BODY fetches. It also covers simultaneous uploads, deduplication counters, COPY/MOVE, inline CID images, forwarding, draft replacement/deletion and delayed orphan collection. Every run creates its own MongoDB databases and S3 bucket; it does not flush Redis or drop the configured test database. MongoDB, Redis and Moto must already be running. The binary MIME fixture avoids bare CR/LF because the existing MIME parser canonicalizes line endings; base64 fixtures cover all 256 byte values.
+The tests come in layers:
+
+- `attachment-s3-test.js`, `attachment-s3-http-test.js`, `attachment-storage-test.js`, `attachment-failure-paths-test.js`: units and failure paths, with stubbed clients, a local HTTP server that behaves like S3 (checksums, stalled responses), and fault injection (locks that can not be taken or are lost, uploads that keep failing, database errors).
+- `attachment-lifecycle-test.js`: reference counting and garbage collection against real MongoDB and S3, including the races between storing and collecting, collections that stop halfway and S3 failing. `attachment-storage-contract-test.js` runs the indexer's scenario matrix against real GridFS.
+- `attachment-stream-teardown-test.js`, `on-copy-uid-shift-test.js`: releasing storage reads when a client goes away, and IMAP COPY keeping attachment references right when an insert fails.
+- `attachment-s3-moto-test.js`, `attachment-s3-migration-test.js`: the S3 store and the migration script end to end.
+- `attachment-s3-protocol-test.js`: two complete WildDuck servers, one storing in GridFS and one in S3, compared byte for byte over IMAP and the API, plus disconnects mid-download and damaged payloads.
+- `attachment-model-test.js`: model-based randomized testing. Seeded random sequences of operations (storing messages, copying, deleting, expiring, collecting with time passing, reading) run against the real store while faults are injected, and an in-memory model checks after every step that each referenced attachment reads back byte for byte with the right reference counts, and at the end that nothing is left behind. Collections run at the same time as stores, copies, deletions and a second collector, and stop between any two of their steps. `ATTACHMENT_MODEL_RUNS` and `ATTACHMENT_MODEL_STEPS` make a run longer, a failure prints `ATTACHMENT_MODEL_SEED` to replay it.
+- `attachment-codec-fuzz-test.js`: property-based fuzzing of the base64 codec with random and damaged bodies: the whole body and random byte windows of it are served through a store that returns random chunk sizes and compared with the original. `ATTACHMENT_FUZZ_CASES` and `ATTACHMENT_FUZZ_SEED` control it.

@@ -18,7 +18,7 @@ const {
 } = require('@aws-sdk/client-s3');
 const AttachmentStorage = require('../lib/attachment-storage');
 const db = require('../lib/db');
-const { ageChunks } = require('./attachment-s3-helpers');
+const { ageChunks, createAttachmentIndexes } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
 const execFileAsync = promisify(execFile);
@@ -46,9 +46,7 @@ async function collect(stream) {
         collectionName = `att_test_${nonce}`;
         client = new S3Client({ region: 'us-east-1', endpoint, forcePathStyle: true, credentials: { accessKeyId: 'test', secretAccessKey: 'test' } });
         await client.send(new CreateBucketCommand({ Bucket: bucketName }));
-        await db.gridfs
-            .collection(`${collectionName}.files`)
-            .createIndex({ 'metadata.c': 1, 'metadata.m': 1, 'metadata.cu': 1 }, { name: 'related_attachments_cu' });
+        await createAttachmentIndexes(db.gridfs, collectionName);
         const s3 = { bucket: bucketName, prefix: `test-${nonce}`, region: 'us-east-1', endpoint, forcePathStyle: true };
         const common = { gridfs: db.gridfs, redis: db.redis, s3Client: client };
         storage = new AttachmentStorage({ ...common, options: { type: 's3', bucket: collectionName, decodeBase64: true, s3 } });

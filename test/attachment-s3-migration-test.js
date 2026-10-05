@@ -52,6 +52,15 @@ describe('S3 migration CLI arguments', function () {
     }
 });
 
+describe('S3 migration without S3 settings', function () {
+    this.timeout(10000);
+
+    it('refuses to run', async () => {
+        const error = await failure(execFileAsync(process.execPath, [script, '--dry-run'], { env: { ...process.env, NODE_ENV: 'test' }, timeout: 8000 }), 1);
+        expect(error.stderr).to.include('Configure attachments.s3.bucket');
+    });
+});
+
 (endpoint ? describe : describe.skip)('S3 migration safeguards (Moto)', function () {
     this.timeout(30000);
     let environment;
@@ -131,6 +140,54 @@ describe('S3 migration CLI arguments', function () {
             (await environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: storage.s3.key(excluded, '0123456789abcdef') })))
                 .ContentLength
         ).to.equal(6);
+    });
+
+    it('changes nothing in a dry run', async () => {
+        const before = await files.findOne({ _id: id });
+        const result = await run(['--dry-run', '--throttle-ms=1']);
+        expect(result.stats).to.include({ scanned: 1, skipped: 1, migrated: 0 });
+        expect(await files.findOne({ _id: id })).to.deep.equal(before);
+    });
+
+    it('refuses a record with an unknown backend and GridFS copies that do not match their record', async () => {
+        const original = await files.findOne({ _id: id });
+        for (const [change, message] of [
+            [{ 'metadata.storage': { backend: 'tape' } }, 'Unknown source backend'],
+            // the driver notices a wrong length before the script does
+            [{ length: original.length + 1, 'metadata.storage': { backend: 'gridfs' } }, 'ChunkIsWrongSize'],
+            [{ length: original.length, 'metadata.fileContentHash': crypto.randomBytes(32).toString('base64') }, 'GridFS checksum mismatch']
+        ]) {
+            await files.updateOne({ _id: id }, { $set: change });
+            const result = await run(['--migrate'], 1);
+            expect(result.stderr, result.stderr).to.include(message);
+            expect(result.stats.migrated).to.equal(0);
+            expect((await files.findOne({ _id: id })).metadata.storage.backend).to.not.equal('s3');
+        }
+    });
+
+    it('skips young, referenced and foreign objects when removing unreferenced ones', async () => {
+        const file = await migrate();
+        const foreign = `${storage.s3.prefix}/attachments/v1/aa/aa/not-an-attachment`;
+        const young = storage.s3.key(Buffer.alloc(32, 0xaa), '0123456789abcdef');
+        for (const key of [foreign, young]) {
+            await environment.client.send(new PutObjectCommand({ Bucket: environment.bucket, Key: key, Body: Buffer.from('x') }));
+        }
+        const exists = async key => {
+            try {
+                await environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: key }));
+                return true;
+            } catch (err) {
+                return false;
+            }
+        };
+        // with an hour of grace the new unreferenced object stays
+        await run(['--cleanup-unreferenced-s3', '--yes', '--grace-hours=1']);
+        expect(await exists(young)).to.equal(true);
+        // without it, it goes; the referenced copy and a key that is not an attachment copy stay
+        await run(['--cleanup-unreferenced-s3', '--yes', '--grace-hours=0']);
+        expect(await exists(young)).to.equal(false);
+        expect(await exists(file.metadata.storage.key)).to.equal(true);
+        expect(await exists(foreign)).to.equal(true);
     });
 
     it('works through the store in pages of the given size', async () => {
