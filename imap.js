@@ -265,7 +265,8 @@ module.exports = done => {
     notifier = new ImapNotifier({
         database: db.database,
         redis: db.redis,
-        settingsHandler
+        settingsHandler,
+        apn
     });
 
     messageHandler = new MessageHandler({

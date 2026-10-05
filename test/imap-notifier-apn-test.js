@@ -6,6 +6,9 @@
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const { createRequire } = require('node:module');
+const { EventEmitter } = require('node:events');
 const forge = require('node-forge');
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
@@ -54,7 +57,10 @@ function mockRedis() {
         cachedcounter() {
             return Promise.resolve(1);
         },
-        del() {
+        del(key, callback) {
+            if (callback) {
+                return callback();
+            }
             return Promise.resolve(1);
         }
     };
@@ -146,6 +152,72 @@ describe('ImapNotifier APNs integration', function () {
     function existsEntry() {
         return { command: 'EXISTS', message: new ObjectId(), uid: 1, modseq: 5 };
     }
+
+    it('should wire APNs to the IMAP server notifier used by COPY', async function () {
+        let user = new ObjectId();
+        let mailbox = { _id: new ObjectId(), user };
+        let { apn, pushCalls } = createSetup([{ _id: '1', user, deviceToken: VALID_TOKEN, accountId: 'acc-1', mailboxIds: [mailbox._id] }]);
+        let server;
+        class MockServer extends EventEmitter {
+            constructor() {
+                super();
+                server = this;
+            }
+            listen(port, host, callback) {
+                setImmediate(callback);
+            }
+        }
+        class MockHandler {
+            constructor() {
+                this.userCache = {};
+            }
+        }
+        let imapPath = path.join(__dirname, '../imap.js');
+        let imapRequire = createRequire(imapPath);
+        let dependencies = {
+            '@zone-eu/wild-config': { imap: { enabled: true, maxMB: 1 }, log: { gelf: {} } },
+            './imap-core': { IMAPServer: MockServer },
+            './lib/db': { database: mockNotifierDatabase(), redis: mockRedis() },
+            './lib/certs': { loadTLSOptions() {}, registerReload() {} },
+            './lib/apn-client': { get: () => apn },
+            './lib/imap-notifier': class extends ImapNotifier {
+                constructor(options) {
+                    super({ ...options, pushOnly: true });
+                }
+            },
+            './imap-core/lib/indexer/indexer': MockHandler,
+            './lib/message-handler': MockHandler,
+            './lib/user-handler': MockHandler,
+            './lib/mailbox-handler': MockHandler,
+            './lib/settings-handler': { SettingsHandler: MockHandler },
+            './lib/metrics': { setServiceUp() {} },
+            ioredfour: MockHandler
+        };
+        let imapModule = { exports: {} };
+        vm.runInNewContext(
+            fs.readFileSync(imapPath, 'utf8'),
+            {
+                module: imapModule,
+                setImmediate,
+                require: name => {
+                    if (name.startsWith('./lib/handlers/')) {
+                        return () => () => {};
+                    }
+                    return dependencies[name] || imapRequire(name);
+                }
+            },
+            { filename: imapPath }
+        );
+        try {
+            await new Promise((resolve, reject) => imapModule.exports(err => (err ? reject(err) : resolve())));
+            expect(server.notifier.apn).to.equal(apn);
+            await addEntries(server.notifier, mailbox, [existsEntry()]);
+            await new Promise(resolve => setTimeout(resolve, FLUSH_WAIT));
+            expect(pushCalls).to.have.length(1);
+        } finally {
+            apn.close();
+        }
+    });
 
     it('should initialize APNs for shared-library delivery without an apn option', async function () {
         let user = new ObjectId();
