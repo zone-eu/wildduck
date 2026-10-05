@@ -20,6 +20,7 @@ module.exports = function (grunt) {
         'imap-core/test/imap-compile-stream-test.js',
         'imap-core/test/imap-connection-test.js',
         'imap-core/test/imap-compiler-test.js',
+        'imap-core/test/imap-id-command-test.js',
         'imap-core/test/imap-indexer-test.js',
         'imap-core/test/indexer-attachments-test.js',
         'imap-core/test/indexer-corpus-test.js',
@@ -29,6 +30,7 @@ module.exports = function (grunt) {
         'imap-core/test/indexer-legacy-differential-test.js',
         'imap-core/test/indexer-maildata-test.js',
         'imap-core/test/indexer-ranges-test.js',
+        'imap-core/test/imap-literal-limit-test.js',
         'imap-core/test/imap-line-limit-test.js',
         'imap-core/test/imap-parser-test.js',
         'imap-core/test/imap-stream-test.js',
@@ -38,10 +40,14 @@ module.exports = function (grunt) {
         'imap-core/test/parse-mime-tree-v2-test.js',
         'imap-core/test/proxy-socket-error-test.js',
         'imap-core/test/search-test.js',
-        'imap-core/test/socket-timeout-test.js',
-        'imap-core/test/tools-test.js'
+        'imap-core/test/tools-test.js',
+        'imap-core/test/xapplepushservice-command-test.js',
+        'imap-core/test/socket-timeout-test.js'
     ];
     const unitTests = [
+        'test/apn-client-test.js',
+        'test/imap-notifier-apn-test.js',
+        'test/xapplepushservice-validation-test.js',
         'test/certs-test.js',
         'test/checkrangequery-test.js',
         'test/create-decipher-test.js',

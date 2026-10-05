@@ -17,8 +17,8 @@ const Gelf = require('gelf');
 const os = require('os');
 const Lock = require('ioredfour');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
-
 const onFetch = require('./lib/handlers/on-fetch');
 const onAuth = require('./lib/handlers/on-auth');
 const onList = require('./lib/handlers/on-list');
@@ -66,6 +66,7 @@ let createInterface = (ifaceOptions, callback) => {
     const maxLineLength = 'maxLineLength' in ifaceOptions ? ifaceOptions.maxLineLength : config.imap.maxLineLength;
     const maxCompressionInflateBytes =
         'maxCompressionInflateBytes' in ifaceOptions ? ifaceOptions.maxCompressionInflateBytes : config.imap.maxCompressionInflateBytes;
+    const maxLiterals = 'maxLiterals' in ifaceOptions ? ifaceOptions.maxLiterals : config.imap.maxLiterals;
 
     // Setup server
     const serverOptions = {
@@ -93,6 +94,7 @@ let createInterface = (ifaceOptions, callback) => {
         preAuthSocketTimeout: 'preAuthSocketTimeout' in ifaceOptions ? ifaceOptions.preAuthSocketTimeout : config.imap.preAuthSocketTimeout,
         maxLineLength,
         maxCompressionInflateBytes,
+        maxLiterals,
         settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,
@@ -256,11 +258,19 @@ module.exports = done => {
 
     let settingsHandler = new SettingsHandler({ db: db.database });
 
+    // setup APNs client for iOS push notifications
+    let apn = ApnClient.get({
+        config: config.imap && config.imap.aps,
+        database: db.database,
+        loggelf: message => loggelf(message)
+    });
+
     // setup notification system for updates
     notifier = new ImapNotifier({
         database: db.database,
         redis: db.redis,
-        settingsHandler
+        settingsHandler,
+        apn
     });
 
     messageHandler = new MessageHandler({
@@ -270,6 +280,7 @@ module.exports = done => {
         gridfs: db.gridfs,
         attachments: config.attachments,
         settingsHandler,
+        apn,
         loggelf: message => loggelf(message)
     });
 

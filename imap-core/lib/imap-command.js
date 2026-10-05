@@ -10,6 +10,19 @@ const MAX_COMMAND_LITERAL_SIZE = 16 * 1024;
 const MAX_BAD_COMMANDS = 50;
 const LARGE_COMMAND_SIZE = 64 * 1024;
 
+// Default upper bound for the number of literal segments accepted within a
+// single command. A conforming client only ever sends a handful (LOGIN uses
+// two, APPEND uses one for the message plus a few tiny ones for flags/date),
+// so this only refuses abusive input. Configurable via the maxLiterals server
+// option; set it to 0 to disable the count check.
+const MAX_LITERALS = 1000;
+
+// Extra allowance on top of the largest accepted single literal for the
+// cumulative size of all literals in one command. Covers the small auxiliary
+// literals (flags, internaldate, ID key/value pairs) that may accompany a
+// full sized message literal.
+const LITERAL_BYTES_ALLOWANCE = MAX_MESSAGE_SIZE;
+
 const commands = new Map([
     /*eslint-disable global-require*/
     // require must normally be on top of the module
@@ -224,6 +237,78 @@ class IMAPCommand {
                 return callback(err);
             }
 
+            // Bound the number and cumulative size of literals within a single
+            // command, and refuse literals for commands that may not run in the
+            // current connection state. Without this an unauthenticated client
+            // could chain endless literals (e.g. `a APPEND x {n}` ...), each of
+            // which is answered with `+ Go ahead` and buffered in memory before
+            // the command state is ever validated, exhausting the process.
+            // Skipped while a preset handler is consuming input (e.g. the
+            // AUTHENTICATE SASL exchange), where the payload is not a command.
+            if (typeof this.connection._nextHandler !== 'function') {
+                let handler = commands.get(this.command);
+                let allowedStates = handler && handler.state ? [].concat(handler.state) : false;
+                if (allowedStates && allowedStates.indexOf(this.connection.state) < 0) {
+                    // The command can not run in the current state, so its literal
+                    // must not be accepted or buffered.
+                    this.payload = '';
+                    this.literals = [];
+
+                    this.connection?.loggelf({
+                        short_message: '[IMAPCMDERR] Literal for command not allowed in current state',
+                        _service: 'imap',
+                        _failure_msg: 'literal not allowed in current state',
+                        _command: this.command,
+                        _state: this.connection.state,
+                        _sess: this.connection.id,
+                        _remoteAddress: this.connection.remoteAddress
+                    });
+
+                    this.connection.send(`${this.tag} NO ${this.command} not allowed now`);
+
+                    let err = new Error('Literal not allowed in current state');
+                    err.responseCode = 400;
+                    err.code = 'LiteralNotAllowed';
+                    return callback(err);
+                }
+
+                this._literalCount = (this._literalCount || 0) + 1;
+                this._literalBytes = (this._literalBytes || 0) + (Number(command.expecting) || 0);
+
+                let maxLiterals = Number(this.connection._server.options.maxLiterals);
+                if (!Number.isFinite(maxLiterals) || maxLiterals < 0) {
+                    maxLiterals = MAX_LITERALS;
+                }
+
+                if (
+                    (maxLiterals && this._literalCount > maxLiterals) ||
+                    // cap the cumulative literal size at one full sized message plus a small allowance
+                    this._literalBytes > maxAllowed + LITERAL_BYTES_ALLOWANCE
+                ) {
+                    this.payload = '';
+                    this.literals = [];
+
+                    this.connection?.loggelf({
+                        short_message: '[TOOBIG] Too many literals in command',
+                        _failure_msg: 'too many literals',
+                        _service: 'imap',
+                        _command: this.command,
+                        _literal_count: this._literalCount,
+                        _literal_bytes: this._literalBytes,
+                        _literal_allowed: maxAllowed + LITERAL_BYTES_ALLOWANCE,
+                        _sess: this.connection.id,
+                        _remoteAddress: this.connection.remoteAddress
+                    });
+
+                    this.connection.send(`${this.tag} NO [TOOBIG] Too many literals in command`);
+
+                    let err = new Error('Too many literals in command');
+                    err.responseCode = 400;
+                    err.code = 'TooManyLiterals';
+                    return callback(err);
+                }
+            }
+
             // Accept literal input
             this.connection.send('+ Go ahead');
 
@@ -376,7 +461,8 @@ class IMAPCommand {
                     _payload: payload,
                     _command_length: this.payload.length,
                     _sess: this.connection.id,
-                    _remoteAddress: this.connection.remoteAddress
+                    _remoteAddress: this.connection.remoteAddress,
+                    _remotePort: this.connection.remotePort
                 });
             }
 
