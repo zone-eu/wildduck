@@ -352,6 +352,12 @@ const fixtures = [
                 const draft = (await server.api.get(messagePath(account, forwarded.body.message.id)).expect(200)).body;
                 expect(draft.attachments.map(attachment => attachment.sizeKb)).to.deep.equal([]);
 
+                // forwarding the message itself does not send it on with a placeholder
+                const forward = await server.api.post(`${messagePath(account, uid)}/forward`).send({ target: 1, addresses: ['someone@example.com'] });
+                // the S3 read notices the short object itself, GridFS leaves it to the rebuild
+                expect(forward.status).to.be.oneOf([422, 500]);
+                expect(forward.body.code).to.be.oneOf(['AttachmentMissing', 'ForwardFailed']);
+
                 // the record is gone: a not found error, not a 200
                 await server.database.collection('attachments.files').deleteOne({ _id: id });
                 const missing = await get();

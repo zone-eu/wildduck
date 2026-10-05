@@ -325,6 +325,10 @@ describe('Attachment garbage collection', function () {
                 expect(rebuilt.toString().startsWith(source.toString().slice(0, source.indexOf(payload)))).to.be.true;
                 // a GridFS download without chunks ends early instead of failing, so it is padded as a length mismatch
                 expect(logged).to.include(file.metadata.storage ? 'attachment_missing' : 'attachment_length_mismatch');
+
+                // a rebuild that is stored or sent fails instead of keeping the placeholder
+                let error = await collect(indexer.rebuild(tree, false, { strict: true }).value).catch(err => err);
+                expect(error.code).to.equal('AttachmentMissing');
             });
 
             if (type === 'gridstore') {
