@@ -78,7 +78,8 @@ class IMAPConnection extends EventEmitter {
                 this.logger.error(
                     {
                         tnx: 'client',
-                        cid: this.id
+                        cid: this.id,
+                        remotePort: this.remotePort
                     },
                     '[%s] Command line too long, C: %s',
                     this.id,
@@ -109,6 +110,7 @@ class IMAPConnection extends EventEmitter {
 
         // Store remote address for later usage
         this.remoteAddress = (options.remoteAddress || this._socket.remoteAddress || '').replace(/^::ffff:/, '');
+        this.remotePort = options.remotePort || this._socket.remotePort;
 
         // Server hostname for the greegins
         this.name = (this._server.options.name || os.hostname()).toLowerCase();
@@ -607,7 +609,8 @@ class IMAPConnection extends EventEmitter {
                 _tag: tag || false,
                 _max_line_length: this._server.options.maxLineLength,
                 _sess: this.id,
-                _remoteAddress: this.remoteAddress
+                _remoteAddress: this.remoteAddress,
+                _remotePort: this.remotePort
             });
             this.send((tag ? tag : '*') + ' BAD Command line too long');
             return callback();
