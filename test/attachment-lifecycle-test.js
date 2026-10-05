@@ -588,6 +588,18 @@ describe('Attachment garbage collection', function () {
                     expect(await read(id)).to.equal('moved to s3');
                 });
 
+                it('collects chunks left by a GridFS upload that stopped before the attachment was stored in S3', async function () {
+                    let body = Buffer.from('stored in s3 after a stopped gridfs upload');
+                    let id = crypto.createHash('sha256').update(body).digest();
+                    await chunks.insertOne({ _id: dayOldId(), files_id: id, n: 1, data: Buffer.from('leftover') });
+                    await create(body, 2);
+                    expect((await files.findOne({ _id: id })).metadata.storage.backend).to.equal('s3');
+                    await storage.deleteAsync(id, 2);
+                    await files.updateOne({ _id: id }, { $set: { 'metadata.cu': new Date(Date.now() - DAY - 1000) } });
+                    expect(await storage.deleteOrphanedAsync()).to.equal(1);
+                    expect(await chunks.countDocuments({ files_id: id })).to.equal(0);
+                });
+
                 it('keeps the object when the collection stopped before removing the record', async function () {
                     let id = await create('still referenced', 5);
                     let file = await files.findOne({ _id: id });
