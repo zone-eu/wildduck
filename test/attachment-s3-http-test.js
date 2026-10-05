@@ -175,6 +175,18 @@ describe('S3 attachment client timeouts and credentials', function () {
         expect((await collect(stream)).equals(large)).to.equal(true);
     });
 
+    it('releases the connection of a reader that stopped taking data', async () => {
+        const store = storeWith({ accessKeyId: 'test', secretAccessKey: 'test', readTimeout: 100, slowReaderTimeout: 400 });
+        const data = { length: large.length, metadata: { storage: { backend: 's3', bucket: 'test-bucket', key: 'timeouts/complete' } } };
+        const stream = store.createReadStream(id, data);
+        // the reader never takes anything
+        const error = await new Promise(resolve => {
+            stream.once('error', resolve);
+            stream.pause();
+        });
+        expect(error.message).to.match(/Reader took no data/);
+    });
+
     it('gives an upload time for its size on top of the request timeout', async () => {
         const options = [];
         const store = new S3Storage({

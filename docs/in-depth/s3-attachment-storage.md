@@ -23,6 +23,7 @@ region="us-east-1"
 # connectionTimeout=5000 # ms
 # requestTimeout=30000   # ms until the response headers; an upload also gets 2 s per MB of its size
 # readTimeout=30000      # ms a read waits for S3 to send more data
+# slowReaderTimeout=300000 # ms a read waits for a reader that stopped taking data
 # maxSockets=50
 ```
 
