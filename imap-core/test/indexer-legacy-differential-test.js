@@ -37,8 +37,10 @@ const corpus = loadCorpus();
 const stats = { messages: 0, sections: 0, consistent: 0, wireEqual: 0, breaksRemoved: 0, renumbered: 0, attachmentMissedBefore: 0 };
 
 const clone = tree => JSON.parse(JSON.stringify(tree, treeReplacer), treeReviver);
-// the tree as the database returns it: BSON encoded and decoded, bodies come back as Binary
-const fromDatabase = tree => BSON.deserialize(BSON.serialize({ tree })).tree;
+// the tree as the database returns it: BSON encoded and decoded, bodies come back as Binary. MongoDB does
+// not store documents above 16 MB, so a tree with its bodies inline that is larger has no database form
+const MAX_DOCUMENT_SIZE = 16 * 1024 * 1024;
+const fromDatabase = tree => (BSON.calculateObjectSize({ tree }) <= MAX_DOCUMENT_SIZE ? BSON.deserialize(BSON.serialize({ tree })).tree : null);
 
 function describeDiff(actual, expected) {
     let i = 0;
@@ -193,7 +195,7 @@ async function compareTree(label, tree, legacy, current, rng, unstored) {
         legacy.misses = 0;
         let old = await render(legacy, legacyTree, key);
         let now = await render(current, currentTree, key);
-        let fromDb = await render(current, storedTree, key);
+        let fromDb = storedTree ? await render(current, storedTree, key) : now;
 
         expect(!!now, `${at}: served by only one implementation`).to.equal(!!old);
         if (!old) {
@@ -297,7 +299,10 @@ describe('Indexer legacy differential', function () {
             let plain = await compareTree(name, tree, legacy, current, rng);
 
             // the same tree with its attachment bodies in the storage, stored as the previous code did
-            let storage = new MemoryAttachmentStorage({ decodeBase64: false, chunkSize: rng.pick([1, 57, 1000, 255 * 1024]) });
+            // tiny chunks only for small messages: a 1 byte chunk size turns a 10 MB attachment into ten
+            // million reads, and the seams they exercise are covered exhaustively by the range suite
+            let chunkSizes = source.length <= 256 * 1024 ? [1, 57, 1000, 255 * 1024] : [1000, 64 * 1024, 255 * 1024];
+            let storage = new MemoryAttachmentStorage({ decodeBase64: false, chunkSize: rng.pick(chunkSizes) });
             let legacyStore = new LegacyIndexer({ attachmentStorage: storage });
             // count lookups that miss, which the previous code turned into empty attachments
             legacyStore.getAttachment = async id => {

@@ -26,6 +26,11 @@ chai.config.includeStack = true;
 
 const corpus = loadCorpus();
 
+// MongoDB does not store documents above 16 MB. A tree with its bodies inline can exceed that, the stored
+// form (attachments and large text moved to the attachment storage) can not
+const MAX_DOCUMENT_SIZE = 16 * 1024 * 1024;
+const fromDatabase = tree => (BSON.calculateObjectSize({ tree }) <= MAX_DOCUMENT_SIZE ? BSON.deserialize(BSON.serialize({ tree })).tree : null);
+
 function describeDiff(actual, expected) {
     let i = 0;
     while (i < actual.length && i < expected.length && actual[i] === expected[i]) {
@@ -69,20 +74,23 @@ describe('Indexer corpus', function () {
             expect(serialize(again), 'reparsed tree').to.equal(serialize(tree));
 
             // the tree as the database returns it
-            let fromDb = BSON.deserialize(BSON.serialize({ tree })).tree;
-            let dbSections = await sections(indexer, fromDb);
-            expect([...dbSections.keys()]).to.deep.equal([...plain.keys()]);
-            for (let [key, { size, bytes }] of dbSections) {
-                expect(size, `section ${key || 'BODY[]'} size from database`).to.equal(plain.get(key).size);
-                expect(bytes.equals(plain.get(key).bytes), `section ${key || 'BODY[]'} from database`).to.be.true;
+            let fromDb = fromDatabase(tree);
+            if (fromDb) {
+                let dbSections = await sections(indexer, fromDb);
+                expect([...dbSections.keys()]).to.deep.equal([...plain.keys()]);
+                for (let [key, { size, bytes }] of dbSections) {
+                    expect(size, `section ${key || 'BODY[]'} size from database`).to.equal(plain.get(key).size);
+                    expect(bytes.equals(plain.get(key).bytes), `section ${key || 'BODY[]'} from database`).to.be.true;
+                }
             }
 
             // attachment bodies in the storage, decoded where possible, delivered in odd chunks
-            let stored = new Indexer({ attachmentStorage: new MemoryAttachmentStorage({ chunkSize: 61 }) });
+            let stored = new Indexer({ attachmentStorage: new MemoryAttachmentStorage({ chunkSize: source.length <= 256 * 1024 ? 61 : 64 * 1024 }) });
             let storedTree = stored.parseMimeTree(source);
             let maildata = stored.getMaildata(storedTree);
             await new Promise((resolve, reject) => stored.storeNodeBodies(maildata, storedTree, err => (err ? reject(err) : resolve())));
-            let storedDb = BSON.deserialize(BSON.serialize({ tree: storedTree })).tree;
+            let storedDb = fromDatabase(storedTree);
+            expect(storedDb, 'the stored tree fits in a MongoDB document').to.exist;
             for (let [key, { bytes }] of await sections(stored, storedDb)) {
                 expect(bytes.equals(plain.get(key).bytes), `section ${key || 'BODY[]'} with stored attachments ${describeDiff(bytes, plain.get(key).bytes)}`).to.be.true;
             }
