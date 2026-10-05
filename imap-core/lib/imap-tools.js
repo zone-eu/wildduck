@@ -565,6 +565,34 @@ module.exports.formatInternalDate = function (date) {
 };
 
 /**
+ * Makes a response structure 7-bit in place: every string or byte value that holds anything above
+ * 0x7F becomes an RFC 2047 encoded word. RFC 6855 3: the server must not send UTF-8 in quoted
+ * strings unless the client enabled UTF8=ACCEPT
+ *
+ * @param {Array} arr Response structure (nested arrays of strings, Buffers, MongoDB Binary and null)
+ */
+function encodeStrings(arr) {
+    arr.forEach((entry, i) => {
+        if (Array.isArray(entry)) {
+            return encodeStrings(entry);
+        }
+        if (typeof entry === 'string') {
+            if (/[^\u0000-\u007f]/.test(entry)) {  // eslint-disable-line no-control-regex
+                arr[i] = libmime.encodeWords(entry, false, Infinity);
+            }
+            return;
+        }
+        if (!entry || typeof entry !== 'object') {
+            return;
+        }
+        let val = Buffer.isBuffer(entry) ? entry : entry.buffer;
+        if (val) {
+            arr[i] = libmime.encodeWords(val.toString(), false, Infinity);
+        }
+    });
+}
+
+/**
  * Converts query data and message into an array of query responses.
  *
  * Message object must have the following properties:
@@ -629,24 +657,8 @@ module.exports.getQueryResponse = function (query, message, options) {
                     value = indexer.getBodyStructure(mimeTree);
                 }
 
-                let walk = arr => {
-                    arr.forEach((entry, i) => {
-                        if (Array.isArray(entry)) {
-                            return walk(entry);
-                        }
-                        if (!entry || typeof entry !== 'object') {
-                            return;
-                        }
-                        let val = entry;
-                        if (!Buffer.isBuffer(val) && val.buffer) {
-                            val = val.buffer;
-                        }
-                        arr[i] = libmime.encodeWords(val.toString(), false, Infinity);
-                    });
-                };
-
                 if (!options.acceptUTF8Enabled) {
-                    walk(value);
+                    encodeStrings(value);
                 }
 
                 break;
@@ -655,7 +667,7 @@ module.exports.getQueryResponse = function (query, message, options) {
                 if (message.envelope) {
                     value = message.envelope;
                     // cast invalidly stored In-Reply-To (8) and Message-ID (9) to strings
-                    for (let index of [9, 10]) {
+                    for (let index of [8, 9]) {
                         if (value[index] && Array.isArray(value[index])) {
                             value[index] = value[index].pop() || null;
                         }
@@ -670,7 +682,7 @@ module.exports.getQueryResponse = function (query, message, options) {
                     // encode unicode values
 
                     // subject
-                    value[1] = libmime.encodeWords(value[1], false, Infinity);
+                    value[1] = libmime.encodeWords((value[1] || '').toString(), false, Infinity);
 
                     for (let i = 2; i < 8; i++) {
                         if (value[i] && Array.isArray(value[i])) {
@@ -709,7 +721,8 @@ module.exports.getQueryResponse = function (query, message, options) {
                         }
                     }
 
-                    // libmime.encodeWords(value, false, Infinity)
+                    // whatever is left (date, message ids, values stored as strings) must be 7-bit too
+                    encodeStrings(value);
                 }
                 break;
 
@@ -757,6 +770,9 @@ module.exports.getQueryResponse = function (query, message, options) {
                         mimeTree = indexer.parseMimeTree(message.raw);
                     }
                     value = indexer.getBody(mimeTree);
+                    if (!options.acceptUTF8Enabled) {
+                        encodeStrings(value);
+                    }
                 } else if (item.path === '' && item.type === 'content') {
                     // BODY[]
                     if (!mimeTree) {

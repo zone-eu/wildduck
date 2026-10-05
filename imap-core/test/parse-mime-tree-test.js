@@ -379,11 +379,11 @@ describe('#parseFilename (MIMEParser-driven)', function () {
                 });
             });
 
-            // 8) Quoting/escaping
+            // 8) Quoting/escaping: RFC 822 3.3 quoted-pair, a backslash quotes the next character
             it('[edge quoting] escaped quotes and backslashes', function () {
                 let headers = 'Content-Disposition: attachment; filename="weird\\"name\\\\test.txt"';
                 expect(parseFilename(headers)).to.deep.equal({
-                    filename: 'weird\\"name\\\\test.txt',
+                    filename: 'weird"name\\test.txt',
                     source: 'filename'
                 });
             });

@@ -1,0 +1,99 @@
+/* eslint no-unused-expressions: 0, prefer-arrow-callback: 0, no-invalid-this: 0 */
+'use strict';
+
+// Existing mail stores hold trees written by the v1 parser. This test feeds those trees (captured in
+// fixtures/legacy-v1-trees.json before the walker changed) to the current code and checks that the sizes
+// IMAP announces are unchanged (the stored `size` field and the quota were computed from them) and that
+// every section still renders the same bytes, except where a documented correction applies.
+
+const fs = require('fs');
+const path = require('path');
+const chai = require('chai');
+const expect = chai.expect;
+const Indexer = require('../lib/indexer/indexer');
+const compileStream = require('../lib/handler/imap-compile-stream');
+const { cases, runSelector, materialize, wireLiteral, sha256, treeReviver } = require('./fixtures/indexer-cases');
+
+chai.config.includeStack = true;
+
+const indexer = new Indexer();
+const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/legacy-v1-trees.json'), 'utf8'), treeReviver);
+
+// Sections whose v1 rendering changes on purpose, with the bytes they must render instead. The old
+// rebuild wrote a separator line for an empty part body that the old size calculation never counted; the
+// LengthLimiter then cut the end of the message to compensate. v1 trees can not tell an empty body with a
+// separator line from one without, so both now render without it, which is the layout the stored size
+// describes.
+const RENDER_CHANGES = {};
+for (let name of ['synthetic:empty_part_blank', 'synthetic:empty_part_noblank']) {
+    let expected = cases['synthetic:empty_part_noblank'].expected;
+    RENDER_CHANGES[name] = {
+        '': expected,
+        text: expected.subarray(expected.indexOf('\r\n\r\n') + 4)
+    };
+}
+
+// Sections the v1 walker served but that do not exist. BODY[2] of a top-level message/rfc822 message
+// resolved into the second part of the embedded message, which RFC 3501 6.4.5 numbers 1.2
+const REMOVED_SECTIONS = {
+    'synthetic:root_rfc822': new Set(['2'])
+};
+
+const isRemoved = (name, key) => REMOVED_SECTIONS[name] && REMOVED_SECTIONS[name].has(key);
+
+function selectorFor(key) {
+    if (key === 'text') {
+        return { path: '', type: 'text' };
+    }
+    if (key.endsWith('.text')) {
+        return { path: key.slice(0, -5), type: 'text' };
+    }
+    return { path: key, type: '' };
+}
+
+describe('Indexer legacy v1 trees', function () {
+    this.timeout(60000);
+
+    for (let name of Object.keys(snapshot.cases)) {
+        let { tree, sections } = snapshot.cases[name];
+
+        describe(name, function () {
+            it('announces the sizes the v1 walker announced', function () {
+                for (let key of Object.keys(sections)) {
+                    if (isRemoved(name, key)) {
+                        expect(runSelector(indexer, tree, selectorFor(key)), `section ${key}`).to.equal('');
+                        continue;
+                    }
+                    let result = runSelector(indexer, tree, selectorFor(key));
+                    expect(result && result.type, key).to.equal('stream');
+                    expect(result.expectedLength, `section ${key || 'BODY[]'}`).to.equal(sections[key].size);
+                }
+            });
+
+            it('emits exactly the announced number of bytes', async function () {
+                for (let key of Object.keys(sections)) {
+                    if (isRemoved(name, key)) {
+                        continue;
+                    }
+                    let { size, bytes } = await materialize(runSelector(indexer, tree, selectorFor(key)));
+                    expect(bytes.length, `section ${key || 'BODY[]'}`).to.equal(size);
+                }
+            });
+
+            it('serves every section as before', async function () {
+                for (let key of Object.keys(sections)) {
+                    if (isRemoved(name, key)) {
+                        continue;
+                    }
+                    let wire = await wireLiteral(compileStream, runSelector(indexer, tree, selectorFor(key)));
+                    let changed = RENDER_CHANGES[name] && RENDER_CHANGES[name][key];
+                    if (changed) {
+                        expect(wire.bytes.toString('binary'), `section ${key || 'BODY[]'}`).to.equal(changed.toString('binary'));
+                    } else {
+                        expect(sha256(wire.bytes), `section ${key || 'BODY[]'}`).to.equal(sections[key].wireSha256);
+                    }
+                }
+            });
+        });
+    }
+});
