@@ -11,6 +11,7 @@ const { expect } = require('chai');
 const { S3Client, CreateBucketCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
+const Indexer = require('../imap-core/lib/indexer/indexer');
 const { emptyBucket, collect, objectExists, ageChunks, objectIdAt } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
@@ -278,6 +279,37 @@ describe('Attachment garbage collection', function () {
                 expect((await create('known attachment', 3)).equals(id)).to.be.true;
                 expect(locks).to.equal(0);
                 expect((await files.findOne({ _id: id })).metadata.c).to.equal(2);
+            });
+
+            it('serves a placeholder of the right size when a stored payload is missing', async function () {
+                let logged = [];
+                let indexer = new Indexer({ attachmentStorage: storage, loggelf: entry => logged.push(entry._mail_action) });
+                let payload = crypto.randomBytes(3000).toString('base64').replace(/.{76}/g, '$&\r\n');
+                let source = Buffer.from(
+                    'From: a@example.com\r\nTo: b@example.com\r\nSubject: missing\r\nMIME-Version: 1.0\r\n' +
+                        'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nhello\r\n' +
+                        '--b\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+                        payload +
+                        '\r\n--b--\r\n'
+                );
+                let tree = indexer.parseMimeTree(source);
+                let maildata = indexer.getMaildata(tree);
+                await new Promise((resolve, reject) => indexer.storeNodeBodies(maildata, tree, err => (err ? reject(err) : resolve())));
+                let id = Object.values(tree.attachmentMap)[0];
+                expect((await collect(indexer.rebuild(tree).value)).equals(source)).to.be.true;
+
+                // the record stays, the payload is gone
+                let file = await files.findOne({ _id: id });
+                if (file.metadata.storage) {
+                    await storage.s3.deletePayload(file.metadata.storage);
+                } else {
+                    await chunks.deleteMany({ files_id: id });
+                }
+                let rebuilt = await collect(indexer.rebuild(tree).value);
+                expect(rebuilt.length).to.equal(source.length);
+                expect(rebuilt.toString().startsWith(source.toString().slice(0, source.indexOf(payload)))).to.be.true;
+                // a GridFS download without chunks ends early instead of failing, so it is padded as a length mismatch
+                expect(logged).to.include(file.metadata.storage ? 'attachment_missing' : 'attachment_length_mismatch');
             });
 
             if (type === 'gridstore') {

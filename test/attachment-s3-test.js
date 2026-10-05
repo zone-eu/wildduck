@@ -272,6 +272,17 @@ describe('S3 attachment payloads', () => {
         }
     });
 
+    it('fails a read from a missing bucket instead of serving a placeholder', async () => {
+        const store = mockStore(Buffer.alloc(0), []);
+        store.client.send = async () => {
+            throw Object.assign(new Error('NoSuchBucket'), { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } });
+        };
+        const data = { length: 5, metadata: { storage: { backend: 's3', bucket: 'test', key: store.key(id, '0123456789abcdef') } } };
+        const error = await collect(store.createReadStream(id, data)).catch(err => err);
+        expect(error.name).to.equal('NoSuchBucket');
+        expect(error.code).to.not.equal('ENOENT');
+    });
+
     it('rejects an S3 provider that ignores Range', async () => {
         const body = Buffer.from('abcdef');
         const store = mockStore(body, []);
@@ -285,7 +296,7 @@ describe('S3 attachment payloads', () => {
         }
     });
 
-    it('propagates a missing S3 object as a stream error', async () => {
+    it('reports a missing S3 object as ENOENT, like a missing GridFS file', async () => {
         const store = mockStore(Buffer.alloc(0), []);
         store.client.send = async () => {
             const err = new Error('NoSuchKey');
@@ -298,6 +309,7 @@ describe('S3 attachment payloads', () => {
             throw new Error('Expected stream failure');
         } catch (err) {
             expect(err.name).to.equal('NoSuchKey');
+            expect(err.code).to.equal('ENOENT');
         }
     });
 });
