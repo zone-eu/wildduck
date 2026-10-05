@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const { expect } = require('chai');
 const { simpleParser } = require('mailparser');
 const { ObjectId } = require('mongodb');
-const { HeadObjectCommand, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { HeadObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { S3TestEnvironment, collect, binaryParser, ageChunks } = require('./attachment-s3-helpers');
 
 const endpoint = process.env.S3_TEST_ENDPOINT;
@@ -302,6 +302,60 @@ const fixtures = [
                 await server.api.get(`${messagePath(account, uid)}/attachments/ATT99999`).expect(404);
                 await server.api.get(`${messagePath(account, uid + 100)}/attachments/ATT00001`).expect(404);
                 await verify(server, account, client, uid, fixtures[0]);
+            });
+
+            it('does not present a damaged or missing attachment as a complete download', async () => {
+                const sample = fixtures.find(entry => entry.name === 'large-multiple-gridfs-chunks');
+                const uid = await upload(server, account, sample.source);
+                const info = (await server.api.get(messagePath(account, uid)).expect(200)).body;
+                const path = `${messagePath(account, uid)}/attachments/${info.attachments[0].id}`;
+                const id = Buffer.from(info.attachments[0].hash, 'hex');
+                const file = await server.database.collection('attachments.files').findOne({ _id: id });
+                const get = () =>
+                    new Promise(resolve => {
+                        const request = http.get(`http://127.0.0.1:${server.apiPort}${path}`, response => {
+                            const chunks = [];
+                            response.on('data', chunk => chunks.push(chunk));
+                            response.on('end', () => resolve({ status: response.statusCode, complete: response.complete, body: Buffer.concat(chunks) }));
+                            response.on('error', () => resolve({ status: response.statusCode, complete: false, body: Buffer.concat(chunks) }));
+                        });
+                        request.on('error', () => resolve({ status: 0, complete: false }));
+                    });
+
+                // the payload loses its tail: the client must not get a short file that looks complete
+                if (file.metadata.storage) {
+                    const object = await environment.client.send(
+                        new GetObjectCommand({ Bucket: file.metadata.storage.bucket, Key: file.metadata.storage.key })
+                    );
+                    const body = await collect(object.Body);
+                    await environment.client.send(
+                        new PutObjectCommand({
+                            Bucket: file.metadata.storage.bucket,
+                            Key: file.metadata.storage.key,
+                            Body: body.subarray(0, body.length - 1000)
+                        })
+                    );
+                } else {
+                    const last = await server.database.collection('attachments.chunks').find({ files_id: id }).sort({ n: -1 }).limit(1).next();
+                    await server.database.collection('attachments.chunks').deleteOne({ _id: last._id });
+                }
+                const damaged = await get();
+                // the transfer breaks off, or the connection drops before any response when the damage shows at once
+                expect(damaged.status === 200 && damaged.complete).to.equal(false);
+                expect([0, 200]).to.include(damaged.status);
+
+                // forwarding it does not copy a short attachment into the new message
+                const forwarded = await server.api
+                    .post(`/users/${account.user}/mailboxes/${account.inbox}/messages`)
+                    .send({ draft: true, text: 'see attached', reference: { mailbox: account.inbox, id: uid, action: 'forward', attachments: true } })
+                    .expect(200);
+                const draft = (await server.api.get(messagePath(account, forwarded.body.message.id)).expect(200)).body;
+                expect(draft.attachments.map(attachment => attachment.sizeKb)).to.deep.equal([]);
+
+                // the record is gone: a not found error, not a 200
+                await server.database.collection('attachments.files').deleteOne({ _id: id });
+                const missing = await get();
+                expect(missing.status).to.equal(404);
             });
 
             it('releases storage reads when IMAP and API clients disconnect mid-download', async function () {
