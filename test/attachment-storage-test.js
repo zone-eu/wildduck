@@ -30,8 +30,7 @@ describe('Attachment catalog and locking', () => {
                 options: { type: 's3', writeConcern, s3: { bucket: 'test', prefix: 'test' } }
             });
             storage.lock = { run: async (attachmentId, operation) => operation(() => {}) };
-            storage.s3.publish = async () => ({ bucket: 'test', key: 'key', length: 6 });
-            storage.s3.verifyContent = async () => {};
+            storage.s3.put = async () => ({ bucket: 'test', key: 'key', length: 6 });
 
             await new Promise((resolve, reject) => {
                 storage.create({ body: Buffer.from('abcdef'), magic: 17 }, err => (err ? reject(err) : resolve()));

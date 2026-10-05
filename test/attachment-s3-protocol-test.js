@@ -14,7 +14,12 @@ const binary = Buffer.from(Array.from({ length: 4097 }, (value, index) => index 
 function fixture(name, encoding = 'base64', body = binary, width = 76) {
     let encoded;
     if (encoding === 'base64') {
-        encoded = Buffer.from(body.toString('base64').match(new RegExp(`.{1,${width}}`, 'g')).join('\r\n'));
+        encoded = Buffer.from(
+            body
+                .toString('base64')
+                .match(new RegExp(`.{1,${width}}`, 'g'))
+                .join('\r\n')
+        );
     } else if (encoding === 'quoted-printable') {
         encoded = Buffer.from('hello=20world=0D=0Awith=20soft=\r\nbreak=20and=20=3D');
         body = Buffer.from('hello world\r\nwith softbreak and =');
@@ -148,8 +153,7 @@ const fixtures = [
             for (const sample of fixtures) {
                 for (const transport of ['API', 'IMAP APPEND']) {
                     it(`${transport} ${sample.name}: API download, RFC822, IMAP FETCH and streamed BODY`, async () => {
-                        const uid =
-                            transport === 'API' ? await upload(server, account, sample.source) : (await client.append('INBOX', sample.source)).uid;
+                        const uid = transport === 'API' ? await upload(server, account, sample.source) : (await client.append('INBOX', sample.source)).uid;
                         const result = await verify(server, account, client, uid, sample);
                         const files = await server.database
                             .collection('attachments.files')
@@ -176,10 +180,21 @@ const fixtures = [
                 const sample = fixtures[0];
                 const uid = await upload(server, account, sample.source);
                 await client.mailboxOpen('INBOX');
-                for (const [start, maxLength] of [[0, 1], [1, 3], [74, 7], [75, 2], [76, 5], [77, 91], [sample.attachments[0].encoded.length - 3, 100]]) {
+                for (const [start, maxLength] of [
+                    [0, 1],
+                    [1, 3],
+                    [74, 7],
+                    [75, 2],
+                    [76, 5],
+                    [77, 91],
+                    [sample.attachments[0].encoded.length - 3, 100]
+                ]) {
                     const part = await client.fetchOne(uid, { bodyParts: [{ key: '2', start, maxLength }] }, { uid: true });
                     expect(part.bodyParts).to.exist;
-                    expect(part.bodyParts.get('2').equals(sample.attachments[0].encoded.subarray(start, start + maxLength)), `BODY[2]<${start}.${maxLength}>`).to.equal(true);
+                    expect(
+                        part.bodyParts.get('2').equals(sample.attachments[0].encoded.subarray(start, start + maxLength)),
+                        `BODY[2]<${start}.${maxLength}>`
+                    ).to.equal(true);
                 }
                 const attachmentStart = sample.source.indexOf(sample.attachments[0].encoded);
                 for (const start of [0, attachmentStart - 10, attachmentStart + 74, sample.source.length - 7]) {
@@ -200,7 +215,13 @@ const fixtures = [
                         attachments: [
                             { filename: 'first.bin', contentType: 'application/octet-stream', content: binary.toString('base64') },
                             { filename: 'second.bin', contentType: 'application/octet-stream', content: Buffer.alloc(1234, 42).toString('base64') },
-                            { filename: 'logo.png', contentType: 'image/png', content: binary.toString('base64'), cid: 'logo@example.test', contentDisposition: 'inline' }
+                            {
+                                filename: 'logo.png',
+                                contentType: 'image/png',
+                                content: binary.toString('base64'),
+                                cid: 'logo@example.test',
+                                contentDisposition: 'inline'
+                            }
                         ]
                     })
                     .expect(200);
@@ -229,7 +250,10 @@ const fixtures = [
                     ...Array.from({ length: 5 }, () => upload(server, account, sample.source)),
                     client.append('INBOX', sample.source).then(result => result.uid)
                 ]);
-                const messages = await server.database.collection('messages').find({ user: new ObjectId(account.user) }).toArray();
+                const messages = await server.database
+                    .collection('messages')
+                    .find({ user: new ObjectId(account.user) })
+                    .toArray();
                 expect(messages).to.have.length(6);
                 const ids = messages.map(message => message.mimeTree.attachmentMap.ATT00001.toString('hex'));
                 expect(new Set(ids).size).to.equal(1);
@@ -373,7 +397,7 @@ const fixtures = [
         });
     }
 
-    it('stores actual binary payloads in Moto without leaking staging objects', async () => {
+    it('stores actual binary payloads in Moto as exactly one object per catalog record', async () => {
         const server = servers.s3;
         const files = await server.database.collection('attachments.files').find({ 'metadata.storage.backend': 's3' }).toArray();
         expect(files.length).to.be.above(0);
@@ -387,8 +411,7 @@ const fixtures = [
             }
         }
         const objects = await environment.client.send(new ListObjectsV2Command({ Bucket: environment.bucket, Prefix: server.databaseName }));
-        expect(objects.Contents.map(object => object.Key).filter(key => key.includes('/staging/'))).to.deep.equal([]);
-        expect(objects.Contents).to.have.length(files.length);
+        expect(objects.Contents.map(object => object.Key).sort()).to.deep.equal(files.map(file => file.metadata.storage.key).sort());
     });
 
     it('reads both backends through API and IMAP after switching write preference and restarting', async () => {

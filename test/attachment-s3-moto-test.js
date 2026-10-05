@@ -7,7 +7,15 @@ const crypto = require('crypto');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { S3Client, CreateBucketCommand, HeadObjectCommand, PutObjectCommand, DeleteBucketCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const {
+    S3Client,
+    CreateBucketCommand,
+    HeadObjectCommand,
+    PutObjectCommand,
+    DeleteBucketCommand,
+    DeleteObjectCommand,
+    ListObjectsV2Command
+} = require('@aws-sdk/client-s3');
 const AttachmentStorage = require('../lib/attachment-storage');
 const db = require('../lib/db');
 
@@ -37,10 +45,9 @@ async function collect(stream) {
         collectionName = `att_test_${nonce}`;
         client = new S3Client({ region: 'us-east-1', endpoint, forcePathStyle: true, credentials: { accessKeyId: 'test', secretAccessKey: 'test' } });
         await client.send(new CreateBucketCommand({ Bucket: bucketName }));
-        await db.gridfs.collection(`${collectionName}.files`).createIndex(
-            { 'metadata.c': 1, 'metadata.m': 1, 'metadata.cu': 1 },
-            { name: 'related_attachments_cu' }
-        );
+        await db.gridfs
+            .collection(`${collectionName}.files`)
+            .createIndex({ 'metadata.c': 1, 'metadata.m': 1, 'metadata.cu': 1 }, { name: 'related_attachments_cu' });
         const s3 = { bucket: bucketName, prefix: `test-${nonce}`, region: 'us-east-1', endpoint, forcePathStyle: true };
         const common = { gridfs: db.gridfs, redis: db.redis, s3Client: client };
         storage = new AttachmentStorage({ ...common, options: { type: 's3', bucket: collectionName, decodeBase64: true, s3 } });
@@ -49,8 +56,14 @@ async function collect(stream) {
 
     after(async () => {
         if (collectionName) {
-            await db.gridfs.collection(`${collectionName}.files`).drop().catch(() => false);
-            await db.gridfs.collection(`${collectionName}.chunks`).drop().catch(() => false);
+            await db.gridfs
+                .collection(`${collectionName}.files`)
+                .drop()
+                .catch(() => false);
+            await db.gridfs
+                .collection(`${collectionName}.chunks`)
+                .drop()
+                .catch(() => false);
         }
         if (bucketName) {
             const listed = await client.send(new ListObjectsV2Command({ Bucket: bucketName })).catch(() => ({ Contents: [] }));
@@ -115,7 +128,13 @@ async function collect(stream) {
     });
 
     it('stores quoted-printable bytes without changing their MIME representation', async () => {
-        const attachment = { body: Buffer.from('hello=20world=0D=0A'), transferEncoding: 'quoted-printable', lineCount: 1, contentType: 'text/plain', magic: 43 };
+        const attachment = {
+            body: Buffer.from('hello=20world=0D=0A'),
+            transferEncoding: 'quoted-printable',
+            lineCount: 1,
+            contentType: 'text/plain',
+            magic: 43
+        };
         const created = await create(storage, attachment);
         const data = await storage.get(created.id);
         expect(data.metadata.decoded).to.not.exist;
@@ -124,7 +143,13 @@ async function collect(stream) {
     });
 
     it('migrates GridFS bytes, verifies them, and removes old chunks explicitly', async () => {
-        const attachment = { body: Buffer.from('bWlncmF0ZWQgYnl0ZXM='), transferEncoding: 'base64', lineCount: 1, contentType: 'application/octet-stream', magic: 41 };
+        const attachment = {
+            body: Buffer.from('bWlncmF0ZWQgYnl0ZXM='),
+            transferEncoding: 'base64',
+            lineCount: 1,
+            contentType: 'application/octet-stream',
+            magic: 41
+        };
         const created = await create(gridstore, attachment);
         const before = await db.gridfs.collection(`${collectionName}.files`).findOne({ _id: created.id });
         expect(before.metadata.storage).to.not.exist;
@@ -151,22 +176,14 @@ async function collect(stream) {
         const data = await storage.get(created.id);
         expect((await collect(storage.createReadStream(created.id, data))).toString()).to.equal(attachment.body.toString());
 
-        const stageKey = `${storePrefix()}/attachments/staging/${created.id.toString('hex')}/abandoned`;
-        await client.send(new PutObjectCommand({ Bucket: bucketName, Key: stageKey, Body: Buffer.from('orphan') }));
-        const cleaned = await execFileAsync(process.execPath, [...baseArgs, '--cleanup-staging', '--yes', '--grace-hours=0'], { env, timeout: 30000 });
-        expect(cleaned.stdout).to.include('"stagedCleaned":1');
-        try {
-            await client.send(new HeadObjectCommand({ Bucket: bucketName, Key: stageKey }));
-            throw new Error('Expected deleted staging object');
-        } catch (err) {
-            expect(err.$metadata?.httpStatusCode).to.equal(404);
-        }
-
         const orphanId = crypto.createHash('sha256').update('unreferenced-final').digest();
-        const orphanKey = storage.s3.key(orphanId);
+        const orphanKey = storage.s3.key(orphanId, '0123456789abcdef');
         await client.send(new PutObjectCommand({ Bucket: bucketName, Key: orphanKey, Body: Buffer.from('orphan') }));
         const orphanArgs = baseArgs.map(arg => (arg.startsWith('--prefix=') ? `--prefix=${orphanId.toString('hex').slice(0, 4)}` : arg));
-        const removed = await execFileAsync(process.execPath, [...orphanArgs, '--cleanup-unreferenced-s3', '--yes', '--grace-hours=0'], { env, timeout: 30000 });
+        const removed = await execFileAsync(process.execPath, [...orphanArgs, '--cleanup-unreferenced-s3', '--yes', '--grace-hours=0'], {
+            env,
+            timeout: 30000
+        });
         expect(removed.stdout).to.include('"unreferencedCleaned":1');
         try {
             await client.send(new HeadObjectCommand({ Bucket: bucketName, Key: orphanKey }));

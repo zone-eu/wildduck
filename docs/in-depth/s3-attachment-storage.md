@@ -20,9 +20,11 @@ region="us-east-1"
 # maxAttempts=3
 ```
 
-`prefix` must be unique for installations sharing a bucket and must not change after objects have been written. WildDuck stores the bucket and key in each `attachments.files` record, but a stable prefix makes retries and maintenance predictable. Credentials come from the AWS SDK's default credential provider chain. Give the process read, write, copy, head, multipart upload/abort, and delete permissions only for the configured prefix. Keep the bucket private. The provider must support conditional destination copies (`If-None-Match: *`) and conditional multipart completion; the implementation uses these to avoid overwriting an object that another worker published.
+`prefix` must be unique for installations sharing a bucket and must not change after objects have been written. WildDuck stores the bucket and key in each `attachments.files` record, but a stable prefix makes retries and maintenance predictable. Credentials come from the AWS SDK's default credential provider chain. Give the process `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the configured prefix, plus `s3:ListBucket` for the migration script's cleanup mode. Keep the bucket private.
 
-The object key is `<prefix>/attachments/v1/<first-hash-byte>/<second-hash-byte>/<encoded-body-sha256>`. The key is independent of users, messages, and filenames. `attachments.files` remains the authoritative deduplication and reference-count record. Records without `metadata.storage` are GridFS records. S3 records have `metadata.storage` containing the version, backend, bucket, key, and stored-byte length. S3 records have no `attachments.chunks` documents.
+A new payload is uploaded with a single `PutObject` request that carries the SHA-256 of the stored bytes in `x-amz-checksum-sha256`. S3 rejects the upload with `BadDigest` when the received bytes do not match, so the object is never read back for verification. The provider must verify that header; AWS S3 and MinIO do. Moto, used by the test suite, accepts it without checking.
+
+The object key is `<prefix>/attachments/v1/<first-hash-byte>/<second-hash-byte>/<encoded-body-sha256>.<generation>`, where the generation is a random id chosen for every upload. A key is therefore written exactly once: two processes storing the same new attachment at the same time upload separate objects, and the one whose catalog insert loses deletes its own copy. The key is independent of users, messages, and filenames. `attachments.files` remains the authoritative deduplication and reference-count record, and readers always take the key from it. Records without `metadata.storage` are GridFS records. S3 records have `metadata.storage` containing the version, backend, bucket, key, and stored-byte length. S3 records have no `attachments.chunks` documents.
 
 ## Rollout and migration
 
@@ -33,15 +35,12 @@ NODE_ENV=production node scripts/migrate-attachments-to-s3.js --dry-run --prefix
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --migrate --prefix=00 --concurrency=2 --throttle-ms=50
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --verify-only --prefix=00
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --cleanup-chunks --yes --prefix=00 --grace-hours=24
-NODE_ENV=production node scripts/migrate-attachments-to-s3.js --cleanup-staging --yes --prefix=00 --grace-hours=24
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --cleanup-unreferenced-s3 --yes --prefix=00 --grace-hours=24
 ```
 
-Run every prefix from `00` through `ff`, or omit `--prefix` to scan all attachment IDs. `--prefix` accepts one to four lowercase hex characters. Each operation can be restarted: the file record determines whether the payload is still GridFS or is now S3. The migration reads and hashes the stored GridFS bytes, uploads them to a staging object, verifies the published S3 bytes, and atomically switches the file record to S3 without changing reference counters. It retains GridFS chunks until the separate `--cleanup-chunks --yes` pass has verified both copies and the reader grace period has elapsed. Keep S3 objects and MongoDB catalog backups together.
+Run every prefix from `00` through `ff`, or omit `--prefix` to scan all attachment IDs. `--prefix` accepts one to four lowercase hex characters. Each operation can be restarted: the file record determines whether the payload is still GridFS or is now S3. The migration reads and hashes the stored GridFS bytes, uploads them with the checksum to a new object, and atomically switches the file record to S3 without changing reference counters. It retains GridFS chunks until the separate `--cleanup-chunks --yes` pass has verified both copies and the reader grace period has elapsed. Keep S3 objects and MongoDB catalog backups together.
 
-`--cleanup-staging --yes` removes old staging objects left by interrupted uploads. It rechecks object age while holding the hash lock. Use a grace period comfortably longer than the longest expected upload.
-
-`--cleanup-unreferenced-s3 --yes` removes old final-key objects that have no matching S3 locator in `attachments.files`, such as a completed upload interrupted before catalog insertion. It checks the file record and object age again under the hash lock. Run it only after all WildDuck processes use this lock protocol and with a grace period longer than the longest expected upload and migration.
+`--cleanup-unreferenced-s3 --yes` removes old objects that have no matching S3 locator in `attachments.files`, such as an upload whose catalog insert failed with an unknown outcome. Every upload writes a new key, so an object older than the grace period that no record points to can not become referenced any more. Use a grace period comfortably longer than the longest expected upload.
 
 The CLI also accepts `--gridfs-bucket`, `--s3-bucket`, `--s3-prefix`, and `--s3-endpoint` for a specifically targeted run. Review those overrides carefully before using `--cleanup-chunks`. Progress and failures are printed to stdout and stderr; a failed entry makes the process exit nonzero. Re-run after resolving failures. An incomplete migration is supported: WildDuck continues to read both backends.
 

@@ -21,32 +21,22 @@ describe('S3 attachment storage over HTTP', function () {
     let server;
     let store;
     const objects = new Map();
+    const requests = [];
 
     before(async () => {
         server = http.createServer(async (req, res) => {
             const key = decodeURIComponent(new URL(req.url, 'http://localhost').pathname.slice('/test-bucket/'.length));
             const existing = objects.get(key);
-            if (req.method === 'PUT' && req.headers['x-amz-copy-source']) {
-                const source = decodeURIComponent(req.headers['x-amz-copy-source']).replace(/^\/?test-bucket\//, '');
-                const sourceObject = objects.get(source);
-                if (!sourceObject) {
-                    res.writeHead(404);
-                    res.end('<Error><Code>NoSuchKey</Code></Error>');
-                    return;
-                }
-                if (existing && req.headers['if-none-match'] === '*') {
-                    res.writeHead(412);
-                    res.end('<Error><Code>PreconditionFailed</Code></Error>');
-                    return;
-                }
-                objects.set(key, sourceObject);
-                res.writeHead(200, { 'Content-Type': 'application/xml' });
-                res.end('<CopyObjectResult><ETag>"test"</ETag><LastModified>2025-01-01T00:00:00Z</LastModified></CopyObjectResult>');
-                return;
-            }
             if (req.method === 'PUT') {
                 const body = await collect(req);
-                objects.set(key, { body, sha256: req.headers['x-amz-meta-sha256'] });
+                // S3 rejects an upload whose bytes do not match the announced checksum
+                if (req.headers['x-amz-checksum-sha256'] !== crypto.createHash('sha256').update(body).digest('base64')) {
+                    res.writeHead(400, { 'Content-Type': 'application/xml' });
+                    res.end('<Error><Code>BadDigest</Code></Error>');
+                    return;
+                }
+                objects.set(key, body);
+                requests.push(`PUT ${key}`);
                 res.writeHead(200, { ETag: '"test"' });
                 res.end();
                 return;
@@ -63,18 +53,18 @@ describe('S3 attachment storage over HTTP', function () {
                 return;
             }
             if (req.method === 'HEAD') {
-                res.writeHead(200, { 'Content-Length': existing.body.length, 'x-amz-meta-sha256': existing.sha256, ETag: '"test"' });
+                res.writeHead(200, { 'Content-Length': existing.length, ETag: '"test"' });
                 res.end();
                 return;
             }
             if (req.method === 'GET') {
                 const range = req.headers.range && /^bytes=(\d+)-(\d+)$/.exec(req.headers.range);
                 const start = range ? Number(range[1]) : 0;
-                const end = range ? Number(range[2]) + 1 : existing.body.length;
-                const body = existing.body.subarray(start, end);
+                const end = range ? Number(range[2]) + 1 : existing.length;
+                const body = existing.subarray(start, end);
                 res.writeHead(range ? 206 : 200, {
                     'Content-Length': body.length,
-                    ...(range ? { 'Content-Range': `bytes ${start}-${end - 1}/${existing.body.length}` } : {})
+                    ...(range ? { 'Content-Range': `bytes ${start}-${end - 1}/${existing.length}` } : {})
                 });
                 res.end(body);
             }
@@ -91,18 +81,28 @@ describe('S3 attachment storage over HTTP', function () {
         }
     });
 
-    it('publishes, verifies, reads a range, reuses, and deletes an object', async () => {
+    it('uploads with one request, reads a range and deletes the object', async () => {
         const body = Buffer.from('message attachment payload');
         const id = crypto.createHash('sha256').update(body).digest();
-        const checksum = id.toString('hex');
-        const location = await store.publish(id, body, checksum);
-        await store.verifyContent(location, body.length, checksum);
-        expect(objects.size).to.equal(1);
-        expect(await store.publish(id, body, checksum)).to.deep.equal(location);
-        expect(objects.size).to.equal(1);
+        const location = await store.put(id, body, body.length, id);
+        expect(requests).to.deep.equal([`PUT ${location.key}`]);
+        expect(objects.get(location.key).equals(body)).to.equal(true);
         const data = { length: body.length, metadata: { storage: { backend: 's3', ...location } } };
         expect((await collect(store.createReadStream(id, data, { startFrom: 8, maxLength: 10 }))).toString()).to.equal('attachment');
         await store.deletePayload(location);
-        expect(objects.size).to.equal(0);
+        expect(objects.has(location.key)).to.equal(false);
+    });
+
+    it('fails an upload whose bytes do not match the checksum', async () => {
+        const body = Buffer.from('corrupted in transit');
+        const id = crypto.createHash('sha256').update('something else').digest();
+        let error;
+        try {
+            await store.put(id, body, body.length, id);
+        } catch (err) {
+            error = err;
+        }
+        expect(error && error.name).to.equal('BadDigest');
+        expect([...objects.keys()].some(key => key.includes(id.toString('hex')))).to.equal(false);
     });
 });

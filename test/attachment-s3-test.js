@@ -1,16 +1,9 @@
 'use strict';
 
+const crypto = require('crypto');
 const { expect } = require('chai');
 const { Readable, PassThrough } = require('stream');
-const {
-    GetObjectCommand,
-    HeadObjectCommand,
-    CopyObjectCommand,
-    CreateMultipartUploadCommand,
-    UploadPartCopyCommand,
-    CompleteMultipartUploadCommand,
-    AbortMultipartUploadCommand
-} = require('@aws-sdk/client-s3');
+const { GetObjectCommand, HeadObjectCommand, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const S3Storage = require('../lib/attachments/s3-storage');
 const GridstoreStorage = require('../lib/attachments/gridstore-storage');
 const { prepareStoredBody } = require('../lib/attachments/base64-codec');
@@ -53,9 +46,92 @@ function mockStore(body, requests) {
 describe('S3 attachment payloads', () => {
     const id = Buffer.alloc(32, 0xab);
 
-    it('uses stable hash-sharded object keys', () => {
+    it('uses hash-sharded object keys qualified by a generation', () => {
         const store = mockStore(Buffer.alloc(0), []);
-        expect(store.key(id)).to.equal(`test-ns/attachments/v1/ab/ab/${id.toString('hex')}`);
+        expect(store.key(id, '0123abcd')).to.equal(`test-ns/attachments/v1/ab/ab/${id.toString('hex')}.0123abcd`);
+    });
+
+    it('uploads with a single checksummed PutObject to a new key every time', async () => {
+        const commands = [];
+        const store = new S3Storage({
+            options: { s3: { bucket: 'test', prefix: 'test-ns' } },
+            s3Client: { send: async command => commands.push(command) }
+        });
+        const body = Buffer.from('payload');
+        const checksum = crypto.createHash('sha256').update(body).digest();
+        const first = await store.put(id, body, body.length, checksum);
+        const second = await store.put(id, body, body.length, checksum);
+        expect(commands).to.have.length(2);
+        for (const command of commands) {
+            expect(command).to.be.instanceOf(PutObjectCommand);
+            expect(command.input.ChecksumSHA256).to.equal(checksum.toString('base64'));
+            expect(command.input.ContentLength).to.equal(body.length);
+            expect(command.input.Body).to.equal(body);
+        }
+        expect(first).to.deep.equal({ bucket: 'test', key: commands[0].input.Key, length: body.length });
+        expect(first.key).to.match(new RegExp(`^test-ns/attachments/v1/ab/ab/${id.toString('hex')}\\.[0-9a-f]{16}$`));
+        expect(second.key).to.not.equal(first.key);
+    });
+
+    for (const [description, commit, removed] of [
+        ['keeps a copy that the catalog now references', async () => true, false],
+        ['removes a copy that commit declined', async () => false, true],
+        [
+            'removes a copy when another writer stored the record first',
+            async () => {
+                throw Object.assign(new Error('E11000 duplicate key'), { code: 11000 });
+            },
+            true
+        ],
+        [
+            'keeps a copy when the outcome of the commit is unknown',
+            async () => {
+                throw new Error('connection reset');
+            },
+            false
+        ]
+    ]) {
+        it(description, async () => {
+            const deleted = [];
+            const store = new S3Storage({
+                options: { s3: { bucket: 'test', prefix: 'test-ns' } },
+                s3Client: {
+                    async send(command) {
+                        if (command instanceof DeleteObjectCommand) {
+                            deleted.push(command.input.Key);
+                        }
+                    }
+                }
+            });
+            const body = Buffer.from('payload');
+            let location;
+            const result = await store
+                .store(id, body, body.length, id, async uploaded => {
+                    location = uploaded;
+                    return await commit();
+                })
+                .catch(err => err);
+            expect(location.key).to.match(/\.[0-9a-f]{16}$/);
+            expect(deleted).to.deep.equal(removed ? [location.key] : []);
+            if (result instanceof Error) {
+                expect(result.message).to.be.oneOf(['E11000 duplicate key', 'connection reset']);
+            } else {
+                expect(result).to.equal(removed ? false : location);
+            }
+        });
+    }
+
+    it('parses only the keys it writes', () => {
+        const store = mockStore(Buffer.alloc(0), []);
+        expect(store.parseKey(store.key(id, '0123456789abcdef')).equals(id)).to.equal(true);
+        for (const key of [
+            store.key(id, '0123'),
+            `other-ns/attachments/v1/ab/ab/${id.toString('hex')}.0123456789abcdef`,
+            `test-ns/attachments/v1/ab/cd/${id.toString('hex')}.0123456789abcdef`,
+            `test-ns/attachments/v1/ab/ab/${id.toString('hex')}`
+        ]) {
+            expect(store.parseKey(key), key).to.equal(null);
+        }
     });
 
     it('preserves the GridFS decoded-base64 representation', () => {
@@ -111,9 +187,19 @@ describe('S3 attachment payloads', () => {
     });
 
     it('reconstructs identical full and partial MIME bytes through S3 and GridFS', async () => {
-        for (const [lineLen, binaryLength] of [[4, 18], [4, 19], [5, 21], [76, 113], [76, 114], [76, 115]]) {
+        for (const [lineLen, binaryLength] of [
+            [4, 18],
+            [4, 19],
+            [5, 21],
+            [76, 113],
+            [76, 114],
+            [76, 115]
+        ]) {
             const binary = Buffer.alloc(binaryLength, 0xab);
-            const encoded = binary.toString('base64').match(new RegExp(`.{1,${lineLen}}`, 'g')).join('\r\n');
+            const encoded = binary
+                .toString('base64')
+                .match(new RegExp(`.{1,${lineLen}}`, 'g'))
+                .join('\r\n');
             const prepared = prepareAttachment(
                 { body: Buffer.from(encoded), transferEncoding: 'base64', lineCount: encoded.split('\r\n').length, magic: 17 },
                 true
@@ -213,61 +299,5 @@ describe('S3 attachment payloads', () => {
         } catch (err) {
             expect(err.name).to.equal('NoSuchKey');
         }
-    });
-
-    it('uses conditional multipart copy above the single-copy limit', async () => {
-        const commands = [];
-        const client = {
-            async send(command) {
-                commands.push(command);
-                if (command instanceof CreateMultipartUploadCommand) {
-                    return { UploadId: 'upload-1' };
-                }
-                if (command instanceof UploadPartCopyCommand) {
-                    return { CopyPartResult: { ETag: `part-${command.input.PartNumber}` } };
-                }
-                return {};
-            }
-        };
-        const store = new S3Storage({ options: { s3: { bucket: 'test', prefix: 'test-ns' } }, s3Client: client });
-        await store.copyStaged('stage', 'destination', 5 * 1024 * 1024 * 1024 + 1, 'checksum');
-        expect(commands[0]).to.be.instanceOf(CreateMultipartUploadCommand);
-        expect(commands.filter(command => command instanceof UploadPartCopyCommand)).to.have.length(11);
-        expect(commands.at(-1)).to.be.instanceOf(CompleteMultipartUploadCommand);
-        expect(commands.at(-1).input.IfNoneMatch).to.equal('*');
-    });
-
-    it('does not overwrite an existing destination during a single copy', async () => {
-        const store = mockStore(Buffer.alloc(0), []);
-        store.client.send = async command => {
-            expect(command).to.be.instanceOf(CopyObjectCommand);
-            expect(command.input.IfNoneMatch).to.equal('*');
-            expect(command.input.CopySource).to.equal('test/staging%20file');
-            throw Object.assign(new Error('PreconditionFailed'), { $metadata: { httpStatusCode: 412 } });
-        };
-        await store.copyStaged('staging file', 'key', 10, 'checksum');
-    });
-
-    it('aborts a multipart copy when copying a part fails', async () => {
-        const store = mockStore(Buffer.alloc(0), []);
-        const commands = [];
-        store.client.send = async command => {
-            commands.push(command);
-            if (command instanceof CreateMultipartUploadCommand) {
-                return { UploadId: 'upload-1' };
-            }
-            if (command instanceof UploadPartCopyCommand) {
-                throw new Error('Part copy failed');
-            }
-            return {};
-        };
-        try {
-            await store.copyStaged('stage', 'key', 5 * 1024 * 1024 * 1024 + 1, 'checksum');
-            throw new Error('Expected copy failure');
-        } catch (err) {
-            expect(err.message).to.equal('Part copy failed');
-        }
-        expect(commands.at(-1)).to.be.instanceOf(AbortMultipartUploadCommand);
-        expect(commands.at(-1).input.UploadId).to.equal('upload-1');
     });
 });

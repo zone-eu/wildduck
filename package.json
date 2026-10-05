@@ -50,7 +50,6 @@
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.1142.0",
-        "@aws-sdk/lib-storage": "^3.1142.0",
         "@fidm/x509": "1.2.1",
         "@modelcontextprotocol/node": "2.1.1",
         "@modelcontextprotocol/server": "2.3.0",

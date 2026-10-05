@@ -6,8 +6,19 @@ const config = require('@zone-eu/wild-config');
 const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
 
-const flagNames = new Set(['migrate', 'dry-run', 'verify-only', 'cleanup-chunks', 'cleanup-staging', 'cleanup-unreferenced-s3', 'yes']);
-const valueNames = new Set(['prefix', 'limit', 'concurrency', 'throttle-ms', 'grace-hours', 'gridfs-bucket', 's3-bucket', 's3-prefix', 's3-endpoint', 'config']);
+const flagNames = new Set(['migrate', 'dry-run', 'verify-only', 'cleanup-chunks', 'cleanup-unreferenced-s3', 'yes']);
+const valueNames = new Set([
+    'prefix',
+    'limit',
+    'concurrency',
+    'throttle-ms',
+    'grace-hours',
+    'gridfs-bucket',
+    's3-bucket',
+    's3-prefix',
+    's3-endpoint',
+    'config'
+]);
 const flags = new Set();
 const values = {};
 let argumentError;
@@ -34,7 +45,7 @@ for (let index = 0; index < args.length; index++) {
         values[name] = value;
     }
 }
-const mode = ['--migrate', '--dry-run', '--verify-only', '--cleanup-chunks', '--cleanup-staging', '--cleanup-unreferenced-s3'].filter(flag => flags.has(flag));
+const mode = ['--migrate', '--dry-run', '--verify-only', '--cleanup-chunks', '--cleanup-unreferenced-s3'].filter(flag => flags.has(flag));
 const limit = Number(values.limit || 0);
 const concurrency = Number(values.concurrency || 2);
 const throttleMs = Number(values['throttle-ms'] || 0);
@@ -50,7 +61,7 @@ const s3Config = {
 if (
     argumentError ||
     mode.length !== 1 ||
-    ((flags.has('--cleanup-chunks') || flags.has('--cleanup-staging') || flags.has('--cleanup-unreferenced-s3')) && !flags.has('--yes')) ||
+    ((flags.has('--cleanup-chunks') || flags.has('--cleanup-unreferenced-s3')) && !flags.has('--yes')) ||
     !Number.isInteger(limit) ||
     limit < 0 ||
     !Number.isInteger(concurrency) ||
@@ -66,12 +77,12 @@ if (
         process.stderr.write(`${argumentError}\n`);
     }
     process.stderr.write(
-        'Usage: node scripts/migrate-attachments-to-s3.js (--dry-run|--migrate|--verify-only|--cleanup-chunks --yes|--cleanup-staging --yes|--cleanup-unreferenced-s3 --yes) [--prefix=0..ffff] [--limit=N] [--concurrency=1..32] [--throttle-ms=N] [--grace-hours=N] [--gridfs-bucket=NAME] [--s3-bucket=NAME --s3-prefix=NAME --s3-endpoint=URL]\n'
+        'Usage: node scripts/migrate-attachments-to-s3.js (--dry-run|--migrate|--verify-only|--cleanup-chunks --yes|--cleanup-unreferenced-s3 --yes) [--prefix=0..ffff] [--limit=N] [--concurrency=1..32] [--throttle-ms=N] [--grace-hours=N] [--gridfs-bucket=NAME] [--s3-bucket=NAME --s3-prefix=NAME --s3-endpoint=URL]\n'
     );
     process.exit(2);
 }
 
-const stats = { scanned: 0, migrated: 0, verified: 0, cleaned: 0, stagedCleaned: 0, unreferencedCleaned: 0, skipped: 0, failed: 0 };
+const stats = { scanned: 0, migrated: 0, verified: 0, cleaned: 0, unreferencedCleaned: 0, skipped: 0, failed: 0 };
 
 async function hashStream(stream) {
     const hash = crypto.createHash('sha256');
@@ -80,7 +91,7 @@ async function hashStream(stream) {
         hash.update(chunk);
         length += chunk.length;
     }
-    return { length, checksum: hash.digest('hex') };
+    return { length, checksum: hash.digest() };
 }
 
 async function main() {
@@ -100,46 +111,6 @@ async function main() {
     const chunks = db.gridfs.collection(`${bucketName}.chunks`);
     const lock = storage.lock;
 
-    if (flags.has('--cleanup-staging')) {
-        const stagePrefix = `${s3.prefix}/attachments/staging/${prefix}`;
-        let continuationToken;
-        do {
-            const page = await s3.client.send(new ListObjectsV2Command({ Bucket: s3.bucket, Prefix: stagePrefix, ContinuationToken: continuationToken }));
-            for (const object of page.Contents || []) {
-                if (limit && stats.scanned >= limit) {
-                    break;
-                }
-                stats.scanned++;
-                const match = new RegExp(`^${s3.prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/attachments/staging/([0-9a-f]{64})/[^/]+$`).exec(object.Key);
-                if (!match || Date.now() - new Date(object.LastModified).getTime() < graceHours * 3600 * 1000) {
-                    stats.skipped++;
-                    continue;
-                }
-                try {
-                    await lock.run(Buffer.from(match[1], 'hex'), async assertOwned => {
-                        const current = await s3.head(object.Key);
-                        if (!current || !current.LastModified || Date.now() - new Date(current.LastModified).getTime() < graceHours * 3600 * 1000) {
-                            stats.skipped++;
-                            return;
-                        }
-                        assertOwned();
-                        await s3.deletePayload({ bucket: s3.bucket, key: object.Key });
-                        stats.stagedCleaned++;
-                    });
-                } catch (err) {
-                    stats.failed++;
-                    process.stderr.write(`${object.Key}: ${err.message}\n`);
-                }
-            }
-            continuationToken = page.IsTruncated && (!limit || stats.scanned < limit) ? page.NextContinuationToken : undefined;
-        } while (continuationToken);
-        process.stdout.write(`${JSON.stringify(stats)}\n`);
-        if (stats.failed) {
-            process.exitCode = 1;
-        }
-        return;
-    }
-
     if (flags.has('--cleanup-unreferenced-s3')) {
         const basePrefix = `${s3.prefix}/attachments/v1/`;
         const listPrefix = prefix.length <= 2 ? `${basePrefix}${prefix}` : `${basePrefix}${prefix.slice(0, 2)}/${prefix.slice(2)}`;
@@ -151,39 +122,25 @@ async function main() {
                     break;
                 }
                 stats.scanned++;
-                const parts = object.Key.startsWith(basePrefix) ? object.Key.slice(basePrefix.length).split('/') : [];
-                const hex = parts[2];
-                if (
-                    parts.length !== 3 ||
-                    !/^[0-9a-f]{64}$/.test(hex) ||
-                    parts[0] !== hex.slice(0, 2) ||
-                    parts[1] !== hex.slice(2, 4) ||
-                    !hex.startsWith(prefix) ||
-                    Date.now() - new Date(object.LastModified).getTime() < graceHours * 3600 * 1000
-                ) {
+                const id = s3.parseKey(object.Key);
+                if (!id || !id.toString('hex').startsWith(prefix) || Date.now() - new Date(object.LastModified).getTime() < graceHours * 3600 * 1000) {
                     stats.skipped++;
                     continue;
                 }
                 try {
-                    await lock.run(Buffer.from(hex, 'hex'), async assertOwned => {
-                        const record = await files.findOne({ _id: Buffer.from(hex, 'hex') }, { projection: { 'metadata.storage': 1 } });
-                        if (
-                            record?.metadata?.storage?.backend === 's3' &&
-                            record.metadata.storage.bucket === s3.bucket &&
-                            record.metadata.storage.key === object.Key
-                        ) {
-                            stats.skipped++;
-                            return;
-                        }
-                        const current = await s3.head(object.Key);
-                        if (!current || !current.LastModified || Date.now() - new Date(current.LastModified).getTime() < graceHours * 3600 * 1000) {
-                            stats.skipped++;
-                            return;
-                        }
-                        assertOwned();
-                        await s3.deletePayload({ bucket: s3.bucket, key: object.Key });
-                        stats.unreferencedCleaned++;
-                    });
+                    // a key is written once, so an object older than the grace period that no record points to
+                    // can not become referenced any more
+                    const record = await files.findOne({ _id: id }, { projection: { 'metadata.storage': 1 } });
+                    if (
+                        record?.metadata?.storage?.backend === 's3' &&
+                        record.metadata.storage.bucket === s3.bucket &&
+                        record.metadata.storage.key === object.Key
+                    ) {
+                        stats.skipped++;
+                        continue;
+                    }
+                    await s3.deletePayload({ bucket: s3.bucket, key: object.Key });
+                    stats.unreferencedCleaned++;
                 } catch (err) {
                     stats.failed++;
                     process.stderr.write(`${object.Key}: ${err.message}\n`);
@@ -245,22 +202,24 @@ async function main() {
                 if (source.length !== current.length) {
                     throw new Error(`GridFS length mismatch for ${hex}`);
                 }
-                if (current.metadata.fileContentHash && Buffer.from(current.metadata.fileContentHash, 'base64').toString('hex') !== source.checksum) {
+                if (current.metadata.fileContentHash && !Buffer.from(current.metadata.fileContentHash, 'base64').equals(source.checksum)) {
                     throw new Error(`GridFS checksum mismatch for ${hex}`);
                 }
-                const location = await s3.publishStream(id, () => bucket.openDownloadStream(id), source.length, source.checksum);
-                await s3.verifyContent(location, source.length, source.checksum);
-                assertOwned();
-                const result = await files.updateOne(
-                    { _id: id, 'metadata.storage.migrationToken': token, 'metadata.storage.backend': 'gridfs' },
-                    {
-                        $set: {
-                            'metadata.storage': { version: 1, backend: 's3', ...location, migratedAt: new Date() },
-                            'metadata.fileContentHash': Buffer.from(source.checksum, 'hex').toString('base64')
+                // the payload is read twice (hash, then upload) so the checksum can go in the request header;
+                // a trailing checksum would need aws-chunked uploads, which not every S3-compatible store accepts
+                const cutover = await s3.store(id, bucket.openDownloadStream(id), source.length, source.checksum, async location => {
+                    const result = await files.updateOne(
+                        { _id: id, 'metadata.storage.migrationToken': token, 'metadata.storage.backend': 'gridfs' },
+                        {
+                            $set: {
+                                'metadata.storage': { version: 1, backend: 's3', ...location, migratedAt: new Date() },
+                                'metadata.fileContentHash': source.checksum.toString('base64')
+                            }
                         }
-                    }
-                );
-                if (!result.matchedCount) {
+                    );
+                    return result.matchedCount > 0;
+                });
+                if (!cutover) {
                     throw new Error(`Migration cutover lost for ${hex}`);
                 }
                 stats.migrated++;
@@ -280,13 +239,13 @@ async function main() {
             const destination = await hashStream((await s3.client.send(new GetObjectCommand({ Bucket: location.bucket, Key: location.key }))).Body);
             if (
                 destination.length !== current.length ||
-                (current.metadata.fileContentHash && destination.checksum !== Buffer.from(current.metadata.fileContentHash, 'base64').toString('hex'))
+                (current.metadata.fileContentHash && !destination.checksum.equals(Buffer.from(current.metadata.fileContentHash, 'base64')))
             ) {
                 throw new Error(`S3 payload mismatch for ${hex}`);
             }
             if (sourceChunk) {
                 const source = await hashStream(bucket.openDownloadStream(id));
-                if (source.length !== destination.length || source.checksum !== destination.checksum) {
+                if (source.length !== destination.length || !source.checksum.equals(destination.checksum)) {
                     throw new Error(`GridFS and S3 differ for ${hex}`);
                 }
             }
@@ -300,7 +259,7 @@ async function main() {
                 assertOwned();
                 if (!current.metadata.fileContentHash) {
                     // Retain the checksum established against GridFS before removing that verification source.
-                    await files.updateOne({ _id: id }, { $set: { 'metadata.fileContentHash': Buffer.from(destination.checksum, 'hex').toString('base64') } });
+                    await files.updateOne({ _id: id }, { $set: { 'metadata.fileContentHash': destination.checksum.toString('base64') } });
                     assertOwned();
                 }
                 await chunks.deleteMany({ files_id: id });
