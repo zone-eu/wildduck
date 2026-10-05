@@ -10,11 +10,19 @@ bucket="attachments"
 decodeBase64=true
 
 # Required when type="s3", and on all readers if S3-backed attachments exist.
-# Credentials use the AWS SDK default credential provider chain.
+# Without accessKeyId and secretAccessKey, credentials come from the AWS SDK
+# default credential provider chain (environment, shared config, instance roles).
 # [s3]
 # bucket="wildduck-attachments"
 # prefix="production"
 # region="us-east-1"
 # endpoint="https://s3.example.com" # optional for S3-compatible storage
 # forcePathStyle=false
+# accessKeyId=""
+# secretAccessKey=""
+# sessionToken=""
 # maxAttempts=3
+# connectionTimeout=5000 # ms to establish a connection
+# requestTimeout=30000 # ms until the response headers; an upload also gets 2 s per MB of its size
+# readTimeout=30000 # ms a read waits for S3 to send more data (0 disables)
+# maxSockets=50 # per process, the SDK default is 50

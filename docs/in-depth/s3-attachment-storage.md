@@ -17,10 +17,16 @@ prefix="your-stable-installation-name"
 region="us-east-1"
 # endpoint="https://s3.example.com"
 # forcePathStyle=true
+# accessKeyId="..."      # MinIO, Ceph, Garage; otherwise the AWS default credential chain
+# secretAccessKey="..."
 # maxAttempts=3
+# connectionTimeout=5000 # ms
+# requestTimeout=30000   # ms until the response headers; an upload also gets 2 s per MB of its size
+# readTimeout=30000      # ms a read waits for S3 to send more data
+# maxSockets=50
 ```
 
-`prefix` must be unique for installations sharing a bucket and must not change after objects have been written. WildDuck stores the bucket and key in each `attachments.files` record, but a stable prefix makes retries and maintenance predictable. Credentials come from the AWS SDK's default credential provider chain. Give the process `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the configured prefix, plus `s3:ListBucket` for the migration script's cleanup mode. Keep the bucket private.
+`prefix` must be unique for installations sharing a bucket and must not change after objects have been written. WildDuck stores the bucket and key in each `attachments.files` record, but a stable prefix makes retries and maintenance predictable. Credentials come from `accessKeyId` and `secretAccessKey` (and optionally `sessionToken`) when set, otherwise from the AWS SDK's default credential provider chain. Every request has a connection and a request timeout, an upload gets 2 seconds per megabyte on top of the request timeout (a minimum rate of 512 KB/s), and a read fails when S3 sends nothing for `readTimeout` while the reader is waiting for data (a slow IMAP client is not mistaken for a stalled S3). So a stalled S3 connection fails the request, and a new attachment falls back to GridFS, instead of hanging a delivery or a FETCH. Give the process `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the configured prefix, plus `s3:ListBucket` for the migration script's cleanup mode. Keep the bucket private.
 
 A new payload is uploaded with a single `PutObject` request that carries the SHA-256 of the stored bytes in `x-amz-checksum-sha256`. S3 rejects the upload with `BadDigest` when the received bytes do not match, so the object is never read back for verification. The provider must verify that header; AWS S3 and MinIO do. Moto, used by the test suite, accepts it without checking.
 
@@ -30,7 +36,7 @@ The object key is `<prefix>/attachments/v1/<first-hash-byte>/<second-hash-byte>/
 
 ## Rollout and migration
 
-Deploy backend-aware code to every API, IMAP, POP3, LMTP, and task process before changing `type` to `s3`. Mixed mode is automatic: an existing GridFS hash is reused even when new hashes go to S3. For large datasets, start migration with a short hash prefix or limit, then expand. The migration uses the configured `db.gridfs`, which may be separate from the main MongoDB database.
+Deploy backend-aware code to every API, IMAP, POP3, LMTP, and task process before changing `type` to `s3`. This includes the processes that use WildDuck as a library: `haraka-plugin-wildduck` rebuilds stored messages when it forwards mail, and `zonemta-wildduck` stores sent copies, so both need this WildDuck version and the same `s3` settings in the `attachments` block of their own configuration (`wildduck.yaml` for Haraka) before the first S3 record exists. Mixed mode is automatic: an existing GridFS hash is reused even when new hashes go to S3. For large datasets, start migration with a short hash prefix or limit, then expand. The migration uses the configured `db.gridfs`, which may be separate from the main MongoDB database.
 
 ```bash
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --dry-run --prefix=00 --limit=100
