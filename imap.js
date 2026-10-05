@@ -66,6 +66,7 @@ let createInterface = (ifaceOptions, callback) => {
     const maxLineLength = 'maxLineLength' in ifaceOptions ? ifaceOptions.maxLineLength : config.imap.maxLineLength;
     const maxCompressionInflateBytes =
         'maxCompressionInflateBytes' in ifaceOptions ? ifaceOptions.maxCompressionInflateBytes : config.imap.maxCompressionInflateBytes;
+    const maxLiterals = 'maxLiterals' in ifaceOptions ? ifaceOptions.maxLiterals : config.imap.maxLiterals;
 
     // Setup server
     const serverOptions = {
@@ -93,6 +94,7 @@ let createInterface = (ifaceOptions, callback) => {
         preAuthSocketTimeout: 'preAuthSocketTimeout' in ifaceOptions ? ifaceOptions.preAuthSocketTimeout : config.imap.preAuthSocketTimeout,
         maxLineLength,
         maxCompressionInflateBytes,
+        maxLiterals,
         settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,
