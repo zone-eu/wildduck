@@ -157,8 +157,8 @@ describe('Attachment garbage collection', function () {
             }
 
             // an attachment that lost its last reference a day ago, uploaded at least that long ago
-            async function orphan(body) {
-                let id = await create(body, 3);
+            async function orphan(body, target = storage) {
+                let id = await create(body, 3, target);
                 await storage.deleteAsync(id, 3);
                 await files.updateOne({ _id: id }, { $set: { 'metadata.cu': new Date(Date.now() - DAY - 1000) } });
                 await ageChunks(chunks, id, new Date(Date.now() - DAY));
@@ -175,6 +175,21 @@ describe('Attachment garbage collection', function () {
             async function read(id) {
                 return (await collect(storage.createReadStream(id, await storage.get(id)))).toString();
             }
+
+            it('collects GridFS orphans in a process without S3 settings while S3 orphans are older', async function () {
+                let noS3 = new AttachmentStorage({ gridfs: db.gridfs, redis: db.redis, options: { type: 'gridstore', bucket } });
+                // more S3 orphans than one pass looks at, all older than the GridFS one
+                await files.insertMany(
+                    Array.from({ length: 1001 }, (unused, i) => ({
+                        _id: crypto.createHash('sha256').update(`s3 orphan ${i}`).digest(),
+                        length: 1,
+                        metadata: { c: 0, m: 0, cu: new Date(0), storage: { version: 1, backend: 's3', bucket: 'b', key: `k${i}`, length: 1 } }
+                    }))
+                );
+                let file = await orphan('gridfs orphan', noS3);
+                expect(await noS3.deleteOrphanedAsync()).to.equal(1);
+                expect(await files.countDocuments({ _id: file._id })).to.equal(0);
+            });
 
             it('collects an old orphan and its payload', async function () {
                 let file = await orphan('collect me');
@@ -503,6 +518,70 @@ describe('Attachment garbage collection', function () {
                     // one record is gone with a tombstone for its object, the other one was not touched
                     expect(await files.countDocuments({ _id: { $in: [first._id, second._id] } })).to.equal(1);
                     expect(await db.gridfs.collection(`${bucket}.trash`).countDocuments()).to.equal(1);
+                });
+
+                it('keeps collecting when S3 refuses to delete one object', async function () {
+                    let refused = await orphan('refused delete');
+                    let collectable = await orphan('collectable');
+                    let deletePayload = storage.s3.deletePayload.bind(storage.s3);
+                    storage.s3.deletePayload = async location => {
+                        if (location.key === refused.metadata.storage.key) {
+                            throw Object.assign(new Error('Access Denied'), { name: 'AccessDenied', $metadata: { httpStatusCode: 403 } });
+                        }
+                        return await deletePayload(location);
+                    };
+                    let trash = db.gridfs.collection(`${bucket}.trash`);
+                    // the refused one keeps failing pass after pass without holding up anything else, one refusal
+                    // does not stop the pass
+                    for (let pass = 0; pass < 3; pass++) {
+                        await storage.deleteOrphanedAsync();
+                        await ageTombstones(trash);
+                    }
+                    expect(await objectExists(s3Client, s3Bucket, collectable.metadata.storage.key)).to.be.false;
+                    expect(await files.countDocuments({ _id: collectable._id })).to.equal(0);
+                    expect(await trash.countDocuments({ key: refused.metadata.storage.key })).to.equal(1);
+                });
+
+                it('leaves S3 alone for the rest of a pass when deletes keep being refused', async function () {
+                    for (let i = 0; i < 5; i++) {
+                        await orphan(`refused ${i}`);
+                    }
+                    let attempts = 0;
+                    storage.s3.deletePayload = async () => {
+                        attempts++;
+                        throw Object.assign(new Error('Access Denied'), { name: 'AccessDenied', $metadata: { httpStatusCode: 403 } });
+                    };
+                    await storage.deleteOrphanedAsync();
+                    expect(attempts).to.equal(3);
+                });
+
+                it('treats an object in a bucket that no longer exists as deleted', async function () {
+                    let file = await orphan('bucket gone');
+                    storage.s3.deletePayload = async () => {
+                        throw Object.assign(new Error('The specified bucket does not exist'), { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } });
+                    };
+                    expect(await storage.deleteOrphanedAsync()).to.equal(1);
+                    expect(await db.gridfs.collection(`${bucket}.trash`).countDocuments()).to.equal(0);
+                    expect(await files.countDocuments({ _id: file._id })).to.equal(0);
+                });
+
+                it('deletes GridFS chunks left behind when the attachment comes back as an S3 record', async function () {
+                    let gridfsWriter = new AttachmentStorage({ gridfs: db.gridfs, redis: db.redis, options: { type: 'gridstore', bucket } });
+                    let id = await create('moved to s3', 3, gridfsWriter);
+                    await gridfsWriter.deleteAsync(id, 3);
+                    await files.updateOne({ _id: id }, { $set: { 'metadata.cu': new Date(Date.now() - DAY - 1000) } });
+                    await ageChunks(chunks, id, new Date(Date.now() - DAY));
+                    // the collection stops after removing the record, then the attachment arrives again and goes to S3
+                    storage.releasePayload = async () => {
+                        throw new Error('process stopped');
+                    };
+                    await storage.deleteOrphanedAsync();
+                    delete storage.releasePayload;
+                    await create('moved to s3', 4);
+                    await ageTombstones(db.gridfs.collection(`${bucket}.trash`));
+                    await storage.deleteOrphanedAsync();
+                    expect(await chunks.countDocuments({ files_id: id })).to.equal(0);
+                    expect(await read(id)).to.equal('moved to s3');
                 });
 
                 it('keeps the object when the collection stopped before removing the record', async function () {
