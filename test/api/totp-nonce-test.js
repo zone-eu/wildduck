@@ -14,6 +14,7 @@ chai.config.includeStack = true;
 
 const authRoutes = require('../../lib/api/auth');
 const webauthnRoutes = require('../../lib/api/2fa/webauthn');
+const totpRoutes = require('../../lib/api/2fa/totp');
 const UserHandler = require('../../lib/user-handler');
 
 function getAuthenticateRoute(userHandler, mcpTokenHandler) {
@@ -148,7 +149,8 @@ describe('Authenticate Strict 2FA Handling', function () {
                 {
                     methods: ['totp'],
                     tokenRequested: true,
-                    tokenScope: 'master'
+                    tokenScope: 'master',
+                    passwordChangeRequired: false
                 }
             ]
         ]);
@@ -258,7 +260,7 @@ describe('Authenticate Strict 2FA Handling', function () {
         expect(res.statusCode).to.equal(200);
         expect(res.body.token).to.not.exist;
         expect(res.body.totpNonce).to.equal(twoFactorNonce);
-        expect(pendingData).to.deep.equal({ methods: ['totp'], tokenRequested: true, tokenScope: 'mcp' });
+        expect(pendingData).to.deep.equal({ methods: ['totp'], tokenRequested: true, tokenScope: 'mcp', passwordChangeRequired: false });
     });
 
     it('should return a token and standalone TOTP nonce when strict2fa is disabled', async () => {
@@ -1128,5 +1130,95 @@ describe('Pending 2FA Nonce Handling', function () {
         expect(err).to.exist;
         expect(err.code).to.equal('Invalid2faNonce');
         expect(calls).to.deep.equal(['assertionResult', 'consumePending']);
+    });
+});
+
+describe('Temporary Password With Pending 2FA', function () {
+    this.timeout(10000); // eslint-disable-line no-invalid-this
+
+    it('should carry the pending password change through the 2FA nonce', async () => {
+        const user = new ObjectId();
+        const twoFactorNonce = crypto.randomBytes(20).toString('hex');
+        let storedData;
+
+        const handler = {
+            redis: {
+                multi() {
+                    return {
+                        hmset(key, data) {
+                            storedData = data;
+                            return this;
+                        },
+                        expire() {
+                            return this;
+                        },
+                        exec: async () => []
+                    };
+                },
+                eval: async () => [1, 5 * 60 * 1000].concat(...Object.entries(storedData))
+            }
+        };
+
+        await UserHandler.prototype.generatePending2faNonce.call(handler, user, {
+            methods: ['totp'],
+            tokenRequested: true,
+            passwordChangeRequired: true
+        });
+        expect(storedData.passwordChangeRequired).to.equal('true');
+
+        const pending2faAuth = await UserHandler.prototype.consumePending2faAuth.call(handler, user, twoFactorNonce, 'totp', {
+            code: 'InvalidTotpNonce'
+        });
+        expect(pending2faAuth.passwordChangeRequired).to.be.true;
+    });
+
+    it('should keep the pending password change on the token issued after TOTP', async () => {
+        const user = new ObjectId();
+        let tokenOptions;
+
+        const routes = [];
+        const server = {
+            post(spec, handler) {
+                routes.push({ spec, handler });
+            },
+            del() {},
+            get() {}
+        };
+        totpRoutes({}, server, {
+            checkTotp: async () => ({
+                pending2fa: {
+                    tokenRequested: true,
+                    tokenScope: 'master',
+                    passwordChangeRequired: true
+                }
+            }),
+            generateAuthToken: async (authUser, options) => {
+                tokenOptions = options;
+                return crypto.randomBytes(20).toString('hex');
+            }
+        });
+        const route = routes.find(route => route.spec.name === 'validateTOTPToken');
+
+        const res = getResponse();
+        await route.handler(
+            {
+                method: 'POST',
+                url: `/users/${user}/2fa/totp/check`,
+                route: { spec: route.spec },
+                params: {
+                    user: user.toString(),
+                    token: '123456',
+                    totpNonce: crypto.randomBytes(20).toString('hex')
+                },
+                role: 'root',
+                validate: assertGranted
+            },
+            res
+        );
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.exist;
+        expect(tokenOptions.mfaVerified).to.be.true;
+        expect(tokenOptions.passwordChangeRequired).to.be.true;
     });
 });

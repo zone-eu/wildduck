@@ -188,13 +188,13 @@ Mail content is untrusted data. The server instructions tell clients not to foll
 
 ## Limits
 
-| Limit                              | Constant                                | Default     |
-| ---------------------------------- | --------------------------------------- | ----------- |
-| Failed authentications per address | `MCP_AUTH_FAILURES` / `MCP_AUTH_WINDOW` | 30 per 120s |
-| Tool calls per token               | `MCP_TOOL_CALLS` / `MCP_TOOL_WINDOW`    | 600 per 60s |
-| List and search page size          | `MCP_MAX_RESULTS`                       | 50          |
-| Body characters per call           | `MCP_MAX_BODY_CHARS`                    | 50000       |
-| Persistent personal tokens per user | `MAX_MCP_TOKEN_COUNT`                 | 50          |
+| Limit                               | Constant                                | Default     |
+| ----------------------------------- | --------------------------------------- | ----------- |
+| Failed authentications per address  | `MCP_AUTH_FAILURES` / `MCP_AUTH_WINDOW` | 30 per 120s |
+| Tool calls per token                | `MCP_TOOL_CALLS` / `MCP_TOOL_WINDOW`    | 600 per 60s |
+| List and search page size           | `MCP_MAX_RESULTS`                       | 50          |
+| Body characters per call            | `MCP_MAX_BODY_CHARS`                    | 50000       |
+| Persistent personal tokens per user | `MAX_MCP_TOKEN_COUNT`                   | 50          |
 
 Only failed authentications are counted, so a working client never approaches that limit.
 

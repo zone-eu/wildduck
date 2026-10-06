@@ -450,7 +450,6 @@ server.use(async (req, res) => {
             }
         } else {
             req.accessToken = {
-                mcp: true,
                 revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
             };
         }
@@ -518,32 +517,25 @@ server.use(async (req, res) => {
 
                     // check if token is not too old
                     if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
-                        let assuranceRecorded =
-                            'mfaRequired' in tokenData && 'mfaVerified' in tokenData && 'passwordChangeRequired' in tokenData;
+                        let assuranceRecorded = 'mfaRequired' in tokenData && 'mfaVerified' in tokenData && 'passwordChangeRequired' in tokenData;
+                        let mfaRequired = assuranceRecorded && tokenData.mfaRequired === 'true';
                         let mfaVerified = assuranceRecorded && tokenData.mfaVerified === 'true';
-                        if (assuranceRecorded && tokenData.mfaRequired === 'true' && !mfaVerified) {
+                        // set when a later 2FA completion verified this token through the side key
+                        let mfaProofVerified = false;
+                        if (mfaRequired && !mfaVerified) {
                             try {
                                 let proof = await db.redis.get('tn:token:mfa:' + tokenHash);
-                                let expectedProof = crypto
-                                    .createHmac('sha256', config.api.accessControl.secret)
-                                    .update(
-                                        JSON.stringify({
-                                            tokenHash,
-                                            user: tokenData.user,
-                                            authVersion: tokenData.authVersion
-                                        })
-                                    )
-                                    .digest('hex');
-                                mfaVerified = proof === expectedProof;
+                                mfaProofVerified = proof === userHandler.getAuthTokenMfaProof(tokenHash, tokenData.user, tokenData.authVersion);
                             } catch (err) {
-                                mfaVerified = false;
+                                // treat as unverified
                             }
+                            mfaVerified = mfaProofVerified;
                         }
 
                         // token is still usable, increase session length
                         try {
                             let refresh = db.redis.multi().expire('tn:token:' + tokenHash, tokenTTL);
-                            if (mfaVerified && tokenData.mfaRequired === 'true' && tokenData.mfaVerified !== 'true') {
+                            if (mfaProofVerified) {
                                 refresh.expire('tn:token:mfa:' + tokenHash, tokenTTL);
                             }
                             await refresh.exec();
@@ -561,13 +553,13 @@ server.use(async (req, res) => {
                             user: tokenData.user,
                             authVersion: tokenData.authVersion,
                             assuranceRecorded,
-                            mfaRequired: assuranceRecorded && tokenData.mfaRequired === 'true',
+                            mfaRequired,
                             mfaVerified,
                             passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
                             // if called then refreshes token data for current hash
                             update: async () =>
                                 setAuthToken(tokenData.user, accessToken, {
-                                    mfaRequired: assuranceRecorded && tokenData.mfaRequired === 'true',
+                                    mfaRequired,
                                     mfaVerified,
                                     passwordChangeRequired: false
                                 })

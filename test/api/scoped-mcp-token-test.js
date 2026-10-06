@@ -46,10 +46,7 @@ async function createAccount(username, password) {
 }
 
 async function loginMaster(account) {
-    const response = await server
-        .post('/authenticate')
-        .send({ username: account.username, password: account.password, token: true })
-        .expect(200);
+    const response = await server.post('/authenticate').send({ username: account.username, password: account.password, token: true }).expect(200);
     expect(response.body.success).to.be.true;
     return response.body;
 }
@@ -159,7 +156,10 @@ describe('Scoped MCP token exchange', function () {
     it('should POST /authenticate/mcp expect failure with a pre-deployment master token', async () => {
         const profile = await db.users.collection('users').findOne({ _id: new ObjectId(account.id) });
         const legacy = legacyMasterToken(account.id, Number(profile.authVersion) || 0);
-        await db.redis.multi().hmset('tn:token:' + crypto.createHash('sha256').update(legacy.token).digest('hex'), legacy.data).exec();
+        await db.redis
+            .multi()
+            .hmset('tn:token:' + crypto.createHash('sha256').update(legacy.token).digest('hex'), legacy.data)
+            .exec();
 
         // the old token still works for ordinary API calls...
         await server.get('/users/me').set('Authorization', `Bearer ${legacy.token}`).expect(200);
