@@ -23,6 +23,8 @@ label, including labels without messages. `?counters=true` adds `total` and
 an IMAP client to resolve an ID seen in a flag. `PUT /users/:user/labels/:label`
 updates the name or metadata without changing the ID. `DELETE` on that route
 schedules removal of that label alone and its message and filter assignments.
+Deletion sends per-message flag updates to connected clients. Label names are
+matched exactly by REST search, including leading and trailing whitespace.
 
 IMAP `FETCH FLAGS` represents an assigned label as `$wdlabel$` followed by its
 24-character lowercase ObjectId. For example, `$wdlabel$507f1f77bcf86cd799439011`.

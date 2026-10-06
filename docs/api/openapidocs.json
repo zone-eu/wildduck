@@ -3895,7 +3895,7 @@
                     {
                         "name": "label",
                         "in": "query",
-                        "description": "If set, then matches only messages that have this custom label set",
+                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace",
                         "required": false,
                         "schema": {
                             "type": "string"
@@ -4151,7 +4151,7 @@
                                     },
                                     "label": {
                                         "type": "string",
-                                        "description": "If set, then matches only messages that have this custom label set"
+                                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
                                     },
                                     "useAndSearch": {
                                         "type": "boolean",
