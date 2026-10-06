@@ -6,6 +6,8 @@
     "scripts": {
         "test": "mongosh --eval 'db.dropDatabase()' wildduck-test && redis-cli -n 13 flushdb && npm run runtest",
         "test:proto": "NODE_ENV=test grunt proto",
+        "test:attachments": "NODE_ENV=test mocha --exit test/attachment-*-test.js test/on-copy-uid-shift-test.js imap-core/test/attachment-codec-test.js",
+        "test:attachments-coverage": "NODE_ENV=test c8 --reporter=text --include lib/attachment-storage.js --include 'lib/attachments/**' --include scripts/migrate-attachments-to-s3.js mocha --exit --reporter dot test/attachment-*-test.js test/on-copy-uid-shift-test.js imap-core/test/attachment-codec-test.js",
         "test:indexer": "NODE_ENV=test mocha --exit --reporter dot imap-core/test/attachment-codec-test.js imap-core/test/parse-mime-tree-test.js imap-core/test/parse-mime-tree-v2-test.js imap-core/test/indexer-*-test.js imap-core/test/body-structure-test.js imap-core/test/create-envelope-test.js imap-core/test/get-contents-test.js imap-core/test/get-query-response-test.js imap-core/test/imap-indexer-test.js",
         "test:indexer-coverage": "NODE_ENV=test c8 --reporter=text --include 'imap-core/lib/indexer/**' --include 'lib/attachments/**' --include imap-core/lib/length-limiter.js mocha --exit --reporter dot imap-core/test/attachment-codec-test.js imap-core/test/parse-mime-tree-test.js imap-core/test/parse-mime-tree-v2-test.js imap-core/test/indexer-*-test.js imap-core/test/body-structure-test.js imap-core/test/create-envelope-test.js imap-core/test/get-contents-test.js imap-core/test/get-query-response-test.js imap-core/test/imap-indexer-test.js",
         "test:mutation": "node imap-core/test/mutation/run.js",
@@ -48,6 +50,7 @@
         "supertest": "7.3.1"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.1142.0",
         "@fidm/x509": "1.2.1",
         "@modelcontextprotocol/node": "2.1.1",
         "@modelcontextprotocol/server": "2.3.0",

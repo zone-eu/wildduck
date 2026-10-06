@@ -1,0 +1,335 @@
+/* eslint no-invalid-this: 0, no-unused-expressions: 0 */
+/* global before, after */
+'use strict';
+
+const { expect } = require('chai');
+const crypto = require('crypto');
+const path = require('path');
+const http = require('http');
+const fs = require('fs').promises;
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { HeadObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const AttachmentStorage = require('../lib/attachment-storage');
+const { S3TestEnvironment, collect } = require('./attachment-s3-helpers');
+
+const execFileAsync = promisify(execFile);
+const script = path.resolve(__dirname, '../scripts/migrate-attachments-to-s3.js');
+const endpoint = process.env.S3_TEST_ENDPOINT;
+
+async function failure(operation, code) {
+    let error;
+    try {
+        await operation;
+    } catch (err) {
+        error = err;
+    }
+    expect(error, 'Expected the command to fail').to.exist;
+    expect(error.code).to.equal(code);
+    return error;
+}
+
+describe('S3 migration CLI arguments', function () {
+    this.timeout(10000);
+
+    for (const args of [
+        ['--dry-run', '--prefx=aa'],
+        ['--dry-run', 'aa'],
+        ['--dry-run', '--prefix'],
+        ['--dry-run', '--prefix', '--limit=1'],
+        ['--dry-run', '--prefix='],
+        ['--dry-run', '--limit='],
+        ['--dry-run', '--prefix=aa', '--prefix=bb'],
+        ['--dry-run', '--limit=1', '--limit', '2'],
+        ['--dry-run=true'],
+        ['--cleanup-chunks', '--yes=false'],
+        ['--cleanup-chunks'],
+        ['--migrate', '--verify-only'],
+        ['--dry-run', '--batch=0']
+    ]) {
+        it(`rejects ${args.join(' ')} before connecting to storage`, async () => {
+            const error = await failure(execFileAsync(process.execPath, [script, ...args], { timeout: 5000 }), 2);
+            expect(error.stderr).to.include('Usage:');
+        });
+    }
+});
+
+describe('S3 migration without S3 settings', function () {
+    this.timeout(10000);
+
+    it('refuses to run', async () => {
+        const error = await failure(execFileAsync(process.execPath, [script, '--dry-run'], { env: { ...process.env, NODE_ENV: 'test' }, timeout: 8000 }), 1);
+        expect(error.stderr).to.include('Configure attachments.s3.bucket');
+    });
+});
+
+(endpoint ? describe : describe.skip)('S3 migration safeguards (Moto)', function () {
+    this.timeout(30000);
+    let environment;
+    let fixture;
+    let storage;
+    let files;
+    let chunks;
+    let collectionName;
+    let id;
+    let encoded;
+    let sequence = 0;
+
+    before(async () => {
+        environment = new S3TestEnvironment(endpoint);
+        await environment.start();
+        fixture = await environment.createServer('gridstore');
+    });
+
+    after(async () => {
+        await environment?.close();
+    });
+
+    beforeEach(async () => {
+        collectionName = `migration_${++sequence}`;
+        storage = new AttachmentStorage({
+            gridfs: fixture.database,
+            redis: environment.redis,
+            s3Client: environment.client,
+            options: { ...fixture.storage.options.options, bucket: collectionName }
+        });
+        files = fixture.database.collection(`${collectionName}.files`);
+        chunks = fixture.database.collection(`${collectionName}.chunks`);
+        encoded = Buffer.from(
+            crypto
+                .randomBytes(123)
+                .toString('base64')
+                .match(/.{1,76}/g)
+                .join('\r\n')
+        );
+        id = await new Promise((resolve, reject) =>
+            storage.create({ body: encoded, transferEncoding: 'base64', lineCount: 3, contentType: 'application/octet-stream', magic: 41 }, (err, createdId) =>
+                err ? reject(err) : resolve(createdId)
+            )
+        );
+    });
+
+    async function run(args, expectedCode = 0) {
+        const operation = execFileAsync(process.execPath, [script, `--gridfs-bucket=${collectionName}`, `--config=${fixture.configPath}`, ...args], {
+            env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1' },
+            timeout: 20000
+        });
+        const result = expectedCode ? await failure(operation, expectedCode) : await operation;
+        return { ...result, stats: JSON.parse(result.stdout.trim().split('\n').pop()) };
+    }
+
+    async function migrate() {
+        expect((await run(['--migrate'])).stats.migrated).to.equal(1);
+        return await files.findOne({ _id: id });
+    }
+
+    it('honors space-separated cleanup prefixes and leaves other shards intact', async () => {
+        const selected = Buffer.alloc(32, 0xaa);
+        const excluded = Buffer.alloc(32, 0xbb);
+        for (const hash of [selected, excluded]) {
+            await environment.client.send(
+                new PutObjectCommand({ Bucket: environment.bucket, Key: storage.s3.key(hash, '0123456789abcdef'), Body: Buffer.from('orphan') })
+            );
+        }
+        const result = await run(['--cleanup-unreferenced-s3', '--yes', '--prefix', 'aa', '--grace-hours', '0', '--limit', '1']);
+        expect(result.stats.unreferencedCleaned).to.equal(1);
+        const error = await failure(
+            environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: storage.s3.key(selected, '0123456789abcdef') })),
+            undefined
+        );
+        expect(error.$metadata.httpStatusCode).to.equal(404);
+        expect(
+            (await environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: storage.s3.key(excluded, '0123456789abcdef') })))
+                .ContentLength
+        ).to.equal(6);
+    });
+
+    it('changes nothing in a dry run', async () => {
+        const before = await files.findOne({ _id: id });
+        const result = await run(['--dry-run', '--throttle-ms=1']);
+        expect(result.stats).to.include({ scanned: 1, skipped: 1, migrated: 0 });
+        expect(await files.findOne({ _id: id })).to.deep.equal(before);
+    });
+
+    it('refuses a record with an unknown backend and GridFS copies that do not match their record', async () => {
+        const original = await files.findOne({ _id: id });
+        for (const [change, message] of [
+            [{ 'metadata.storage': { backend: 'tape' } }, 'Unknown source backend'],
+            // the driver notices a wrong length before the script does
+            [{ length: original.length + 1, 'metadata.storage': { backend: 'gridfs' } }, 'ChunkIsWrongSize'],
+            [{ length: original.length, 'metadata.fileContentHash': crypto.randomBytes(32).toString('base64') }, 'GridFS checksum mismatch']
+        ]) {
+            await files.updateOne({ _id: id }, { $set: change });
+            const result = await run(['--migrate'], 1);
+            expect(result.stderr, result.stderr).to.include(message);
+            expect(result.stats.migrated).to.equal(0);
+            expect((await files.findOne({ _id: id })).metadata.storage.backend).to.not.equal('s3');
+        }
+    });
+
+    it('skips young, referenced and foreign objects when removing unreferenced ones', async () => {
+        const file = await migrate();
+        const foreign = `${storage.s3.prefix}/attachments/v1/aa/aa/not-an-attachment`;
+        const young = storage.s3.key(Buffer.alloc(32, 0xaa), '0123456789abcdef');
+        for (const key of [foreign, young]) {
+            await environment.client.send(new PutObjectCommand({ Bucket: environment.bucket, Key: key, Body: Buffer.from('x') }));
+        }
+        const exists = async key => {
+            try {
+                await environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: key }));
+                return true;
+            } catch (err) {
+                return false;
+            }
+        };
+        // with an hour of grace the new unreferenced object stays
+        await run(['--cleanup-unreferenced-s3', '--yes', '--grace-hours=1']);
+        expect(await exists(young)).to.equal(true);
+        // without it, it goes; the referenced copy and a key that is not an attachment copy stay
+        await run(['--cleanup-unreferenced-s3', '--yes', '--grace-hours=0']);
+        expect(await exists(young)).to.equal(false);
+        expect(await exists(file.metadata.storage.key)).to.equal(true);
+        expect(await exists(foreign)).to.equal(true);
+    });
+
+    it('fails verification of an object whose body stops arriving instead of hanging', async () => {
+        const file = await migrate();
+        // an S3 endpoint that sends the headers of every object and then nothing more
+        const stalled = http.createServer((req, res) => {
+            req.resume();
+            res.writeHead(200, { 'Content-Length': file.length });
+            res.write('x');
+        });
+        await new Promise(resolve => stalled.listen(0, '127.0.0.1', resolve));
+        const configPath = `${fixture.configPath}.stalled.json`;
+        const settings = JSON.parse(await fs.readFile(fixture.configPath, 'utf8'));
+        settings.attachments.s3.readTimeout = 500;
+        await fs.writeFile(configPath, JSON.stringify(settings));
+        try {
+            const started = Date.now();
+            const error = await failure(
+                execFileAsync(
+                    process.execPath,
+                    [
+                        script,
+                        `--gridfs-bucket=${collectionName}`,
+                        `--config=${configPath}`,
+                        '--verify-only',
+                        `--s3-endpoint=http://127.0.0.1:${stalled.address().port}`
+                    ],
+                    {
+                        env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1' },
+                        timeout: 20000
+                    }
+                ),
+                1
+            );
+            expect(error.stderr).to.include('S3 sent no data');
+            expect(Date.now() - started).to.be.below(15000);
+        } finally {
+            stalled.closeAllConnections();
+            await new Promise(resolve => stalled.close(resolve));
+            await fs.unlink(configPath);
+        }
+    });
+
+    it('works through the store in pages of the given size', async () => {
+        for (let i = 0; i < 4; i++) {
+            await new Promise((resolve, reject) =>
+                storage.create({ body: Buffer.from(`paged attachment ${i}`), transferEncoding: '7bit', contentType: 'text/plain', magic: 41 }, err =>
+                    err ? reject(err) : resolve()
+                )
+            );
+        }
+        const result = await run(['--migrate', '--batch', '2']);
+        expect(result.stats.scanned).to.equal(5);
+        expect(result.stats.migrated).to.equal(5);
+        expect(await files.countDocuments({ 'metadata.storage.backend': 's3' })).to.equal(5);
+        expect((await run(['--verify-only', '--batch=3'])).stats.verified).to.equal(5);
+        // a limit that ends on a page boundary stops there
+        expect((await run(['--verify-only', '--batch=2', '--limit=4'])).stats.scanned).to.equal(4);
+    });
+
+    it('honors space-separated migration options, preserves counters and remains verifiable after cleanup', async () => {
+        const before = await files.findOne({ _id: id });
+        const result = await run(['--migrate', '--prefix', id.toString('hex').slice(0, 4), '--concurrency', '1', '--limit', '1']);
+        expect(result.stats.migrated).to.equal(1);
+        const after = await files.findOne({ _id: id });
+        expect(after.metadata.c).to.equal(before.metadata.c);
+        expect(after.metadata.m).to.equal(before.metadata.m);
+        expect((await collect(storage.createReadStream(id, await storage.get(id)))).equals(encoded)).to.equal(true);
+        expect((await run(['--cleanup-chunks', '--yes', '--grace-hours=0'])).stats.cleaned).to.equal(1);
+        expect((await run(['--verify-only'])).stats.verified).to.equal(1);
+    });
+
+    for (const [field, value, message] of [
+        ['length', -1, 'Invalid attachment storage metadata'],
+        ['length', 124, 'S3 attachment metadata length mismatch'],
+        ['version', 2, 'Invalid attachment storage metadata'],
+        ['bucket', '', 'Invalid attachment storage metadata'],
+        ['key', '', 'Invalid attachment storage metadata']
+    ]) {
+        it(`rejects locator ${field}=${JSON.stringify(value)} during verification and retains GridFS chunks during cleanup`, async () => {
+            await migrate();
+            await files.updateOne({ _id: id }, { $set: { [`metadata.storage.${field}`]: value } });
+            for (const args of [['--verify-only'], ['--cleanup-chunks', '--yes', '--grace-hours=0']]) {
+                const result = await run(args, 1);
+                expect(result.stderr).to.include(message);
+                expect(result.stats.failed).to.equal(1);
+                expect(result.stats.verified).to.equal(0);
+                expect(result.stats.cleaned).to.equal(0);
+                expect(await chunks.countDocuments({ files_id: id })).to.equal(1);
+            }
+        });
+    }
+
+    it('refuses to verify an S3 payload with no checksum or GridFS source', async () => {
+        const file = await migrate();
+        expect((await run(['--cleanup-chunks', '--yes', '--grace-hours=0'])).stats.cleaned).to.equal(1);
+        await files.updateOne({ _id: id }, { $unset: { 'metadata.fileContentHash': '' } });
+        await environment.client.send(
+            new PutObjectCommand({ Bucket: environment.bucket, Key: file.metadata.storage.key, Body: Buffer.alloc(file.length, 120) })
+        );
+        for (const args of [['--verify-only'], ['--cleanup-chunks', '--yes', '--grace-hours=0']]) {
+            const result = await run(args, 1);
+            expect(result.stderr).to.include('Cannot verify S3 payload without a checksum or GridFS chunks');
+            expect(result.stats.verified).to.equal(0);
+        }
+    });
+
+    it('rejects same-length corruption using the recorded checksum after GridFS cleanup', async () => {
+        const file = await migrate();
+        await run(['--cleanup-chunks', '--yes', '--grace-hours=0']);
+        await environment.client.send(
+            new PutObjectCommand({ Bucket: environment.bucket, Key: file.metadata.storage.key, Body: Buffer.alloc(file.length, 120) })
+        );
+        expect((await run(['--verify-only'], 1)).stderr).to.include('S3 payload mismatch');
+    });
+
+    it('checks GridFS when the checksum is absent and persists the trusted checksum before cleanup', async () => {
+        const file = await migrate();
+        await files.updateOne({ _id: id }, { $unset: { 'metadata.fileContentHash': '' } });
+        expect((await run(['--verify-only'])).stats.verified).to.equal(1);
+        expect((await files.findOne({ _id: id })).metadata.fileContentHash).to.not.exist;
+        expect((await run(['--cleanup-chunks', '--yes', '--grace-hours=0'])).stats.cleaned).to.equal(1);
+        expect((await files.findOne({ _id: id })).metadata.fileContentHash).to.equal(file.metadata.fileContentHash);
+        expect((await run(['--verify-only'])).stats.verified).to.equal(1);
+    });
+
+    it('retains GridFS chunks if S3 differs and no checksum is recorded', async () => {
+        const file = await migrate();
+        await files.updateOne({ _id: id }, { $unset: { 'metadata.fileContentHash': '' } });
+        await environment.client.send(
+            new PutObjectCommand({ Bucket: environment.bucket, Key: file.metadata.storage.key, Body: Buffer.alloc(file.length, 120) })
+        );
+        expect((await run(['--cleanup-chunks', '--yes', '--grace-hours=0'], 1)).stderr).to.include('GridFS and S3 differ');
+        expect(await chunks.countDocuments({ files_id: id })).to.equal(1);
+    });
+
+    it('retains GridFS chunks if the migration timestamp is invalid', async () => {
+        await migrate();
+        await files.updateOne({ _id: id }, { $set: { 'metadata.storage.migratedAt': 'invalid-date' } });
+        expect((await run(['--cleanup-chunks', '--yes', '--grace-hours=0'])).stats.cleaned).to.equal(0);
+        expect(await chunks.countDocuments({ files_id: id })).to.equal(1);
+    });
+});

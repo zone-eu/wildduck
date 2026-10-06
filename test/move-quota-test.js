@@ -13,7 +13,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
     // Build a MessageHandler whose destination insert / source delete behaviour is configurable,
     // with a spy on attachmentStorage.deleteManyAsync. The encrypted form carries one attachment
     // (enc-id-1 / new-magic) so the new-ref cleanup has something to release.
-    function buildEncryptedMoveHandler({ insertOneImpl, deleteOneImpl }) {
+    function buildEncryptedMoveHandler({ insertOneImpl, deleteOneImpl, findOneImpl }) {
         const userId = new ObjectId();
         const sourceMailboxId = new ObjectId();
         const targetMailboxId = new ObjectId();
@@ -65,6 +65,8 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
                             calls.insertOne.push(doc);
                             return insertOneImpl(doc, calls.insertOne.length);
                         },
+                        // whether a failed insert stored the copy anyway, by default it did not
+                        findOne: query => (findOneImpl ? findOneImpl(query) : Promise.resolve(null)),
                         deleteOne: () => (deleteOneImpl ? deleteOneImpl() : Promise.resolve({ deletedCount: 1 }))
                     };
                 }
@@ -98,7 +100,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         handler.encryptAndPrepareMessageAsync = () =>
             Promise.resolve({
                 prepared: {
-                    mimeTree: { header: [], attachmentMap: { '1': 'enc-id-1' } },
+                    mimeTree: { header: [], attachmentMap: { 1: 'enc-id-1' } },
                     size: 1500,
                     bodystructure: {},
                     envelope: {},
@@ -149,6 +151,19 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         expect(calls.deleteManyAsync).to.have.lengthOf(1);
         expect(calls.deleteManyAsync[0].ids).to.deep.equal(['enc-id-1']);
         expect(calls.deleteManyAsync[0].magic).to.equal('new-magic');
+    });
+
+    it('keeps newly encrypted attachments when the destination insert throws after storing the copy', async function () {
+        let { handler, calls, sourceMailboxId, targetMailboxId } = buildEncryptedMoveHandler({
+            insertOneImpl: () => Promise.reject(Object.assign(new Error('waiting for replication timed out'), { code: 64 })),
+            findOneImpl: query => Promise.resolve({ _id: query._id })
+        });
+
+        let err = await runMove(handler, sourceMailboxId, targetMailboxId);
+
+        expect(err).to.be.an('error');
+        // the copy exists and owns them
+        expect(calls.deleteManyAsync).to.have.lengthOf(0);
     });
 
     it('does NOT release newly encrypted attachments when the source delete fails after a successful insert', async function () {
@@ -238,11 +253,12 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
 
         handler.users = {
             collection: () => ({
-                findOne: () => Promise.resolve({
-                    _id: userId,
-                    encryptMessages: true,
-                    smimeCerts: ['fake-cert']
-                }),
+                findOne: () =>
+                    Promise.resolve({
+                        _id: userId,
+                        encryptMessages: true,
+                        smimeCerts: ['fake-cert']
+                    }),
                 findOneAndUpdate: (query, update) => {
                     if (update && update.$inc && 'storageUsed' in update.$inc) {
                         quotaIncCalls.push(update.$inc.storageUsed);

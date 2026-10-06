@@ -1,9 +1,29 @@
 # Attachment storage options
 
-# For now there's only a single option for attachment storage
+# Preferred backend for newly seen attachment hashes. Existing attachments are
+# always read from the backend recorded in attachments.files.
 type="gridstore"
 bucket="attachments"
 
 # If true then decodes base64 encoded attachments to binary before storing to DB.
 # Decoding base64 attachments expects consistent line length and default base64 alphabet
 decodeBase64=true
+
+# Required when type="s3", and on all readers if S3-backed attachments exist.
+# Without accessKeyId and secretAccessKey, credentials come from the AWS SDK
+# default credential provider chain (environment, shared config, instance roles).
+# [s3]
+# bucket="wildduck-attachments"
+# prefix="production"
+# region="us-east-1"
+# endpoint="https://s3.example.com" # optional for S3-compatible storage
+# forcePathStyle=false
+# accessKeyId=""
+# secretAccessKey=""
+# sessionToken=""
+# maxAttempts=3
+# connectionTimeout=5000 # ms to establish a connection
+# requestTimeout=30000 # ms until the response headers; an upload also gets 2 s per MB of its size
+# readTimeout=30000 # ms a read waits for S3 to send more data (0 disables)
+# slowReaderTimeout=300000 # ms a read waits for a reader that stopped taking data before it gives up its connection
+# maxSockets=50 # per process, the SDK default is 50
