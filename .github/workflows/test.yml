@@ -12,6 +12,8 @@ jobs:
                 node: [22.x, 24.x, 26.x]
                 os: [ubuntu-latest]
         runs-on: ${{ matrix.os }}
+        env:
+            S3_TEST_ENDPOINT: http://127.0.0.1:5000
         # Service containers to run with `container-job`
         services:
             # Label used to access the service container
@@ -26,6 +28,10 @@ jobs:
                     --health-retries 5
                 ports:
                     - 6379:6379
+            moto:
+                image: motoserver/moto:latest
+                ports:
+                    - 5000:5000
         steps:
             - uses: actions/checkout@v6
 
@@ -53,6 +59,8 @@ jobs:
             - run: which mongosh
             - run: which mpop
             - run: npm install
+            - name: Wait for Moto S3
+              run: curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 "$S3_TEST_ENDPOINT"
             - name: Run tests
               run: npm run runtest
               env:

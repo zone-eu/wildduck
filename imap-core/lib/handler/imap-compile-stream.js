@@ -21,6 +21,16 @@ let START_CHAR_LIST = [0x28, 0x3c, 0x5b]; // ['(', '<', '[']
  */
 module.exports = (response, isLogging) => {
     let output = new PassThrough();
+    // the literal being streamed and a way to stop waiting for it; destroying the output must release it,
+    // a pipe does not do that
+    let active;
+    let abandon;
+    output.once('close', () => {
+        if (active) {
+            active.destroy();
+            abandon(new Error('Response stream was closed'));
+        }
+    });
 
     let processStream = async () => {
         let start = (response.tag || '') + (response.command ? ' ' + response.command : '');
@@ -32,6 +42,11 @@ module.exports = (response, isLogging) => {
 
         // emits data to socket or pushes to queue if previous write is still being processed
         let emit = async (stream, expectedLength, startFrom, maxLength) => {
+            if (output.destroyed) {
+                // nobody is reading any more, stop building the response
+                throw new Error('Response stream was closed');
+            }
+
             if (resp.length) {
                 // emit queued response
                 output.write(Buffer.concat(resp));
@@ -65,10 +80,15 @@ module.exports = (response, isLogging) => {
                     limiter = new LengthLimiter(expectedLength, ' ', startFrom);
                 }
                 limiter.on('mismatch', info => output.emit('literalMismatch', info));
+                active = stream;
+                abandon = reject;
                 stream.pipe(limiter).pipe(output, {
                     end: false
                 });
-                limiter.once('end', () => resolve());
+                limiter.once('end', () => {
+                    active = null;
+                    resolve();
+                });
 
                 // pass errors to output
                 stream.once('error', reject);
@@ -252,7 +272,9 @@ module.exports = (response, isLogging) => {
                 output.end();
             })
             .catch(err => {
-                output.emit('error', err);
+                if (!output.destroyed) {
+                    output.emit('error', err);
+                }
             });
     });
 
