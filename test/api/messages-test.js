@@ -2704,6 +2704,7 @@ describe('Messages tests', function () {
             .send({
                 date: new Date('2026-04-01T00:00:00.000Z'),
                 unseen: true,
+                labels: ['old-move-label'],
                 to: [{ address: 'move.thread@example.com' }],
                 subject: 'Move Thread Root',
                 text: 'Root message'
@@ -2715,6 +2716,7 @@ describe('Messages tests', function () {
             .send({
                 date: new Date('2026-04-02T00:00:00.000Z'),
                 unseen: true,
+                labels: ['old-move-label'],
                 to: [{ address: 'move.thread@example.com' }],
                 text: 'Reply message',
                 reference: {
@@ -2741,7 +2743,8 @@ describe('Messages tests', function () {
             .put(`/users/${user}/mailboxes/${sourceMailbox}/messages/${reply.body.message.id}`)
             .send({
                 updateThread: true,
-                moveTo: targetMailbox
+                moveTo: targetMailbox,
+                labels: ['moved-thread-label']
             })
             .expect(200);
 
@@ -2763,6 +2766,7 @@ describe('Messages tests', function () {
             expect(sourceUid).to.be.a('number');
             const movedMessage = await server.get(`/users/${user}/mailboxes/${targetMailbox}/messages/${destinationUid}`).send({}).expect(200);
             expect(movedMessage.body.success).to.be.true;
+            expect(movedMessage.body.labels).to.deep.equal(['moved-thread-label']);
         }
     });
 
