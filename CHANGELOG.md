@@ -1,5 +1,72 @@
 # Changelog
 
+## [1.52.0](https://github.com/zone-eu/wildduck/compare/v1.51.4...v1.52.0) (2026-10-06)
+
+
+### Features
+
+* ZMS-100: Labels ([#1188](https://github.com/zone-eu/wildduck/issues/1188)) ([d0e9ce0](https://github.com/zone-eu/wildduck/commit/d0e9ce06217d4ac4b6295ae72a3a4305524c78c9))
+* ZMS-109: Add s3 storage support instead and alongside gridfs ([#1195](https://github.com/zone-eu/wildduck/issues/1195)) ([4b64161](https://github.com/zone-eu/wildduck/commit/4b6416144ef715fc66d6628a31a2426765aa3dfb))
+
+
+### Bug Fixes
+
+* fix old submit endpoint passing wrong data to messagehandler delete ([#1194](https://github.com/zone-eu/wildduck/issues/1194)) ([1ea4201](https://github.com/zone-eu/wildduck/commit/1ea420160d7a61ec3eb573f2c0cc635254def3d9))
+* **imap:** accept a sequence set that ends at a closing parenthesis ([d261d4f](https://github.com/zone-eu/wildduck/commit/d261d4ff81d400128c2470ce1ade9876368b3b78))
+* **imap:** accept astring and number forms the parser rejected ([1bfa4b1](https://github.com/zone-eu/wildduck/commit/1bfa4b11f7e1b2c9bbf654f99dc96a0458a66e61))
+* **imap:** accept unquoted LIST patterns that contain a wildcard ([b7fd068](https://github.com/zone-eu/wildduck/commit/b7fd068c3be5feb094e0243acbb512ea8ea91e7f))
+* **imap:** announce the real octet count of a literal and survive empty values ([dfc72fc](https://github.com/zone-eu/wildduck/commit/dfc72fc2fbc5a289feab28fa734264f3479ac909))
+* **imap:** answer NO [SERVERBUG] instead of crashing when a command handler throws ([92f374d](https://github.com/zone-eu/wildduck/commit/92f374d551e65d68f3a6df96d2cc9dc0ed31efc0))
+* **imap:** answer NO for an unsupported AUTHENTICATE mechanism ([f5582c9](https://github.com/zone-eu/wildduck/commit/f5582c90854591cd62dc8bcce13d7b1584e2d738))
+* **imap:** compare SENT keys on the calendar date in the in-memory matcher ([3610ab5](https://github.com/zone-eu/wildduck/commit/3610ab5400c31a4d328dcd90a3308471a45ac3a5))
+* **imap:** compare SENT search keys against the calendar date of the Date header ([d4d2084](https://github.com/zone-eu/wildduck/commit/d4d20845b990f8254af2819c83fa221f50d7f57a))
+* **imap:** create the mailbox when CREATE declares a trailing hierarchy delimiter ([7464717](https://github.com/zone-eu/wildduck/commit/7464717201562c54109e30c4f3a39897da1d984a))
+* **imap:** decode the APPEND mailbox name like every other mailbox command ([02ac5b7](https://github.com/zone-eu/wildduck/commit/02ac5b71c34bfc433cd0cfeb549098de67c2be4e))
+* **imap:** do not crash the process on LSUB with an empty mailbox name ([3a09521](https://github.com/zone-eu/wildduck/commit/3a0952103ae67f07d69c3ea6cecad45e275ab7e4))
+* **imap:** do not send EXPUNGE while responding to SEARCH ([c7413c6](https://github.com/zone-eu/wildduck/commit/c7413c6503db6a37f7a09b47c4a0de8aecae0727))
+* **imap:** do not trim the password supplied to LOGIN or AUTHENTICATE PLAIN ([47e18f9](https://github.com/zone-eu/wildduck/commit/47e18f931e6a1ae94ecd9475c87cf6016ffe0050))
+* **imap:** emit a trailing partial line in the normal command shape ([c25a436](https://github.com/zone-eu/wildduck/commit/c25a436afc8a830024f7df27a95029a66ae9e4cc))
+* **imap:** fail a conditional STORE with UNCHANGEDSINCE 0 ([676be05](https://github.com/zone-eu/wildduck/commit/676be055cf64ceea68b37ff1897db9eec530376a))
+* **imap:** give every journal batch of a bulk MOVE or STORE its own modseq ([420c920](https://github.com/zone-eu/wildduck/commit/420c920f743ed205903efdf3ca4c513cba07c881))
+* **imap:** guard GETQUOTAROOT on the callback it actually calls ([46bd1de](https://github.com/zone-eu/wildduck/commit/46bd1de5785e8b742a90ed8f7f825827f6e02240))
+* **imap:** ignore an EXISTS for a message the session already knows ([9a57533](https://github.com/zone-eu/wildduck/commit/9a5753300e0da7c722957c39639e8cfbf543ade3))
+* **imap:** keep a message searchable after it is flagged \Deleted ([ca15ed3](https://github.com/zone-eu/wildduck/commit/ca15ed30e65e8ce8f67030cd2220dc50a7c5c032))
+* **imap:** keep the client supplied username out of the authentication success text ([981f0c7](https://github.com/zone-eu/wildduck/commit/981f0c723d345a635202f4d779d70ea0cd135675))
+* **imap:** keep the mailbox attributes in LIST ... RETURN (SPECIAL-USE) ([6132b13](https://github.com/zone-eu/wildduck/commit/6132b13f72aa36c10613fde2221313f1f0d527a9))
+* **imap:** leave out the COPYUID response code when nothing was copied ([2af1331](https://github.com/zone-eu/wildduck/commit/2af13314371795760f58158395107e41cb993481))
+* **imap:** limit literals and refuse them before they are allowed ([#1190](https://github.com/zone-eu/wildduck/issues/1190)) ([e3855ff](https://github.com/zone-eu/wildduck/commit/e3855ffc989a2f05b44a000957bc952c22914ac7))
+* **imap:** make NOT and OR work for BODY and TEXT search keys ([c5ead44](https://github.com/zone-eu/wildduck/commit/c5ead44bed2163f945cef51b78e9e6a5a3ac529f))
+* **imap:** make NOT on a header search key the real complement ([ae5ea17](https://github.com/zone-eu/wildduck/commit/ae5ea17bb99176f890ac900350c556d8171a0bcf))
+* **imap:** mark a message as seen when it is fetched with RFC822.TEXT ([e73f1be](https://github.com/zone-eu/wildduck/commit/e73f1be97241439ce620c23cf426b2abd1249a17))
+* **imap:** quote response strings the way RFC 3501 defines it ([9a26c44](https://github.com/zone-eu/wildduck/commit/9a26c44968f679d903d5a2e57def0c4b8de4c6e7))
+* **imap:** raise the inactivity autologout of an authenticated session to 30 minutes ([2501a75](https://github.com/zone-eu/wildduck/commit/2501a75ee2ec1c4476e4bee06ce6ba3e3afdcf03))
+* **imap:** raise the literal size cap for commands other than APPEND ([789f7ef](https://github.com/zone-eu/wildduck/commit/789f7ef1f53154e182296e61e477d5a1e31d4c2d))
+* **imap:** rebuild stored messages byte for byte with versioned MIME trees ([#1197](https://github.com/zone-eu/wildduck/issues/1197)) ([99e844e](https://github.com/zone-eu/wildduck/commit/99e844eab61c1ca6a614bbbfdf0a31069498b214))
+* **imap:** refuse a flag keyword that is not a valid atom ([c0c0476](https://github.com/zone-eu/wildduck/commit/c0c0476c929cec76ab279fe254b752ee9e6119a2))
+* **imap:** refuse a partial fetch with a zero octet count ([fc04e66](https://github.com/zone-eu/wildduck/commit/fc04e66022b802ce323bdc4f7b9fce523a0c4148))
+* **imap:** refuse a quoted string that is not valid UTF-8 ([43cccde](https://github.com/zone-eu/wildduck/commit/43cccde30f6c5c8beeac95b560601b0874e901f3))
+* **imap:** refuse a second COMPRESS DEFLATE instead of killing the connection ([b78c7ce](https://github.com/zone-eu/wildduck/commit/b78c7ce9979d6e7cb84c1a7cd313ec92f09106e1))
+* **imap:** refuse a zero sequence number instead of mapping it to the first message ([122b708](https://github.com/zone-eu/wildduck/commit/122b708bc22df849f7d25ec17a5bfa073011549a))
+* **imap:** refuse an unsupported SEARCH CHARSET with BADCHARSET ([5707136](https://github.com/zone-eu/wildduck/commit/5707136e0fd2985ddb0172b2d71731c3d3635a3e))
+* **imap:** refuse STORE and EXPUNGE on a mailbox opened with EXAMINE ([ece52a6](https://github.com/zone-eu/wildduck/commit/ece52a67d65323d560bfca6a3832096c17c5a6bc))
+* **imap:** rename inferior mailboxes together with the mailbox ([9c48120](https://github.com/zone-eu/wildduck/commit/9c48120ca0208422d88e8072be28f8e1ff386b7f))
+* **imap:** report a refused DELETE with the code the handler chose ([07f69c5](https://github.com/zone-eu/wildduck/commit/07f69c527a061df10a1471c037b53fb2110375f9))
+* **imap:** report an authentication backend outage as NO [UNAVAILABLE] ([169747b](https://github.com/zone-eu/wildduck/commit/169747b359e3fe8abaf9ed441a9d3eb05f0f61c9))
+* **imap:** report EXISTS at once for a COPY or MOVE into the selected mailbox ([d961668](https://github.com/zone-eu/wildduck/commit/d9616687fda4b0dcff0292cda845743d38a51fad))
+* **imap:** report HIGHESTMODSEQ after a MOVE ([2cd89e8](https://github.com/zone-eu/wildduck/commit/2cd89e8e84dd536c95374975676bbb4a64d2b422))
+* **imap:** return the \Noselect parent of a subscribed child from LSUB ([021abd6](https://github.com/zone-eu/wildduck/commit/021abd6f5ee6f73e2070624aa03fce498c60148b))
+* **imap:** search headers that are not in the indexed set ([a93682b](https://github.com/zone-eu/wildduck/commit/a93682b6ef3973ab8b2c0d079a69bb238b03e43b))
+* **imap:** send every flag as an atom instead of a quoted string ([e0e59f6](https://github.com/zone-eu/wildduck/commit/e0e59f6af790eb7ce96b6490dc1ae3fd37b45be1))
+* **imap:** send the AUTHENTICATE continuation request with the mandatory space ([02845b6](https://github.com/zone-eu/wildduck/commit/02845b64210f26293a258291747c99d2b27388e7))
+* **imap:** stop a {0} literal from breaking the next command that uses a literal ([0c8a771](https://github.com/zone-eu/wildduck/commit/0c8a7716c8ce53dc4e05f3bd3882de337a744d68))
+* **imap:** throw a parser error when a precached literal is missing ([ed98c0c](https://github.com/zone-eu/wildduck/commit/ed98c0c59136eb820310fae6d96fe1f85bcdbe48))
+* **test:** make the IMAP protocol suite use the configured API and IMAP ports ([e16c9f8](https://github.com/zone-eu/wildduck/commit/e16c9f88bfc6be05734f3e79c5d2312ffc8aaff5))
+* **test:** run every in-process imap-core test under npm run test:proto ([26212af](https://github.com/zone-eu/wildduck/commit/26212afea7465bfa96e7098b42505a30ecda99df))
+* ZMS-108: Add MCP only authentication capability ([#1189](https://github.com/zone-eu/wildduck/issues/1189)) ([da1071e](https://github.com/zone-eu/wildduck/commit/da1071e8cb20a05fe193613b49968e3d127e391f))
+* ZMS-110: make draft fwd also return hasDrafts: true for the referenced message ([#1192](https://github.com/zone-eu/wildduck/issues/1192)) ([8a86746](https://github.com/zone-eu/wildduck/commit/8a86746aeea15487645f37a7ae61f0deae649be0))
+* ZMS-111: Imap command line too long (also 64kb line) log client port ([#1198](https://github.com/zone-eu/wildduck/issues/1198)) ([7e5894e](https://github.com/zone-eu/wildduck/commit/7e5894ee0bea67fe5af5ab9cc5ec28cfe086f2a3))
+* ZMS-5: Full XAPPLEPUSHSERVICE support ([#1090](https://github.com/zone-eu/wildduck/issues/1090)) ([584e29d](https://github.com/zone-eu/wildduck/commit/584e29de2dacdf901ee8aa4b33f8ec5fa4bc7c2f))
+
 ## [1.51.4](https://github.com/zone-eu/wildduck/compare/v1.51.3...v1.51.4) (2026-09-27)
 
 
