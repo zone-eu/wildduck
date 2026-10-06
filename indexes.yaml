@@ -247,8 +247,24 @@ indexes:
               user: 1
               specialUse: 1
 
-    # Indexes for the messages collection
+    # Label names are unique within a user account.
+    - collection: labels
+      index:
+          name: user_name
+          unique: true
+          key:
+              user: 1
+              name: 1
 
+    - collection: labels
+      index:
+          name: user_slot
+          unique: true
+          key:
+              user: 1
+              slot: 1
+
+    # Indexes for the messages collection
     - collection: messages
       index:
           # several message related queries include the shard key values
@@ -307,6 +323,13 @@ indexes:
           key:
               mailbox: 1
               flags: 1
+
+    - collection: messages
+      index:
+          name: mailbox_labels
+          key:
+              mailbox: 1
+              labels: 1
 
     - collection: messages
       index:

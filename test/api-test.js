@@ -913,6 +913,597 @@ describe('API tests', function () {
         });
     });
 
+    describe('labels', () => {
+        let messageId;
+
+        before(async () => {
+            const mailboxes = await server.get(`/users/${userId}/mailboxes`).expect(200);
+            inbox = mailboxes.body.results.find(mailbox => mailbox.path === 'INBOX').id;
+            const response = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'label test message',
+                    text: 'Testing labels'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            messageId = response.body.message.id;
+        });
+
+        after(async () => {
+            if (messageId) {
+                await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            }
+        });
+
+        it('should GET /users/:user/labels with all custom labels and counters', async () => {
+            const firstResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'first label list message',
+                    text: 'Testing label list',
+                    unseen: true,
+                    labels: ['label-list-a', 'label-list-shared']
+                })
+                .expect(200);
+            const secondResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'second label list message',
+                    text: 'Testing label list',
+                    labels: ['label-list-b', 'label-list-shared']
+                })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${secondResponse.body.message.id}`)
+                .send({ seen: true })
+                .expect(200);
+
+            const response = await server.get(`/users/${userId}/labels?counters=true`).expect(200);
+            expect(response.body.success).to.be.true;
+            expect(response.body.labels.map(({ name, total, unseen }) => ({ name, total, unseen }))).to.deep.include.members([
+                { name: 'label-list-a', total: 1, unseen: 1 },
+                { name: 'label-list-b', total: 1, unseen: 0 },
+                { name: 'label-list-shared', total: 2, unseen: 1 }
+            ]);
+
+            const namesOnlyResponse = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(namesOnlyResponse.body.labels.map(({ name }) => ({ name }))).to.deep.include.members([
+                { name: 'label-list-a' },
+                { name: 'label-list-b' },
+                { name: 'label-list-shared' }
+            ]);
+            for (const label of namesOnlyResponse.body.labels) {
+                expect(label).to.not.have.any.keys('total', 'unseen');
+                expect(label).to.not.have.property('path');
+                expect(label.name.startsWith('\\')).to.be.false;
+                expect(label.name).to.not.equal('$Forwarded');
+            }
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${firstResponse.body.message.id}`).expect(200);
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${secondResponse.body.message.id}`).expect(200);
+            const emptyLabels = await server.get(`/users/${userId}/labels?counters=true`).expect(200);
+            expect(emptyLabels.body.labels.find(entry => entry.name === 'label-list-a')).to.include({ total: 0, unseen: 0 });
+        });
+
+        it('creates independent labels with metadata and validates names', async () => {
+            const name = 'Projects/čau-😀';
+            const [first, second] = await Promise.all([
+                server.post(`/users/${userId}/labels`).send({ name, metaData: { color: 'blue' } }).expect(200),
+                server.post(`/users/${userId}/labels`).send({ name, metaData: { color: 'blue' } }).expect(200)
+            ]);
+            expect(second.body.id).to.equal(first.body.id);
+            const listing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(listing.body.labels.find(entry => entry.name === name)).to.deep.equal({
+                id: first.body.id,
+                name,
+                metaData: { color: 'blue' }
+            });
+            expect(listing.body.labels.some(entry => entry.name === 'Projects')).to.be.false;
+            await server.post(`/users/${userId}/labels`).send({ name: 'Projects' }).expect(200);
+            const fetched = await server.get(`/users/${userId}/labels/${first.body.id}`).expect(200);
+            expect(fetched.body).to.include({ id: first.body.id, name });
+            expect(fetched.body.metaData).to.deep.equal({ color: 'blue' });
+            for (const invalidName of ['\\Seen', 'a'.repeat(257)]) {
+                await server.post(`/users/${userId}/labels`).send({ name: invalidName }).expect(400);
+            }
+            for (const validName of ['a'.repeat(256), 'a/b/c/d/e/f']) {
+                await server.post(`/users/${userId}/labels`).send({ name: validName }).expect(200);
+            }
+            const deletion = await server.delete(`/users/${userId}/labels/${first.body.id}`).expect(200);
+            expect(deletion.body.success).to.be.true;
+            const repeatedDeletion = await server.delete(`/users/${userId}/labels/${first.body.id}`).expect(200);
+            expect(repeatedDeletion.body.scheduled).to.equal(deletion.body.scheduled);
+            expect(repeatedDeletion.body.existing).to.be.true;
+            const deletingListing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(deletingListing.body.labels.some(entry => entry.name === name)).to.be.false;
+            expect(deletingListing.body.labels.some(entry => entry.name === 'Projects')).to.be.true;
+        });
+
+        it('should PUT /users/:user/labels/:label rename only the selected label', async () => {
+            const top = await server.post(`/users/${userId}/labels`).send({ name: 'rename-me' }).expect(200);
+            await server.post(`/users/${userId}/labels`).send({ name: 'rename-me/nested' }).expect(200);
+            const topId = top.body.id;
+
+            const uploadResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'label rename message',
+                    text: 'Testing label rename',
+                    labels: ['rename-me', 'rename-me/nested']
+                })
+                .expect(200);
+            const renamedMessageId = uploadResponse.body.message.id;
+
+            const renameResponse = await server
+                .put(`/users/${userId}/labels/${topId}`)
+                .send({ name: 'renamed-root', metaData: { color: 'red' } })
+                .expect(200);
+            expect(renameResponse.body.success).to.be.true;
+            expect(renameResponse.body.id).to.equal(topId);
+            expect(renameResponse.body.name).to.equal('renamed-root');
+            expect(renameResponse.body.metaData).to.deep.equal({ color: 'red' });
+
+            const listing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(listing.body.labels.some(entry => entry.name === 'rename-me')).to.be.false;
+            expect(listing.body.labels.some(entry => entry.name === 'rename-me/nested')).to.be.true;
+            expect(listing.body.labels.some(entry => entry.name === 'renamed-root')).to.be.true;
+            expect(listing.body.labels.some(entry => entry.name === 'renamed-root/nested')).to.be.false;
+
+            // The message assignment follows the stable label ID.
+            const renamedMessage = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`).expect(200);
+            expect(renamedMessage.body.labels).to.have.members(['renamed-root', 'rename-me/nested']);
+
+            // The old name is free and creates a separate label when assigned again.
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`)
+                .send({ addLabels: ['rename-me'] })
+                .expect(200);
+
+            // Renaming to the current name is idempotent.
+            await server
+                .put(`/users/${userId}/labels/${topId}`)
+                .send({ name: 'renamed-root' })
+                .expect(200);
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${renamedMessageId}`).expect(200);
+        });
+
+        it('should PUT /users/:user/labels/:label reject an existing name', async () => {
+            await server.post(`/users/${userId}/labels`).send({ name: 'rename-conflict-target' }).expect(200);
+            const source = await server.post(`/users/${userId}/labels`).send({ name: 'rename-conflict-source' }).expect(200);
+
+            const clash = await server
+                .put(`/users/${userId}/labels/${source.body.id}`)
+                .send({ name: 'rename-conflict-target' })
+                .expect(409);
+            expect(clash.body.code).to.equal('LabelConflict');
+
+            const missing = await server
+                .put(`/users/${userId}/labels/${new ObjectId()}`)
+                .send({ name: 'rename-conflict-target' })
+                .expect(404);
+            expect(missing.body.code).to.equal('LabelNotFound');
+
+            const invalid = await server
+                .put(`/users/${userId}/labels/${source.body.id}`)
+                .send({ name: 'a'.repeat(257) })
+                .expect(400);
+            expect(invalid.body.code).to.equal('InputValidationError');
+
+            // nothing was changed by the failed renames
+            const listing = await server.get(`/users/${userId}/labels`).expect(200);
+            expect(listing.body.labels.some(entry => entry.name === 'rename-conflict-source')).to.be.true;
+        });
+
+        it('should POST /users/:user/mailboxes/:mailbox/messages with labels expect success / labels appear in GET', async () => {
+            const uploadResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Label Tester', address: 'kwtest@example.com' },
+                    subject: 'upload with labels',
+                    text: 'Testing upload labels',
+                    labels: ['important', 'project-x']
+                })
+                .expect(200);
+            expect(uploadResponse.body.success).to.be.true;
+
+            const msgId = uploadResponse.body.message.id;
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${msgId}`).expect(200);
+            expect(getResponse.body.labels).to.have.members(['important', 'project-x']);
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${msgId}`).expect(200);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message set and replace labels expect success', async () => {
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['todo', 'urgent'] })
+                .expect(200);
+            expect(putResponse.body.success).to.be.true;
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.labels).to.have.members(['todo', 'urgent']);
+
+            // Replacing labels removes the old ones
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ labels: ['new-tag'] }).expect(200);
+
+            const getResponse2 = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse2.body.labels).to.deep.equal(['new-tag']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message clear labels with empty array expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['to-be-cleared'] })
+                .expect(200);
+
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ labels: [] }).expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.labels).to.deep.equal([]);
+        });
+
+        it('should GET /users/:user/mailboxes/:mailbox/messages labels appear in listing expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['list-test'] })
+                .expect(200);
+
+            const listResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages`).expect(200);
+            expect(listResponse.body.success).to.be.true;
+            const found = listResponse.body.results.find(m => m.id === messageId);
+            expect(found).to.exist;
+            expect(found.labels).to.include('list-test');
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message system flags unaffected by label changes expect success', async () => {
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ seen: true }).expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['check-flags'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.seen).to.be.true;
+            expect(getResponse.body.labels).to.include('check-flags');
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addLabels expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['base'] })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ addLabels: ['added'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.labels).to.include.members(['base', 'added']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message removeLabels expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['keep', 'remove-me'] })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ removeLabels: ['remove-me'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.labels).to.deep.equal(['keep']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message labels with addLabels expect failure', async () => {
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['a'], addLabels: ['b'] })
+                .expect(400);
+            expect(putResponse.body.error).to.exist;
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message addLabels and removeLabels together expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['keep', 'remove-me'] })
+                .expect(200);
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ addLabels: ['added'], removeLabels: ['remove-me'] })
+                .expect(200);
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.labels).to.include.members(['keep', 'added']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message multiple flag changes in single request expect success', async () => {
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ seen: true, labels: ['old'] })
+                .expect(200);
+
+            // Flip seen, add deleted, and replace labels — all in one atomic operation
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ seen: false, deleted: true, labels: ['new'] })
+                .expect(200);
+            expect(putResponse.body.success).to.be.true;
+
+            const getResponse = await server.get(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).expect(200);
+            expect(getResponse.body.seen).to.be.false;
+            expect(getResponse.body.deleted).to.be.true;
+            expect(getResponse.body.labels).to.deep.equal(['new']);
+        });
+
+        it('should PUT /users/:user/mailboxes/:mailbox/messages/:message invalid label expect failure', async () => {
+            const putResponse = await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`)
+                .send({ labels: ['a'.repeat(257)] })
+                .expect(400);
+            expect(putResponse.body.error).to.exist;
+        });
+
+        it('should GET /users/:user/search label filter expect success', async () => {
+            await server.put(`/users/${userId}/mailboxes/${inbox}/messages/${messageId}`).send({ labels: ['search-target'] }).expect(200);
+
+            const searchResponse = await server.get(`/users/${userId}/search?label=search-target`).expect(200);
+            expect(searchResponse.body.results.some(result => result.id === messageId)).to.be.true;
+
+            const noMatchResponse = await server.get(`/users/${userId}/search?label=nonexistent-label`).expect(200);
+            expect(noMatchResponse.body.results.some(result => result.id === messageId)).to.be.false;
+        });
+
+        it('should GET /users/:user/label-counters/:label reflect label and seen deltas expect success', async () => {
+            const labelCounterLabelOne = `kw-counter-a-${Date.now()}`;
+            const labelCounterLabelTwo = `kw-counter-b-${Date.now()}`;
+
+            const wait = timeout => new Promise(resolvePromise => setTimeout(resolvePromise, timeout));
+
+            const readCounters = async () => {
+                const [labelAResponse, labelBResponse] = await Promise.all([
+                    server.get(`/users/${userId}/label-counters/${labelCounterLabelOne}`).expect(200),
+                    server.get(`/users/${userId}/label-counters/${labelCounterLabelTwo}`).expect(200)
+                ]);
+
+                return {
+                    labelACounter: {
+                        label: labelAResponse.body.label,
+                        total: labelAResponse.body.total,
+                        unseen: labelAResponse.body.unseen
+                    },
+                    labelBCounter: {
+                        label: labelBResponse.body.label,
+                        total: labelBResponse.body.total,
+                        unseen: labelBResponse.body.unseen
+                    }
+                };
+            };
+
+            const waitForExpectedCounters = async matchesExpected => {
+                for (let attemptNumber = 0; attemptNumber < 20; attemptNumber++) {
+                    const counters = await readCounters();
+                    if (matchesExpected(counters)) {
+                        return counters;
+                    }
+                    await wait(100);
+                }
+
+                throw new Error('Label counters did not reach expected values in time');
+            };
+
+            const baseline = await readCounters();
+
+            const createExpectedCounters = (labelATotalDelta, labelAUnseenDelta, labelBTotalDelta, labelBUnseenDelta) => ({
+                labelACounter: {
+                    total: baseline.labelACounter.total + labelATotalDelta,
+                    unseen: baseline.labelACounter.unseen + labelAUnseenDelta
+                },
+                labelBCounter: {
+                    total: baseline.labelBCounter.total + labelBTotalDelta,
+                    unseen: baseline.labelBCounter.unseen + labelBUnseenDelta
+                }
+            });
+
+            const countersMatchExpected = (currentCounters, expectedCounters) =>
+                currentCounters.labelACounter.total === expectedCounters.labelACounter.total &&
+                currentCounters.labelACounter.unseen === expectedCounters.labelACounter.unseen &&
+                currentCounters.labelBCounter.total === expectedCounters.labelBCounter.total &&
+                currentCounters.labelBCounter.unseen === expectedCounters.labelBCounter.unseen;
+
+            const expectCounters = async expectedCounters => {
+                const observedCounters = await waitForExpectedCounters(currentCounters => countersMatchExpected(currentCounters, expectedCounters));
+                expect(observedCounters.labelACounter.total).to.equal(expectedCounters.labelACounter.total);
+                expect(observedCounters.labelACounter.unseen).to.equal(expectedCounters.labelACounter.unseen);
+                expect(observedCounters.labelBCounter.total).to.equal(expectedCounters.labelBCounter.total);
+                expect(observedCounters.labelBCounter.unseen).to.equal(expectedCounters.labelBCounter.unseen);
+            };
+
+            const createResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Label Counter Tester', address: 'kwcounter@example.com' },
+                    subject: 'label counters',
+                    text: 'label counters',
+                    unseen: true,
+                    labels: [labelCounterLabelOne]
+                })
+                .expect(200);
+
+            const counterMessageId = createResponse.body.message.id;
+
+            await expectCounters(createExpectedCounters(1, 1, 0, 0));
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`)
+                .send({ addLabels: [labelCounterLabelTwo], seen: true })
+                .expect(200);
+
+            await expectCounters(createExpectedCounters(1, 0, 1, 0));
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`)
+                .send({ removeLabels: [labelCounterLabelOne], seen: false })
+                .expect(200);
+
+            await expectCounters(createExpectedCounters(0, 0, 1, 1));
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${counterMessageId}`).expect(200);
+
+            await expectCounters(createExpectedCounters(0, 0, 0, 0));
+        });
+
+        it('should GET /users/:user/flagged-counter reflect flagged and seen deltas expect success', async () => {
+            const wait = timeout => new Promise(resolvePromise => setTimeout(resolvePromise, timeout));
+
+            const readFlaggedCounter = async () => {
+                const flaggedCounterResponse = await server.get(`/users/${userId}/flagged-counter`).expect(200);
+
+                return {
+                    total: flaggedCounterResponse.body.total,
+                    unseen: flaggedCounterResponse.body.unseen
+                };
+            };
+
+            const waitForExpectedCounter = async matchesExpected => {
+                for (let attemptNumber = 0; attemptNumber < 20; attemptNumber++) {
+                    const counter = await readFlaggedCounter();
+                    if (matchesExpected(counter)) {
+                        return counter;
+                    }
+                    await wait(100);
+                }
+
+                throw new Error('Flagged counter did not reach expected values in time');
+            };
+
+            const baseline = await readFlaggedCounter();
+
+            const createExpectedCounter = (totalDelta, unseenDelta) => ({
+                total: baseline.total + totalDelta,
+                unseen: baseline.unseen + unseenDelta
+            });
+
+            const expectCounter = async expectedCounter => {
+                const observedCounter = await waitForExpectedCounter(
+                    currentCounter => currentCounter.total === expectedCounter.total && currentCounter.unseen === expectedCounter.unseen
+                );
+                expect(observedCounter.total).to.equal(expectedCounter.total);
+                expect(observedCounter.unseen).to.equal(expectedCounter.unseen);
+            };
+
+            const createResponse = await server
+                .post(`/users/${userId}/mailboxes/${inbox}/messages`)
+                .send({
+                    from: { name: 'Flagged Counter Tester', address: 'flagcounter@example.com' },
+                    subject: 'flagged counters',
+                    text: 'flagged counters',
+                    unseen: true,
+                    flagged: true
+                })
+                .expect(200);
+
+            const flaggedMessageId = createResponse.body.message.id;
+
+            await expectCounter(createExpectedCounter(1, 1));
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${flaggedMessageId}`)
+                .send({ flagged: false, seen: true })
+                .expect(200);
+
+            await expectCounter(createExpectedCounter(0, 0));
+
+            await server
+                .put(`/users/${userId}/mailboxes/${inbox}/messages/${flaggedMessageId}`)
+                .send({ flagged: true, seen: false })
+                .expect(200);
+
+            await expectCounter(createExpectedCounter(1, 1));
+
+            await server.delete(`/users/${userId}/mailboxes/${inbox}/messages/${flaggedMessageId}`).expect(200);
+
+            await expectCounter(createExpectedCounter(0, 0));
+        });
+
+        it('should DELETE /users/{user}/mailboxes/{mailbox} expect success and invalidate account counters', async () => {
+            const label = `deleted-mailbox-${Date.now()}`;
+            const readCounters = async () => {
+                const [labelResponse, flaggedResponse] = await Promise.all([
+                    server.get(`/users/${userId}/label-counters/${label}`).expect(200),
+                    server.get(`/users/${userId}/flagged-counter`).expect(200)
+                ]);
+                return {
+                    label: labelResponse.body,
+                    flagged: flaggedResponse.body
+                };
+            };
+            const waitForCounters = async expected => {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    const counters = await readCounters();
+                    if (
+                        counters.label.total === expected.label.total &&
+                        counters.label.unseen === expected.label.unseen &&
+                        counters.flagged.total === expected.flagged.total &&
+                        counters.flagged.unseen === expected.flagged.unseen
+                    ) {
+                        return counters;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                throw new Error('Deleted mailbox counters did not reach expected values in time');
+            };
+            const baseline = await readCounters();
+            const mailboxResponse = await server
+                .post(`/users/${userId}/mailboxes`)
+                .send({ path: `Counter deletion ${Date.now()}` })
+                .expect(200);
+            const mailbox = mailboxResponse.body.id;
+
+            await server
+                .post(`/users/${userId}/mailboxes/${mailbox}/messages`)
+                .send({
+                    from: { name: 'Counter Tester', address: 'counter-delete@example.com' },
+                    subject: 'mailbox deletion counters',
+                    text: 'mailbox deletion counters',
+                    unseen: true,
+                    flagged: true,
+                    labels: [label]
+                })
+                .expect(200);
+
+            await waitForCounters({
+                label: {
+                    total: baseline.label.total + 1,
+                    unseen: baseline.label.unseen + 1
+                },
+                flagged: {
+                    total: baseline.flagged.total + 1,
+                    unseen: baseline.flagged.unseen + 1
+                }
+            });
+
+            await server.delete(`/users/${userId}/mailboxes/${mailbox}`).expect(200);
+
+            const afterDeletion = await waitForCounters(baseline);
+            expect(afterDeletion.label.total).to.equal(baseline.label.total);
+            expect(afterDeletion.label.unseen).to.equal(baseline.label.unseen);
+            expect(afterDeletion.flagged.total).to.equal(baseline.flagged.total);
+            expect(afterDeletion.flagged.unseen).to.equal(baseline.flagged.unseen);
+        });
+    });
+
     describe('certs', () => {
         it('should POST /certs expect success', async () => {
             const response1 = await server

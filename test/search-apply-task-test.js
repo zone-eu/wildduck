@@ -259,7 +259,7 @@ describe('Search apply task', function () {
         try {
             const messageHandler = {
                 update(...args) {
-                    updated.push(args[2]);
+                    updated.push({ uid: args[2], changes: args[3] });
                     const callback = args[args.length - 1];
                     callback(null, 1);
                 },
@@ -278,7 +278,7 @@ describe('Search apply task', function () {
                 {
                     user: user.toHexString(),
                     mailbox: mailbox.toHexString(),
-                    action: { seen: true }
+                    action: { seen: true, addLabels: ['Finance'] }
                 },
                 { messageHandler }
             );
@@ -298,6 +298,7 @@ describe('Search apply task', function () {
         }
 
         expect(updated).to.have.length(3000);
+        expect(updated.every(entry => entry.changes.seen === true && entry.changes.addLabels[0] === 'Finance')).to.be.true;
         expect(moved).to.have.length(3000);
     });
 

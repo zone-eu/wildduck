@@ -16,16 +16,18 @@ const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 describe('API Filters', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
-    let user, user2;
+    let user, user2, username;
 
     before(async () => {
         // ensure that we have an existing user account
+        const suffix = Date.now();
+        username = `filteruser${suffix}`;
         const response = await server
             .post('/users')
             .send({
-                username: 'filteruser',
+                username,
                 password: 'secretvalue',
-                address: 'filteruser.addrtest@example.com',
+                address: `filteruser${suffix}.addrtest@example.com`,
                 name: 'Filter User'
             })
             .expect(200);
@@ -37,9 +39,9 @@ describe('API Filters', function () {
         const response2 = await server
             .post('/users')
             .send({
-                username: 'filteruser2',
+                username: `filteruser2${suffix}`,
                 password: 'secretvalue',
-                address: 'filteruser2.addrtest@example.com',
+                address: `filteruser2${suffix}.addrtest@example.com`,
                 name: 'Filter User 2'
             })
             .expect(200);
@@ -58,6 +60,9 @@ describe('API Filters', function () {
         expect(response.body.success).to.be.true;
 
         user = false;
+        if (user2) {
+            await server.delete(`/users/${user2}`).expect(200);
+        }
     });
 
     it('should POST /users/{user}/filters expect success', async () => {
@@ -115,7 +120,7 @@ describe('API Filters', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'filteruser',
+                username,
                 password: 'secretvalue',
                 token: true
             })
@@ -228,7 +233,7 @@ describe('API Filters', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'filteruser',
+                username,
                 password: 'secretvalue',
                 token: true
             })
@@ -368,6 +373,81 @@ describe('API Filters', function () {
             expect(filterDataResponse.body.action).to.not.have.property('seen');
             expect(filterDataResponse.body.action).to.not.have.property('flag');
             expect(filterDataResponse.body.action).to.not.have.property('delete');
+        });
+    });
+
+    describe('Filter labels action', function () {
+        let labelFilterId;
+
+        it('should POST /users/{user}/filters expect success / with labels action', async () => {
+            const response = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'labels action create',
+                    query: {
+                        from: 'labels-create'
+                    },
+                    action: {
+                        labels: ['important', 'project-x']
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            labelFilterId = response.body.id;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action.labels).to.deep.equal(['important', 'project-x']);
+        });
+
+        it('should PUT /users/{user}/filters/{filter} expect success / update labels action', async () => {
+            const response = await server
+                .put(`/users/${user}/filters/${labelFilterId}`)
+                .send({
+                    action: {
+                        labels: ['priority', 'customer']
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action.labels).to.deep.equal(['priority', 'customer']);
+        });
+
+        it('should PUT /users/{user}/filters/{filter} expect success / clear labels action with empty array', async () => {
+            const response = await server
+                .put(`/users/${user}/filters/${labelFilterId}`)
+                .send({
+                    action: {
+                        labels: []
+                    }
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+
+            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
+            expect(filterDataResponse.body.success).to.be.true;
+            expect(filterDataResponse.body.action).to.not.have.property('labels');
+        });
+
+        it('should POST /users/{user}/filters expect failure / reject invalid label value', async () => {
+            const response = await server
+                .post(`/users/${user}/filters`)
+                .send({
+                    name: 'labels action invalid',
+                    query: {
+                        from: 'labels-invalid'
+                    },
+                    action: {
+                        labels: ['a'.repeat(257)]
+                    }
+                })
+                .expect(400);
+
+            expect(response.body.success).to.not.exist;
+            expect(response.body.code).to.equal('InputValidationError');
         });
     });
 
