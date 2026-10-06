@@ -8,6 +8,7 @@ const { ObjectId } = require('mongodb');
 
 const db = require('../lib/db');
 const onCopy = require('../lib/handlers/on-copy');
+const MessageHandler = require('../lib/message-handler');
 const metrics = require('../lib/metrics');
 
 describe('on-copy UID arrays', function () {
@@ -224,6 +225,7 @@ describe('on-copy UID arrays', function () {
         insertOneImpl,
         updateManyImpl,
         deleteManyAsyncImpl,
+        findOneImpl,
         labelRecords = []
     }) {
         let cursorIdx = 0;
@@ -260,7 +262,9 @@ describe('on-copy UID arrays', function () {
             insertOne: doc => {
                 calls.insertOne.push(doc);
                 return insertOneImpl(doc, calls.insertOne.length);
-            }
+            },
+            // whether a failed insert stored the copy anyway, by default it did not
+            findOne: query => (findOneImpl ? findOneImpl(query) : Promise.resolve(null))
         };
 
         let usersCollection = {
@@ -311,6 +315,7 @@ describe('on-copy UID arrays', function () {
             isMessageEncrypted: () => false,
             _getContentType: () => '',
             encryptAndPrepareMessageAsync: () => Promise.resolve(encryptResult),
+            storedDespiteError: id => MessageHandler.prototype.storedDespiteError.call({ database: db.database }, id),
             attachmentStorage: {
                 updateMany: (ids, count, magic) => {
                     calls.updateMany.push({ ids, count, magic });
@@ -366,7 +371,7 @@ describe('on-copy UID arrays', function () {
 
     let encryptResult = {
         prepared: {
-            mimeTree: { header: [], attachmentMap: { '1': 'enc-id-1' } },
+            mimeTree: { header: [], attachmentMap: { 1: 'enc-id-1' } },
             size: 500,
             bodystructure: {},
             envelope: {},
@@ -405,7 +410,17 @@ describe('on-copy UID arrays', function () {
 
     it('releases newly encrypted attachments when the encrypted-copy insert is not acknowledged', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({
-            sourceMessages: [{ _id: new ObjectId(), mailbox: sourceMailboxId, uid: 10, size: 100, flags: [], magic: 'src-magic', mimeTree: { header: [], attachmentMap: { '1': 'src-id-1' } } }],
+            sourceMessages: [
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 10,
+                    size: 100,
+                    flags: [],
+                    magic: 'src-magic',
+                    mimeTree: { header: [], attachmentMap: { 1: 'src-id-1' } }
+                }
+            ],
             targetEncrypted: true,
             encryptResult,
             insertOneImpl: () => Promise.resolve({ acknowledged: false })
@@ -427,7 +442,17 @@ describe('on-copy UID arrays', function () {
 
     it('releases newly encrypted attachments and propagates when the encrypted-copy insert throws', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({
-            sourceMessages: [{ _id: new ObjectId(), mailbox: sourceMailboxId, uid: 10, size: 100, flags: [], magic: 'src-magic', mimeTree: { header: [], attachmentMap: { '1': 'src-id-1' } } }],
+            sourceMessages: [
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 10,
+                    size: 100,
+                    flags: [],
+                    magic: 'src-magic',
+                    mimeTree: { header: [], attachmentMap: { 1: 'src-id-1' } }
+                }
+            ],
             targetEncrypted: true,
             encryptResult,
             insertOneImpl: () => Promise.reject(Object.assign(new Error('insert boom'), { code: 'StoreError' }))
@@ -449,7 +474,17 @@ describe('on-copy UID arrays', function () {
 
     it('increments plaintext refcount before insert and releases it when the insert is not acknowledged', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({
-            sourceMessages: [{ _id: new ObjectId(), mailbox: sourceMailboxId, uid: 10, size: 100, flags: [], magic: 'src-magic', mimeTree: { header: [], attachmentMap: { '1': 'src-id-1' } } }],
+            sourceMessages: [
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 10,
+                    size: 100,
+                    flags: [],
+                    magic: 'src-magic',
+                    mimeTree: { header: [], attachmentMap: { 1: 'src-id-1' } }
+                }
+            ],
             targetEncrypted: false,
             insertOneImpl: () => Promise.resolve({ acknowledged: false })
         });
@@ -469,21 +504,81 @@ describe('on-copy UID arrays', function () {
         expect(calls.updateOneCopied).to.have.lengthOf(0);
     });
 
-    it('skips the message without inserting when the plaintext refcount increment fails', async function () {
+    it('treats a copy that was stored despite an insert error as copied and keeps its refs', async function () {
+        let sourceMessages = [
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailboxId,
+                uid: 10,
+                size: 100,
+                flags: [],
+                magic: 7,
+                mimeTree: { header: [], attachmentMap: { ATT00001: 'hash' } }
+            }
+        ];
         let { server, messageHandler, calls } = setupCopyEnv({
-            sourceMessages: [{ _id: new ObjectId(), mailbox: sourceMailboxId, uid: 10, size: 100, flags: [], magic: 'src-magic', mimeTree: { header: [], attachmentMap: { '1': 'src-id-1' } } }],
+            sourceMessages,
+            // the write happened, majority confirmation did not
+            insertOneImpl: () => Promise.reject(Object.assign(new Error('waiting for replication timed out'), { code: 64, name: 'MongoWriteConcernError' })),
+            findOneImpl: query => Promise.resolve({ _id: query._id })
+        });
+        let { status, info } = await runCopy(server, messageHandler, [10]);
+        // the copy exists, so it is a copy like any other: refs kept, reported to the client
+        expect(status).to.be.true;
+        expect(info.sourceUid).to.deep.equal([10]);
+        expect(calls.updateMany).to.have.length(1);
+        expect(calls.deleteManyAsync).to.deep.equal([]);
+    });
+
+    it('keeps the refs but fails the COPY when it can not tell whether the copy was stored', async function () {
+        let sourceMessages = [
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailboxId,
+                uid: 10,
+                size: 100,
+                flags: [],
+                magic: 7,
+                mimeTree: { header: [], attachmentMap: { ATT00001: 'hash' } }
+            }
+        ];
+        let { server, messageHandler, calls } = setupCopyEnv({
+            sourceMessages,
+            insertOneImpl: () => Promise.reject(Object.assign(new Error('connection reset'), { name: 'MongoNetworkError' })),
+            findOneImpl: () => Promise.reject(new Error('still unreachable'))
+        });
+        let error = await runCopy(server, messageHandler, [10]).catch(err => err);
+        expect(error.message).to.equal('connection reset');
+        // the copy may exist, so its refs stay; but it is not reported or counted as copied
+        expect(calls.deleteManyAsync).to.deep.equal([]);
+        expect(calls.updateOneCopied).to.deep.equal([]);
+    });
+
+    it('fails the COPY without inserting when the plaintext refcount increment fails', async function () {
+        let { server, messageHandler, calls } = setupCopyEnv({
+            sourceMessages: [
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 10,
+                    size: 100,
+                    flags: [],
+                    magic: 'src-magic',
+                    mimeTree: { header: [], attachmentMap: { 1: 'src-id-1' } }
+                }
+            ],
             targetEncrypted: false,
             insertOneImpl: () => Promise.resolve({ acknowledged: true, insertedId: new ObjectId() }),
             updateManyImpl: () => Promise.reject(Object.assign(new Error('refcount boom'), { code: 'AttachmentUpdateError' }))
         });
 
-        let { status, info } = await runCopy(server, messageHandler, [10]);
+        let error = await runCopy(server, messageHandler, [10]).catch(err => err);
 
-        expect(status).to.be.true;
+        // the client is told, instead of getting OK for a message that was not copied
+        expect(error.message).to.equal('refcount boom');
         // no under-counted copy is stored
         expect(calls.insertOne).to.have.lengthOf(0);
-        expect(info.sourceUid).to.deep.equal([]);
-        // nothing to release because the increment never took effect
+        // some increments may have been applied, so nothing is released
         expect(calls.deleteManyAsync).to.have.lengthOf(0);
         expect(calls.updateOneCopied).to.have.lengthOf(0);
     });
@@ -491,12 +586,29 @@ describe('on-copy UID arrays', function () {
     it('marks the source copied only after a confirmed insert', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({
             sourceMessages: [
-                { _id: new ObjectId(), mailbox: sourceMailboxId, uid: 10, size: 100, flags: [], magic: 'src-magic', mimeTree: { header: [], attachmentMap: {} } },
-                { _id: new ObjectId(), mailbox: sourceMailboxId, uid: 20, size: 200, flags: [], magic: 'src-magic', mimeTree: { header: [], attachmentMap: {} } }
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 10,
+                    size: 100,
+                    flags: [],
+                    magic: 'src-magic',
+                    mimeTree: { header: [], attachmentMap: {} }
+                },
+                {
+                    _id: new ObjectId(),
+                    mailbox: sourceMailboxId,
+                    uid: 20,
+                    size: 200,
+                    flags: [],
+                    magic: 'src-magic',
+                    mimeTree: { header: [], attachmentMap: {} }
+                }
             ],
             targetEncrypted: false,
             // first insert succeeds, second is not acknowledged
-            insertOneImpl: (doc, n) => (n === 1 ? Promise.resolve({ acknowledged: true, insertedId: new ObjectId() }) : Promise.resolve({ acknowledged: false }))
+            insertOneImpl: (doc, n) =>
+                n === 1 ? Promise.resolve({ acknowledged: true, insertedId: new ObjectId() }) : Promise.resolve({ acknowledged: false })
         });
 
         let { status, info } = await runCopy(server, messageHandler, [10, 20]);

@@ -13,6 +13,7 @@ const { ObjectId } = require('mongodb');
 const { ImapFlow } = require('imapflow');
 const { parseSearchQuery, getMongoDBQuery } = require('../../lib/search-query');
 const { prepareSearchFilter } = require('../../lib/prepare-search-filter');
+const db = require('../../lib/db');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -960,6 +961,61 @@ describe('Messages tests', function () {
         }
     });
 
+    it('should POST /users/:user/submit expect success / replacing drafts releases duplicate attachment references', async () => {
+        if (!db.database) {
+            await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        }
+
+        const attachment = {
+            filename: 'draft-reference.txt',
+            contentType: 'text/plain',
+            content: Buffer.from(`draft attachment ${new ObjectId()}`).toString('base64'),
+            encoding: 'base64'
+        };
+        let previous;
+        let hash;
+
+        for (let count = 1; count <= 3; count++) {
+            const response = await server
+                .post(`/users/${user}/submit`)
+                .send({
+                    isDraft: true,
+                    uploadOnly: true,
+                    from: { address: testAddress },
+                    subject: 'Draft attachment reference counts',
+                    text: 'Draft with repeated attachments',
+                    attachments: Array.from({ length: count }, () => attachment),
+                    ...(previous ? { draft: previous } : {})
+                })
+                .expect(200);
+
+            expect(response.body.success).to.be.true;
+            const current = response.body.message;
+            const stored = await db.database.collection('messages').findOne({ mailbox: new ObjectId(current.mailbox), uid: current.id });
+            expect(stored, 'Submitted draft must exist in the configured test database').to.not.equal(null);
+            const ids = Object.values(stored.mimeTree.attachmentMap);
+            expect(ids).to.have.length(count);
+            hash = hash || ids[0];
+            for (const id of ids) {
+                expect(id).to.deep.equal(hash);
+            }
+            const file = await db.gridfs.collection('attachments.files').findOne({ _id: hash });
+            expect(file.metadata.c).to.equal(count);
+            expect(file.metadata.m).to.equal(stored.magic * count);
+
+            if (previous) {
+                const old = await db.database.collection('messages').findOne({ mailbox: new ObjectId(previous.mailbox), uid: previous.id });
+                expect(old).to.equal(null);
+            }
+            previous = { mailbox: current.mailbox, id: current.id };
+        }
+
+        await server.delete(`/users/${user}/mailboxes/${previous.mailbox}/messages/${previous.id}`).expect(200);
+        const file = await db.gridfs.collection('attachments.files').findOne({ _id: hash });
+        expect(file.metadata.c).to.equal(0);
+        expect(file.metadata.m).to.equal(0);
+    });
+
     it('should POST /users/:user/submit expect failure / recipient cap counts all recipients', async () => {
         const settingResponse = await server.get('/settings/const:max:rcpt_to').send({}).expect(200);
         const previousMaxRecipients = settingResponse.body.value;
@@ -1236,6 +1292,65 @@ describe('Messages tests', function () {
 
         expect(archivedRoot).to.exist;
         expect(archivedRoot).to.not.have.property('hasDrafts');
+    });
+
+    it('should GET message listings / non-collapsed hasDrafts matches the exact forward source across mailboxes', async () => {
+        const createMailbox = async name => {
+            const response = await server
+                .post(`/users/${user}/mailboxes`)
+                .send({ path: `/${name}-${Date.now().toString(36)}`, hidden: false, retention: 10000 })
+                .expect(200);
+            return response.body.id;
+        };
+        const mailbox = await createMailbox('forward-source');
+        const drafts = await createMailbox('forward-drafts');
+        const root = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({ draft: false, to: [{ address: 'forward@example.com' }], subject: 'Forward draft thread', text: 'Root' })
+            .expect(200);
+        const reply = await server
+            .post(`/users/${user}/mailboxes/${mailbox}/messages`)
+            .send({ to: [{ address: 'forward@example.com' }], text: 'Reply', reference: { mailbox, id: root.body.message.id, action: 'reply' } })
+            .expect(200);
+        await server.put(`/users/${user}/mailboxes/${mailbox}/messages/${reply.body.message.id}`).send({ draft: false }).expect(200);
+
+        // UIDs are local to a mailbox. Give the forward draft the same UID as its source to check mailbox matching.
+        await server
+            .post(`/users/${user}/mailboxes/${drafts}/messages`)
+            .send({ draft: true, to: [{ address: 'forward@example.com' }], subject: 'Unrelated draft', text: 'Unrelated' })
+            .expect(200);
+        const forward = await server
+            .post(`/users/${user}/mailboxes/${drafts}/messages`)
+            .send({ to: [{ address: 'forward@example.com' }], text: 'Forward draft', reference: { mailbox, id: reply.body.message.id, action: 'forward' } })
+            .expect(200);
+        expect(forward.body.message.id).to.equal(reply.body.message.id);
+        const checkListings = async hasDrafts => {
+            for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
+                const response = await server
+                    .get(path)
+                    .query({ mailbox, collapseThreads: false, includeHasDrafts: true, order: 'asc' })
+                    .expect(200);
+                expect(response.body.results.map(entry => entry.id)).to.deep.equal([root.body.message.id, reply.body.message.id]);
+                expect(response.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, hasDrafts]);
+            }
+            const draftListing = await server
+                .get(`/users/${user}/mailboxes/${drafts}/messages`)
+                .query({ includeHasDrafts: true, includeHeaders: true })
+                .expect(200);
+            expect(draftListing.body.results[0].headers).to.not.have.property('in-reply-to');
+            expect(draftListing.body.results[0].hasDrafts).to.be.false;
+        };
+
+        await checkListings(true);
+        await server.put(`/users/${user}/mailboxes/${drafts}/messages/${forward.body.message.id}`).send({ draft: false }).expect(200);
+        await checkListings(false);
+        await server.put(`/users/${user}/mailboxes/${drafts}/messages/${forward.body.message.id}`).send({ draft: true }).expect(200);
+        await checkListings(true);
+        await server.delete(`/users/${user}/mailboxes/${drafts}/messages/${forward.body.message.id}`).expect(200);
+        for (const path of [`/users/${user}/mailboxes/${mailbox}/messages`, `/users/${user}/search`]) {
+            const response = await server.get(path).query({ mailbox, includeHasDrafts: true }).expect(200);
+            expect(response.body.results.map(entry => entry.hasDrafts)).to.deep.equal([false, false]);
+        }
     });
 
     it('should GET /users/:user/search expect success / IMAP APPEND draft hasDrafts matches only the direct parent', async () => {

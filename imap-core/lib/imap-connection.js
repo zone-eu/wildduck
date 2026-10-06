@@ -14,9 +14,22 @@ const EventEmitter = require('events').EventEmitter;
 const packageInfo = require('../../package');
 const errors = require('../../lib/errors.js');
 
-// Shift timeout by 37 seconds (randomly selected by myself, no specific meaning) to
-// avoid race conditions where both the client and the server wait for 5 minutes
-const SOCKET_TIMEOUT = 5 * 60 * 1000 + 37 * 1000;
+/**
+ * Compiles a list of message flags into the response nodes for FLAGS.
+ *
+ * RFC 3501 9: flag = "\" atom / flag-keyword, so every flag goes out as an atom. One that can not
+ * be compiled as an atom would become a quoted string, which is not a flag at all, so it is left
+ * out rather than answered with something the grammar does not allow.
+ *
+ * @param {Array} flags Flag values, or ready made response nodes
+ * @returns {Array} Response nodes
+ */
+function toFlagAtoms(flags) {
+    return []
+        .concat(flags || [])
+        .map(flag => (flag && flag.value ? flag : { type: 'ATOM', value: (flag || flag === 0 ? flag : '').toString() }))
+        .filter(node => imapTools.isEmittableFlag(node.value));
+}
 
 /**
  * Creates a handler for new socket
@@ -36,6 +49,8 @@ class IMAPConnection extends EventEmitter {
         this.ignore = options.ignore;
 
         this.compression = false;
+        // set as soon as COMPRESS is accepted, a tick before the pipes are switched and this.compression flips
+        this._compressing = false;
         this._deflate = false;
         this._inflate = false;
         this._inflateLimit = false;
@@ -63,7 +78,8 @@ class IMAPConnection extends EventEmitter {
                 this.logger.error(
                     {
                         tnx: 'client',
-                        cid: this.id
+                        cid: this.id,
+                        remotePort: this.remotePort
                     },
                     '[%s] Command line too long, C: %s',
                     this.id,
@@ -74,6 +90,14 @@ class IMAPConnection extends EventEmitter {
 
         // Set handler for incoming commands
         this._parser.oncommand = this._onCommand.bind(this);
+
+        // Without a listener a stream level error would be an uncaught exception and take the process down.
+        // The parser can not be used after it errors, so the session is closed instead of being left hanging.
+        this._parser.on('error', err => {
+            this._onError(err);
+            this.send('* BYE Internal server error');
+            this.close();
+        });
 
         // Manage multi part command
         this._currentCommand = false;
@@ -86,6 +110,7 @@ class IMAPConnection extends EventEmitter {
 
         // Store remote address for later usage
         this.remoteAddress = (options.remoteAddress || this._socket.remoteAddress || '').replace(/^::ffff:/, '');
+        this.remotePort = options.remotePort || this._socket.remotePort;
 
         // Server hostname for the greegins
         this.name = (this._server.options.name || os.hostname()).toLowerCase();
@@ -349,7 +374,7 @@ class IMAPConnection extends EventEmitter {
         this._socket.on('close', this._onClose.bind(this));
         this._socket.on('end', this._onEnd.bind(this));
         this._socket.on('error', this._onError.bind(this));
-        this._socket.setTimeout(this._server.options.socketTimeout || SOCKET_TIMEOUT, this._onTimeout.bind(this));
+        this._socket.setTimeout(imapTools.getSocketTimeout(this), this._onTimeout.bind(this));
         this._socket.pipe(this._parser);
     }
 
@@ -541,7 +566,7 @@ class IMAPConnection extends EventEmitter {
         if (this.idling) {
             // see if the connection still works
             this.send('* OK Still here (' + Date.now() + ')');
-            this._socket.setTimeout(this._server.options.socketTimeout || SOCKET_TIMEOUT, this._onTimeout.bind(this));
+            this._socket.setTimeout(imapTools.getSocketTimeout(this), this._onTimeout.bind(this));
             return;
         }
 
@@ -584,7 +609,8 @@ class IMAPConnection extends EventEmitter {
                 _tag: tag || false,
                 _max_line_length: this._server.options.maxLineLength,
                 _sess: this.id,
-                _remoteAddress: this.remoteAddress
+                _remoteAddress: this.remoteAddress,
+                _remotePort: this.remotePort
             });
             this.send((tag ? tag : '*') + ' BAD Command line too long');
             return callback();
@@ -859,14 +885,18 @@ class IMAPConnection extends EventEmitter {
                 this.selected.uidList.length
             );
             switch (update.command) {
-                case 'EXISTS':
+                case 'EXISTS': {
                     // Generate the response but do not send it yet (EXIST response generation is needed to modify the UID list)
                     // This way we can accumulate consecutive EXISTS responses into single one as
                     // only the last one actually matters to the client
-                    existsResponse = this.formatResponse('EXISTS', update.uid);
-                    changed = false;
+                    const response = this.formatResponse('EXISTS', update.uid);
+                    if (response) {
+                        existsResponse = response;
+                        changed = false;
+                    }
 
                     break;
+                }
 
                 case 'EXPUNGE': {
                     let seq = (this.selected.uidList || []).indexOf(update.uid);
@@ -924,8 +954,14 @@ class IMAPConnection extends EventEmitter {
         let seq;
 
         if (command === 'EXISTS') {
-            this.selected.uidList.push(uid);
-            seq = this.selected.uidList.length;
+            let uidList = this.selected.uidList || [];
+            // uids only ever grow, so anything not above the last one is already known. Pushing it
+            // again would duplicate the entry and shift every sequence number after it
+            if (uidList.length && uid <= uidList[uidList.length - 1]) {
+                return false;
+            }
+            uidList.push(uid);
+            seq = uidList.length;
         } else {
             seq = (this.selected.uidList || []).indexOf(uid);
             if (seq < 0) {
@@ -955,7 +991,9 @@ class IMAPConnection extends EventEmitter {
                 // Response for FETCH command
                 data.query.forEach((item, i) => {
                     response.attributes[1].push(item.original);
-                    if (['flags', 'modseq'].indexOf(item.item) >= 0) {
+                    if (item.item === 'flags') {
+                        response.attributes[1].push(toFlagAtoms(data.values[i]));
+                    } else if (item.item === 'modseq') {
                         response.attributes[1].push(
                             [].concat(data.values[i] || []).map(value => ({
                                 type: 'ATOM',
@@ -1004,14 +1042,7 @@ class IMAPConnection extends EventEmitter {
 
                     switch (key) {
                         case 'FLAGS':
-                            value = [].concat(value || []).map(flag =>
-                                flag && flag.value
-                                    ? flag
-                                    : {
-                                          type: 'ATOM',
-                                          value: flag
-                                      }
-                            );
+                            value = toFlagAtoms(value);
                             break;
 
                         case 'UID':
@@ -1051,6 +1082,10 @@ class IMAPConnection extends EventEmitter {
 
     setUser(user) {
         this.user = this.session.user = user;
+        // an authenticated session gets the longer autologout timer
+        if (this._socket && !this._socket.destroyed) {
+            this._socket.setTimeout(imapTools.getSocketTimeout(this), this._onTimeout.bind(this));
+        }
     }
 }
 

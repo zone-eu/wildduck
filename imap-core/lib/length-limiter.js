@@ -5,7 +5,8 @@ const Transform = streams.Transform;
 
 // make sure that a stream piped to this transform stream
 // always emits a fixed amounts of bytes. Either by truncating
-// input or emitting padding characters
+// input or emitting padding: a character, or a function that returns
+// the bytes for a given length
 class LengthLimiter extends Transform {
     constructor(expectedLength, padding, startFrom, byteCounter) {
         super();
@@ -14,6 +15,8 @@ class LengthLimiter extends Transform {
         this.byteCounter = byteCounter || 0;
         this.startFrom = startFrom || 0;
         this.finished = false;
+        // bytes that arrived after the expected length was already reached
+        this.dropped = 0;
         Transform.call(this);
     }
 
@@ -22,7 +25,12 @@ class LengthLimiter extends Transform {
             chunk = Buffer.from(chunk, encoding);
         }
 
-        if (!chunk || !chunk.length || this.finished) {
+        if (!chunk || !chunk.length) {
+            return done();
+        }
+
+        if (this.finished) {
+            this.dropped += chunk.length;
             return done();
         }
 
@@ -56,6 +64,7 @@ class LengthLimiter extends Transform {
         let remaining = chunk.slice(this.expectedLength - this.byteCounter);
         this.push(buf);
         this.finished = true;
+        this.dropped += remaining.length;
         this.emit('done', remaining);
         return setImmediate(done);
     }
@@ -64,10 +73,14 @@ class LengthLimiter extends Transform {
         if (!this.finished) {
             // add padding if incoming stream stopped too early
             if (this.expectedLength > this.byteCounter) {
-                let buf = Buffer.from(this.padding.repeat(this.expectedLength - this.byteCounter));
-                this.push(buf);
+                let missing = this.expectedLength - this.byteCounter;
+                this.push(typeof this.padding === 'function' ? this.padding(missing) : Buffer.from(this.padding.repeat(missing)));
+                // the announced octet count was honoured, but the bytes are not the message
+                this.emit('mismatch', { kind: 'padded', expected: this.expectedLength, received: this.byteCounter });
             }
             this.finished = true;
+        } else if (this.dropped) {
+            this.emit('mismatch', { kind: 'truncated', expected: this.expectedLength, received: this.expectedLength + this.dropped });
         }
         done();
     }

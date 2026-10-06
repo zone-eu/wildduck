@@ -160,6 +160,7 @@ const TIMEZONE_ABBREVATIONS = {
     TVT: '+1200',
     UCT: '+0000',
     ULAT: '+0800',
+    UT: '+0000',
     UTC: '+0000',
     UYST: '-0200',
     UYT: '-0300',
@@ -181,6 +182,22 @@ const TIMEZONE_ABBREVATIONS = {
     Z: '+0000'
 };
 
+// RFC 5322 3.3: zone = (("+" / "-") 4DIGIT), with obsolete alphabetic zones handled above.
+// 3.2.2 allows a trailing comment, which senders routinely use to spell the zone out
+function normalizeZone(str) {
+    return (str || '')
+        .toString()
+        .replace(/\s*\([^()]*\)\s*$/, '')
+        .trim()
+        .replace(/\b[a-z]+$/i, tz => {
+            tz = tz.toUpperCase();
+            if (TIMEZONE_ABBREVATIONS.hasOwnProperty(tz)) {
+                return TIMEZONE_ABBREVATIONS[tz];
+            }
+            return tz;
+        });
+}
+
 function parseDate(str, defaultDate) {
     if (isValidDate(str)) {
         return str;
@@ -196,13 +213,7 @@ function parseDate(str, defaultDate) {
 
     // Assume last alpha part is a timezone
     // Ex: "Date: Thu, 15 May 2014 13:53:30 EEST"
-    str = str.replace(/\b[a-z]+$/i, tz => {
-        tz = tz.toUpperCase();
-        if (TIMEZONE_ABBREVATIONS.hasOwnProperty(tz)) {
-            return TIMEZONE_ABBREVATIONS[tz];
-        }
-        return tz;
-    });
+    str = normalizeZone(str);
 
     date = new Date(str);
 
@@ -222,4 +233,25 @@ function isValidDate(date) {
     return Object.prototype.toString.call(date) === '[object Date]' && date.toString() !== 'Invalid Date';
 }
 
+/**
+ * Returns midnight of the calendar day a date header names, as a UTC timestamp.
+ *
+ * A parsed date is a single instant, which is not enough for the SENTBEFORE, SENTON and SENTSINCE
+ * search keys: RFC 3501 6.4.4 compares the Date header "disregarding time and timezone", so the
+ * day the sender wrote has to be recovered from the instant and the zone it was read in. A header
+ * that names no zone was read as local time, so the local offset puts it back on the written day.
+ *
+ * @param {Date} date Instant the header was parsed into
+ * @param {String} [str] Raw Date header value, empty when there is no usable header
+ * @returns {Date} UTC midnight of the calendar day
+ */
+function getCalendarDay(date, str) {
+    let match = /([+-])(\d{2}):?(\d{2})$/.exec(normalizeZone(str));
+    let offsetMinutes = match ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3])) : -date.getTimezoneOffset();
+
+    let shifted = new Date(date.getTime() + offsetMinutes * 60 * 1000);
+    return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
+}
+
 module.exports = parseDate;
+module.exports.getCalendarDay = getCalendarDay;

@@ -7421,7 +7421,7 @@
                                     },
                                     "scope": {
                                         "type": "string",
-                                        "description": "Required scope. One of master, imap, smtp, pop3",
+                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp",
                                         "default": "master"
                                     },
                                     "sess": {
@@ -7491,7 +7491,7 @@
                                     },
                                     "scope": {
                                         "type": "string",
-                                        "description": "Required scope. One of master, imap, smtp, pop3",
+                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp",
                                         "default": "master"
                                     },
                                     "appId": {
@@ -7500,7 +7500,7 @@
                                     },
                                     "token": {
                                         "type": "boolean",
-                                        "description": "If true then generates a temporary access token that is valid for this user. Only available if scope is \"master\". When using user tokens then you can replace user ID in URLs with \"me\".",
+                                        "description": "If true then generates a temporary credential for the requested scope. The \"master\" scope returns an API access token and \"mcp\" returns an MCP-only bearer token.",
                                         "default": false
                                     },
                                     "sess": {
@@ -7540,9 +7540,124 @@
                     "Authentication"
                 ],
                 "summary": "Invalidate authentication token",
-                "description": "This method invalidates currently used authentication token. If token is not provided then nothing happens",
+                "description": "This method invalidates the currently used API or MCP authentication token. If token is not provided then nothing happens",
                 "operationId": "invalidateAccessToken",
                 "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/{scope}": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Create a scoped authentication token",
+                "description": "Exchanges an MFA-satisfied master API token for an independent token restricted to the requested scope.",
+                "operationId": "createScopedAuthenticationToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sess": {
+                                        "type": "string",
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "scope",
+                        "in": "path",
+                        "description": "Authentication scope for the new token",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateScopedAuthenticationTokenResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/{scope}/{token}": {
+            "delete": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Revoke a scoped authentication token",
+                "description": "Revokes an independent scoped login session owned by the authenticated master-token user.",
+                "operationId": "deleteScopedAuthenticationToken",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sess": {
+                                        "type": "string",
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "parameters": [
+                    {
+                        "name": "scope",
+                        "in": "path",
+                        "description": "Authentication scope of the token to revoke",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "description": "Token identifier returned when the token was created",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Success",
@@ -9855,6 +9970,13 @@
                         }
                     }
                 }
+            }
+        },
+        "/api-methods": {
+            "get": {
+                "operationId": "api-methods",
+                "parameters": [],
+                "responses": {}
             }
         }
     },
@@ -14114,7 +14236,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "User auth token returned when this check completes a pending 2FA login"
+                        "description": "API access token or MCP-only bearer token returned when this check completes a pending 2FA login"
                     }
                 },
                 "required": [
@@ -14433,7 +14555,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "User auth token"
+                        "description": "API access token or MCP-only bearer token"
                     }
                 },
                 "required": [
@@ -14543,7 +14665,7 @@
                     },
                     "token": {
                         "type": "string",
-                        "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the value to use as access token when making API requests on behalf of logged in user."
+                        "description": "Credential for the requested scope. MCP credentials are returned only after any configured TOTP or WebAuthn challenge. master-scope API tokens retain the strict2fa compatibility behavior."
                     },
                     "twoFactorNonce": {
                         "type": "string",
@@ -14567,6 +14689,34 @@
                     "require2fa",
                     "require2faEnabled",
                     "requirePasswordChange"
+                ]
+            },
+            "CreateScopedAuthenticationTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "description": "Indicates successful response",
+                        "example": true
+                    },
+                    "scope": {
+                        "type": "string",
+                        "description": "Scope granted to the new token"
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Token identifier used for management and revocation"
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "Plaintext scoped bearer token. This value is returned only once."
+                    }
+                },
+                "required": [
+                    "success",
+                    "scope",
+                    "id",
+                    "token"
                 ]
             },
             "GetAuthlogResult": {

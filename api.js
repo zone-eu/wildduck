@@ -25,8 +25,8 @@ const Lock = require('ioredfour');
 const Path = require('path');
 const errors = require('restify-errors');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
-
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
 const addressesRoutes = require('./lib/api/addresses');
@@ -48,6 +48,7 @@ const domainaliasRoutes = require('./lib/api/domainaliases');
 const dkimRoutes = require('./lib/api/dkim');
 const certsRoutes = require('./lib/api/certs');
 const webhooksRoutes = require('./lib/api/webhooks');
+const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
@@ -55,18 +56,18 @@ const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
 
-// The only routes an MCP credential may reach, by route name, mapped to the resource whose
-// field allowlist shapes the response. Every one is a GET that a tool in lib/mcp-tools.js
-// dispatches to; the method is checked separately so the list cannot accidentally admit a
-// mutating route that reuses a name.
+// The only routes an MCP credential may reach, by route name and method. Read routes map to
+// the resource whose field allowlist shapes the response. The sole non-read route revokes the
+// credential that authenticated that same request.
 const MCP_ROUTES = new Map([
-    ['getuser', 'users'],
-    ['getuseraddresses', 'addresses'],
-    ['getmailboxes', 'mailboxes'],
-    ['getmailbox', 'mailboxes'],
-    ['getmessages', 'messages'],
-    ['getmessage', 'messages'],
-    ['searchmessages', 'messages']
+    ['getuser', { method: 'GET', resource: 'users' }],
+    ['getuseraddresses', { method: 'GET', resource: 'addresses' }],
+    ['getmailboxes', { method: 'GET', resource: 'mailboxes' }],
+    ['getmailbox', { method: 'GET', resource: 'mailboxes' }],
+    ['getmessages', { method: 'GET', resource: 'messages' }],
+    ['getmessage', { method: 'GET', resource: 'messages' }],
+    ['searchmessages', { method: 'GET', resource: 'messages' }],
+    ['invalidateaccesstoken', { method: 'DELETE' }]
 ]);
 
 /**
@@ -127,6 +128,7 @@ let auditHandler;
 let settingsHandler;
 let mcpTokenHandler;
 let notifier;
+let apnClient;
 let loggelf;
 
 const serverOptions = {
@@ -416,11 +418,11 @@ server.use(async (req, res) => {
         // messages and users also covers the raw RFC822 source, the archive, the address
         // register, the journal stream and PUT /users/:user/logout, which is a state change
         // guarded by readOwn('users'). So the credential is additionally pinned to the exact
-        // routes the MCP tools dispatch to: adding a route under an existing grant cannot
-        // widen what an agent token reaches, and the read-only promise belongs to the
-        // credential rather than to the client that happens to be using it.
-        let mcpResource = MCP_ROUTES.get(((req.route && req.route.name) || '').toLowerCase());
-        if (req.method !== 'GET' || !mcpResource) {
+        // routes the MCP tools dispatch to, plus self-revocation: adding a route under an
+        // existing grant cannot widen what an agent token reaches, and the read-only promise
+        // belongs to the credential rather than to the client that happens to be using it.
+        let mcpRoute = MCP_ROUTES.get(((req.route && req.route.name) || '').toLowerCase());
+        if (!mcpRoute || req.method !== mcpRoute.method) {
             return fail();
         }
 
@@ -444,8 +446,14 @@ server.use(async (req, res) => {
             req.params.user = req.user;
         }
 
-        if (!filterResponseFields(req, res, mcpResource)) {
-            return fail();
+        if (mcpRoute.resource) {
+            if (!filterResponseFields(req, res, mcpRoute.resource)) {
+                return fail();
+            }
+        } else {
+            req.accessToken = {
+                revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
+            };
         }
 
         return;
@@ -477,6 +485,11 @@ server.use(async (req, res) => {
                         authVersion: tokenData.authVersion,
                         role: tokenData.role
                     };
+                    if ('mfaRequired' in tokenData || 'mfaVerified' in tokenData || 'passwordChangeRequired' in tokenData) {
+                        signData.mfaRequired = tokenData.mfaRequired;
+                        signData.mfaVerified = tokenData.mfaVerified;
+                        signData.passwordChangeRequired = tokenData.passwordChangeRequired;
+                    }
                 } else {
                     signData = {
                         token: accessToken,
@@ -506,12 +519,28 @@ server.use(async (req, res) => {
 
                     // check if token is not too old
                     if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
+                        let assuranceRecorded = 'mfaRequired' in tokenData && 'mfaVerified' in tokenData && 'passwordChangeRequired' in tokenData;
+                        let mfaRequired = assuranceRecorded && tokenData.mfaRequired === 'true';
+                        let mfaVerified = assuranceRecorded && tokenData.mfaVerified === 'true';
+                        // set when a later 2FA completion verified this token through the side key
+                        let mfaProofVerified = false;
+                        if (mfaRequired && !mfaVerified) {
+                            try {
+                                let proof = await db.redis.get('tn:token:mfa:' + tokenHash);
+                                mfaProofVerified = proof === userHandler.getAuthTokenMfaProof(tokenHash, tokenData.user, tokenData.authVersion);
+                            } catch (err) {
+                                // treat as unverified
+                            }
+                            mfaVerified = mfaProofVerified;
+                        }
+
                         // token is still usable, increase session length
                         try {
-                            await db.redis
-                                .multi()
-                                .expire('tn:token:' + tokenHash, tokenTTL)
-                                .exec();
+                            let refresh = db.redis.multi().expire('tn:token:' + tokenHash, tokenTTL);
+                            if (mfaProofVerified) {
+                                refresh.expire('tn:token:mfa:' + tokenHash, tokenTTL);
+                            }
+                            await refresh.exec();
                         } catch (err) {
                             // ignore
                         }
@@ -524,8 +553,18 @@ server.use(async (req, res) => {
                         req.accessToken = {
                             hash: tokenHash,
                             user: tokenData.user,
+                            authVersion: tokenData.authVersion,
+                            assuranceRecorded,
+                            mfaRequired,
+                            mfaVerified,
+                            passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
                             // if called then refreshes token data for current hash
-                            update: async () => setAuthToken(tokenData.user, accessToken)
+                            update: async () =>
+                                setAuthToken(tokenData.user, accessToken, {
+                                    mfaRequired,
+                                    mfaVerified,
+                                    passwordChangeRequired: false
+                                })
                         };
                     } else {
                         // expired token, clear it
@@ -669,6 +708,8 @@ module.exports = done => {
         settingsHandler
     });
 
+    apnClient = ApnClient.get({ config: config.imap && config.imap.aps, database: db.database, loggelf: message => loggelf(message) });
+
     messageHandler = new MessageHandler({
         database: db.database,
         users: db.users,
@@ -676,6 +717,7 @@ module.exports = done => {
         gridfs: db.gridfs,
         attachments: config.attachments,
         settingsHandler,
+        apn: apnClient,
         loggelf: message => loggelf(message)
     });
 
@@ -743,11 +785,11 @@ module.exports = done => {
     filtersRoutes(db, server, userHandler, settingsHandler);
     domainaccessRoutes(db, server);
     aspsRoutes(db, server, userHandler);
-    totpRoutes(db, server, userHandler);
+    totpRoutes(db, server, userHandler, mcpTokenHandler);
     custom2faRoutes(db, server, userHandler);
-    webauthnRoutes(db, server, userHandler);
+    webauthnRoutes(db, server, userHandler, mcpTokenHandler);
     updatesRoutes(db, server, notifier);
-    authRoutes(db, server, userHandler);
+    authRoutes(db, server, userHandler, mcpTokenHandler);
     autoreplyRoutes(db, server);
     submitRoutes(db, server, messageHandler, userHandler, settingsHandler);
     auditRoutes(db, server, auditHandler);
@@ -755,6 +797,7 @@ module.exports = done => {
     dkimRoutes(db, server);
     certsRoutes(db, server);
     webhooksRoutes(db, server);
+    pushsubscriptionsRoutes(db, server, apnClient);
     settingsRoutes(db, server, settingsHandler);
     healthRoutes(db, server, loggelf);
     mcpTokensRoutes(server, mcpTokenHandler);

@@ -1,7 +1,7 @@
 'use strict';
 
 const imapHandler = require('../handler/imap-handler');
-const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing } = require('../imap-tools');
+const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing, sendDelimiterResponse } = require('../imap-tools');
 
 // tag LSUB "" "%"
 
@@ -54,7 +54,8 @@ module.exports = {
                 });
             }
 
-            filterFolders(generateFolderListing(list, true), query).forEach(folder => {
+            // RFC 3501 6.3.9: a "%" wildcard must return the \Noselect parent of a subscribed child
+            filterFolders(generateFolderListing(list), query).forEach(folder => {
                 if (!folder) {
                     return;
                 }
@@ -89,9 +90,9 @@ module.exports = {
 
         if (!path) {
             // return delimiter only
-            return lsubResponse(null, {
-                path: '/',
-                flags: '\\Noselect'
+            sendDelimiterResponse(this, 'LSUB');
+            return callback(null, {
+                response: 'OK'
             });
         }
 

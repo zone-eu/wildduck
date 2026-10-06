@@ -1,9 +1,28 @@
 'use strict';
 
 const Indexer = require('./indexer/indexer');
+const imapHandler = require('./handler/imap-handler');
+const imapFormalSyntax = require('./handler/imap-formal-syntax');
 const libmime = require('libmime');
 const punycode = require('punycode.js');
 const iconv = require('iconv-lite');
+
+// RFC 3501 5.4: "If a server has an inactivity autologout timer, the duration of that timer MUST be
+// at least 30 minutes." Shifted by 37 seconds (randomly selected, no specific meaning) to avoid race
+// conditions where both the client and the server wait for the same 30 minutes.
+module.exports.SOCKET_TIMEOUT = 30 * 60 * 1000 + 37 * 1000;
+
+// RFC 9051 5.4: the 30 minute minimum applies to sessions after authentication, "servers are allowed
+// to use a shortened pre-authentication timer to protect themselves from Denial-of-Service attacks"
+module.exports.PREAUTH_SOCKET_TIMEOUT = 5 * 60 * 1000 + 37 * 1000;
+
+module.exports.getSocketTimeout = connection => {
+    let options = connection._server.options;
+    if (!connection.user) {
+        return options.preAuthSocketTimeout || module.exports.PREAUTH_SOCKET_TIMEOUT;
+    }
+    return options.socketTimeout || module.exports.SOCKET_TIMEOUT;
+};
 
 module.exports.systemFlagsFormatted = ['\\Answered', '\\Flagged', '\\Draft', '\\Deleted', '\\Seen'];
 module.exports.systemFlags = ['\\answered', '\\flagged', '\\draft', '\\deleted', '\\seen'];
@@ -197,6 +216,12 @@ module.exports.searchMapping = {
     }
 };
 
+// RFC 3501 9: seq-number = nz-number / "*", so zero is not a valid sequence number or UID.
+// Leading zeros are still accepted, they name the same non-zero message
+const SEQ_NUMBER = '(?:0*[1-9]\\d*|\\*)';
+const SEQ_ITEM = `${SEQ_NUMBER}(?::${SEQ_NUMBER})?`;
+const SEQ_RANGE = new RegExp(`^${SEQ_ITEM}(?:,${SEQ_ITEM})*$`);
+
 /**
  * Checks if a sequence range string is valid or not
  *
@@ -204,7 +229,7 @@ module.exports.searchMapping = {
  * @returns {Boolean} True if the string looks like a sequence range
  */
 module.exports.validateSequence = function (range) {
-    return !!(range.length && /^(\d+|\*)(:\d+|:\*)?(,(\d+|\*)(:\d+|:\*)?)*$/.test(range));
+    return !!(range.length && SEQ_RANGE.test(range));
 };
 
 module.exports.normalizeMailbox = function (mailbox, utf7Encoded) {
@@ -230,7 +255,7 @@ module.exports.normalizeMailbox = function (mailbox, utf7Encoded) {
     return mailbox;
 };
 
-module.exports.generateFolderListing = function (folders, skipHierarchy) {
+module.exports.generateFolderListing = function (folders) {
     let items = new Map();
     let parents = [];
 
@@ -288,7 +313,7 @@ module.exports.generateFolderListing = function (folders, skipHierarchy) {
 
     // Adds \HasChildren flag for parent folders
     parents.forEach(path => {
-        if (!items.has(path) && !skipHierarchy) {
+        if (!items.has(path)) {
             // add virtual hierarchy folders
             items.set(path, {
                 flags: ['\\Noselect'],
@@ -485,6 +510,24 @@ module.exports.packMessageRange = function (uidList) {
  * @param {Date} date Date object to parse
  * @returns {String} Internaldate formatted date
  */
+/**
+ * Builds the response code for a completed COPY or MOVE.
+ *
+ * RFC 4315 4: resp-code-copy takes two non-empty uid-sets, so when nothing matched the code is
+ * left out instead of emitting empty sets.
+ */
+module.exports.getCopyUidCode = function (success, info) {
+    if (typeof success === 'string') {
+        return success.toUpperCase();
+    }
+
+    if (!info || !info.sourceUid || !info.sourceUid.length) {
+        return false;
+    }
+
+    return 'COPYUID ' + info.uidValidity + ' ' + module.exports.packMessageRange(info.sourceUid) + ' ' + module.exports.packMessageRange(info.destinationUid);
+};
+
 module.exports.formatInternalDate = function (date) {
     let day = date.getUTCDate(),
         month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getUTCMonth()],
@@ -520,6 +563,34 @@ module.exports.formatInternalDate = function (date) {
         tzMins
     );
 };
+
+/**
+ * Makes a response structure 7-bit in place: every string or byte value that holds anything above
+ * 0x7F becomes an RFC 2047 encoded word. RFC 6855 3: the server must not send UTF-8 in quoted
+ * strings unless the client enabled UTF8=ACCEPT
+ *
+ * @param {Array} arr Response structure (nested arrays of strings, Buffers, MongoDB Binary and null)
+ */
+function encodeStrings(arr) {
+    arr.forEach((entry, i) => {
+        if (Array.isArray(entry)) {
+            return encodeStrings(entry);
+        }
+        if (typeof entry === 'string') {
+            if (/[^\u0000-\u007f]/.test(entry)) {  // eslint-disable-line no-control-regex
+                arr[i] = libmime.encodeWords(entry, false, Infinity);
+            }
+            return;
+        }
+        if (!entry || typeof entry !== 'object') {
+            return;
+        }
+        let val = Buffer.isBuffer(entry) ? entry : entry.buffer;
+        if (val) {
+            arr[i] = libmime.encodeWords(val.toString(), false, Infinity);
+        }
+    });
+}
 
 /**
  * Converts query data and message into an array of query responses.
@@ -586,24 +657,8 @@ module.exports.getQueryResponse = function (query, message, options) {
                     value = indexer.getBodyStructure(mimeTree);
                 }
 
-                let walk = arr => {
-                    arr.forEach((entry, i) => {
-                        if (Array.isArray(entry)) {
-                            return walk(entry);
-                        }
-                        if (!entry || typeof entry !== 'object') {
-                            return;
-                        }
-                        let val = entry;
-                        if (!Buffer.isBuffer(val) && val.buffer) {
-                            val = val.buffer;
-                        }
-                        arr[i] = libmime.encodeWords(val.toString(), false, Infinity);
-                    });
-                };
-
                 if (!options.acceptUTF8Enabled) {
-                    walk(value);
+                    encodeStrings(value);
                 }
 
                 break;
@@ -612,7 +667,7 @@ module.exports.getQueryResponse = function (query, message, options) {
                 if (message.envelope) {
                     value = message.envelope;
                     // cast invalidly stored In-Reply-To (8) and Message-ID (9) to strings
-                    for (let index of [9, 10]) {
+                    for (let index of [8, 9]) {
                         if (value[index] && Array.isArray(value[index])) {
                             value[index] = value[index].pop() || null;
                         }
@@ -627,7 +682,7 @@ module.exports.getQueryResponse = function (query, message, options) {
                     // encode unicode values
 
                     // subject
-                    value[1] = libmime.encodeWords(value[1], false, Infinity);
+                    value[1] = libmime.encodeWords((value[1] || '').toString(), false, Infinity);
 
                     for (let i = 2; i < 8; i++) {
                         if (value[i] && Array.isArray(value[i])) {
@@ -666,7 +721,8 @@ module.exports.getQueryResponse = function (query, message, options) {
                         }
                     }
 
-                    // libmime.encodeWords(value, false, Infinity)
+                    // whatever is left (date, message ids, values stored as strings) must be 7-bit too
+                    encodeStrings(value);
                 }
                 break;
 
@@ -714,6 +770,9 @@ module.exports.getQueryResponse = function (query, message, options) {
                         mimeTree = indexer.parseMimeTree(message.raw);
                     }
                     value = indexer.getBody(mimeTree);
+                    if (!options.acceptUTF8Enabled) {
+                        encodeStrings(value);
+                    }
                 } else if (item.path === '' && item.type === 'content') {
                     // BODY[]
                     if (!mimeTree) {
@@ -835,6 +894,77 @@ module.exports.sendCapabilityResponse = connection => {
 
     let protocolCaps = connection._server.options.aps?.enabled ? ['XAPPLEPUSHSERVICE', 'IMAP4rev1'] : ['IMAP4rev1'];
     connection.send('* CAPABILITY ' + protocolCaps.concat(capabilities).join(' '));
+};
+
+// RFC 3501 9: flag-keyword = atom, so a keyword holding an atom-special could only be compiled as
+// a quoted string, which is not a flag at all. A leading backslash fails the same check, keywords
+// may not look like system flags.
+const isValidKeyword = keyword => imapFormalSyntax.isAtom(keyword);
+
+// RFC 3501 9: flag = "\Answered" / ... / "\" atom / flag-keyword. A flag that can not be compiled
+// as an atom is left out of the response. STORE and APPEND refuse such keywords, so only a message
+// or a mailbox keyword registry written before that validation can still carry one.
+const isEmittableFlag = flag => !imapFormalSyntax.needsQuoting(flag) && !!(flag || '').toString().length;
+
+module.exports.isValidKeyword = isValidKeyword;
+module.exports.isEmittableFlag = isEmittableFlag;
+
+// RFC 3501 6.3.2: "No changes to the permanent state of the mailbox ... are permitted" for a
+// mailbox opened with EXAMINE, and 6.4.3 / 6.4.6 list NO as the failure result for EXPUNGE and
+// STORE. An OK would tell the client the change was made.
+module.exports.READ_ONLY_RESPONSE = Object.freeze({
+    response: 'NO',
+    code: 'CANNOT',
+    message: 'Mailbox is read-only'
+});
+
+// RFC 7162 3.1.2: * OK [HIGHESTMODSEQ n]
+module.exports.sendHighestModseq = (connection, modseq) => {
+    connection.send(
+        imapHandler.compiler({
+            tag: '*',
+            command: 'OK',
+            attributes: [
+                {
+                    type: 'section',
+                    section: [
+                        {
+                            type: 'atom',
+                            value: 'HIGHESTMODSEQ'
+                        },
+                        {
+                            type: 'atom',
+                            value: String(modseq)
+                        }
+                    ]
+                },
+                {
+                    type: 'text',
+                    value: 'Highest'
+                }
+            ]
+        })
+    );
+};
+
+// RFC 3501 6.3.8: an empty mailbox name is a request for the hierarchy delimiter and the root name
+module.exports.sendDelimiterResponse = (connection, commandName) => {
+    connection.send(
+        imapHandler.compiler({
+            tag: '*',
+            command: commandName,
+            attributes: [
+                [
+                    {
+                        type: 'atom',
+                        value: '\\Noselect'
+                    }
+                ],
+                '/',
+                '/'
+            ]
+        })
+    );
 };
 
 module.exports.validateInternalDate = internaldate => {
