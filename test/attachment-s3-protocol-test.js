@@ -340,9 +340,13 @@ const fixtures = [
                     await server.database.collection('attachments.chunks').deleteOne({ _id: last._id });
                 }
                 const damaged = await get();
-                // the transfer breaks off, or the connection drops before any response when the damage shows at once
+                // the transfer breaks off, or, when the damage shows before the first byte, the request
+                // fails as a whole: a 500 error body (nothing was sent yet) or a dropped connection
                 expect(damaged.status === 200 && damaged.complete).to.equal(false);
-                expect([0, 200]).to.include(damaged.status);
+                expect([0, 200, 500]).to.include(damaged.status);
+                if (damaged.status === 500) {
+                    expect(JSON.parse(damaged.body.toString()).code).to.equal('InternalError');
+                }
 
                 // forwarding it does not copy a short attachment into the new message
                 const forwarded = await server.api
