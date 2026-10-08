@@ -28,6 +28,7 @@ const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
 const { attachNativeRoutes } = require('./lib/fastify/routes');
 const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
@@ -68,7 +69,25 @@ const certsRoutes = require('./lib/api/certs');
 const webhooksRoutes = require('./lib/api/webhooks');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
+const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
+const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
+const McpTokenHandler = require('./lib/mcp-token-handler');
+const roles = require('./lib/roles');
+
+// The only routes an MCP credential may reach, by route name and method. Read routes map to
+// the resource whose field allowlist shapes the response. The sole non-read route revokes the
+// credential that authenticated that same request.
+const MCP_ROUTES = new Map([
+    ['getuser', { method: 'GET', resource: 'users' }],
+    ['getuseraddresses', { method: 'GET', resource: 'addresses' }],
+    ['getmailboxes', { method: 'GET', resource: 'mailboxes' }],
+    ['getmailbox', { method: 'GET', resource: 'mailboxes' }],
+    ['getmessages', { method: 'GET', resource: 'messages' }],
+    ['getmessage', { method: 'GET', resource: 'messages' }],
+    ['searchmessages', { method: 'GET', resource: 'messages' }],
+    ['invalidateaccesstoken', { method: 'DELETE' }]
+]);
 
 // logged param values are truncated to 128 chars, so there is no point in
 // rendering more than that per nested value
@@ -80,7 +99,9 @@ let messageHandler;
 let storageHandler;
 let auditHandler;
 let settingsHandler;
+let mcpTokenHandler;
 let notifier;
+let apnClient;
 let loggelf;
 
 function buildServer() {
@@ -309,6 +330,19 @@ module.exports = done => {
 
     attachRequestDecorations(app);
     attachReplyDecorations(app);
+
+    // Applies an MCP access level's field allowlist (set by the token check below) to whatever a
+    // route is about to answer. Most routes filter their own output already, but the message and
+    // mailbox routes do not, and adding a filter call to each of them would leave the next one to
+    // remember. preSerialization sees every object payload, from a handler, a hook or the error
+    // handler, and nothing else: a stream or a buffer is not a resource. Which bodies carry
+    // resource fields (an error body does not) is decided by roles.filterResponseBody. Registered
+    // ahead of the payload stash so the Gelf line logs what was actually sent.
+    app.decorateRequest('wdResponseFieldFilter', null);
+    app.addHook('preSerialization', async (request, reply, payload) =>
+        request.wdResponseFieldFilter ? roles.filterResponseBody(request.wdResponseFieldFilter, payload) : payload
+    );
+
     attachPayloadStash(app);
     attachResponseHeaders(app, 'WildDuck API');
     attachNativeRoutes(app, routeRegistry);
@@ -320,23 +354,6 @@ module.exports = done => {
         prefix: '/public/',
         index: 'index.html'
     });
-
-    const metricsEnabled = metrics.enabled;
-
-    if (metricsEnabled) {
-        app.get('/metrics', { config: { name: 'metrics', public: true } }, async (request, reply) => {
-            try {
-                // restify's text formatter replaced prom-client's content type
-                // (version param included) with plain text/plain
-                reply.header('Content-Type', 'text/plain; charset=utf-8');
-                return await metrics.getMetrics();
-            } catch (err) {
-                log.error('API', 'Failed to collect metrics: %s', err.message);
-                reply.status(500);
-                return 'error: metrics collection failed';
-            }
-        });
-    }
 
     // ---- access token check (previously a restify server.use middleware) ----
 
@@ -353,6 +370,12 @@ module.exports = done => {
             request.wdIsPublic = true;
             return;
         }
+
+        // Where a credential arrived, resolved before the carriers are cleared below. The merge
+        // itself is unchanged, and deliberately loose, because that is what every other credential
+        // kind has always been read with.
+        let bearerToken = McpTokenHandler.getBearerToken(request.headers.authorization);
+        let misplacedMcpToken = McpTokenHandler.isToken(request.query && request.query.accessToken) || McpTokenHandler.isToken(request.headers['x-access-token']);
 
         let accessToken =
             (request.query && request.query.accessToken) ||
@@ -382,6 +405,17 @@ module.exports = done => {
             throw error;
         };
 
+        // An MCP token is a bearer credential and nothing else. A wdmcp_ value in a query string or
+        // an X-Access-Token header has already been written somewhere a credential does not belong,
+        // since a URL reaches proxy logs, browser history and referrer headers, so the request is
+        // refused even when the same token is also presented correctly. Serving it would teach a
+        // client that the unsafe carrier works. Refused ahead of every other credential, including
+        // the master token, so no combination of carriers can serve a request that also carried a
+        // wdmcp_ value where one does not belong.
+        if (misplacedMcpToken) {
+            return fail();
+        }
+
         // hard coded master token
         if (config.api.accessToken) {
             tokenRequired = true;
@@ -390,6 +424,65 @@ module.exports = done => {
                 request.user = 'root';
                 return;
             }
+        }
+
+        // Dedicated MCP tokens resolve to the access level stored on the token record, so what an
+        // agent may do is decided by config/roles.json like every other role. These are only ever
+        // presented by the MCP service over the private network; they are not API access tokens
+        // and carry none of their privileges.
+        //
+        // The bearer value has to be the one the merge selected as well, so that a token presented
+        // alongside an ordinary access token cannot shadow it: precedence between carriers is the
+        // same for every credential kind, and this branch does not get its own.
+        if (accessToken === bearerToken && McpTokenHandler.isToken(bearerToken)) {
+            tokenRequired = true;
+
+            // A role alone is too coarse to describe what an agent may reach. `read:own` on
+            // messages and users also covers the raw RFC822 source, the archive, the address
+            // register, the journal stream and PUT /users/:user/logout, which is a state change
+            // guarded by readOwn('users'). So the credential is additionally pinned to the exact
+            // routes the MCP tools dispatch to, plus self-revocation: adding a route under an
+            // existing grant cannot widen what an agent token reaches, and the read-only promise
+            // belongs to the credential rather than to the client that happens to be using it.
+            let mcpRoute = MCP_ROUTES.get(String(routeConfig.name || '').toLowerCase());
+            if (!mcpRoute || request.method !== mcpRoute.method) {
+                return fail();
+            }
+
+            let authenticated;
+            try {
+                // No address is passed, so no failure is counted here. The failure budget belongs
+                // to the MCP listener, which is the surface a guess can actually be aimed at; this
+                // caller has already authenticated there, and the `ip` param is supplied by the
+                // caller, so keying a limiter on it would let one dodge or poison another's budget.
+                // Every MCP token holder reaches this listener from the same socket, so a budget
+                // here would also let one of them spend everyone else's.
+                authenticated = await mcpTokenHandler.authenticate(bearerToken);
+            } catch {
+                return fail();
+            }
+
+            request.role = authenticated.role;
+            request.user = authenticated.user._id.toString();
+
+            if (mcpRoute.resource) {
+                // config/roles.json is meant to be the single declaration of what an agent may
+                // see, so the allowlist is enforced at the exit of the API (the preSerialization
+                // hook below) rather than in the MCP service that usually calls it. A level with
+                // no read grant for the resource has no allowlist to apply: refused rather than
+                // answered unfiltered, so the next entry added to MCP_ROUTES cannot leak.
+                let permission = roles.can(request.role).readOwn(mcpRoute.resource);
+                if (!permission.granted) {
+                    return fail();
+                }
+                request.wdResponseFieldFilter = permission;
+            } else {
+                request.accessToken = {
+                    revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
+                };
+            }
+
+            return;
         }
 
         if (config.api.accessControl.enabled || accessToken) {
@@ -418,6 +511,11 @@ module.exports = done => {
                             authVersion: tokenData.authVersion,
                             role: tokenData.role
                         };
+                        if ('mfaRequired' in tokenData || 'mfaVerified' in tokenData || 'passwordChangeRequired' in tokenData) {
+                            signData.mfaRequired = tokenData.mfaRequired;
+                            signData.mfaVerified = tokenData.mfaVerified;
+                            signData.passwordChangeRequired = tokenData.passwordChangeRequired;
+                        }
                     } else {
                         signData = {
                             token: accessToken,
@@ -444,9 +542,28 @@ module.exports = done => {
 
                         // check if token is not too old
                         if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
+                            let assuranceRecorded = 'mfaRequired' in tokenData && 'mfaVerified' in tokenData && 'passwordChangeRequired' in tokenData;
+                            let mfaRequired = assuranceRecorded && tokenData.mfaRequired === 'true';
+                            let mfaVerified = assuranceRecorded && tokenData.mfaVerified === 'true';
+                            // set when a later 2FA completion verified this token through the side key
+                            let mfaProofVerified = false;
+                            if (mfaRequired && !mfaVerified) {
+                                try {
+                                    let proof = await db.redis.get('tn:token:mfa:' + tokenHash);
+                                    mfaProofVerified = proof === userHandler.getAuthTokenMfaProof(tokenHash, tokenData.user, tokenData.authVersion);
+                                } catch {
+                                    // treat as unverified
+                                }
+                                mfaVerified = mfaProofVerified;
+                            }
+
                             // token is still usable, increase session length
                             try {
-                                await db.redis.expire('tn:token:' + tokenHash, tokenTTL);
+                                let refresh = db.redis.multi().expire('tn:token:' + tokenHash, tokenTTL);
+                                if (mfaProofVerified) {
+                                    refresh.expire('tn:token:mfa:' + tokenHash, tokenTTL);
+                                }
+                                await refresh.exec();
                             } catch (err) {
                                 // ignore
                             }
@@ -459,8 +576,18 @@ module.exports = done => {
                             request.accessToken = {
                                 hash: tokenHash,
                                 user: tokenData.user,
+                                authVersion: tokenData.authVersion,
+                                assuranceRecorded,
+                                mfaRequired,
+                                mfaVerified,
+                                passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
                                 // if called then refreshes token data for current hash
-                                update: async () => setAuthToken(tokenData.user, accessToken)
+                                update: async () =>
+                                    setAuthToken(tokenData.user, accessToken, {
+                                        mfaRequired,
+                                        mfaVerified,
+                                        passwordChangeRequired: false
+                                    })
                             };
                         } else {
                             // expired token, clear it
@@ -635,6 +762,8 @@ module.exports = done => {
         settingsHandler
     });
 
+    apnClient = ApnClient.get({ config: config.imap && config.imap.aps, database: db.database, loggelf: message => loggelf(message) });
+
     messageHandler = new MessageHandler({
         database: db.database,
         users: db.users,
@@ -642,6 +771,7 @@ module.exports = done => {
         gridfs: db.gridfs,
         attachments: config.attachments,
         settingsHandler,
+        apn: apnClient,
         loggelf: message => loggelf(message)
     });
 
@@ -658,6 +788,22 @@ module.exports = done => {
         redis: db.redis,
         messageHandler,
         loggelf: message => loggelf(message)
+    });
+
+    // Built after userHandler so a failed MCP authentication here reaches the same authlog it
+    // would through the MCP listener. Without the binding this path failed silently, and the
+    // user saw a different history depending on which listener the token hit.
+    //
+    // Successes are left to the MCP listener, which is the hop that sees the client. This one
+    // re-checks the same credential on each request that listener makes on a caller's behalf,
+    // so recording them here would name the internal address and add two awaited round trips
+    // to every one of those requests.
+    mcpTokenHandler = new McpTokenHandler({
+        users: db.users,
+        redis: db.redis,
+        counters: userHandler.counters,
+        logAuthEvent: userHandler.logAuthEvent.bind(userHandler),
+        logSuccessfulAuth: false
     });
 
     mailboxHandler = new MailboxHandler({
@@ -699,11 +845,11 @@ module.exports = done => {
         filtersRoutes(db, app, userHandler, settingsHandler);
         domainaccessRoutes(db, app);
         aspsRoutes(db, app, userHandler);
-        totpRoutes(db, app, userHandler);
+        totpRoutes(db, app, userHandler, mcpTokenHandler);
         custom2faRoutes(db, app, userHandler);
-        webauthnRoutes(db, app, userHandler);
+        webauthnRoutes(db, app, userHandler, mcpTokenHandler);
         updatesRoutes(db, app, notifier);
-        authRoutes(db, app, userHandler);
+        authRoutes(db, app, userHandler, mcpTokenHandler);
         autoreplyRoutes(db, app);
         submitRoutes(db, app, messageHandler, userHandler, settingsHandler);
         auditRoutes(db, app, auditHandler);
@@ -711,8 +857,10 @@ module.exports = done => {
         dkimRoutes(db, app);
         certsRoutes(db, app);
         webhooksRoutes(db, app);
+        pushsubscriptionsRoutes(db, app, apnClient);
         settingsRoutes(db, app, settingsHandler);
         healthRoutes(db, app, loggelf);
+        mcpTokensRoutes(app, mcpTokenHandler);
     });
 
     if (process.env.NODE_ENV === 'test') {

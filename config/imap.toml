@@ -10,9 +10,24 @@ secure = true
 # Max size for messages uploaded via APPEND
 maxMB = 25
 
+# Inactivity autologout for an authenticated session, in milliseconds. Defaults to 30 minutes
+# and 37 seconds. RFC 3501 5.4 requires at least 30 minutes, so leave this unset unless you know
+# what you are doing.
+# socketTimeout = 2400000
+
+# Inactivity timeout before the client has authenticated, in milliseconds.
+# Defaults to 5 minutes and 37 seconds. Allowed to be shorter by RFC 9051 5.4.
+# preAuthSocketTimeout = 337000
+
 # Max length for a single IMAP command line in bytes, excluding literal payloads.
 # Set to 0 to disable the limit.
 maxLineLength = 16384
+
+# Max number of literal segments ({n} blocks) accepted within a single IMAP
+# command. A conforming client only ever sends a few; this refuses clients that
+# chain literals to exhaust memory. Set to 0 to disable the count check.
+# The cumulative literal size is always bounded by maxMB plus a small allowance.
+maxLiterals = 1000
 
 # delete messages from \Trash and \Junk after retention days
 retention = 30
@@ -62,10 +77,18 @@ ignoredHosts = []
 #secure=false
 #ignoreSTARTTLS=true
 
-# Apple push notifications
-# TODO: missing actual implementation for Apple Push Service
+# Apple Push Notification Service (XAPPLEPUSHSERVICE)
+# Requires a valid APNs certificate obtained from Apple
 [aps]
 enabled = false
+# APNs topic (UID from the push certificate, e.g. "com.apple.mobilemail.push.<tld>.<domain>")
+#topic = ""
+# Path to APNs client certificate (PEM)
+#certPath = "apns.pem"
+# Path to APNs client private key (PEM)
+#keyPath = "apns.key"
+# Use APNs sandbox environment (api.sandbox.push.apple.com) instead of production
+#sandbox = false
 
 [setup]
 # Public configuration for IMAP

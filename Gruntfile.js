@@ -3,51 +3,78 @@
 process.env.NODE_ENV = 'test';
 
 module.exports = function (grunt) {
+    const mocha = 'npx mocha --reporter spec --color --exit';
+    const mochaOutput = {
+        stdout: true,
+        stderr: true
+    };
+    // imap-core tests that need no MongoDB, Redis or running server
+    const imapUnitTests = [
+        'imap-core/test/attachment-codec-test.js',
+        'imap-core/test/compress-race-condition-test.js',
+        'imap-core/test/body-structure-test.js',
+        'imap-core/test/create-envelope-test.js',
+        'imap-core/test/get-contents-test.js',
+        'imap-core/test/get-query-response-test.js',
+        'imap-core/test/imap-command-test.js',
+        'imap-core/test/imap-compile-stream-test.js',
+        'imap-core/test/imap-connection-test.js',
+        'imap-core/test/imap-compiler-test.js',
+        'imap-core/test/imap-id-command-test.js',
+        'imap-core/test/imap-indexer-test.js',
+        'imap-core/test/indexer-attachments-test.js',
+        'imap-core/test/indexer-corpus-test.js',
+        'imap-core/test/indexer-fidelity-test.js',
+        'imap-core/test/indexer-fuzz-test.js',
+        'imap-core/test/indexer-legacy-test.js',
+        'imap-core/test/indexer-legacy-differential-test.js',
+        'imap-core/test/indexer-maildata-test.js',
+        'imap-core/test/indexer-ranges-test.js',
+        'imap-core/test/imap-literal-limit-test.js',
+        'imap-core/test/imap-line-limit-test.js',
+        'imap-core/test/imap-parser-test.js',
+        'imap-core/test/imap-stream-test.js',
+        'imap-core/test/onconnect-test.js',
+        'imap-core/test/parse-date-test.js',
+        'imap-core/test/parse-mime-tree-test.js',
+        'imap-core/test/parse-mime-tree-v2-test.js',
+        'imap-core/test/proxy-socket-error-test.js',
+        'imap-core/test/search-test.js',
+        'imap-core/test/tools-test.js',
+        'imap-core/test/xapplepushservice-command-test.js',
+        'imap-core/test/socket-timeout-test.js'
+    ];
+    const unitTests = [
+        'test/apn-client-test.js',
+        'test/imap-notifier-apn-test.js',
+        'test/xapplepushservice-validation-test.js',
+        'test/certs-test.js',
+        'test/checkrangequery-test.js',
+        'test/create-decipher-test.js',
+        'test/filtering-tools-test.js',
+        'test/hibp-tools-test.js',
+        'test/label-delete-task-test.js',
+        'test/list-headers-test.js',
+        'test/maildropper-test.js',
+        'test/message-handler-update-test.js',
+        'test/message-search-label-test.js',
+        'test/mcp-api-client-test.js',
+        'test/mcp-cli-test.js',
+        'test/mcp-html-test.js',
+        'test/mcp-test.js',
+        'test/mcp-token-handler-test.js',
+        'test/mcp-tools-test.js',
+        'test/metrics-config-test.js',
+        'test/prometheus-test.js',
+        'test/roles-test.js',
+        'test/tools-test.js',
+        'test/user-handler-auth-test.js'
+    ];
+
     // Project configuration.
     grunt.initConfig({
         eslint: {
-            all: ['lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'Gruntfile.js']
-        },
-
-        mochaTest: {
-            imap: {
-                options: {
-                    reporter: 'spec'
-                },
-                // imap-core tests (all)
-                src: ['imap-core/test/**/*-test.js']
-            },
-            'imap-unit': {
-                options: {
-                    reporter: 'spec'
-                },
-                // imap-core unit tests (no MongoDB required)
-                src: [
-                    'imap-core/test/compress-race-condition-test.js',
-                    'imap-core/test/imap-compile-stream-test.js',
-                    'imap-core/test/imap-compiler-test.js',
-                    'imap-core/test/imap-indexer-test.js',
-                    'imap-core/test/imap-parser-test.js',
-                    'imap-core/test/onconnect-test.js',
-                    'imap-core/test/parse-mime-tree-test.js',
-                    'imap-core/test/search-test.js',
-                    'imap-core/test/tools-test.js'
-                ]
-            },
-            pop3: {
-                options: {
-                    reporter: 'spec'
-                },
-                // pop3 tests (do not require server/db)
-                src: ['test/pop3-*-test.js']
-            },
-            api: {
-                options: {
-                    reporter: 'spec'
-                },
-                // api tests
-                src: ['test/**/*-test.js']
-            }
+            all: ['*.js', 'lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'bin/*']
         },
 
         wait: {
@@ -65,6 +92,26 @@ module.exports = function (grunt) {
                     async: true
                 }
             },
+            'mocha-imap': {
+                command: `${mocha} "imap-core/test/**/*-test.js"`,
+                options: mochaOutput
+            },
+            'mocha-imap-unit': {
+                command: `${mocha} ${imapUnitTests.join(' ')}`,
+                options: mochaOutput
+            },
+            'mocha-pop3': {
+                command: `${mocha} "test/pop3-*-test.js"`,
+                options: mochaOutput
+            },
+            'mocha-unit': {
+                command: `${mocha} ${unitTests.join(' ')}`,
+                options: mochaOutput
+            },
+            'mocha-api': {
+                command: `${mocha} "test/**/*-test.js"`,
+                options: mochaOutput
+            },
             options: {
                 stdout: data => console.log(data.toString().trim()),
                 stderr: data => console.log(data.toString().trim()),
@@ -75,13 +122,14 @@ module.exports = function (grunt) {
 
     // Load the plugin(s)
     grunt.loadNpmTasks('grunt-eslint');
-    grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-shell-spawn');
     grunt.loadNpmTasks('grunt-wait');
 
     // Tasks
-    grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
-    grunt.registerTask('testonly', ['shell:server', 'wait:server', 'mochaTest', 'shell:server:kill']);
-    // proto: run all protocol-level tests (IMAP unit + POP3) without requiring MongoDB/Redis
-    grunt.registerTask('proto', ['mochaTest:imap-unit', 'mochaTest:pop3']);
+    // mocha-imap globs every imap-core test, so the in-process ones must not be listed again here
+    const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api'];
+    grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
+    grunt.registerTask('testonly', ['shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
+    // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
+    grunt.registerTask('proto', ['shell:mocha-imap-unit', 'shell:mocha-pop3', 'shell:mocha-unit']);
 };

@@ -1,0 +1,52 @@
+# Read-only Model Context Protocol service
+#
+# Exposes mailbox and message data to MCP clients over Streamable HTTP. The service reads
+# through the WildDuck REST API, so every tool call is an ordinary API request subject to the
+# same validation, roles and audit trail. Disabled by default.
+enabled = false
+port = 8082
+# by default bind to localhost only
+host = "127.0.0.1"
+
+# Mount prefix. The JSON-RPC endpoint is served here and nothing outside it is routed.
+path = "/mcp"
+
+# Use true to serve MCP over HTTPS
+secure = false
+
+# Internal WildDuck API this service reads through. Must not be a public address: it is reached
+# over the private network with the caller's own MCP token. Left unset it follows the [api]
+# configuration, so moving the API port cannot leave MCP pointed at whatever answers on the old
+# one. Set it only when the API is reached at some other address.
+#apiUrl = "http://127.0.0.1:8080"
+# How long to wait for one API request, in milliseconds
+apiTimeout = 30000
+
+# DNS rebinding protection. Entries are hostnames without ports. Behind a reverse proxy this
+# must list the public hostname, since the Host header is whatever the proxy sets.
+allowedHosts = ["127.0.0.1", "localhost", "[::1]"]
+
+# Browser Origin values must match one of these entries exactly. Requests from CLI clients
+# without an Origin header are accepted.
+allowedOrigins = ["http://127.0.0.1:8082", "http://localhost:8082"]
+
+# Set to true only when the listener is behind a reverse proxy that sets X-Forwarded-For.
+# While false the socket address is used, so a caller cannot spend or dodge a rate limit by
+# setting a header. While true the last entry of the header is used, which is the address the
+# nearest proxy saw; anything before it is whatever the client sent. Assumes a single trusted
+# hop.
+trustProxy = false
+
+# Maximum request body size, applied to every method that carries one (1 MiB)
+maxRequestSize = 1048576
+
+# Maximum list/search page size and maximum returned body characters. Both are additionally
+# capped by MCP_MAX_RESULTS and MCP_MAX_BODY_CHARS in lib/consts.js.
+maxResults = 50
+maxBodyChars = 50000
+
+[tls]
+# If certificate paths are not defined, use global or built-in self-signed certs
+#key="/path/to/server/key.pem"
+#cert="/path/to/server/cert.pem"
+#ca=["/path/to/server/ca1.pem", "/path/to/server/ca2.pem"]

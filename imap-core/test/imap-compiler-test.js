@@ -270,3 +270,81 @@ describe('IMAP Command Compiler', function () {
         });
     });
 });
+
+describe('IMAP Quoting', function () {
+    it('should not use JSON escapes inside a quoted string', function () {
+        // RFC 3501 9: QUOTED-CHAR = <any TEXT-CHAR except quoted-specials> / "\" quoted-specials,
+        // so a TAB or a control character stands for itself and only " and \ are escaped
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'a\tb' }] })).to.equal('* CMD "a\tb"');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'e\u0001f' }] })).to.equal('* CMD "e\u0001f"');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'q"u\\x' }] })).to.equal('* CMD "q\\"u\\\\x"');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: ['a\tb'] })).to.equal('* CMD "a\tb"');
+    });
+
+    it('should send a value with CR or LF as a literal', function () {
+        // RFC 3501 4.3: a quoted string excludes CR and LF
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'c\nd' }] })).to.equal('* CMD {3}\r\nc\nd');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: ['c\r\nd', 'tail'] })).to.equal('* CMD {4}\r\nc\r\nd "tail"');
+    });
+
+    it('should drop the NUL character', function () {
+        // RFC 3501 9: "The ASCII NUL character, %x00, MUST NOT be used at any time"
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: 'a\u0000b' }] })).to.equal('* CMD "ab"');
+    });
+
+    it('should quote an ATOM value that is not a valid atom without JSON escapes', function () {
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'ATOM', value: 'a]b' }] })).to.equal('* CMD "a]b"');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'ATOM', value: 'a\tb' }] })).to.equal('* CMD "a\tb"');
+    });
+
+    it('should keep an ATOM value that is only 8-bit unquoted', function () {
+        // RFC 3501 9: a quoted string is a different production from an atom, so quoting a value
+        // in an atom-only position such as flag-keyword answers with something that is not a flag
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'ATOM', value: 'töö' }] })).to.equal('* CMD töö');
+
+        expect(
+            imapHandler.compiler({
+                tag: '*',
+                command: 'CMD',
+                attributes: [
+                    [
+                        { type: 'ATOM', value: '\\Seen' },
+                        { type: 'ATOM', value: 'Junk' }
+                    ]
+                ]
+            })
+        ).to.equal('* CMD (\\Seen Junk)');
+    });
+
+    it('should emit nothing for an ATOM value that only carries a section', function () {
+        expect(
+            imapHandler.compiler({
+                tag: '*',
+                command: 'OK',
+                attributes: [
+                    { type: 'ATOM', value: '', section: [{ type: 'ATOM', value: 'ALERT' }] },
+                    { type: 'TEXT', value: 'hello' }
+                ]
+            })
+        ).to.equal('* OK [ALERT] hello');
+    });
+});
+
+describe('IMAP Logging mode', function () {
+    it('should not crash on a node without a value', function () {
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: null }] }, false, true)).to.equal('* CMD ""');
+
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'LITERAL', value: null }] }, false, true)).to.equal(
+            '* CMD "(* 0B literal *)"'
+        );
+    });
+
+    it('should compile a STRING node that holds a Buffer', function () {
+        expect(imapHandler.compiler({ tag: '*', command: 'CMD', attributes: [{ type: 'STRING', value: Buffer.from('abc') }] })).to.equal('* CMD "abc"');
+    });
+});

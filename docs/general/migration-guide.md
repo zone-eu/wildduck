@@ -13,6 +13,9 @@ The best is on a server or virtual server (I installed inside a kvm virtual serv
 
 There [are][1] some [useful][2] website to [check][3] if your email server working correctly.
 You may need to remove yourself from some [spam site][4].
+Right after a migration the receivers do not know your new server yet, so it also helps to see
+[where your mail is filed][5] at the big providers. A passing SPF or DKIM check does not mean
+the message reached the inbox instead of the junk folder.
 
 ## Domain settings
 
@@ -195,3 +198,4 @@ Sync it:
 [2]: https://www.mail-tester.com/
 [3]: http://www.appmaildev.com/en/dkim/
 [4]: http://www.barracudacentral.org/rbl/removal-request/
+[5]: https://email-spam-tester.com/

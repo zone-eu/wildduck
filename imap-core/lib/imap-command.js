@@ -4,7 +4,24 @@ const errors = require('../../lib/errors.js');
 const metrics = require('../../lib/metrics');
 const imapHandler = require('./handler/imap-handler');
 const MAX_MESSAGE_SIZE = 1 * 1024 * 1024;
+// Literal size cap for everything except APPEND. RFC 3501 sets no limit and RFC 2683 3.2.1.5 asks
+// servers to accept at least 8000 octets of command text
+const MAX_COMMAND_LITERAL_SIZE = 16 * 1024;
 const MAX_BAD_COMMANDS = 50;
+const LARGE_COMMAND_SIZE = 64 * 1024;
+
+// Default upper bound for the number of literal segments accepted within a
+// single command. A conforming client only ever sends a handful (LOGIN uses
+// two, APPEND uses one for the message plus a few tiny ones for flags/date),
+// so this only refuses abusive input. Configurable via the maxLiterals server
+// option; set it to 0 to disable the count check.
+const MAX_LITERALS = 1000;
+
+// Extra allowance on top of the largest accepted single literal for the
+// cumulative size of all literals in one command. Covers the small auxiliary
+// literals (flags, internaldate, ID key/value pairs) that may accompany a
+// full sized message literal.
+const LITERAL_BYTES_ALLOWANCE = MAX_MESSAGE_SIZE;
 
 const commands = new Map([
     /*eslint-disable global-require*/
@@ -116,9 +133,13 @@ class IMAPCommand {
                 }
 
                 if (!commands.has(this.command)) {
-                    let err = new Error('Unknown command');
+                    // RFC 3501 6.2.2: "If the requested authentication mechanism is not supported,
+                    // the server SHOULD reject the AUTHENTICATE command by sending a tagged NO"
+                    let unsupportedMechanism = /^AUTHENTICATE \S/.test(this.command);
+
+                    let err = new Error(unsupportedMechanism ? 'Unsupported authentication mechanism' : 'Unknown command');
                     err.responseCode = 400;
-                    err.code = 'UnknownCommand';
+                    err.code = unsupportedMechanism ? 'UnsupportedMechanism' : 'UnknownCommand';
                     if (this.connection && typeof this.connection.loggelf === 'function') {
                         // Log tagged IMAP input that names a command this server does not implement.
                         let logEntry = createCommandFailureLogEntry(this.connection, err, {
@@ -127,7 +148,11 @@ class IMAPCommand {
                         });
                         this.connection.loggelf(logEntry);
                     }
-                    this.connection.send(this.tag + ' BAD Unknown command: ' + this.command);
+                    this.connection.send(
+                        unsupportedMechanism
+                            ? this.tag + ' NO [CANNOT] Unsupported authentication mechanism'
+                            : this.tag + ' BAD Unknown command: ' + this.command
+                    );
                     return callback(err);
                 }
             }
@@ -157,7 +182,7 @@ class IMAPCommand {
             let maxAllowed = Math.max(Number(this.connection._server.options.maxMessage) || 0, MAX_MESSAGE_SIZE);
             if (
                 // Allow large literals for selected commands only
-                (!['APPEND'].includes(this.command) && command.expecting > 1024) ||
+                (!['APPEND'].includes(this.command) && command.expecting > MAX_COMMAND_LITERAL_SIZE) ||
                 // Deny all literals bigger than maxMessage
                 command.expecting > maxAllowed
             ) {
@@ -210,6 +235,78 @@ class IMAPCommand {
                 err.responseCode = 400;
                 err.code = 'InvalidLiteralSize';
                 return callback(err);
+            }
+
+            // Bound the number and cumulative size of literals within a single
+            // command, and refuse literals for commands that may not run in the
+            // current connection state. Without this an unauthenticated client
+            // could chain endless literals (e.g. `a APPEND x {n}` ...), each of
+            // which is answered with `+ Go ahead` and buffered in memory before
+            // the command state is ever validated, exhausting the process.
+            // Skipped while a preset handler is consuming input (e.g. the
+            // AUTHENTICATE SASL exchange), where the payload is not a command.
+            if (typeof this.connection._nextHandler !== 'function') {
+                let handler = commands.get(this.command);
+                let allowedStates = handler && handler.state ? [].concat(handler.state) : false;
+                if (allowedStates && allowedStates.indexOf(this.connection.state) < 0) {
+                    // The command can not run in the current state, so its literal
+                    // must not be accepted or buffered.
+                    this.payload = '';
+                    this.literals = [];
+
+                    this.connection?.loggelf({
+                        short_message: '[IMAPCMDERR] Literal for command not allowed in current state',
+                        _service: 'imap',
+                        _failure_msg: 'literal not allowed in current state',
+                        _command: this.command,
+                        _state: this.connection.state,
+                        _sess: this.connection.id,
+                        _remoteAddress: this.connection.remoteAddress
+                    });
+
+                    this.connection.send(`${this.tag} NO ${this.command} not allowed now`);
+
+                    let err = new Error('Literal not allowed in current state');
+                    err.responseCode = 400;
+                    err.code = 'LiteralNotAllowed';
+                    return callback(err);
+                }
+
+                this._literalCount = (this._literalCount || 0) + 1;
+                this._literalBytes = (this._literalBytes || 0) + (Number(command.expecting) || 0);
+
+                let maxLiterals = Number(this.connection._server.options.maxLiterals);
+                if (!Number.isFinite(maxLiterals) || maxLiterals < 0) {
+                    maxLiterals = MAX_LITERALS;
+                }
+
+                if (
+                    (maxLiterals && this._literalCount > maxLiterals) ||
+                    // cap the cumulative literal size at one full sized message plus a small allowance
+                    this._literalBytes > maxAllowed + LITERAL_BYTES_ALLOWANCE
+                ) {
+                    this.payload = '';
+                    this.literals = [];
+
+                    this.connection?.loggelf({
+                        short_message: '[TOOBIG] Too many literals in command',
+                        _failure_msg: 'too many literals',
+                        _service: 'imap',
+                        _command: this.command,
+                        _literal_count: this._literalCount,
+                        _literal_bytes: this._literalBytes,
+                        _literal_allowed: maxAllowed + LITERAL_BYTES_ALLOWANCE,
+                        _sess: this.connection.id,
+                        _remoteAddress: this.connection.remoteAddress
+                    });
+
+                    this.connection.send(`${this.tag} NO [TOOBIG] Too many literals in command`);
+
+                    let err = new Error('Too many literals in command');
+                    err.responseCode = 400;
+                    err.code = 'TooManyLiterals';
+                    return callback(err);
+                }
             }
 
             // Accept literal input
@@ -297,7 +394,8 @@ class IMAPCommand {
             }
 
             try {
-                this.parsed = imapHandler.parser(this.payload, { literals: this.literals });
+                // RFC 6855 3: reject octet sequences with the high bit set that are not valid UTF-8
+                this.parsed = imapHandler.parser(this.payload, { literals: this.literals, validateUtf8: true });
             } catch (E) {
                 if (this.connection && typeof this.connection.loggelf === 'function') {
                     // Log IMAP parser failures where the raw command can not be tokenized into a valid request.
@@ -343,6 +441,7 @@ class IMAPCommand {
                 this.connection.session.commandCounters[this.command]++;
             }
 
+            let payload = imapHandler.compiler(this.parsed, false, true);
             this.connection.logger.debug(
                 {
                     tnx: 'client',
@@ -350,8 +449,22 @@ class IMAPCommand {
                 },
                 '[%s] C:',
                 this.connection.id,
-                imapHandler.compiler(this.parsed, false, true)
+                payload
             );
+
+            if (this.payload.length > LARGE_COMMAND_SIZE) {
+                this.connection.loggelf({
+                    short_message: '[IMAPCMD] Command larger than 64 kB',
+                    _service: 'imap',
+                    _command: this.command,
+                    _tag: this.tag,
+                    _payload: payload,
+                    _command_length: this.payload.length,
+                    _sess: this.connection.id,
+                    _remoteAddress: this.connection.remoteAddress,
+                    _remotePort: this.connection.remotePort
+                });
+            }
 
             this.validateCommand(this.parsed, handler, err => {
                 if (err) {
@@ -375,64 +488,81 @@ class IMAPCommand {
                 }
 
                 if (typeof handler.handler === 'function') {
-                    handler.handler.call(
-                        this.connection,
-                        this.parsed,
-                        (err, response) => {
-                            if (err) {
-                                let payload = imapHandler.compiler(this.parsed, false, true);
-                                if (this.connection && typeof this.connection.loggelf === 'function') {
-                                    // Log command handler failures that return BAD/NO without destroying the IMAP connection.
-                                    let logEntry = createCommandFailureLogEntry(this.connection, err, {
-                                        _command: this.command,
-                                        _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
-                                    });
-                                    this.connection.loggelf(logEntry);
-                                }
-                                this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
-                                if (!err.response || err.response === 'BAD') {
-                                    if (!this.countBadResponses()) {
-                                        recordMetric(err.response || err.code || 'error');
-                                        // stop processing
-                                        return;
-                                    }
-                                }
-                                recordMetric(err.response || err.code || 'error');
-                                return next(err);
-                            }
+                    // set once the tagged response has been written, so a later exception does not produce a second one
+                    let responseSent = false;
+                    let fail = E => this.sendServerBug(E, responseSent, recordMetric, next);
 
-                            // send EXPUNGE, EXISTS etc queued notices
-                            this.sendNotifications(handler, () => {
-                                // send command ready response
-                                this.connection.writeStream.write({
-                                    tag: this.tag,
-                                    command: response.response,
-                                    attributes: []
-                                        .concat(
-                                            response.code
-                                                ? {
-                                                      type: 'SECTION',
-                                                      section: [
-                                                          {
-                                                              type: 'TEXT',
-                                                              value: response.code
-                                                          }
-                                                      ]
-                                                  }
-                                                : []
-                                        )
-                                        .concat({
-                                            type: 'TEXT',
-                                            value: response.message || this.command + ' completed'
-                                        })
+                    let handlerCallback = (err, response) => {
+                        if (err) {
+                            let payload = imapHandler.compiler(this.parsed, false, true);
+                            if (this.connection && typeof this.connection.loggelf === 'function') {
+                                // Log command handler failures that return BAD/NO without destroying the IMAP connection.
+                                let logEntry = createCommandFailureLogEntry(this.connection, err, {
+                                    _command: this.command,
+                                    _payload: payload ? (payload.length < 256 ? payload : payload.toString().substr(0, 150) + '...') : false
                                 });
+                                this.connection.loggelf(logEntry);
+                            }
+                            this.connection.send(this.tag + ' ' + (err.response || 'BAD') + ' ' + err.message);
+                            if (!err.response || err.response === 'BAD') {
+                                if (!this.countBadResponses()) {
+                                    recordMetric(err.response || err.code || 'error');
+                                    // stop processing
+                                    return;
+                                }
+                            }
+                            recordMetric(err.response || err.code || 'error');
+                            return next(err);
+                        }
 
-                                recordMetric(response.response || 'ok');
-                                next();
+                        // send EXPUNGE, EXISTS etc queued notices
+                        this.sendNotifications(handler, () => {
+                            // send command ready response
+                            this.connection.writeStream.write({
+                                tag: this.tag,
+                                command: response.response,
+                                attributes: []
+                                    .concat(
+                                        response.code
+                                            ? {
+                                                  type: 'SECTION',
+                                                  section: [
+                                                      {
+                                                          type: 'TEXT',
+                                                          value: response.code
+                                                      }
+                                                  ]
+                                              }
+                                            : []
+                                    )
+                                    .concat({
+                                        type: 'TEXT',
+                                        value: response.message || this.command + ' completed'
+                                    })
                             });
-                        },
-                        next
-                    );
+                            responseSent = true;
+
+                            recordMetric(response.response || 'ok');
+                            next();
+                        });
+                    };
+
+                    // A command handler must never take the connection down with it. Anything that escapes
+                    // from the handler or from the response callback is a bug in the server (RFC 5530 SERVERBUG).
+                    let safeCallback = (err, response) => {
+                        try {
+                            handlerCallback(err, response);
+                        } catch (E) {
+                            fail(E);
+                        }
+                    };
+
+                    try {
+                        handler.handler.call(this.connection, this.parsed, safeCallback, next);
+                    } catch (E) {
+                        fail(E);
+                    }
+
                     if (this.command === 'LOGOUT') {
                         recordMetric('ok');
                     }
@@ -443,6 +573,37 @@ class IMAPCommand {
                 }
             });
         });
+    }
+
+    sendServerBug(err, responseSent, recordMetric, next) {
+        if (this.connection && typeof this.connection.loggelf === 'function') {
+            // Log exceptions that escaped a command handler. These are server bugs, not client errors.
+            this.connection.loggelf(
+                createCommandFailureLogEntry(this.connection, err, {
+                    _command: this.command,
+                    _server_bug: 'yes'
+                })
+            );
+        }
+
+        this.connection.logger.error(
+            {
+                err,
+                tnx: 'command',
+                cid: this.connection.id
+            },
+            '[%s] Unhandled exception in %s: %s',
+            this.connection.id,
+            this.command,
+            err.message
+        );
+
+        if (!responseSent) {
+            this.connection.send(this.tag + ' NO [SERVERBUG] Internal server error');
+        }
+
+        recordMetric('serverbug');
+        next();
     }
 
     sendNotifications(handler, callback) {

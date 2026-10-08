@@ -17,6 +17,7 @@
     -   [Third party projects](additional-software/third-party-projects.md)
 -   In Depth
     -   [Operating WildDuck](in-depth/operating-wildduck.md)
+    -   [Read-only MCP service](in-depth/mcp.md)
     -   [Default values](in-depth/default-values.md)
     -   [E-Mail Protocol support](in-depth/protocol-support.md)
     -   [Connection Management](in-depth/connection-management.md)

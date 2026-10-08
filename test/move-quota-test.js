@@ -13,7 +13,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
     // Build a MessageHandler whose destination insert / source delete behaviour is configurable,
     // with a spy on attachmentStorage.deleteManyAsync. The encrypted form carries one attachment
     // (enc-id-1 / new-magic) so the new-ref cleanup has something to release.
-    function buildEncryptedMoveHandler({ insertOneImpl, deleteOneImpl }) {
+    function buildEncryptedMoveHandler({ insertOneImpl, deleteOneImpl, findOneImpl }) {
         const userId = new ObjectId();
         const sourceMailboxId = new ObjectId();
         const targetMailboxId = new ObjectId();
@@ -65,6 +65,8 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
                             calls.insertOne.push(doc);
                             return insertOneImpl(doc, calls.insertOne.length);
                         },
+                        // whether a failed insert stored the copy anyway, by default it did not
+                        findOne: query => (findOneImpl ? findOneImpl(query) : Promise.resolve(null)),
                         deleteOne: () => (deleteOneImpl ? deleteOneImpl() : Promise.resolve({ deletedCount: 1 }))
                     };
                 }
@@ -98,7 +100,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         handler.encryptAndPrepareMessageAsync = () =>
             Promise.resolve({
                 prepared: {
-                    mimeTree: { header: [], attachmentMap: { '1': 'enc-id-1' } },
+                    mimeTree: { header: [], attachmentMap: { 1: 'enc-id-1' } },
                     size: 1500,
                     bodystructure: {},
                     envelope: {},
@@ -149,6 +151,19 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         expect(calls.deleteManyAsync).to.have.lengthOf(1);
         expect(calls.deleteManyAsync[0].ids).to.deep.equal(['enc-id-1']);
         expect(calls.deleteManyAsync[0].magic).to.equal('new-magic');
+    });
+
+    it('keeps newly encrypted attachments when the destination insert throws after storing the copy', async function () {
+        let { handler, calls, sourceMailboxId, targetMailboxId } = buildEncryptedMoveHandler({
+            insertOneImpl: () => Promise.reject(Object.assign(new Error('waiting for replication timed out'), { code: 64 })),
+            findOneImpl: query => Promise.resolve({ _id: query._id })
+        });
+
+        let err = await runMove(handler, sourceMailboxId, targetMailboxId);
+
+        expect(err).to.be.an('error');
+        // the copy exists and owns them
+        expect(calls.deleteManyAsync).to.have.lengthOf(0);
     });
 
     it('does NOT release newly encrypted attachments when the source delete fails after a successful insert', async function () {
@@ -238,11 +253,12 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
 
         handler.users = {
             collection: () => ({
-                findOne: () => Promise.resolve({
-                    _id: userId,
-                    encryptMessages: true,
-                    smimeCerts: ['fake-cert']
-                }),
+                findOne: () =>
+                    Promise.resolve({
+                        _id: userId,
+                        encryptMessages: true,
+                        smimeCerts: ['fake-cert']
+                    }),
                 findOneAndUpdate: (query, update) => {
                     if (update && update.$inc && 'storageUsed' in update.$inc) {
                         quotaIncCalls.push(update.$inc.storageUsed);
@@ -303,5 +319,132 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         expect(moved).to.not.have.property('textFooter');
         expect(moved).to.not.have.property('html');
         expect(moved.intro).to.equal('');
+    });
+});
+
+describe('moveAsync label counter notifications', function () {
+    it('loads label names when a labelled message follows an unlabelled message', async function () {
+        const user = new ObjectId();
+        const sourceMailbox = new ObjectId();
+        const targetMailbox = new ObjectId();
+        const label = new ObjectId();
+        const messages = [
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailbox,
+                user,
+                uid: 1,
+                size: 10,
+                unseen: true,
+                flags: [],
+                labels: [],
+                mimeTree: { attachmentMap: {} },
+                idate: new Date()
+            },
+            {
+                _id: new ObjectId(),
+                mailbox: sourceMailbox,
+                user,
+                uid: 2,
+                size: 10,
+                unseen: true,
+                flags: [],
+                labels: [label],
+                mimeTree: { attachmentMap: {} },
+                idate: new Date()
+            }
+        ];
+        const sourceEntries = [];
+        const targetEntries = [];
+        let cursorPosition = 0;
+        let nextUid = 10;
+
+        const handler = Object.create(MessageHandler.prototype);
+        handler.loggelf = () => {};
+        handler.database = {
+            collection(name) {
+                if (name === 'mailboxes') {
+                    return {
+                        async findOne(query) {
+                            if (query._id.equals(sourceMailbox)) {
+                                return { _id: sourceMailbox, user, path: 'INBOX', uidValidity: 1 };
+                            }
+                            return { _id: targetMailbox, user, path: 'Archive', uidValidity: 2 };
+                        },
+                        async findOneAndUpdate(query) {
+                            if (query._id.equals(sourceMailbox)) {
+                                return { value: { modifyIndex: 3 } };
+                            }
+                            return { value: { uidNext: nextUid++, modifyIndex: 4 } };
+                        }
+                    };
+                }
+                if (name === 'messages') {
+                    return {
+                        find() {
+                            return {
+                                sort() {
+                                    return {
+                                        async next() {
+                                            return messages[cursorPosition++];
+                                        },
+                                        async close() {}
+                                    };
+                                }
+                            };
+                        },
+                        async insertOne() {
+                            return { acknowledged: true, insertedId: new ObjectId() };
+                        },
+                        async deleteOne() {
+                            return { deletedCount: 1 };
+                        }
+                    };
+                }
+                if (name === 'labels') {
+                    return {
+                        find() {
+                            return {
+                                async toArray() {
+                                    return [{ _id: label, name: 'Projects/later' }];
+                                }
+                            };
+                        }
+                    };
+                }
+                throw new Error(`Unexpected collection ${name}`);
+            }
+        };
+        handler.users = {
+            collection() {
+                return {
+                    async findOne() {
+                        return { _id: user };
+                    }
+                };
+            }
+        };
+        handler.settingsHandler = { get: async () => 100 };
+        handler.notifier = {
+            addEntries(mailbox, entries, callback) {
+                const target = mailbox._id.equals(sourceMailbox) ? sourceEntries : targetEntries;
+                target.push(...entries);
+                callback();
+            },
+            fire() {}
+        };
+
+        await handler.moveAsync({
+            source: { mailbox: sourceMailbox },
+            destination: { mailbox: targetMailbox },
+            messages: [1, 2],
+            updates: { seen: true }
+        });
+
+        expect(sourceEntries).to.have.lengthOf(2);
+        expect(sourceEntries[0].labels).to.deep.equal([]);
+        expect(sourceEntries[1].labels).to.deep.equal(['Projects/later']);
+        expect(targetEntries).to.have.lengthOf(2);
+        expect(targetEntries[1].labels).to.deep.equal(['Projects/later']);
     });
 });

@@ -36,12 +36,8 @@ module.exports = {
             });
         }
 
-        // Do nothing if in read only mode
         if (this.selected.readOnly) {
-            return callback(null, {
-                response: 'OK',
-                message: 'STORE ignored with read-only mailbox'
-            });
+            return callback(null, imapTools.READ_ONLY_RESPONSE);
         }
 
         let type = 'flags'; // currently hard coded, in the future might support other values as well, eg. X-GM-LABELS
@@ -54,7 +50,8 @@ module.exports = {
 
         let flags = [].concat(command.attributes[pos + 2] || []).map(flag => ((flag && flag.value) || '').toString());
 
-        let unchangedSince = 0;
+        // false means the modifier was not given at all, 0 is a valid value with its own meaning
+        let unchangedSince = false;
         let silent = false;
 
         // extensions are available as the optional argument at index 1
@@ -65,7 +62,8 @@ module.exports = {
                 return callback(new Error('Invalid modifier for STORE'));
             }
             unchangedSince = Number(extensions[1]);
-            if (unchangedSince && !this.selected.condstoreEnabled) {
+            // RFC 7162 3.1.3: the modifier itself enables CONDSTORE, whatever the value is
+            if (!this.selected.condstoreEnabled) {
                 this.condstoreEnabled = this.selected.condstoreEnabled = true;
             }
         }
@@ -102,6 +100,8 @@ module.exports = {
                     // fix flag case
                     flags[i] = flags[i].toLowerCase().replace(/^\\./, c => c.toUpperCase());
                 }
+            } else if (!imapTools.isValidKeyword(flags[i])) {
+                return callback(new Error('Invalid flag argument for STORE'));
             }
             if (flags[i].length > 255) {
                 return callback(new Error('Too long value for a flag'));
@@ -129,7 +129,7 @@ module.exports = {
             _flags: flags.join(', '),
             _store_action: action,
             _silent: silent ? 'yes' : '',
-            _modseq: unchangedSince
+            _modseq: unchangedSince === false ? '' : unchangedSince
         };
 
         this._server.onStore(
@@ -170,7 +170,7 @@ module.exports = {
                 let message = success === true ? 'STORE completed' : false;
                 if (modified && modified.length) {
                     message = 'Conditional STORE failed';
-                } else if (message && unchangedSince) {
+                } else if (message && unchangedSince !== false) {
                     message = 'Conditional STORE completed';
                 }
 

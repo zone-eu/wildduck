@@ -621,11 +621,12 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
                                         "uniqueItems": true,
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")",
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")",
                                         "default": []
                                     },
                                     "metaData": {
@@ -1246,11 +1247,12 @@
                                             "enum": [
                                                 "imap",
                                                 "pop3",
-                                                "smtp"
+                                                "smtp",
+                                                "mcp"
                                             ]
                                         },
                                         "uniqueItems": true,
-                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\")"
+                                        "description": "List of scopes that are disabled for this user (\"imap\", \"pop3\", \"smtp\", \"mcp\")"
                                     },
                                     "disabled": {
                                         "type": "boolean",
@@ -4435,6 +4437,669 @@
                 }
             }
         },
+        "/users/{user}/labels": {
+            "get": {
+                "operationId": "getUserLabels",
+                "summary": "Get user labels",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Lists persistent labels, including empty labels, with optional message counters",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "in": "query",
+                        "name": "counters",
+                        "required": false,
+                        "description": "Should the response include counters (total + unseen). Counters come with some overhead."
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "UserLabelsResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "labels": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "additionalProperties": true,
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "description": "ID of the label"
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "description": "Label name"
+                                                    },
+                                                    "metaData": {
+                                                        "type": "object",
+                                                        "additionalProperties": true,
+                                                        "description": "Custom label metadata"
+                                                    },
+                                                    "total": {
+                                                        "type": "number",
+                                                        "description": "Total number of messages with this label"
+                                                    },
+                                                    "unseen": {
+                                                        "type": "number",
+                                                        "description": "Unseen number of messages with this label"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "name"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "labels"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "createLabel",
+                "summary": "Create a label",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Creates a persistent label. Repeated creation returns the existing label.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256,
+                                        "description": "Label name, at most 256 characters"
+                                    },
+                                    "metaData": {
+                                        "type": "object",
+                                        "additionalProperties": true,
+                                        "description": "Custom JSON metadata"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "CreateLabelResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "ID of the label"
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Label name"
+                                        },
+                                        "metaData": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "description": "Custom label metadata"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/labels/{label}": {
+            "get": {
+                "operationId": "getLabel",
+                "summary": "Get label",
+                "tags": [
+                    "Messages"
+                ],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "label",
+                        "required": true,
+                        "description": "ID of the label"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetLabelResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "ID of the label"
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Label name"
+                                        },
+                                        "metaData": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "description": "Custom label metadata"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "operationId": "renameLabel",
+                "summary": "Rename a label",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Updates a label while preserving its stable ID and all message and filter assignments.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256,
+                                        "description": "New label name"
+                                    },
+                                    "metaData": {
+                                        "type": "object",
+                                        "additionalProperties": true,
+                                        "description": "Custom JSON metadata"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "label",
+                        "required": true,
+                        "description": "ID of the label"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "RenameLabelResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "ID of the label"
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Label name"
+                                        },
+                                        "metaData": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "description": "Custom label metadata"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "deleteLabel",
+                "summary": "Delete a label",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Asynchronously removes this label and its assignments from messages and filters.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "label",
+                        "required": true,
+                        "description": "ID of the label"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteLabelResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "scheduled": {
+                                            "type": "string",
+                                            "description": "ID of the label deletion task"
+                                        },
+                                        "existing": {
+                                            "type": "boolean",
+                                            "description": "True if an existing deletion task was reused"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "scheduled",
+                                        "existing"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/label-counters/{label}": {
+            "get": {
+                "operationId": "getLabelCounters",
+                "summary": "Get label counter",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Returns total and unseen counters for a custom label",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                        },
+                        "in": "path",
+                        "name": "label",
+                        "required": true,
+                        "description": "Label to count"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "LabelCounterResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "label": {
+                                            "type": "string",
+                                            "description": "Label name"
+                                        },
+                                        "total": {
+                                            "type": "number",
+                                            "description": "Total number of messages with this label"
+                                        },
+                                        "unseen": {
+                                            "type": "number",
+                                            "description": "Unseen number of messages with this label"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "label",
+                                        "total",
+                                        "unseen"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/flagged-counter": {
+            "get": {
+                "operationId": "getFlaggedCounter",
+                "summary": "Get flagged counter",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Returns total and unseen counters for flagged messages",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "FlaggedCounterResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "total": {
+                                            "type": "number",
+                                            "description": "Total number of flagged messages"
+                                        },
+                                        "unseen": {
+                                            "type": "number",
+                                            "description": "Unseen number of flagged messages"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "total",
+                                        "unseen"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/mailboxes/{mailbox}/messages": {
             "get": {
                 "operationId": "getMessages",
@@ -4471,7 +5136,17 @@
                         "in": "query",
                         "name": "threadCounters",
                         "required": false,
-                        "description": "If true, then includes threadMessageCount and hasDrafts in the response. Counters come with some overhead"
+                        "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead"
+                    },
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "in": "query",
+                        "name": "includeHasDrafts",
+                        "required": false,
+                        "description": "If true, then calculates and includes hasDrafts in the response. This comes with some overhead"
                     },
                     {
                         "schema": {
@@ -4637,7 +5312,7 @@
                                                     },
                                                     "hasDrafts": {
                                                         "type": "boolean",
-                                                        "description": "If true, then the Thread contains at least one draft. Included if threadCounters query argument was true"
+                                                        "description": "For collapsed results, true if the Thread contains at least one draft. For non-collapsed results, true if at least one draft references the message. Included if includeHasDrafts query argument was true"
                                                     },
                                                     "from": {
                                                         "type": "object",
@@ -4783,7 +5458,7 @@
                                                     },
                                                     "seen": {
                                                         "type": "boolean",
-                                                        "description": "Is this message already seen or not"
+                                                        "description": "Is this message already seen. For collapsed results, true if all messages in the thread are seen"
                                                     },
                                                     "deleted": {
                                                         "type": "boolean",
@@ -4791,7 +5466,7 @@
                                                     },
                                                     "flagged": {
                                                         "type": "boolean",
-                                                        "description": "Does this message have a Flagged flag"
+                                                        "description": "Does this message have a Flagged flag. For collapsed results, true if any message in the thread is flagged"
                                                     },
                                                     "draft": {
                                                         "type": "boolean",
@@ -4804,6 +5479,13 @@
                                                     "forwarded": {
                                                         "type": "boolean",
                                                         "description": "Does this message have a $Forwarded flag"
+                                                    },
+                                                    "labels": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "Custom labels set on this message"
                                                     },
                                                     "references": {
                                                         "type": "array",
@@ -4904,6 +5586,16 @@
                                         "maxLength": 24,
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message"
+                                    },
+                                    "updateThreadAll": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "Only used when updateThread is true. If true, applies the requested updates to matching thread messages in all mailboxes. Can not be combined with moveTo"
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -4939,6 +5631,36 @@
                                     },
                                     "metaData": {
                                         "description": "Optional metadata, must be an object or JSON formatted string"
+                                    },
+                                    "labels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to set on the message. Replaces all existing custom labels. System flags are not affected."
+                                    },
+                                    "addLabels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to add to the message without affecting existing labels."
+                                    },
+                                    "removeLabels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to remove from the message without affecting other labels."
                                     },
                                     "sess": {
                                         "type": "string",
@@ -5171,6 +5893,16 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "Is the message a draft or not"
+                                    },
+                                    "labels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to set on the uploaded message"
                                     },
                                     "raw": {
                                         "type": "string",
@@ -5785,6 +6517,17 @@
                     },
                     {
                         "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                        },
+                        "in": "query",
+                        "name": "label",
+                        "required": false,
+                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
+                    },
+                    {
+                        "schema": {
                             "type": "boolean",
                             "default": false
                         },
@@ -5851,7 +6594,17 @@
                         "in": "query",
                         "name": "threadCounters",
                         "required": false,
-                        "description": "If true, then includes threadMessageCount and hasDrafts in the response. Counters come with some overhead"
+                        "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead"
+                    },
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "in": "query",
+                        "name": "includeHasDrafts",
+                        "required": false,
+                        "description": "If true, then calculates and includes hasDrafts in the response. This comes with some overhead"
                     },
                     {
                         "schema": {
@@ -5972,7 +6725,7 @@
                                                     },
                                                     "hasDrafts": {
                                                         "type": "boolean",
-                                                        "description": "If true, then the Thread contains at least one draft. Included if threadCounters query argument was true"
+                                                        "description": "For collapsed results, true if the Thread contains at least one draft. For non-collapsed results, true if at least one draft references the message. Included if includeHasDrafts query argument was true"
                                                     },
                                                     "from": {
                                                         "type": "object",
@@ -6118,7 +6871,7 @@
                                                     },
                                                     "seen": {
                                                         "type": "boolean",
-                                                        "description": "Is this message already seen or not"
+                                                        "description": "Is this message already seen. For collapsed results, true if all messages in the thread are seen"
                                                     },
                                                     "deleted": {
                                                         "type": "boolean",
@@ -6126,7 +6879,7 @@
                                                     },
                                                     "flagged": {
                                                         "type": "boolean",
-                                                        "description": "Does this message have a Flagged flag"
+                                                        "description": "Does this message have a Flagged flag. For collapsed results, true if any message in the thread is flagged"
                                                     },
                                                     "draft": {
                                                         "type": "boolean",
@@ -6139,6 +6892,13 @@
                                                     "forwarded": {
                                                         "type": "boolean",
                                                         "description": "Does this message have a $Forwarded flag"
+                                                    },
+                                                    "labels": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "Custom labels set on this message"
                                                     },
                                                     "references": {
                                                         "type": "array",
@@ -6335,6 +7095,12 @@
                                         "type": "boolean",
                                         "description": "If true, then matches only messages with \\Seen flags"
                                     },
+                                    "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256,
+                                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
+                                    },
                                     "useAndSearch": {
                                         "type": "boolean",
                                         "default": false,
@@ -6389,9 +7155,55 @@
                                                 "type": "boolean",
                                                 "default": false,
                                                 "description": "If true then delete all found messages"
+                                            },
+                                            "labels": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                },
+                                                "uniqueItems": true,
+                                                "description": "Custom labels to set on matched messages. Replaces all existing custom labels."
+                                            },
+                                            "addLabels": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                },
+                                                "uniqueItems": true,
+                                                "description": "Custom labels to add to matched messages without affecting existing labels."
+                                            },
+                                            "removeLabels": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                },
+                                                "uniqueItems": true,
+                                                "description": "Custom labels to remove from matched messages without affecting other labels."
                                             }
                                         },
                                         "allOf": [
+                                            {
+                                                "not": {
+                                                    "required": [
+                                                        "labels",
+                                                        "addLabels"
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "not": {
+                                                    "required": [
+                                                        "labels",
+                                                        "removeLabels"
+                                                    ]
+                                                }
+                                            },
                                             {
                                                 "if": {
                                                     "properties": {
@@ -6909,6 +7721,13 @@
                                         "metaData": {
                                             "description": "Custom metadata object set for this message"
                                         },
+                                        "labels": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Custom labels set on this message"
+                                        },
                                         "references": {
                                             "type": "array",
                                             "items": {
@@ -7054,6 +7873,16 @@
                                         "maxLength": 24,
                                         "description": "ID of the target Mailbox if you want to move messages"
                                     },
+                                    "updateThread": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "If true, applies the requested updates to all messages in the selected message threads in this Mailbox. Can not be combined with metaData, expires or draft as these describe a single message"
+                                    },
+                                    "updateThreadAll": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "Only used when updateThread is true. If true, applies the requested updates to matching thread messages in all mailboxes. Can not be combined with moveTo"
+                                    },
                                     "seen": {
                                         "type": "boolean",
                                         "description": "State of the \\Seen flag"
@@ -7089,6 +7918,36 @@
                                     },
                                     "metaData": {
                                         "description": "Optional metadata, must be an object or JSON formatted string"
+                                    },
+                                    "labels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to set on the message, overrides any existing labels"
+                                    },
+                                    "addLabels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to add to the message without affecting existing labels, can not be used together with `labels`"
+                                    },
+                                    "removeLabels": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 256
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom labels to remove from the message without affecting other labels, can not be used together with `labels`"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -7192,6 +8051,16 @@
                 "parameters": [
                     {
                         "schema": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "in": "query",
+                        "name": "updateThread",
+                        "required": false,
+                        "description": "If true, deletes all messages in the selected message thread in this Mailbox"
+                    },
+                    {
+                        "schema": {
                             "type": "string",
                             "minLength": 1,
                             "maxLength": 255
@@ -7253,10 +8122,18 @@
                             "application/json": {
                                 "schema": {
                                     "type": "object",
-                                    "title": "SuccessResponse",
+                                    "title": "DeleteMessageResponse",
                                     "properties": {
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "deleted": {
+                                            "type": "number",
+                                            "description": "Indicates the count of deleted messages"
+                                        },
+                                        "errors": {
+                                            "type": "number",
+                                            "description": "Indicates the count of errors during the delete"
                                         }
                                     },
                                     "required": [
@@ -7668,6 +8545,122 @@
             }
         },
         "/users/{user}/outbound/{queueId}": {
+            "put": {
+                "operationId": "updateOutboundMessage",
+                "summary": "Update an Outbound Message",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Updates the delivery time of an outbound email that is still queued. Delivery times in the past are replaced with the current time. Queue entries that are already being delivered can not be updated.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sendTime": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "description": "New delivery time for the queued message"
+                                    }
+                                },
+                                "required": [
+                                    "sendTime"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]+$",
+                            "minLength": 18,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "queueId",
+                        "required": true,
+                        "description": "Outbound queue ID of the message"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "UpdateOutboundMessageResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "queueId": {
+                                            "type": "string",
+                                            "description": "Outbound queue ID"
+                                        },
+                                        "sendTime": {
+                                            "description": "Delivery time that was applied. Delivery times in the past are replaced with the current time"
+                                        },
+                                        "updated": {
+                                            "type": "number",
+                                            "description": "Count of updated queue entries"
+                                        },
+                                        "dateUpdated": {
+                                            "type": "boolean",
+                                            "description": "If true then the Date header of the queued message was set to the new delivery time. Only messages submitted by the user are rewritten, forwards and autoreplies keep the Date value of the original message"
+                                        },
+                                        "storedUpdated": {
+                                            "type": "number",
+                                            "description": "Count of stored copies of the message, eg. in the Sent Mail folder, that were updated"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "operationId": "deleteOutboundMessage",
                 "summary": "Delete an Outbound Message",
@@ -7765,7 +8758,7 @@
                 "tags": [
                     "Archive"
                 ],
-                "description": "Lists archived (recently deleted) messages for the user. Drafts are not archived.",
+                "description": "Lists archived (recently deleted) messages for the user. Drafts deleted directly are not archived.",
                 "parameters": [
                     {
                         "schema": {
@@ -7826,7 +8819,7 @@
                         "in": "query",
                         "name": "threadCounters",
                         "required": false,
-                        "description": "If true, then includes threadMessageCount and hasDrafts in the response. Counters come with some overhead"
+                        "description": "If true, then includes threadMessageCount in the response. Counters come with some overhead"
                     },
                     {
                         "schema": {
@@ -7925,10 +8918,6 @@
                                                     "threadMessageCount": {
                                                         "type": "number",
                                                         "description": "Amount of messages in the Thread. Included if threadCounters query argument was true"
-                                                    },
-                                                    "hasDrafts": {
-                                                        "type": "boolean",
-                                                        "description": "If true, then the Thread contains at least one draft. Included if threadCounters query argument was true"
                                                     },
                                                     "from": {
                                                         "type": "object",
@@ -8074,7 +9063,7 @@
                                                     },
                                                     "seen": {
                                                         "type": "boolean",
-                                                        "description": "Is this message already seen or not"
+                                                        "description": "Is this message already seen. For collapsed results, true if all messages in the thread are seen"
                                                     },
                                                     "deleted": {
                                                         "type": "boolean",
@@ -8082,7 +9071,7 @@
                                                     },
                                                     "flagged": {
                                                         "type": "boolean",
-                                                        "description": "Does this message have a Flagged flag"
+                                                        "description": "Does this message have a Flagged flag. For collapsed results, true if any message in the thread is flagged"
                                                     },
                                                     "draft": {
                                                         "type": "boolean",
@@ -8095,6 +9084,13 @@
                                                     "forwarded": {
                                                         "type": "boolean",
                                                         "description": "Does this message have a $Forwarded flag"
+                                                    },
+                                                    "labels": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "Custom labels set on this message"
                                                     },
                                                     "references": {
                                                         "type": "array",
@@ -8884,7 +9880,11 @@
                                                                         "type": "number"
                                                                     },
                                                                     {
-                                                                        "type": "null"
+                                                                        "type": "object",
+                                                                        "nullable": true,
+                                                                        "enum": [
+                                                                            null
+                                                                        ]
                                                                     }
                                                                 ]
                                                             }
@@ -8904,7 +9904,11 @@
                                                                         "type": "number"
                                                                     },
                                                                     {
-                                                                        "type": "null"
+                                                                        "type": "object",
+                                                                        "nullable": true,
+                                                                        "enum": [
+                                                                            null
+                                                                        ]
                                                                     }
                                                                 ]
                                                             }
@@ -9074,7 +10078,11 @@
                                                                         "type": "number"
                                                                     },
                                                                     {
-                                                                        "type": "null"
+                                                                        "type": "object",
+                                                                        "nullable": true,
+                                                                        "enum": [
+                                                                            null
+                                                                        ]
                                                                     }
                                                                 ]
                                                             }
@@ -9094,7 +10102,11 @@
                                                                         "type": "number"
                                                                     },
                                                                     {
-                                                                        "type": "null"
+                                                                        "type": "object",
+                                                                        "nullable": true,
+                                                                        "enum": [
+                                                                            null
+                                                                        ]
                                                                     }
                                                                 ]
                                                             }
@@ -9219,7 +10231,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then mark matching messages as Seen (null clears action)"
@@ -9231,7 +10247,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then mark matching messages as Flagged (null clears action)"
@@ -9243,7 +10263,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then do not store matching messages (null clears action)"
@@ -9255,7 +10279,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then store matching messages to Junk Mail folder (null clears action)"
@@ -9277,6 +10305,16 @@
                                                     ]
                                                 },
                                                 "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                                            },
+                                            "labels": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                },
+                                                "uniqueItems": true,
+                                                "description": "An array of labels to apply to matching messages"
                                             }
                                         }
                                     },
@@ -9616,7 +10654,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then mark matching messages as Seen (null clears action)"
@@ -9628,7 +10670,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then mark matching messages as Flagged (null clears action)"
@@ -9640,7 +10686,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then do not store matching messages (null clears action)"
@@ -9652,7 +10702,11 @@
                                                         "type": "boolean"
                                                     },
                                                     {
-                                                        "type": "null"
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "enum": [
+                                                            null
+                                                        ]
                                                     }
                                                 ],
                                                 "description": "If true then store matching messages to Junk Mail folder (null clears action)"
@@ -9674,6 +10728,16 @@
                                                     ]
                                                 },
                                                 "description": "An array of forwarding targets. The value could either be an email address or a relay url to next MX server (\"smtp://mx2.zone.eu:25\") or an URL where mail contents are POSTed to"
+                                            },
+                                            "labels": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                },
+                                                "uniqueItems": true,
+                                                "description": "An array of labels to apply to matching messages"
                                             }
                                         }
                                     },
@@ -10942,7 +12006,7 @@
                                         },
                                         "token": {
                                             "type": "string",
-                                            "description": "User auth token returned when this check completes a pending 2FA login"
+                                            "description": "API access token or MCP-only bearer token returned when this check completes a pending 2FA login"
                                         }
                                     },
                                     "required": [
@@ -11906,7 +12970,7 @@
                                         },
                                         "token": {
                                             "type": "string",
-                                            "description": "User auth token"
+                                            "description": "API access token or MCP-only bearer token"
                                         }
                                     },
                                     "required": [
@@ -12014,7 +13078,7 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "default": "master",
-                                        "description": "Required scope. One of master, imap, smtp, pop3"
+                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -12136,7 +13200,7 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "default": "master",
-                                        "description": "Required scope. One of master, imap, smtp, pop3"
+                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp"
                                     },
                                     "appId": {
                                         "type": "string",
@@ -12146,7 +13210,7 @@
                                     "token": {
                                         "type": "boolean",
                                         "default": false,
-                                        "description": "If true then generates a temporary access token that is valid for this user. Only available if scope is \"master\". When using user tokens then you can replace user ID in URLs with \"me\"."
+                                        "description": "If true then generates a temporary credential for the requested scope. The \"master\" scope returns an API access token and \"mcp\" returns an MCP-only bearer token."
                                     },
                                     "sess": {
                                         "type": "string",
@@ -12220,7 +13284,7 @@
                                         },
                                         "token": {
                                             "type": "string",
-                                            "description": "If access token was requested and no WildDuck-verifiable 2FA challenge is required, or strict2fa is disabled, then this is the value to use as access token when making API requests on behalf of logged in user."
+                                            "description": "Credential for the requested scope. MCP credentials are returned only after any configured TOTP or WebAuthn challenge. master-scope API tokens retain the strict2fa compatibility behavior."
                                         },
                                         "twoFactorNonce": {
                                             "type": "string",
@@ -12254,7 +13318,145 @@
                 "tags": [
                     "Authentication"
                 ],
-                "description": "This method invalidates currently used authentication token. If token is not provided then nothing happens",
+                "description": "This method invalidates the currently used API or MCP authentication token. If token is not provided then nothing happens",
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "SuccessResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/{scope}": {
+            "post": {
+                "operationId": "createScopedAuthenticationToken",
+                "summary": "Create a scoped authentication token",
+                "tags": [
+                    "Authentication"
+                ],
+                "description": "Exchanges an MFA-satisfied master API token for an independent token restricted to the requested scope.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                        },
+                        "in": "path",
+                        "name": "scope",
+                        "required": true,
+                        "description": "Authentication scope for the new token"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "CreateScopedAuthenticationTokenResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "scope": {
+                                            "type": "string",
+                                            "description": "Scope granted to the new token"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Token identifier used for management and revocation"
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "description": "Plaintext scoped bearer token. This value is returned only once."
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "scope",
+                                        "id",
+                                        "token"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/{scope}/{token}": {
+            "delete": {
+                "operationId": "deleteScopedAuthenticationToken",
+                "summary": "Revoke a scoped authentication token",
+                "tags": [
+                    "Authentication"
+                ],
+                "description": "Revokes an independent scoped login session owned by the authenticated master-token user.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                        },
+                        "in": "path",
+                        "name": "scope",
+                        "required": true,
+                        "description": "Authentication scope of the token to revoke"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$",
+                            "minLength": 64,
+                            "maxLength": 64
+                        },
+                        "in": "path",
+                        "name": "token",
+                        "required": true,
+                        "description": "Token identifier returned when the token was created"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Default Response",
@@ -15533,6 +16735,280 @@
                 }
             }
         },
+        "/users/{user}/pushsubscriptions": {
+            "get": {
+                "operationId": "getPushSubscriptions",
+                "summary": "List push subscriptions for a user",
+                "tags": [
+                    "PushSubscriptions"
+                ],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetPushSubscriptionsResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "description": "Push subscription listing",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "GetPushSubscriptionsResult",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "description": "Subscription ID"
+                                                    },
+                                                    "deviceToken": {
+                                                        "type": "string",
+                                                        "description": "APNs device token. Omitted for users reading their own subscriptions; visible to admin roles"
+                                                    },
+                                                    "accountId": {
+                                                        "type": "string",
+                                                        "description": "APS account ID"
+                                                    },
+                                                    "subTopic": {
+                                                        "type": "string",
+                                                        "description": "APS subtopic"
+                                                    },
+                                                    "mailboxes": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "Monitored mailboxes"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Created datestring"
+                                                    },
+                                                    "updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Updated datestring"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "accountId",
+                                                    "subTopic",
+                                                    "mailboxes",
+                                                    "created",
+                                                    "updated"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/pushsubscriptions/{subscription}": {
+            "delete": {
+                "operationId": "deletePushSubscription",
+                "summary": "Delete a push subscription",
+                "tags": [
+                    "PushSubscriptions"
+                ],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "subscription",
+                        "required": true,
+                        "description": "Subscription ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeletePushSubscriptionResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/pushsubscriptions/notify": {
+            "post": {
+                "operationId": "notifyPushSubscriptions",
+                "summary": "Trigger an APNs push notification for a user",
+                "tags": [
+                    "PushSubscriptions"
+                ],
+                "description": "Manually sends an Apple Push Notification to the user's registered devices, the same notification that is emitted automatically when new mail arrives. Intended for administrative and debugging use.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "mailbox": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{24}$",
+                                        "minLength": 24,
+                                        "maxLength": 24,
+                                        "description": "Restrict the notification to subscriptions monitoring this mailbox. If not set, all monitored mailboxes are notified"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "NotifyPushSubscriptionsResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "notified": {
+                                            "type": "number",
+                                            "description": "Number of push subscriptions a notification was queued for"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "notified"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/settings": {
             "get": {
                 "operationId": "getSettings",
@@ -15864,6 +17340,343 @@
                                         "success",
                                         "version",
                                         "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mcp-tokens": {
+            "post": {
+                "operationId": "createMcpToken",
+                "summary": "Create MCP Access Token",
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "description": "Creates a read-only MCP personal access token. The plaintext token is returned only by this response.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Human-readable token description"
+                                    },
+                                    "expires": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "description": "Optional fixed expiration time in the future"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "mcp:read"
+                                        ],
+                                        "default": "mcp:read",
+                                        "description": "Access level to grant. Only the read level exists today."
+                                    }
+                                },
+                                "required": [
+                                    "description"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "CreateMcpTokenResponse",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "ID of the MCP access token"
+                                        },
+                                        "description": {
+                                            "type": "string",
+                                            "description": "Human-readable token description"
+                                        },
+                                        "role": {
+                                            "type": "string",
+                                            "enum": [
+                                                "mcp:read"
+                                            ],
+                                            "description": "Access level of the token. Only the read level exists today; treat this as an open set."
+                                        },
+                                        "audience": {
+                                            "type": "string",
+                                            "enum": [
+                                                "mcp"
+                                            ],
+                                            "description": "Fixed MCP token audience"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "Token creation time"
+                                        },
+                                        "expires": {
+                                            "description": "Fixed expiration time, if configured"
+                                        },
+                                        "lastUse": {
+                                            "description": "Most recent rate-limited token-use timestamp"
+                                        },
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "pattern": "^wdmcp_\\d[a-f0-9]{72}$",
+                                            "description": "Plaintext bearer token. This value is returned only once."
+                                        }
+                                    },
+                                    "required": [
+                                        "id",
+                                        "description",
+                                        "role",
+                                        "audience",
+                                        "created",
+                                        "success",
+                                        "token"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "operationId": "getMcpTokens",
+                "summary": "List MCP Access Tokens",
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "description": "Lists MCP token metadata without token hashes or plaintext secrets.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetMcpTokensResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "McpTokenMetadata",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "description": "ID of the MCP access token"
+                                                    },
+                                                    "description": {
+                                                        "type": "string",
+                                                        "description": "Human-readable token description"
+                                                    },
+                                                    "role": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "mcp:read"
+                                                        ],
+                                                        "description": "Access level of the token. Only the read level exists today; treat this as an open set."
+                                                    },
+                                                    "audience": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "mcp"
+                                                        ],
+                                                        "description": "Fixed MCP token audience"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Token creation time"
+                                                    },
+                                                    "expires": {
+                                                        "description": "Fixed expiration time, if configured"
+                                                    },
+                                                    "lastUse": {
+                                                        "description": "Most recent rate-limited token-use timestamp"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "description",
+                                                    "role",
+                                                    "audience",
+                                                    "created"
+                                                ]
+                                            },
+                                            "description": "MCP token metadata"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/mcp-tokens/{token}": {
+            "delete": {
+                "operationId": "deleteMcpToken",
+                "summary": "Revoke MCP Access Token",
+                "tags": [
+                    "MCPAccessTokens"
+                ],
+                "description": "Immediately revokes an MCP access token by its record ID.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "token",
+                        "required": true,
+                        "description": "ID of the MCP access token"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Default Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "SuccessResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
                                     ]
                                 }
                             }

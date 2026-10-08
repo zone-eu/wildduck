@@ -144,8 +144,9 @@ module.exports = {
                 if (param.value.toUpperCase() === 'BODY' && param.section) {
                     // BODY[...]
                     markAsSeen = true;
-                } else if (param.value.toUpperCase() === 'RFC822') {
-                    // RFC822
+                } else if (['RFC822', 'RFC822.TEXT'].includes(param.value.toUpperCase())) {
+                    // RFC 3501 6.4.5: RFC822.TEXT is functionally equivalent to BODY[TEXT], which
+                    // sets \Seen. RFC822.HEADER is equivalent to BODY.PEEK[HEADER] and must not
                     markAsSeen = true;
                 }
             }
@@ -235,14 +236,21 @@ module.exports = {
             }
 
             if (param.partial) {
+                let maxLength = Number(param.partial[1]);
+
+                // RFC 3501 9: the octet count of a partial is nz-number. A zero count would be
+                // taken as "no limit" below and return the entire section the client did not ask for
+                if (param.partial.length > 1 && !(maxLength > 0)) {
+                    return callback(null, {
+                        response: 'BAD',
+                        message: 'Invalid partial octet count in ' + item.query + ' for ' + command.command
+                    });
+                }
+
                 item.partial = {
                     startFrom: Number(param.partial[0]) || 0,
-                    maxLength: Number(param.partial[1]) || 0
+                    maxLength: maxLength || 0
                 };
-
-                if (item.partial.maxLength && item.partial.maxLength < 1024 * 1024) {
-                    //item.partial.maxLength = 1024 * 1024;
-                }
             }
             if (!imapTools.fetchSchema.hasOwnProperty(item.item) || !checkSchema(imapTools.fetchSchema[item.item], item)) {
                 return callback(null, {
