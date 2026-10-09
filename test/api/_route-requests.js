@@ -28,6 +28,11 @@ const resolve = schema => {
 
 const isRequired = schema => !!resolve(schema).wdRequired;
 
+// optional keys that make the server reach out to the internet: a BIMI lookup
+// resolves the random fixture domain over live DNS, which is slow or hangs on
+// CI runners
+const OUTBOUND_KEYS = new Set(['bimi']);
+
 const HEX24 = /\[0-9a-f\]\{24\}/;
 
 // an arbitrary pattern can not be satisfied in general: the first candidate
@@ -143,7 +148,7 @@ function sampleObject(properties, required, ctx, depth) {
     const out = {};
     for (const [key, schema] of Object.entries(properties)) {
         const needed = required.includes(key) || isRequired(schema);
-        if (!needed && !ctx.rnd.chance(ctx.optionalChance)) {
+        if (!needed && (!ctx.rnd.chance(ctx.optionalChance) || OUTBOUND_KEYS.has(key))) {
             continue;
         }
         const value = sampleValue(schema, key, ctx, depth);
