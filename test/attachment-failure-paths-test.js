@@ -164,7 +164,12 @@ describe('Attachment store failure paths', function () {
                 collection: name => {
                     let target = collection(name);
                     return name.endsWith('.files')
-                        ? { ...target, findOneAndUpdate: (query, update, options, callback) => callback(new Error('not primary')) }
+                        ? {
+                              ...target,
+                              findOneAndUpdate: async () => {
+                                  throw new Error('not primary');
+                              }
+                          }
                         : target;
                 }
             };
@@ -283,8 +288,16 @@ describe('Attachment store failure paths', function () {
                         return target;
                     }
                     return failOn === '.files'
-                        ? { findOne: (query, options, callback) => callback(new Error('files unavailable')) }
-                        : { deleteMany: (query, callback) => callback(new Error('chunks unavailable')) };
+                        ? {
+                              findOne: async () => {
+                                  throw new Error('files unavailable');
+                              }
+                          }
+                        : {
+                              deleteMany: async () => {
+                                  throw new Error('chunks unavailable');
+                              }
+                          };
                 }
             };
             let id = crypto.randomBytes(32);

@@ -32,10 +32,7 @@ describe('Filter actions runtime behavior', function () {
     let senderQueueDatabase;
 
     before(async () => {
-        mongoClient = await MongoClient.connect(config.dbs.mongo, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-        });
+        mongoClient = await MongoClient.connect(config.dbs.mongo);
         senderQueueDatabase = mongoClient.db(config.dbs.sender || config.dbs.dbname);
     });
 

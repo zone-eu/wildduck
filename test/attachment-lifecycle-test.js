@@ -68,6 +68,18 @@ describe('Attachment reference counting', function () {
         return { c: data.count, m: data.metadata.m };
     }
 
+    it('preserves GridFS MIME types in metadata and reads legacy contentType fields', async function () {
+        const id = await new Promise((resolve, reject) =>
+            storage.create({ ...attachment('csv attachment', 17), contentType: 'text/csv' }, (err, value) => (err ? reject(err) : resolve(value)))
+        );
+        const stored = await storage.get(id);
+        expect(stored.contentType).to.equal('text/csv');
+        expect(stored.metadata.contentType).to.equal('text/csv');
+
+        await db.gridfs.collection(`${bucket}.files`).updateOne({ _id: id }, { $set: { contentType: 'text/plain' }, $unset: { 'metadata.contentType': '' } });
+        expect((await storage.get(id)).contentType).to.equal('text/plain');
+    });
+
     it('counts every occurrence of a repeated attachment when copying and expiring a message', async function () {
         // a message that holds the same file twice takes two references when it is stored
         let magic = 77;

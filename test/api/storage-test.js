@@ -61,6 +61,25 @@ describe('Storage tests', function () {
         expect(response.body.id).to.be.not.empty;
     });
 
+    it('should GET /users/{user}/storage/{file} expect success / preserve uploaded MIME type', async () => {
+        const upload = await server
+            .post(`/users/${user}/storage`)
+            .send({ filename: 'mime-test.csv', contentType: 'text/csv', encoding: 'base64', content: Buffer.from('a,b\n').toString('base64') })
+            .expect(200);
+        const file = upload.body.id;
+
+        try {
+            const listing = await server.get(`/users/${user}/storage`).expect(200);
+            expect(listing.body.results.find(entry => entry.id === file).contentType).to.equal('text/csv');
+
+            const download = await server.get(`/users/${user}/storage/${file}`).expect(200);
+            expect(download.headers['content-type']).to.match(/^text\/csv\b/i);
+            expect(download.text).to.equal('a,b\n');
+        } finally {
+            await server.del(`/users/${user}/storage/${file}`).expect(200);
+        }
+    });
+
     it('should POST /users/{user}/storage expect success / filename undefined', async () => {
         const response = await server
             .post(`/users/${user}/storage`)

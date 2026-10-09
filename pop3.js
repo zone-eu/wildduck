@@ -116,102 +116,101 @@ const serverOptions = {
         );
     },
 
-    onListMessages(session, callback) {
+    async onListMessages(session, callback) {
         // only list messages in INBOX
-        db.database.collection('mailboxes').findOne(
-            {
+        let mailbox;
+        try {
+            mailbox = await db.database.collection('mailboxes').findOne({
                 user: session.user.id,
                 path: 'INBOX'
-            },
-            (err, mailbox) => {
-                if (err) {
-                    return callback(err);
+            });
+        } catch (err) {
+            return callback(err);
+        }
+
+        if (!mailbox) {
+            return callback(new Error('Mailbox not found for user'));
+        }
+
+        session.user.mailbox = mailbox._id;
+
+        db.redis
+            .multi()
+            // "new" limit store
+            .hget(`pxm:${session.user.id}`, mailbox._id.toString())
+            // fallback store
+            .hget(`pop3uid`, mailbox._id.toString())
+            .exec((err, res) => {
+                let lastIndex = res && ((res[0] && res[0][1]) || (res[1] && res[1][1]));
+
+                let query = {
+                    mailbox: mailbox._id
+                };
+                if (!err && lastIndex && !isNaN(lastIndex)) {
+                    query.uid = { $gte: Number(lastIndex) };
                 }
 
-                if (!mailbox) {
-                    return callback(new Error('Mailbox not found for user'));
-                }
+                userHandler.userCache.get(session.user.id, 'pop3MaxMessages', config.pop3.maxMessages, async (err, maxMessages) => {
+                    if (err) {
+                        return callback(err);
+                    }
 
-                session.user.mailbox = mailbox._id;
+                    let messages;
+                    try {
+                        messages = await db.database
+                            .collection('messages')
+                            .find(query)
+                            .project({
+                                uid: true,
+                                size: true,
+                                mailbox: true,
+                                // required to decide if we need to update flags after RETR
+                                flags: true,
+                                unseen: true
+                            })
+                            .sort({ uid: -1 })
+                            .limit(maxMessages || MAX_MESSAGES)
+                            .toArray();
+                    } catch (err) {
+                        return callback(err);
+                    }
 
-                db.redis
-                    .multi()
-                    // "new" limit store
-                    .hget(`pxm:${session.user.id}`, mailbox._id.toString())
-                    // fallback store
-                    .hget(`pop3uid`, mailbox._id.toString())
-                    .exec((err, res) => {
-                        let lastIndex = res && ((res[0] && res[0][1]) || (res[1] && res[1][1]));
-
-                        let query = {
-                            mailbox: mailbox._id
-                        };
-                        if (!err && lastIndex && !isNaN(lastIndex)) {
-                            query.uid = { $gte: Number(lastIndex) };
+                    let updateUIDIndex = done => {
+                        // first is the newest, last the oldest
+                        let oldestMessageData = messages && messages.length && messages[messages.length - 1];
+                        if (!oldestMessageData || !oldestMessageData.uid) {
+                            return done();
                         }
+                        // try to update index, ignore result
+                        db.redis
+                            .multi()
+                            // update limit store
+                            .hset(`pxm:${session.user.id}`, mailbox._id.toString(), oldestMessageData.uid)
+                            // delete fallback store as it is no longer needed
+                            .hdel(`pop3uid`, mailbox._id.toString())
+                            .exec(done);
+                    };
 
-                        userHandler.userCache.get(session.user.id, 'pop3MaxMessages', config.pop3.maxMessages, (err, maxMessages) => {
-                            if (err) {
-                                return callback(err);
-                            }
-
-                            db.database
-                                .collection('messages')
-                                .find(query)
-                                .project({
-                                    uid: true,
-                                    size: true,
-                                    mailbox: true,
-                                    // required to decide if we need to update flags after RETR
-                                    flags: true,
-                                    unseen: true
-                                })
-                                .sort({ uid: -1 })
-                                .limit(maxMessages || MAX_MESSAGES)
-                                .toArray((err, messages) => {
-                                    if (err) {
-                                        return callback(err);
-                                    }
-
-                                    let updateUIDIndex = done => {
-                                        // first is the newest, last the oldest
-                                        let oldestMessageData = messages && messages.length && messages[messages.length - 1];
-                                        if (!oldestMessageData || !oldestMessageData.uid) {
-                                            return done();
-                                        }
-                                        // try to update index, ignore result
-                                        db.redis
-                                            .multi()
-                                            // update limit store
-                                            .hset(`pxm:${session.user.id}`, mailbox._id.toString(), oldestMessageData.uid)
-                                            // delete fallback store as it is no longer needed
-                                            .hdel(`pop3uid`, mailbox._id.toString())
-                                            .exec(done);
-                                    };
-
-                                    updateUIDIndex(() =>
-                                        callback(null, {
-                                            messages: messages
-                                                // show older first
-                                                .reverse()
-                                                // compose message objects
-                                                .map(message => ({
-                                                    id: message._id.toString(),
-                                                    uid: message.uid,
-                                                    mailbox: message.mailbox,
-                                                    size: message.size,
-                                                    flags: message.flags,
-                                                    seen: !message.unseen
-                                                })),
-                                            count: messages.length,
-                                            size: messages.reduce((acc, message) => acc + message.size, 0)
-                                        })
-                                    );
-                                });
-                        });
-                    });
-            }
-        );
+                    updateUIDIndex(() =>
+                        callback(null, {
+                            messages: messages
+                                // show older first
+                                .reverse()
+                                // compose message objects
+                                .map(message => ({
+                                    id: message._id.toString(),
+                                    uid: message.uid,
+                                    mailbox: message.mailbox,
+                                    size: message.size,
+                                    flags: message.flags,
+                                    seen: !message.unseen
+                                })),
+                            count: messages.length,
+                            size: messages.reduce((acc, message) => acc + message.size, 0)
+                        })
+                    );
+                });
+            });
     },
 
     onFetchMessage(message, session, callback) {
@@ -220,7 +219,7 @@ const serverOptions = {
                 return callback(err);
             }
 
-            messageHandler.counters.ttlcounter('pdw:' + session.user.id, 0, limit, false, (err, res) => {
+            messageHandler.counters.ttlcounter('pdw:' + session.user.id, 0, limit, false, async (err, res) => {
                 if (err) {
                     return callback(err);
                 }
@@ -233,50 +232,51 @@ const serverOptions = {
                     return callback(err);
                 }
 
-                db.database.collection('messages').findOne(
-                    {
-                        _id: new ObjectId(message.id),
-                        // shard key
-                        mailbox: message.mailbox,
-                        uid: message.uid
-                    },
-                    {
-                        mimeTree: true,
-                        size: true
-                    },
-                    (err, message) => {
-                        if (err) {
-                            return callback(err);
+                let message;
+                try {
+                    message = await db.database.collection('messages').findOne(
+                        {
+                            _id: new ObjectId(message.id),
+                            // shard key
+                            mailbox: message.mailbox,
+                            uid: message.uid
+                        },
+                        {
+                            mimeTree: true,
+                            size: true
                         }
-                        if (!message) {
-                            return callback(new Error('Message does not exist or is already deleted'));
-                        }
+                    );
+                } catch (err) {
+                    return callback(err);
+                }
 
-                        let response = messageHandler.indexer.rebuild(message.mimeTree);
-                        if (!response || response.type !== 'stream' || !response.value) {
-                            return callback(new Error('Can not fetch message'));
-                        }
+                if (!message) {
+                    return callback(new Error('Message does not exist or is already deleted'));
+                }
 
-                        let limiter = new LimitedFetch({
-                            key: 'pdw:' + session.user.id,
-                            ttlcounter: messageHandler.counters.ttlcounter,
-                            maxBytes: limit,
-                            skipCounter: true
-                        });
+                let response = messageHandler.indexer.rebuild(message.mimeTree);
+                if (!response || response.type !== 'stream' || !response.value) {
+                    return callback(new Error('Can not fetch message'));
+                }
 
-                        response.value.pipe(limiter);
-                        response.value.once('error', err => limiter.emit('error', err));
+                let limiter = new LimitedFetch({
+                    key: 'pdw:' + session.user.id,
+                    ttlcounter: messageHandler.counters.ttlcounter,
+                    maxBytes: limit,
+                    skipCounter: true
+                });
 
-                        // ends all streams and cleans up
-                        limiter.abort = () => {
-                            response.value.abort(); // abort rebuilder
-                            response.value.unpipe(limiter);
-                            limiter.end();
-                        };
+                response.value.pipe(limiter);
+                response.value.once('error', err => limiter.emit('error', err));
 
-                        callback(null, limiter);
-                    }
-                );
+                // ends all streams and cleans up
+                limiter.abort = () => {
+                    response.value.abort(); // abort rebuilder
+                    response.value.unpipe(limiter);
+                    limiter.end();
+                };
+
+                callback(null, limiter);
             });
         });
     },
@@ -320,128 +320,126 @@ const server = new POP3Server(serverOptions);
 certs.registerReload(server, 'pop3');
 
 // move messages to trash
-function trashMessages(session, messages, callback) {
+async function trashMessages(session, messages, callback) {
     // find Trash folder
-    db.database.collection('mailboxes').findOne(
-        {
+    let trashMailbox;
+    try {
+        trashMailbox = await db.database.collection('mailboxes').findOne({
             user: session.user.id,
             specialUse: '\\Trash'
+        });
+    } catch (err) {
+        return callback(err);
+    }
+
+    if (!trashMailbox) {
+        return callback(new Error('Trash mailbox not found for user'));
+    }
+
+    messageHandler.move(
+        {
+            user: session.user.id,
+            // folder to move messages from
+            source: {
+                mailbox: session.user.mailbox
+            },
+            // folder to move messages to
+            destination: trashMailbox,
+            // list of UIDs to move
+            messages: messages.map(message => message.uid),
+
+            // add \Seen flags to deleted messages
+            markAsSeen: true
         },
-        (err, trashMailbox) => {
+        (err, success, meta) => {
             if (err) {
                 return callback(err);
             }
-
-            if (!trashMailbox) {
-                return callback(new Error('Trash mailbox not found for user'));
-            }
-
-            messageHandler.move(
-                {
-                    user: session.user.id,
-                    // folder to move messages from
-                    source: {
-                        mailbox: session.user.mailbox
-                    },
-                    // folder to move messages to
-                    destination: trashMailbox,
-                    // list of UIDs to move
-                    messages: messages.map(message => message.uid),
-
-                    // add \Seen flags to deleted messages
-                    markAsSeen: true
-                },
-                (err, success, meta) => {
-                    if (err) {
-                        return callback(err);
-                    }
-                    callback(null, (success && meta && meta.destinationUid && meta.destinationUid.length) || 0);
-                }
-            );
+            callback(null, (success && meta && meta.destinationUid && meta.destinationUid.length) || 0);
         }
     );
 }
 
-function markAsSeen(session, messages, callback) {
+async function markAsSeen(session, messages, callback) {
     let ids = messages.map(message => new ObjectId(message.id));
 
-    return db.database.collection('mailboxes').findOneAndUpdate(
-        {
-            _id: session.user.mailbox
-        },
-        {
-            $inc: {
-                modifyIndex: 1
-            }
-        },
-        {
-            returnDocument: 'after'
-        },
-        (err, item) => {
-            if (err) {
-                return callback(err);
-            }
-
-            let mailboxData = item && item.value;
-            if (!item) {
-                let err = new Error('Selected mailbox does not exist');
-                err.responseCode = 404;
-                err.code = 'NoSuchMailbox';
-                return callback(err);
-            }
-
-            db.database.collection('messages').updateMany(
-                {
-                    _id: {
-                        $in: ids
-                    },
-                    user: session.user.id,
-                    mailbox: mailboxData._id,
-                    modseq: {
-                        $lt: mailboxData.modifyIndex
-                    }
-                },
-                {
-                    $set: {
-                        modseq: mailboxData.modifyIndex,
-                        unseen: false
-                    },
-                    $addToSet: {
-                        flags: '\\Seen'
-                    }
-                },
-                {
-                    multi: true,
-                    writeConcern: 1
-                },
-                err => {
-                    if (err) {
-                        return callback(err);
-                    }
-                    messageHandler.notifier.addEntries(
-                        mailboxData,
-                        messages.map(message => {
-                            let result = {
-                                command: 'FETCH',
-                                uid: message.uid,
-                                flags: message.flags.concat('\\Seen'),
-                                thread: message.thread,
-                                message: new ObjectId(message.id),
-                                modseq: mailboxData.modifyIndex,
-                                // Indicate that unseen values are changed. Not sure how much though
-                                unseenChange: true
-                            };
-                            return result;
-                        }),
-                        () => {
-                            messageHandler.notifier.fire(mailboxData.user);
-                            callback(null, messages.length);
-                        }
-                    );
+    let item;
+    try {
+        item = await db.database.collection('mailboxes').findOneAndUpdate(
+            {
+                _id: session.user.mailbox
+            },
+            {
+                $inc: {
+                    modifyIndex: 1
                 }
-            );
+            },
+            { includeResultMetadata: true, returnDocument: 'after' }
+        );
+    } catch (err) {
+        return callback(err);
+    }
+
+    let mailboxData = item && item.value;
+    if (!item) {
+        let err = new Error('Selected mailbox does not exist');
+        err.responseCode = 404;
+        err.code = 'NoSuchMailbox';
+        return callback(err);
+    }
+
+    try {
+        await db.database.collection('messages').updateMany(
+            {
+                _id: {
+                    $in: ids
+                },
+                user: session.user.id,
+                mailbox: mailboxData._id,
+                modseq: {
+                    $lt: mailboxData.modifyIndex
+                }
+            },
+            {
+                $set: {
+                    modseq: mailboxData.modifyIndex,
+                    unseen: false
+                },
+                $addToSet: {
+                    flags: '\\Seen'
+                }
+            },
+            {
+                multi: true,
+                writeConcern: { w: 1 }
+            }
+        );
+    } catch (err) {
+        return callback(err);
+    }
+
+    messageHandler.notifier.addEntries(
+        mailboxData,
+        messages.map(message => {
+            let result = {
+                command: 'FETCH',
+                uid: message.uid,
+                flags: message.flags.concat('\\Seen'),
+                thread: message.thread,
+                message: new ObjectId(message.id),
+                modseq: mailboxData.modifyIndex,
+                // Indicate that unseen values are changed. Not sure how much though
+                unseenChange: true
+            };
+            return result;
+        }),
+        () => {
+            messageHandler.notifier.fire(mailboxData.user);
+            callback(null, messages.length);
         }
     );
+
+    return;
 }
 
 module.exports = done => {

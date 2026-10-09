@@ -70,11 +70,9 @@ describe('Label deletion synchronization in MongoDB', function () {
                     return collection;
                 }
                 const writeConcurrently = async mailbox => {
-                    const state = await database.collection('mailboxes').findOneAndUpdate(
-                        { _id: mailbox, user },
-                        { $inc: { modifyIndex: 1 } },
-                        { returnDocument: 'after' }
-                    );
+                    const state = await database
+                        .collection('mailboxes')
+                        .findOneAndUpdate({ _id: mailbox, user }, { $inc: { modifyIndex: 1 } }, { returnDocument: 'after', includeResultMetadata: true });
                     concurrentModseq = state.value.modifyIndex;
                     await collection.updateOne(
                         { mailbox, uid: 1 },
@@ -90,7 +88,7 @@ describe('Label deletion synchronization in MongoDB', function () {
                         }
                         return collection.findOneAndUpdate(query, update, options);
                     },
-                    updateMany(query, update, callback) {
+                    async updateMany(query, update) {
                         const apply = async () => {
                             if (afterAllocation && !injected && query.mailbox.equals(mailboxes[0])) {
                                 injected = true;
@@ -98,7 +96,7 @@ describe('Label deletion synchronization in MongoDB', function () {
                             }
                             return collection.updateMany(query, update);
                         };
-                        apply().then(result => callback(null, result), callback);
+                        return apply();
                     }
                 };
             }
