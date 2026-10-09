@@ -128,9 +128,6 @@
         "url": "git://github.com/zone-eu/wildduck.git"
     },
     "overrides": {
-        "restify-cors-middleware2": {
-            "restify": "$restify"
-        },
         "@zone-eu/types": "0.1.6"
     },
     "engines": {

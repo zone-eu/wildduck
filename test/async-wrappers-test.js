@@ -87,6 +87,16 @@ describe('Handler callback wrappers', function () {
             expect(await handler.flagReferencedMessage('user', { action: 'bounce', mailbox: 'mailbox', id: 1 })).to.be.false;
             expect(await handler.flagReferencedMessage('user', null)).to.be.false;
         });
+
+        it('flagReferencedMessage() ignores a reference with an invalid mailbox id', async () => {
+            const real = Object.create(MessageHandler.prototype);
+            real.database = {
+                collection: () => {
+                    throw new Error('must not be queried');
+                }
+            };
+            expect(await real.flagReferencedMessage('user', { action: 'reply', mailbox: 'not-an-id', id: 1 })).to.be.false;
+        });
     });
 
     describe('ImapNotifier', () => {

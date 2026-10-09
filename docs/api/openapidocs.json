@@ -6095,7 +6095,7 @@
                                                     "type": "string",
                                                     "minLength": 1,
                                                     "default": "base64",
-                                                    "description": "Encoding to use to store the attachments"
+                                                    "description": "Encoding of the content value, a Node.js Buffer encoding such as base64, hex or utf8"
                                                 },
                                                 "contentTransferEncoding": {
                                                     "type": "string",
@@ -13647,11 +13647,9 @@
                                                         "description": "Target value for the action"
                                                     },
                                                     "asp": {
-                                                        "type": "string",
                                                         "description": "Application password ID"
                                                     },
                                                     "aname": {
-                                                        "type": "string",
                                                         "description": "Application password description"
                                                     },
                                                     "temporary": {
@@ -13663,8 +13661,7 @@
                                                         "description": "Filter ID associated with the event"
                                                     },
                                                     "credential": {
-                                                        "type": "string",
-                                                        "description": "WebAuthn credential ID"
+                                                        "description": "WebAuthn credential"
                                                     },
                                                     "appId": {
                                                         "type": "string",
@@ -13813,11 +13810,9 @@
                                             "description": "Target value for the action"
                                         },
                                         "asp": {
-                                            "type": "string",
                                             "description": "Application password ID"
                                         },
                                         "aname": {
-                                            "type": "string",
                                             "description": "Application password description"
                                         },
                                         "temporary": {
@@ -13829,8 +13824,7 @@
                                             "description": "Filter ID associated with the event"
                                         },
                                         "credential": {
-                                            "type": "string",
-                                            "description": "WebAuthn credential ID"
+                                            "description": "WebAuthn credential"
                                         },
                                         "appId": {
                                             "type": "string",
@@ -14408,7 +14402,7 @@
                                                     "type": "string",
                                                     "minLength": 1,
                                                     "default": "base64",
-                                                    "description": "Encoding to use to store the attachments"
+                                                    "description": "Encoding of the content value, a Node.js Buffer encoding such as base64, hex or utf8"
                                                 },
                                                 "contentTransferEncoding": {
                                                     "type": "string",
