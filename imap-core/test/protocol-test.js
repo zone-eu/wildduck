@@ -1747,8 +1747,8 @@ describe('IMAP Protocol integration tests', function () {
                             // none of "i", "e" or the shared flag rights is granted
                             expect(/^T2 OK \[READ-ONLY\]/m.test(resp.toString())).to.be.true;
                             expect(resp.toString().indexOf('[PERMANENTFLAGS ()]') >= 0).to.be.true;
-                            // STORE is ignored in a read-only mailbox
-                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            // STORE is refused in a read-only mailbox
+                            expect(/^T3 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
                             done();
                         }
                     );
