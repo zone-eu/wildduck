@@ -184,6 +184,20 @@ serializer compiler in `lib/fastify/routes.js` therefore strips `required` from
 the schema it compiles, while `@fastify/swagger` keeps reading the original, so
 the published specification still states which fields a caller can expect.
 
+A response that is not JSON (a download, a stream) declares its content type
+instead of a model, for the specification only:
+
+```js
+response: {
+    200: { description: 'Success', content: { 'message/rfc822': { schema: { type: 'string', format: 'binary' } } } }
+}
+```
+
+Fastify only runs object payloads through the serializer, so the stream or
+Buffer the handler sends passes through untouched. The response `description`
+of a JSON response is published through the `x-response-description` keyword
+on the model.
+
 ## Body parsing
 
 | content type                        | handling                                                                                   |

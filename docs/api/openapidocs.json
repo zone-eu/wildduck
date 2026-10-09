@@ -2,7 +2,7 @@
     "openapi": "3.0.0",
     "info": {
         "title": "WildDuck API",
-        "description": "WildDuck API docs",
+        "description": "REST API for managing WildDuck users, addresses, mailboxes, messages and system settings.",
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         }
@@ -13,7 +13,7 @@
                 "name": "X-Access-Token",
                 "type": "apiKey",
                 "in": "header",
-                "description": "If authentication is enabled in the WildDuck configuration, you will need to supply an access token in the `X-Access-Token` header.\n```json\n{\n    \"X-Access-Token\": \"59fc66a03e54454869460e45\"\n}\n```\n"
+                "description": "If authentication is enabled in the WildDuck configuration, supply an access token in the `X-Access-Token` header or in the `accessToken` query parameter.\n```json\n{\n    \"X-Access-Token\": \"59fc66a03e54454869460e45\"\n}\n```\n"
             }
         },
         "schemas": {
@@ -22,8 +22,6 @@
                 "pattern": "^[0-9a-f]{24}$",
                 "minLength": 24,
                 "maxLength": 24,
-                "wdLowercase": true,
-                "wdRequired": true,
                 "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
             },
             "mailboxId": {
@@ -31,15 +29,11 @@
                 "pattern": "^[0-9a-f]{24}$",
                 "minLength": 24,
                 "maxLength": 24,
-                "wdLowercase": true,
-                "wdRequired": true,
                 "description": "ID of the Mailbox"
             },
             "messageId": {
                 "type": "number",
                 "minimum": 1,
-                "wdType": "number",
-                "wdRequired": true,
                 "description": "Message ID"
             },
             "sess": {
@@ -51,44 +45,33 @@
             "ip": {
                 "type": "string",
                 "minLength": 1,
-                "wdValidator": "ip",
                 "description": "IP address for the logs "
             },
             "boolean": {
-                "type": "boolean",
-                "wdType": "boolean",
-                "wdEmpty": true
+                "type": "boolean"
             },
             "pageLimit": {
                 "type": "number",
                 "minimum": 1,
                 "maximum": 250,
                 "default": 20,
-                "wdType": "number",
                 "description": "How many records to return"
             },
             "pageNr": {
                 "type": "number",
                 "default": 1,
-                "wdType": "number",
                 "description": "Current page number. Informational only, page numbers start from 1"
             },
             "cursor": {
                 "type": "string",
-                "maxLength": 1024,
-                "wdTrim": true,
-                "wdEmpty": true,
-                "wdValidator": "mongoCursor"
+                "maxLength": 1024
             },
-            "metaData": {
-                "wdValidator": "metaData"
-            },
+            "metaData": {},
             "username": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128,
-                "pattern": "^[a-z0-9-]+(?:[._=:][a-z0-9-]+)*(?:@[a-z0-9-]+(?:[._=:][a-z0-9-]+)*)?$",
-                "wdLowercase": true
+                "pattern": "^[a-z0-9-]+(?:[._=:][a-z0-9-]+)*(?:@[a-z0-9-]+(?:[._=:][a-z0-9-]+)*)?$"
             },
             "successRes": {
                 "type": "boolean",
@@ -130,10 +113,11 @@
         "/users": {
             "get": {
                 "operationId": "getUsers",
-                "summary": "List registered Users",
+                "summary": "List users",
                 "tags": [
                     "Users"
                 ],
+                "description": "Lists users with paging. The results can be filtered by username or address, forward target, tags and metadata.",
                 "parameters": [
                     {
                         "schema": {
@@ -253,7 +237,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -389,10 +373,11 @@
             },
             "post": {
                 "operationId": "createUser",
-                "summary": "Create new user",
+                "summary": "Create a user",
                 "tags": [
                     "Users"
                 ],
+                "description": "Creates a new user account and its default mailboxes. If an address is given, it is registered as the main address of the user.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -589,28 +574,32 @@
                                                 "minLength": 1,
                                                 "not": {
                                                     "pattern": "/{2,}|/$"
-                                                }
+                                                },
+                                                "description": "Path of the Sent Mail folder"
                                             },
                                             "trash": {
                                                 "type": "string",
                                                 "minLength": 1,
                                                 "not": {
                                                     "pattern": "/{2,}|/$"
-                                                }
+                                                },
+                                                "description": "Path of the Trash folder"
                                             },
                                             "junk": {
                                                 "type": "string",
                                                 "minLength": 1,
                                                 "not": {
                                                     "pattern": "/{2,}|/$"
-                                                }
+                                                },
+                                                "description": "Path of the Junk folder"
                                             },
                                             "drafts": {
                                                 "type": "string",
                                                 "minLength": 1,
                                                 "not": {
                                                     "pattern": "/{2,}|/$"
-                                                }
+                                                },
+                                                "description": "Path of the Drafts folder"
                                             }
                                         }
                                     },
@@ -685,7 +674,8 @@
                                         "properties": {
                                             "indexing": {
                                                 "type": "boolean",
-                                                "default": false
+                                                "default": false,
+                                                "description": "If true, messages of the user are indexed in ElasticSearch"
                                             }
                                         },
                                         "description": "Feature flags to specify"
@@ -712,7 +702,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -741,10 +731,11 @@
         "/users/resolve/{username}": {
             "get": {
                 "operationId": "resolveUser",
-                "summary": "Resolve ID for a username",
+                "summary": "Resolve a username to a user ID",
                 "tags": [
                     "Users"
                 ],
+                "description": "Returns the ID of the user with the given username.",
                 "parameters": [
                     {
                         "schema": {
@@ -782,7 +773,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -812,10 +803,11 @@
         "/users/{user}": {
             "get": {
                 "operationId": "getUser",
-                "summary": "Request User information",
+                "summary": "Get user details",
                 "tags": [
                     "Users"
                 ],
+                "description": "Returns the settings, limits with current usage, and 2FA status of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -853,7 +845,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1035,10 +1027,11 @@
             },
             "put": {
                 "operationId": "updateUser",
-                "summary": "Update User information",
+                "summary": "Update a user",
                 "tags": [
                     "Users"
                 ],
+                "description": "Updates the settings and limits of a user. Only the fields present in the request are changed.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -1264,7 +1257,8 @@
                                         "properties": {
                                             "indexing": {
                                                 "type": "boolean",
-                                                "default": false
+                                                "default": false,
+                                                "description": "If true, messages of the user are indexed in ElasticSearch"
                                             }
                                         },
                                         "description": "Enabled feature flags"
@@ -1311,7 +1305,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1333,11 +1327,11 @@
             },
             "delete": {
                 "operationId": "deleteUser",
-                "summary": "Delete a User",
+                "summary": "Delete a user",
                 "tags": [
                     "Users"
                 ],
-                "description": "This method deletes user and address entries from DB and schedules a background task to delete messages. You can call this method several times even if the user has already been deleted, in case there are still some pending messages.",
+                "description": "Deletes user and address entries from DB and schedules a background task to delete messages. You can call this method several times even if the user has already been deleted, in case there are still some pending messages.",
                 "parameters": [
                     {
                         "schema": {
@@ -1395,7 +1389,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1418,6 +1412,7 @@
                                         "addresses": {
                                             "type": "object",
                                             "additionalProperties": true,
+                                            "description": "Address cleanup results",
                                             "properties": {
                                                 "deleted": {
                                                     "type": "number",
@@ -1446,10 +1441,11 @@
         "/users/{user}/logout": {
             "put": {
                 "operationId": "logoutUser",
-                "summary": "Log out User",
+                "summary": "Log out a user",
                 "tags": [
                     "Users"
                 ],
+                "description": "Closes all IMAP sessions of the user. The optional reason is shown to the connected IMAP clients.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -1495,7 +1491,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1519,11 +1515,11 @@
         "/users/{user}/quota/reset": {
             "post": {
                 "operationId": "recalculateQuota",
-                "summary": "Recalculate User quota",
+                "summary": "Recalculate quota for a user",
                 "tags": [
                     "Users"
                 ],
-                "description": "This method recalculates quota usage for a User. Normally not needed, only use it if quota numbers are way off. This method is not transactional, so if the user is currently receiving new messages then the resulting value is not exact.",
+                "description": "Recalculates quota usage for a User. Normally not needed, only use it if quota numbers are way off. This method is not transactional, so if the user is currently receiving new messages then the resulting value is not exact.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -1563,7 +1559,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1597,11 +1593,11 @@
         "/quota/reset": {
             "post": {
                 "operationId": "recalculateQuotaAllUsers",
-                "summary": "Recalculate Quota for all Users",
+                "summary": "Recalculate quota for all users",
                 "tags": [
                     "Users"
                 ],
-                "description": "This method recalculates quota usage for all Users. Normally not needed, only use it if quota numbers are way off. This method is not transactional, so if the user is currently receiving new messages then the resulting value is not exact.",
+                "description": "Recalculates quota usage for all Users. Normally not needed, only use it if quota numbers are way off. This method is not transactional, so if the user is currently receiving new messages then the resulting value is not exact.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -1627,7 +1623,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1656,7 +1652,7 @@
         "/data/export": {
             "post": {
                 "operationId": "createExport",
-                "summary": "Export data",
+                "summary": "Export user data",
                 "tags": [
                     "Export"
                 ],
@@ -1705,7 +1701,16 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response"
+                        "description": "Success",
+                        "content": {
+                            "application/octet-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary",
+                                    "description": "Export dump"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1720,7 +1725,7 @@
                 "description": "Import data from an export dump. If a database entry already exists, it is not modified. A special \"export\"-role access token is required for exporting and importing.",
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1755,11 +1760,11 @@
         "/users/{user}/password/reset": {
             "post": {
                 "operationId": "resetUserPassword",
-                "summary": "Reset password for a User",
+                "summary": "Reset the password of a user",
                 "tags": [
                     "Users"
                 ],
-                "description": "This method generates a new temporary password for a User. Additionally it removes all two-factor authentication settings",
+                "description": "Generates a new temporary password for a User. Additionally it removes all two-factor authentication settings",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -1813,7 +1818,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1846,10 +1851,11 @@
         "/users/{user}/restore": {
             "get": {
                 "operationId": "restoreUserInfo",
-                "summary": "Return recovery info for a deleted user",
+                "summary": "Get recovery info for a deleted user",
                 "tags": [
                     "Users"
                 ],
+                "description": "Returns what can be recovered for a user that is scheduled for deletion: the deletion time, storage usage and the addresses that are still free to restore.",
                 "parameters": [
                     {
                         "schema": {
@@ -1887,7 +1893,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1939,7 +1945,7 @@
             },
             "post": {
                 "operationId": "cancelUserDelete",
-                "summary": "Cancel user deletion task",
+                "summary": "Cancel a user deletion",
                 "tags": [
                     "Users"
                 ],
@@ -1983,7 +1989,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2009,6 +2015,7 @@
                                         "addresses": {
                                             "type": "object",
                                             "additionalProperties": true,
+                                            "description": "Address recovery results",
                                             "properties": {
                                                 "recovered": {
                                                     "type": "number",
@@ -2034,10 +2041,11 @@
         "/addresses": {
             "get": {
                 "operationId": "getAddresses",
-                "summary": "List registered Addresses",
+                "summary": "List addresses",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Lists all registered addresses, both user addresses and forwarded addresses, with paging.",
                 "parameters": [
                     {
                         "schema": {
@@ -2157,7 +2165,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2253,7 +2261,7 @@
         "/users/{user}/addresses": {
             "post": {
                 "operationId": "createUserAddress",
-                "summary": "Create new Address",
+                "summary": "Create an address for a user",
                 "tags": [
                     "Addresses"
                 ],
@@ -2339,7 +2347,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2366,10 +2374,11 @@
             },
             "get": {
                 "operationId": "getUserAddresses",
-                "summary": "List registered Addresses for a User",
+                "summary": "List addresses of a user",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Lists the addresses registered for a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -2425,7 +2434,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2493,10 +2502,11 @@
         "/users/{user}/addresses/{address}": {
             "get": {
                 "operationId": "getUserAddress",
-                "summary": "Request Addresses information",
+                "summary": "Get address details",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Returns the details of an address of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -2546,7 +2556,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2601,10 +2611,11 @@
             },
             "delete": {
                 "operationId": "deleteUserAddress",
-                "summary": "Delete an Address",
+                "summary": "Delete an address of a user",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Deletes an address of a user. The main address of a user can not be deleted.",
                 "parameters": [
                     {
                         "schema": {
@@ -2654,7 +2665,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2678,10 +2689,11 @@
         "/users/{user}/addresses/{id}": {
             "put": {
                 "operationId": "updateUserAddress",
-                "summary": "Update Address information",
+                "summary": "Update an address of a user",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Updates the name, address, tags or metadata of an address, or makes it the main address of the user.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -2762,7 +2774,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2786,10 +2798,11 @@
         "/users/{user}/addressregister": {
             "get": {
                 "operationId": "getUserAddressregister",
-                "summary": "List addresses from communication register",
+                "summary": "List addresses from the address register",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Lists the addresses the user has received mail from or sent mail to, as collected in the address register. Useful for address autocompletion.",
                 "parameters": [
                     {
                         "schema": {
@@ -2850,7 +2863,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2898,10 +2911,11 @@
         "/users/{user}/addressregister/{id}": {
             "put": {
                 "operationId": "updateAddressAddressregister",
-                "summary": "Update an address in the addressregister",
+                "summary": "Update an address register entry",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Updates the name of an address register entry, or disables the entry so it is no longer suggested.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -2976,7 +2990,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3000,7 +3014,7 @@
         "/addresses/forwarded": {
             "post": {
                 "operationId": "createForwardedAddress",
-                "summary": "Create new forwarded Address",
+                "summary": "Create a forwarded address",
                 "tags": [
                     "Addresses"
                 ],
@@ -3150,7 +3164,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3179,10 +3193,11 @@
         "/addresses/forwarded/{id}": {
             "put": {
                 "operationId": "updateForwardedAddress",
-                "summary": "Update forwarded Address information",
+                "summary": "Update a forwarded address",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Updates the targets, limits, autoreply settings, tags or metadata of a forwarded address.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -3332,7 +3347,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3356,10 +3371,11 @@
         "/addresses/forwarded/{address}": {
             "delete": {
                 "operationId": "deleteForwardedAddress",
-                "summary": "Delete a forwarded Address",
+                "summary": "Delete a forwarded address",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Deletes a forwarded address.",
                 "parameters": [
                     {
                         "schema": {
@@ -3397,7 +3413,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3419,10 +3435,11 @@
             },
             "get": {
                 "operationId": "getForwardedAddress",
-                "summary": "Request forwarded Addresses information",
+                "summary": "Get forwarded address details",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Returns the targets, limits and autoreply settings of a forwarded address.",
                 "parameters": [
                     {
                         "schema": {
@@ -3460,7 +3477,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3585,10 +3602,11 @@
         "/addresses/resolve/{address}": {
             "get": {
                 "operationId": "resolveAddress",
-                "summary": "Get Address info",
+                "summary": "Resolve an address",
                 "tags": [
                     "Addresses"
                 ],
+                "description": "Returns the user or forwarded address entry for an email address, also through domain aliases. Wildcard addresses are matched only when allowWildcard is set.",
                 "parameters": [
                     {
                         "schema": {
@@ -3641,7 +3659,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3766,7 +3784,7 @@
         "/addresses/renameDomain": {
             "put": {
                 "operationId": "renameDomain",
-                "summary": "Rename domain in addresses",
+                "summary": "Rename a domain",
                 "tags": [
                     "Addresses"
                 ],
@@ -3810,7 +3828,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3854,10 +3872,11 @@
         "/users/{user}/mailboxes": {
             "get": {
                 "operationId": "getMailboxes",
-                "summary": "List Mailboxes for a User",
+                "summary": "List mailboxes of a user",
                 "tags": [
                     "Mailboxes"
                 ],
+                "description": "Lists the mailboxes of a user, optionally with message counters and sizes.",
                 "parameters": [
                     {
                         "schema": {
@@ -3935,7 +3954,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4020,10 +4039,11 @@
             },
             "post": {
                 "operationId": "createMailbox",
-                "summary": "Create new Mailbox",
+                "summary": "Create a mailbox",
                 "tags": [
                     "Mailboxes"
                 ],
+                "description": "Creates a new mailbox for a user.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -4090,7 +4110,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4119,10 +4139,11 @@
         "/users/{user}/mailboxes/{mailbox}": {
             "get": {
                 "operationId": "getMailbox",
-                "summary": "Request Mailbox information",
+                "summary": "Get mailbox details",
                 "tags": [
                     "Mailboxes"
                 ],
+                "description": "Returns the details and message counters of a mailbox. To look up a mailbox by path, use \"resolve\" as the mailbox ID and set the path query parameter.",
                 "parameters": [
                     {
                         "schema": {
@@ -4192,7 +4213,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4260,10 +4281,11 @@
             },
             "put": {
                 "operationId": "updateMailbox",
-                "summary": "Update Mailbox information",
+                "summary": "Update a mailbox",
                 "tags": [
                     "Mailboxes"
                 ],
+                "description": "Renames or moves a mailbox, or changes its retention, subscription or visibility settings.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -4341,7 +4363,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4363,10 +4385,11 @@
             },
             "delete": {
                 "operationId": "deleteMailbox",
-                "summary": "Delete a Mailbox",
+                "summary": "Delete a mailbox",
                 "tags": [
                     "Mailboxes"
                 ],
+                "description": "Deletes a mailbox and the messages in it. INBOX, special use mailboxes and hidden mailboxes can not be deleted.",
                 "parameters": [
                     {
                         "schema": {
@@ -4416,7 +4439,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4440,7 +4463,7 @@
         "/users/{user}/labels": {
             "get": {
                 "operationId": "getUserLabels",
-                "summary": "Get user labels",
+                "summary": "List labels of a user",
                 "tags": [
                     "Messages"
                 ],
@@ -4492,7 +4515,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4505,6 +4528,7 @@
                                         },
                                         "labels": {
                                             "type": "array",
+                                            "description": "Labels of the user",
                                             "items": {
                                                 "type": "object",
                                                 "additionalProperties": true,
@@ -4608,7 +4632,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4648,10 +4672,11 @@
         "/users/{user}/labels/{label}": {
             "get": {
                 "operationId": "getLabel",
-                "summary": "Get label",
+                "summary": "Get label details",
                 "tags": [
                     "Messages"
                 ],
+                "description": "Returns a persistent label of the user.",
                 "parameters": [
                     {
                         "schema": {
@@ -4701,7 +4726,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4806,7 +4831,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4898,7 +4923,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4933,7 +4958,7 @@
         "/users/{user}/label-counters/{label}": {
             "get": {
                 "operationId": "getLabelCounters",
-                "summary": "Get label counter",
+                "summary": "Get label counters",
                 "tags": [
                     "Messages"
                 ],
@@ -4986,7 +5011,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -5026,7 +5051,7 @@
         "/users/{user}/flagged-counter": {
             "get": {
                 "operationId": "getFlaggedCounter",
-                "summary": "Get flagged counter",
+                "summary": "Get flagged message counters",
                 "tags": [
                     "Messages"
                 ],
@@ -5068,7 +5093,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -5103,7 +5128,7 @@
         "/users/{user}/mailboxes/{mailbox}/messages": {
             "get": {
                 "operationId": "getMessages",
-                "summary": "List messages in a Mailbox",
+                "summary": "List messages in a mailbox",
                 "tags": [
                     "Messages"
                 ],
@@ -5257,7 +5282,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -5327,7 +5352,8 @@
                                                                 "type": "string",
                                                                 "description": "Address of the sender/recipient"
                                                             }
-                                                        }
+                                                        },
+                                                        "description": "Sender in From: field"
                                                     },
                                                     "to": {
                                                         "type": "array",
@@ -5562,11 +5588,11 @@
             },
             "put": {
                 "operationId": "updateMessage",
-                "summary": "Update Message information",
+                "summary": "Update messages",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method updates message flags and also allows to move messages to a different mailbox",
+                "description": "Updates message flags, labels and other properties, and can move messages to a different mailbox.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -5709,7 +5735,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -5750,10 +5776,11 @@
             },
             "delete": {
                 "operationId": "deleteMessagesInMailbox",
-                "summary": "Delete all Messages from a Mailbox",
+                "summary": "Delete all messages in a mailbox",
                 "tags": [
                     "Messages"
                 ],
+                "description": "Deletes all messages in a mailbox, either right away or as a background task when async is set.",
                 "parameters": [
                     {
                         "schema": {
@@ -5823,7 +5850,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -5862,11 +5889,11 @@
             },
             "post": {
                 "operationId": "uploadMessage",
-                "summary": "Upload Message",
+                "summary": "Upload a message",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method allows to upload either an RFC822 formatted message or a message structure to a mailbox. Raw message is stored unmodified, no headers are added or removed. If you want to generate the uploaded message from structured data fields, then do not use the raw property.",
+                "description": "Uploads either an RFC822 formatted message or a message structure to a mailbox. Raw message is stored unmodified, no headers are added or removed. If you want to generate the uploaded message from structured data fields, then do not use the raw property.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -6188,10 +6215,12 @@
                                                 "type": "string",
                                                 "pattern": "^[0-9a-f]{24}$",
                                                 "minLength": 24,
-                                                "maxLength": 24
+                                                "maxLength": 24,
+                                                "description": "ID of the Mailbox of the message to replace. Defaults to the target Mailbox"
                                             },
                                             "id": {
-                                                "type": "number"
+                                                "type": "number",
+                                                "description": "Message ID of the message to replace"
                                             }
                                         },
                                         "required": [
@@ -6264,7 +6293,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -6316,11 +6345,11 @@
         "/users/{user}/search": {
             "get": {
                 "operationId": "searchMessages",
-                "summary": "Search for messages",
+                "summary": "Search messages",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method allows searching for matching messages.",
+                "description": "Searches for messages that match the query, across all mailboxes or in one mailbox.",
                 "parameters": [
                     {
                         "schema": {
@@ -6670,7 +6699,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -6740,7 +6769,8 @@
                                                                 "type": "string",
                                                                 "description": "Address of the sender/recipient"
                                                             }
-                                                        }
+                                                        },
+                                                        "description": "Sender in From: field"
                                                     },
                                                     "to": {
                                                         "type": "array",
@@ -6979,7 +7009,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method allows applying an action to all matching messages. This is an async method so that it will return immediately. Actual modifications are run in the background.",
+                "description": "Applies an action to all matching messages. The request returns immediately, the changes are made in a background task.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -7247,7 +7277,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -7281,10 +7311,11 @@
         "/users/{user}/mailboxes/{mailbox}/messages/{message}": {
             "get": {
                 "operationId": "getMessage",
-                "summary": "Request Message information",
+                "summary": "Get message details",
                 "tags": [
                     "Messages"
                 ],
+                "description": "Returns the parsed contents of a message: headers, text and HTML content, attachments and flags.",
                 "parameters": [
                     {
                         "schema": {
@@ -7364,7 +7395,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -7435,7 +7466,8 @@
                                                     "type": "string",
                                                     "description": "Address of the sender/recipient"
                                                 }
-                                            }
+                                            },
+                                            "description": "Address from the From: header"
                                         },
                                         "replyTo": {
                                             "type": "array",
@@ -7854,11 +7886,11 @@
             },
             "put": {
                 "operationId": "updateMessagePathParams",
-                "summary": "Update message information with path param",
+                "summary": "Update a message",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method updates message flags and also allows to move messages to a different mailbox",
+                "description": "Updates message flags, labels and other properties, and can move messages to a different mailbox.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -8003,7 +8035,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8044,10 +8076,11 @@
             },
             "delete": {
                 "operationId": "deleteMessage",
-                "summary": "Delete a Message",
+                "summary": "Delete a message",
                 "tags": [
                     "Messages"
                 ],
+                "description": "Deletes a message. Except for drafts, the message is moved to the archive, where it can be restored until the archive retention time passes.",
                 "parameters": [
                     {
                         "schema": {
@@ -8117,7 +8150,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8149,11 +8182,11 @@
         "/users/{user}/mailboxes/{mailbox}/messages/{message}/message.eml": {
             "get": {
                 "operationId": "getMessageSource",
-                "summary": "Get Message source",
+                "summary": "Get message source",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method returns the full RFC822 formatted source of the stored message",
+                "description": "Returns the full RFC822 formatted source of the stored message",
                 "parameters": [
                     {
                         "schema": {
@@ -8213,7 +8246,16 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response"
+                        "description": "Success",
+                        "content": {
+                            "message/rfc822": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary",
+                                    "description": "RFC822 message source"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -8221,11 +8263,11 @@
         "/users/{user}/mailboxes/{mailbox}/messages/{message}/attachments/{attachment}": {
             "get": {
                 "operationId": "getMessageAttachment",
-                "summary": "Download Attachment",
+                "summary": "Download an attachment",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method returns attachment file contents in binary form",
+                "description": "Returns attachment file contents in binary form",
                 "parameters": [
                     {
                         "schema": {
@@ -8284,7 +8326,16 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response"
+                        "description": "Success",
+                        "content": {
+                            "application/octet-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary",
+                                    "description": "Attachment contents"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -8292,11 +8343,11 @@
         "/users/{user}/mailboxes/{mailbox}/messages/{message}/forward": {
             "post": {
                 "operationId": "forwardStoredMessage",
-                "summary": "Forward stored Message",
+                "summary": "Forward a stored message",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method allows either to re-forward a message to an original forward target or forward it to some other address. This is useful if a user had forwarding turned on but the message was not delivered so you can try again. Forwarding does not modify the original message.",
+                "description": "Re-forwards a message to an original forward target, or forwards it to some other address. This is useful when forwarding was turned on but the message was not delivered, so you can try again. Forwarding does not modify the original message.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -8371,7 +8422,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8423,11 +8474,11 @@
         "/users/{user}/mailboxes/{mailbox}/messages/{message}/submit": {
             "post": {
                 "operationId": "submitStoredMessage",
-                "summary": "Submit Draft for delivery",
+                "summary": "Submit a draft for delivery",
                 "tags": [
                     "Messages"
                 ],
-                "description": "This method allows to submit a draft message for delivery. Draft is moved to Sent mail folder.",
+                "description": "Submits a draft for delivery. The draft is moved to the Sent mail folder.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -8498,7 +8549,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8547,7 +8598,7 @@
         "/users/{user}/outbound/{queueId}": {
             "put": {
                 "operationId": "updateOutboundMessage",
-                "summary": "Update an Outbound Message",
+                "summary": "Update an outbound message",
                 "tags": [
                     "Messages"
                 ],
@@ -8621,7 +8672,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8663,7 +8714,7 @@
             },
             "delete": {
                 "operationId": "deleteOutboundMessage",
-                "summary": "Delete an Outbound Message",
+                "summary": "Delete an outbound message",
                 "tags": [
                     "Messages"
                 ],
@@ -8717,7 +8768,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8867,7 +8918,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8932,7 +8983,8 @@
                                                                 "type": "string",
                                                                 "description": "Address of the sender/recipient"
                                                             }
-                                                        }
+                                                        },
+                                                        "description": "Sender in From: field"
                                                     },
                                                     "to": {
                                                         "type": "array",
@@ -9227,7 +9279,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9256,7 +9308,7 @@
         "/users/{user}/archived/messages/{message}/restore": {
             "post": {
                 "operationId": "restoreMessage",
-                "summary": "Restore a single archived message",
+                "summary": "Restore an archived message",
                 "tags": [
                     "Archive"
                 ],
@@ -9319,7 +9371,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9352,11 +9404,11 @@
         "/users/{user}/storage": {
             "post": {
                 "operationId": "uploadFile",
-                "summary": "Upload file",
+                "summary": "Upload a file",
                 "tags": [
                     "Storage"
                 ],
-                "description": "This method allows to upload an attachment to be linked from a draft",
+                "description": "Uploads a file to the storage, to be linked from a draft as an attachment.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -9429,7 +9481,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9460,6 +9512,7 @@
                 "tags": [
                     "Storage"
                 ],
+                "description": "Lists the files the user has uploaded to the storage.",
                 "parameters": [
                     {
                         "schema": {
@@ -9540,7 +9593,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9629,10 +9682,11 @@
         "/users/{user}/storage/{file}": {
             "delete": {
                 "operationId": "deleteFile",
-                "summary": "Delete a File",
+                "summary": "Delete a file",
                 "tags": [
                     "Storage"
                 ],
+                "description": "Deletes a file from the storage.",
                 "parameters": [
                     {
                         "schema": {
@@ -9682,7 +9736,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9704,11 +9758,11 @@
             },
             "get": {
                 "operationId": "getFile",
-                "summary": "Download File",
+                "summary": "Download a file",
                 "tags": [
                     "Storage"
                 ],
-                "description": "This method returns stored file contents in binary form",
+                "description": "Returns stored file contents in binary form",
                 "parameters": [
                     {
                         "schema": {
@@ -9737,7 +9791,16 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response"
+                        "description": "Success",
+                        "content": {
+                            "application/octet-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary",
+                                    "description": "File contents"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -9745,10 +9808,11 @@
         "/filters": {
             "get": {
                 "operationId": "getAllFilters",
-                "summary": "List all Filters",
+                "summary": "List all filters",
                 "tags": [
                     "Filters"
                 ],
+                "description": "Lists the filters of all users, with paging.",
                 "parameters": [
                     {
                         "schema": {
@@ -9826,7 +9890,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9924,11 +9988,13 @@
                                                     },
                                                     "originalQuery": {
                                                         "type": "object",
-                                                        "additionalProperties": true
+                                                        "additionalProperties": true,
+                                                        "description": "Filter query as stored, in the same form as the request"
                                                     },
                                                     "originalAction": {
                                                         "type": "object",
-                                                        "additionalProperties": true
+                                                        "additionalProperties": true,
+                                                        "description": "Filter action as stored, in the same form as the request"
                                                     },
                                                     "user": {
                                                         "type": "string",
@@ -9972,10 +10038,11 @@
         "/users/{user}/filters": {
             "get": {
                 "operationId": "getFilters",
-                "summary": "List Filters for a User",
+                "summary": "List filters of a user",
                 "tags": [
                     "Filters"
                 ],
+                "description": "Lists the filters of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -10022,7 +10089,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10122,11 +10189,13 @@
                                                     },
                                                     "originalQuery": {
                                                         "type": "object",
-                                                        "additionalProperties": true
+                                                        "additionalProperties": true,
+                                                        "description": "Filter query as stored, in the same form as the request"
                                                     },
                                                     "originalAction": {
                                                         "type": "object",
-                                                        "additionalProperties": true
+                                                        "additionalProperties": true,
+                                                        "description": "Filter action as stored, in the same form as the request"
                                                     }
                                                 },
                                                 "required": [
@@ -10154,10 +10223,11 @@
             },
             "post": {
                 "operationId": "createFilter",
-                "summary": "Create a new Filter",
+                "summary": "Create a filter",
                 "tags": [
                     "Filters"
                 ],
+                "description": "Creates a filter for incoming messages. A filter has a query that matches messages and an action that is applied to the matches.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -10362,7 +10432,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10391,10 +10461,11 @@
         "/users/{user}/filters/{filter}": {
             "get": {
                 "operationId": "getFilter",
-                "summary": "Request Filter information",
+                "summary": "Get filter details",
                 "tags": [
                     "Filters"
                 ],
+                "description": "Returns the query and action of a filter.",
                 "parameters": [
                     {
                         "schema": {
@@ -10444,7 +10515,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10500,10 +10571,11 @@
             },
             "delete": {
                 "operationId": "deleteFilter",
-                "summary": "Delete a Filter",
+                "summary": "Delete a filter",
                 "tags": [
                     "Filters"
                 ],
+                "description": "Deletes a filter.",
                 "parameters": [
                     {
                         "schema": {
@@ -10553,7 +10625,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10575,10 +10647,11 @@
             },
             "put": {
                 "operationId": "updateFilter",
-                "summary": "Update Filter information",
+                "summary": "Update a filter",
                 "tags": [
                     "Filters"
                 ],
+                "description": "Updates the query, action or other settings of a filter. Only the fields present in the request are changed.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -10792,7 +10865,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10816,7 +10889,7 @@
         "/domainaccess/{tag}/allow": {
             "post": {
                 "operationId": "createAllowedDomain",
-                "summary": "Add domain to allowlist",
+                "summary": "Add a domain to the allowlist",
                 "tags": [
                     "DomainAccess"
                 ],
@@ -10868,7 +10941,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10899,6 +10972,7 @@
                 "tags": [
                     "DomainAccess"
                 ],
+                "description": "Lists the domains on the allowlist for a tag.",
                 "parameters": [
                     {
                         "schema": {
@@ -10935,7 +11009,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -10988,7 +11062,7 @@
         "/domainaccess/{tag}/block": {
             "post": {
                 "operationId": "createBlockedDomain",
-                "summary": "Add domain to blocklist",
+                "summary": "Add a domain to the blocklist",
                 "tags": [
                     "DomainAccess"
                 ],
@@ -11040,7 +11114,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11071,6 +11145,7 @@
                 "tags": [
                     "DomainAccess"
                 ],
+                "description": "Lists the domains on the blocklist for a tag.",
                 "parameters": [
                     {
                         "schema": {
@@ -11107,7 +11182,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11160,10 +11235,11 @@
         "/domainaccess/{domain}": {
             "delete": {
                 "operationId": "deleteDomainListing",
-                "summary": "Delete a Domain from listing",
+                "summary": "Delete a domain listing",
                 "tags": [
                     "DomainAccess"
                 ],
+                "description": "Removes a domain from the allowlist or blocklist it is listed on.",
                 "parameters": [
                     {
                         "schema": {
@@ -11201,7 +11277,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11230,10 +11306,11 @@
         "/users/{user}/asps": {
             "get": {
                 "operationId": "getASPs",
-                "summary": "List Application Passwords",
+                "summary": "List application passwords",
                 "tags": [
                     "ApplicationPasswords"
                 ],
+                "description": "Lists the application specific passwords of a user. The passwords themselves are not returned.",
                 "parameters": [
                     {
                         "schema": {
@@ -11281,7 +11358,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11355,10 +11432,11 @@
             },
             "post": {
                 "operationId": "createASP",
-                "summary": "Create new Application Password",
+                "summary": "Create an application password",
                 "tags": [
                     "ApplicationPasswords"
                 ],
+                "description": "Creates an application specific password for a user. The generated password is returned only once, in this response.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -11449,7 +11527,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11495,10 +11573,11 @@
         "/users/{user}/asps/{asp}": {
             "get": {
                 "operationId": "getASP",
-                "summary": "Request ASP information",
+                "summary": "Get application password details",
                 "tags": [
                     "ApplicationPasswords"
                 ],
+                "description": "Returns the description, scopes and usage info of an application specific password.",
                 "parameters": [
                     {
                         "schema": {
@@ -11548,7 +11627,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11609,10 +11688,11 @@
             },
             "delete": {
                 "operationId": "deleteASP",
-                "summary": "Delete an Application Password",
+                "summary": "Delete an application password",
                 "tags": [
                     "ApplicationPasswords"
                 ],
+                "description": "Deletes an application specific password.",
                 "parameters": [
                     {
                         "schema": {
@@ -11673,7 +11753,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11697,11 +11777,11 @@
         "/users/{user}/2fa/totp/setup": {
             "post": {
                 "operationId": "generateTOTPSeed",
-                "summary": "Generate TOTP seed",
+                "summary": "Generate a TOTP seed",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method generates TOTP seed and QR code for 2FA. User needs to verify the seed value using 2fa/totp/enable endpoint",
+                "description": "Generates TOTP seed and QR code for 2FA. User needs to verify the seed value using 2fa/totp/enable endpoint",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -11756,7 +11836,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11790,11 +11870,11 @@
         "/users/{user}/2fa/totp/enable": {
             "post": {
                 "operationId": "enableTOTPSeed",
-                "summary": "Enable TOTP seed",
+                "summary": "Enable TOTP",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method enables TOTP for a user by verifying the seed value generated from 2fa/totp/setup",
+                "description": "Enables TOTP for a user by verifying the seed value generated from 2fa/totp/setup",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -11843,7 +11923,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11867,11 +11947,11 @@
         "/users/{user}/2fa/totp": {
             "delete": {
                 "operationId": "disableTOTPAuth",
-                "summary": "Disable TOTP auth",
+                "summary": "Disable TOTP",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method disables TOTP for a user. Does not affect other 2FA mechanisms a user might have set up",
+                "description": "Disables TOTP for a user. Does not affect other 2FA mechanisms a user might have set up",
                 "parameters": [
                     {
                         "schema": {
@@ -11909,7 +11989,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -11933,11 +12013,11 @@
         "/users/{user}/2fa/totp/check": {
             "post": {
                 "operationId": "validateTOTPToken",
-                "summary": "Validate TOTP Token",
+                "summary": "Validate a TOTP token",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method checks if a TOTP token provided by a User is valid for authentication",
+                "description": "Checks if a TOTP token provided by a User is valid for authentication",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -11994,7 +12074,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12022,11 +12102,11 @@
         "/users/{user}/2fa": {
             "delete": {
                 "operationId": "disable2FA",
-                "summary": "Disable 2FA",
+                "summary": "Disable all 2FA",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method disables all 2FA mechanisms a user might have set up",
+                "description": "Disables all 2FA mechanisms a user might have set up",
                 "parameters": [
                     {
                         "schema": {
@@ -12064,7 +12144,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12088,11 +12168,11 @@
         "/users/{user}/2fa/custom": {
             "put": {
                 "operationId": "enableCustom2FA",
-                "summary": "Enable custom 2FA for a user",
+                "summary": "Enable custom 2FA",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method disables account password for IMAP/POP3/SMTP",
+                "description": "Enables custom 2FA, which disables the account password for IMAP, POP3 and SMTP.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -12132,7 +12212,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12154,11 +12234,11 @@
             },
             "delete": {
                 "operationId": "disableCustom2FA",
-                "summary": "Disable custom 2FA for a user",
+                "summary": "Disable custom 2FA",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method disables custom 2FA. If it was the only 2FA set up, then account password for IMAP/POP3/SMTP gets enabled again",
+                "description": "Disables custom 2FA. If it was the only 2FA method, the account password works for IMAP, POP3 and SMTP again.",
                 "parameters": [
                     {
                         "schema": {
@@ -12196,7 +12276,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12220,11 +12300,11 @@
         "/users/{user}/2fa/webauthn/credentials": {
             "get": {
                 "operationId": "getWebAuthN",
-                "summary": "Get WebAuthN credentials for a user",
+                "summary": "List WebAuthn credentials",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method returns the list of WebAuthN credentials for a given user",
+                "description": "Lists the WebAuthn credentials registered for a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -12262,7 +12342,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12314,11 +12394,11 @@
         "/users/{user}/2fa/webauthn/credentials/{credential}": {
             "delete": {
                 "operationId": "deleteWebAuthN",
-                "summary": "Remove WebAuthN authenticator",
+                "summary": "Delete a WebAuthn credential",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method deletes the given WebAuthN authenticator for given user.",
+                "description": "Deletes a WebAuthn credential of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -12368,7 +12448,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12396,11 +12476,11 @@
         "/users/{user}/2fa/webauthn/registration-challenge": {
             "post": {
                 "operationId": "initiateWebAuthNRegistration",
-                "summary": "Get the WebAuthN registration challenge",
+                "summary": "Start WebAuthn registration",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method initiates the WebAuthN authenticator registration challenge",
+                "description": "Starts the registration of a WebAuthn authenticator and returns the registration challenge.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -12470,7 +12550,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12483,6 +12563,7 @@
                                         "registrationOptions": {
                                             "type": "object",
                                             "additionalProperties": true,
+                                            "description": "PublicKeyCredentialCreationOptions for the client",
                                             "properties": {
                                                 "challenge": {
                                                     "type": "string",
@@ -12491,6 +12572,7 @@
                                                 "user": {
                                                     "type": "object",
                                                     "additionalProperties": true,
+                                                    "description": "User account the credential is registered for",
                                                     "properties": {
                                                         "id": {
                                                             "type": "string",
@@ -12577,7 +12659,7 @@
         "/users/{user}/2fa/webauthn/registration-attestation": {
             "post": {
                 "operationId": "attestateWebAuthNRegistration",
-                "summary": "Attestate WebAuthN authenticator",
+                "summary": "Complete WebAuthn registration",
                 "tags": [
                     "TwoFactorAuth"
                 ],
@@ -12660,7 +12742,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12689,11 +12771,11 @@
         "/users/{user}/2fa/webauthn/authentication-challenge": {
             "post": {
                 "operationId": "authenticateWebAuthN",
-                "summary": "Begin WebAuthN authentication challenge",
+                "summary": "Start WebAuthn authentication",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "This method retrieves the WebAuthN PublicKeyCredentialRequestOptions object to use it for authentication",
+                "description": "Starts a WebAuthn authentication and returns the PublicKeyCredentialRequestOptions object for the client.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -12763,7 +12845,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12840,11 +12922,11 @@
         "/users/{user}/2fa/webauthn/authentication-assertion": {
             "post": {
                 "operationId": "assertWebAuthN",
-                "summary": "WebAuthN authentication Assertion",
+                "summary": "Complete WebAuthn authentication",
                 "tags": [
                     "TwoFactorAuth"
                 ],
-                "description": "Assert WebAuthN authentication request and actually authenticate the user",
+                "description": "Verifies the WebAuthn authentication assertion and authenticates the user.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -12943,7 +13025,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12964,7 +13046,7 @@
                                                 },
                                                 "credential": {
                                                     "type": "string",
-                                                    "description": "WebAuthN credential ID"
+                                                    "description": "WebAuthn credential ID"
                                                 }
                                             }
                                         },
@@ -12986,7 +13068,7 @@
         "/users/{user}/updates": {
             "get": {
                 "operationId": "getUpdates",
-                "summary": "Open change stream",
+                "summary": "Open the change stream",
                 "tags": [
                     "Users"
                 ],
@@ -13040,7 +13122,15 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response"
+                        "description": "Success",
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "description": "Stream of server-sent events, each carrying a JSON encoded change"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -13048,7 +13138,7 @@
         "/preauth": {
             "post": {
                 "operationId": "preauth",
-                "summary": "Pre-auth check",
+                "summary": "Check a username before authentication",
                 "tags": [
                     "Authentication"
                 ],
@@ -13101,7 +13191,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13159,10 +13249,11 @@
         "/authenticate": {
             "post": {
                 "operationId": "authenticate",
-                "summary": "Authenticate a User",
+                "summary": "Authenticate a user",
                 "tags": [
                     "Authentication"
                 ],
+                "description": "Checks the username and password of a user. If requested, an access token is issued for further API calls on behalf of the user.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -13234,7 +13325,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13314,14 +13405,14 @@
             },
             "delete": {
                 "operationId": "invalidateAccessToken",
-                "summary": "Invalidate authentication token",
+                "summary": "Invalidate the access token",
                 "tags": [
                     "Authentication"
                 ],
-                "description": "This method invalidates the currently used API or MCP authentication token. If token is not provided then nothing happens",
+                "description": "Invalidates the API or MCP access token used for this request. Without a token, nothing happens.",
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13388,7 +13479,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13437,6 +13528,27 @@
                         "schema": {
                             "type": "string",
                             "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
                             "maxLength": 64
                         },
                         "in": "path",
@@ -13459,7 +13571,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13483,10 +13595,11 @@
         "/users/{user}/authlog": {
             "get": {
                 "operationId": "getAuthlog",
-                "summary": "List authentication Events",
+                "summary": "List authentication events",
                 "tags": [
                     "Authentication"
                 ],
+                "description": "Lists the authentication events of a user, such as logins and failed attempts, with paging.",
                 "parameters": [
                     {
                         "schema": {
@@ -13577,7 +13690,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13605,6 +13718,7 @@
                                         },
                                         "results": {
                                             "type": "array",
+                                            "description": "Authentication events",
                                             "items": {
                                                 "type": "object",
                                                 "title": "GetAuthlogResult",
@@ -13709,10 +13823,11 @@
         "/users/{user}/authlog/{event}": {
             "get": {
                 "operationId": "getAuthlogEvent",
-                "summary": "Request Event information",
+                "summary": "Get authentication event details",
                 "tags": [
                     "Authentication"
                 ],
+                "description": "Returns a single authentication event of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -13762,7 +13877,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13862,10 +13977,11 @@
         "/authenticated": {
             "get": {
                 "operationId": "isUserAuthenticated",
-                "summary": "Validates the user authentication status",
+                "summary": "Check the access token",
                 "tags": [
                     "Authentication"
                 ],
+                "description": "Checks that the access token used for the request is valid.",
                 "parameters": [
                     {
                         "schema": {
@@ -13891,7 +14007,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13922,10 +14038,11 @@
         "/users/{user}/autoreply": {
             "put": {
                 "operationId": "updateAutoreply",
-                "summary": "Update Autoreply information",
+                "summary": "Update the autoreply",
                 "tags": [
                     "Autoreplies"
                 ],
+                "description": "Enables, disables or updates the vacation autoreply of a user.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -14017,7 +14134,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -14044,10 +14161,11 @@
             },
             "get": {
                 "operationId": "getAutoreply",
-                "summary": "Request Autoreply information",
+                "summary": "Get the autoreply",
                 "tags": [
                     "Autoreplies"
                 ],
+                "description": "Returns the vacation autoreply settings of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -14085,7 +14203,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -14142,10 +14260,11 @@
             },
             "delete": {
                 "operationId": "deleteAutoreply",
-                "summary": "Delete Autoreply information",
+                "summary": "Delete the autoreply",
                 "tags": [
                     "Autoreplies"
                 ],
+                "description": "Deletes the vacation autoreply of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -14183,7 +14302,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -14207,7 +14326,7 @@
         "/users/{user}/submit": {
             "post": {
                 "operationId": "submitMessage",
-                "summary": "Submit a Message for Delivery",
+                "summary": "Submit a message for delivery",
                 "tags": [
                     "Submission"
                 ],
@@ -14543,24 +14662,25 @@
                                                 "required": [
                                                     "address"
                                                 ],
-                                                "description": "Address for the From: header"
+                                                "description": "Envelope sender (MAIL FROM) address"
                                             },
                                             "to": {
                                                 "type": "array",
+                                                "description": "Envelope recipients (RCPT TO). If not set, the recipients are taken from the To:, Cc: and Bcc: headers",
                                                 "items": {
                                                     "type": "object",
                                                     "additionalProperties": false,
-                                                    "description": "Addresses for the To: header",
+                                                    "description": "Envelope recipient",
                                                     "properties": {
                                                         "name": {
                                                             "type": "string",
                                                             "maxLength": 255,
                                                             "minLength": 1,
-                                                            "description": "Name of the sender"
+                                                            "description": "Name of the recipient"
                                                         },
                                                         "address": {
                                                             "type": "string",
-                                                            "description": "Address of the sender"
+                                                            "description": "Address of the recipient"
                                                         }
                                                     },
                                                     "required": [
@@ -14592,7 +14712,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -14640,7 +14760,7 @@
         "/audit": {
             "post": {
                 "operationId": "createAudit",
-                "summary": "Create new audit",
+                "summary": "Create an audit",
                 "tags": [
                     "Audit"
                 ],
@@ -14723,7 +14843,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -14752,11 +14872,11 @@
         "/audit/{audit}": {
             "get": {
                 "operationId": "getAudit",
-                "summary": "Request Audit Info",
+                "summary": "Get audit details",
                 "tags": [
                     "Audit"
                 ],
-                "description": "This method returns information about stored audit",
+                "description": "Returns information about stored audit",
                 "parameters": [
                     {
                         "schema": {
@@ -14773,7 +14893,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -14856,11 +14976,11 @@
         "/audit/{audit}/export.mbox": {
             "get": {
                 "operationId": "getAuditEmails",
-                "summary": "Export Audited Emails",
+                "summary": "Export audited emails",
                 "tags": [
                     "Audit"
                 ],
-                "description": "This method returns a mailbox file that contains all audited emails",
+                "description": "Returns a mailbox file that contains all audited emails",
                 "parameters": [
                     {
                         "schema": {
@@ -14877,7 +14997,16 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response"
+                        "description": "Success",
+                        "content": {
+                            "application/octet-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary",
+                                    "description": "Audited emails in mbox format"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -14885,10 +15014,11 @@
         "/domainaliases": {
             "get": {
                 "operationId": "getDomainAliases",
-                "summary": "List registered Domain Aliases",
+                "summary": "List domain aliases",
                 "tags": [
                     "DomainAliases"
                 ],
+                "description": "Lists the registered domain aliases, with paging.",
                 "parameters": [
                     {
                         "schema": {
@@ -14957,7 +15087,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15027,11 +15157,11 @@
             },
             "post": {
                 "operationId": "createDomainAlias",
-                "summary": "Create new Domain Alias",
+                "summary": "Create a domain alias",
                 "tags": [
                     "DomainAliases"
                 ],
-                "description": "Add a new Alias for a Domain. This allows to accept mail on username@domain and username@alias",
+                "description": "Adds an alias for a domain, so that mail for username@alias is delivered to username@domain.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -15073,7 +15203,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15102,10 +15232,11 @@
         "/domainaliases/resolve/{alias}": {
             "get": {
                 "operationId": "resolveDomainAlias",
-                "summary": "Resolve ID for a domain alias",
+                "summary": "Resolve a domain alias to an ID",
                 "tags": [
                     "DomainAliases"
                 ],
+                "description": "Returns the ID of a domain alias.",
                 "parameters": [
                     {
                         "schema": {
@@ -15142,7 +15273,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15171,10 +15302,11 @@
         "/domainaliases/{alias}": {
             "get": {
                 "operationId": "getDomainAlias",
-                "summary": "Request Alias information",
+                "summary": "Get domain alias details",
                 "tags": [
                     "DomainAliases"
                 ],
+                "description": "Returns the details of a domain alias.",
                 "parameters": [
                     {
                         "schema": {
@@ -15212,7 +15344,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15254,10 +15386,11 @@
             },
             "delete": {
                 "operationId": "deleteDomainAlias",
-                "summary": "Delete an Alias",
+                "summary": "Delete a domain alias",
                 "tags": [
                     "DomainAliases"
                 ],
+                "description": "Deletes a domain alias.",
                 "parameters": [
                     {
                         "schema": {
@@ -15295,7 +15428,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15319,10 +15452,11 @@
         "/dkim": {
             "get": {
                 "operationId": "getDkimKeys",
-                "summary": "List registered DKIM keys",
+                "summary": "List DKIM keys",
                 "tags": [
                     "DKIM"
                 ],
+                "description": "Lists the registered DKIM keys, with paging. Private keys are not returned.",
                 "parameters": [
                     {
                         "schema": {
@@ -15391,7 +15525,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15474,7 +15608,7 @@
             },
             "post": {
                 "operationId": "updateDkimKey",
-                "summary": "Create or update DKIM key for domain",
+                "summary": "Create or update a DKIM key",
                 "tags": [
                     "DKIM"
                 ],
@@ -15543,7 +15677,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15616,10 +15750,11 @@
         "/dkim/resolve/{domain}": {
             "get": {
                 "operationId": "resolveDkim",
-                "summary": "Resolve ID for a DKIM domain",
+                "summary": "Resolve a DKIM domain to an ID",
                 "tags": [
                     "DKIM"
                 ],
+                "description": "Returns the ID of the DKIM key registered for a domain.",
                 "parameters": [
                     {
                         "schema": {
@@ -15656,7 +15791,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15686,10 +15821,11 @@
         "/dkim/{dkim}": {
             "get": {
                 "operationId": "getDkimKey",
-                "summary": "Request DKIM information",
+                "summary": "Get DKIM key details",
                 "tags": [
                     "DKIM"
                 ],
+                "description": "Returns the selector, public key and DNS TXT record of a DKIM key. The private key is not returned.",
                 "parameters": [
                     {
                         "schema": {
@@ -15727,7 +15863,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15807,6 +15943,7 @@
                 "tags": [
                     "DKIM"
                 ],
+                "description": "Deletes a DKIM key.",
                 "parameters": [
                     {
                         "schema": {
@@ -15844,7 +15981,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15868,10 +16005,11 @@
         "/certs": {
             "get": {
                 "operationId": "getTLSCertificates",
-                "summary": "List registered TLS certificates",
+                "summary": "List TLS certificates",
                 "tags": [
                     "Certs"
                 ],
+                "description": "Lists the registered TLS certificates, with paging. Private keys are not returned.",
                 "parameters": [
                     {
                         "schema": {
@@ -15951,7 +16089,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16046,7 +16184,7 @@
             },
             "post": {
                 "operationId": "updateTLSCertificate",
-                "summary": "Create or update TLS certificate for server name",
+                "summary": "Create or update a TLS certificate",
                 "tags": [
                     "Certs"
                 ],
@@ -16113,7 +16251,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16171,10 +16309,11 @@
         "/certs/resolve/{servername}": {
             "get": {
                 "operationId": "resolveTLSCertificate",
-                "summary": "Resolve ID for a server name",
+                "summary": "Resolve a server name to a certificate ID",
                 "tags": [
                     "Certs"
                 ],
+                "description": "Returns the ID of the TLS certificate registered for a server name.",
                 "parameters": [
                     {
                         "schema": {
@@ -16211,7 +16350,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16241,10 +16380,11 @@
         "/certs/{cert}": {
             "get": {
                 "operationId": "getTLSCertificate",
-                "summary": "Request TLS certificate information",
+                "summary": "Get TLS certificate details",
                 "tags": [
                     "Certs"
                 ],
+                "description": "Returns the server names, fingerprint and expiry time of a TLS certificate. The private key is not returned.",
                 "parameters": [
                     {
                         "schema": {
@@ -16283,7 +16423,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16354,6 +16494,7 @@
                 "tags": [
                     "Certs"
                 ],
+                "description": "Deletes a TLS certificate.",
                 "parameters": [
                     {
                         "schema": {
@@ -16392,7 +16533,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16416,10 +16557,11 @@
         "/webhooks": {
             "get": {
                 "operationId": "getWebhooks",
-                "summary": "List registered Webhooks",
+                "summary": "List webhooks",
                 "tags": [
                     "Webhooks"
                 ],
+                "description": "Lists the registered webhooks, with paging.",
                 "parameters": [
                     {
                         "schema": {
@@ -16500,7 +16642,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16584,10 +16726,11 @@
             },
             "post": {
                 "operationId": "createWebhook",
-                "summary": "Create new Webhook",
+                "summary": "Create a webhook",
                 "tags": [
                     "Webhooks"
                 ],
+                "description": "Registers a webhook URL for a set of event types, either for one user or for all users.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -16638,7 +16781,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16671,6 +16814,7 @@
                 "tags": [
                     "Webhooks"
                 ],
+                "description": "Deletes a webhook. Events are no longer posted to its URL.",
                 "parameters": [
                     {
                         "schema": {
@@ -16708,7 +16852,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16732,10 +16876,11 @@
         "/users/{user}/pushsubscriptions": {
             "get": {
                 "operationId": "getPushSubscriptions",
-                "summary": "List push subscriptions for a user",
+                "summary": "List push subscriptions of a user",
                 "tags": [
                     "PushSubscriptions"
                 ],
+                "description": "Lists the Apple push notification registrations of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -16773,7 +16918,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16853,6 +16998,7 @@
                 "tags": [
                     "PushSubscriptions"
                 ],
+                "description": "Deletes an Apple push notification registration of a user.",
                 "parameters": [
                     {
                         "schema": {
@@ -16902,7 +17048,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16926,7 +17072,7 @@
         "/users/{user}/pushsubscriptions/notify": {
             "post": {
                 "operationId": "notifyPushSubscriptions",
-                "summary": "Trigger an APNs push notification for a user",
+                "summary": "Send a push notification",
                 "tags": [
                     "PushSubscriptions"
                 ],
@@ -16977,7 +17123,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17006,10 +17152,11 @@
         "/settings": {
             "get": {
                 "operationId": "getSettings",
-                "summary": "List registered Settings",
+                "summary": "List settings",
                 "tags": [
                     "Settings"
                 ],
+                "description": "Lists the system settings with their current values, defaults and descriptions.",
                 "parameters": [
                     {
                         "schema": {
@@ -17046,7 +17193,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17115,7 +17262,7 @@
         "/settings/{key}": {
             "post": {
                 "operationId": "createSetting",
-                "summary": "Create or Update Setting",
+                "summary": "Create or update a setting",
                 "tags": [
                     "Settings"
                 ],
@@ -17181,7 +17328,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17208,10 +17355,11 @@
             },
             "get": {
                 "operationId": "getSetting",
-                "summary": "Get Setting value",
+                "summary": "Get a setting",
                 "tags": [
                     "Settings"
                 ],
+                "description": "Returns the current value of a system setting.",
                 "parameters": [
                     {
                         "schema": {
@@ -17248,7 +17396,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17280,14 +17428,14 @@
         "/health": {
             "get": {
                 "operationId": "getHealth",
-                "summary": "Check the health of the API",
+                "summary": "Check API health",
                 "tags": [
                     "Health"
                 ],
                 "description": "Check the status of the WildDuck API service, that is if db is connected and readable/writable, same for redis.",
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17311,7 +17459,7 @@
                         }
                     },
                     "500": {
-                        "description": "Default Response",
+                        "description": "Failed",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17345,7 +17493,7 @@
         "/users/{user}/mcp-tokens": {
             "post": {
                 "operationId": "createMcpToken",
-                "summary": "Create MCP Access Token",
+                "summary": "Create an MCP access token",
                 "tags": [
                     "MCPAccessTokens"
                 ],
@@ -17421,7 +17569,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17487,7 +17635,7 @@
             },
             "get": {
                 "operationId": "getMcpTokens",
-                "summary": "List MCP Access Tokens",
+                "summary": "List MCP access tokens",
                 "tags": [
                     "MCPAccessTokens"
                 ],
@@ -17529,7 +17677,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17604,7 +17752,7 @@
         "/users/{user}/mcp-tokens/{token}": {
             "delete": {
                 "operationId": "deleteMcpToken",
-                "summary": "Revoke MCP Access Token",
+                "summary": "Revoke an MCP access token",
                 "tags": [
                     "MCPAccessTokens"
                 ],
@@ -17658,7 +17806,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Default Response",
+                        "description": "Success",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17692,67 +17840,96 @@
     ],
     "tags": [
         {
-            "name": "Addresses"
+            "name": "Users",
+            "description": "User accounts: creation, settings, limits, quota and deletion."
         },
         {
-            "name": "ApplicationPasswords"
+            "name": "Addresses",
+            "description": "Email addresses of users, and forwarded addresses that are not tied to a user account."
+        },
+        {
+            "name": "Mailboxes",
+            "description": "Mailboxes (folders) of a user."
+        },
+        {
+            "name": "Messages",
+            "description": "Messages stored in the mailboxes of a user, labels, and outbound messages that are still queued for delivery."
         },
         {
             "name": "Archive",
-            "description": "Archive includes all deleted messages. Once messages are old enough then these are permanenetly deleted from the archive as well. Until then you can restore the deleted messages."
-        },
-        {
-            "name": "Audit",
-            "description": "Auditing allows to monitor an email account. All existing, deleted and new emails are copied to the auditing system. See also https://github.com/nodemailer/wildduck-audit-manager"
-        },
-        {
-            "name": "Authentication"
-        },
-        {
-            "name": "Autoreplies"
-        },
-        {
-            "name": "Certs",
-            "description": "WildDuck allows to register TLS certificates to be used with SNI connections. These certificates are used by IMAP, POP3, API and SMTP servers when a SNI capable client establishes a TLS connection. This does not apply for MX servers."
-        },
-        {
-            "name": "DKIM",
-            "description": "Whenever an email is sent WildDuck checks if there is a DKIM key registered for the domain name of the sender address and uses it to sign the message."
-        },
-        {
-            "name": "DomainAccess",
-            "description": "Add sender domain names to allowlist (messages are all accepted) or blocklist (messages are sent to Spam folder)"
-        },
-        {
-            "name": "DomainAliases"
-        },
-        {
-            "name": "Filters"
-        },
-        {
-            "name": "Mailboxes"
-        },
-        {
-            "name": "Messages"
-        },
-        {
-            "name": "Settings"
+            "description": "The archive keeps deleted messages for a while before they are permanently removed. Until then, archived messages can be restored."
         },
         {
             "name": "Storage",
-            "description": "Storage allows easier attachment handling when composing Draft messages. Instead of uploading the attachmnent with every draft update, you store the attachment to the Storage and then link stored file for the Draft."
+            "description": "Storage makes attachment handling easier when composing drafts. Instead of uploading an attachment with every draft update, you upload it to the storage once and link the stored file from the draft."
         },
         {
-            "name": "Submission"
+            "name": "Submission",
+            "description": "Sending messages from a user account."
         },
         {
-            "name": "TwoFactorAuth"
+            "name": "Filters",
+            "description": "Filters that are applied to incoming messages."
         },
         {
-            "name": "Users"
+            "name": "Autoreplies",
+            "description": "Vacation autoreplies."
         },
         {
-            "name": "Webhooks"
+            "name": "Authentication",
+            "description": "Authenticating users, access tokens, and the authentication event log."
+        },
+        {
+            "name": "TwoFactorAuth",
+            "description": "Two-factor authentication with TOTP, WebAuthn or a custom external mechanism."
+        },
+        {
+            "name": "ApplicationPasswords",
+            "description": "Application specific passwords, for clients that can not use two-factor authentication."
+        },
+        {
+            "name": "MCPAccessTokens",
+            "description": "Read-only personal access tokens for the MCP (Model Context Protocol) server."
+        },
+        {
+            "name": "PushSubscriptions",
+            "description": "Apple push notification registrations made by IMAP clients through XAPPLEPUSHSERVICE."
+        },
+        {
+            "name": "DomainAccess",
+            "description": "Sender domain allowlists and blocklists per user tag. Mail from an allowlisted domain is never marked as spam, mail from a blocklisted domain always is."
+        },
+        {
+            "name": "DomainAliases",
+            "description": "Domain aliases, so that mail for username@alias is delivered to username@domain."
+        },
+        {
+            "name": "DKIM",
+            "description": "Whenever an email is sent, WildDuck checks if there is a DKIM key registered for the domain of the sender address and uses it to sign the message."
+        },
+        {
+            "name": "Certs",
+            "description": "TLS certificates for SNI connections. These certificates are used by the IMAP, POP3, API and SMTP servers when an SNI capable client establishes a TLS connection. This does not apply to MX servers."
+        },
+        {
+            "name": "Audit",
+            "description": "Auditing monitors an email account: all existing, deleted and new messages are copied to the audit system. See also https://github.com/nodemailer/wildduck-audit-manager"
+        },
+        {
+            "name": "Webhooks",
+            "description": "Webhook URLs that receive event notifications."
+        },
+        {
+            "name": "Settings",
+            "description": "System-wide settings that override the configuration file defaults."
+        },
+        {
+            "name": "Export",
+            "description": "Exporting and importing user data between WildDuck installations."
+        },
+        {
+            "name": "Health",
+            "description": "Service health checks."
         }
     ]
 }

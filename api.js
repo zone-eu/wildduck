@@ -166,8 +166,8 @@ function buildServer() {
                 return String(json.$id || `def-${i}`).replace(/^wd:/, '');
             }
         },
-        transformSpecification(swaggerObject) {
-            return stripInternalKeywords(swaggerObject);
+        transformObject({ openapiObject }) {
+            return stripInternalKeywords(openapiObject);
         }
     });
 

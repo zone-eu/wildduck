@@ -548,7 +548,10 @@ describe('Master token MCP exchange', function () {
         expect(revoked).to.deep.equal([user.toString(), tokenId]);
     });
 
-    it('declares sess and ip on the request body, not the path, of the revoke route', async () => {
+    // a DELETE has no documented request body, so the fields are declared as
+    // query params; validation runs on the merged params and still takes them
+    // from a body (see the next test)
+    it('declares sess and ip as query params, not path params, of the revoke route', async () => {
         const route = getAuthRoute(
             {},
             {
@@ -562,8 +565,8 @@ describe('Master token MCP exchange', function () {
         expect(route.spec.validationObjs.pathParams).to.not.have.property('ip');
         expect(route.spec.validationObjs.pathParams).to.have.property('scope');
         expect(route.spec.validationObjs.pathParams).to.have.property('token');
-        expect(route.spec.validationObjs.requestBody).to.have.property('sess');
-        expect(route.spec.validationObjs.requestBody).to.have.property('ip');
+        expect(route.spec.validationObjs.queryParams).to.have.property('sess');
+        expect(route.spec.validationObjs.queryParams).to.have.property('ip');
     });
 
     it('accepts sess and ip from the request body when revoking', async () => {
