@@ -43,8 +43,8 @@ describe('IMAP label bridge', () => {
             collection(name) {
                 expect(name).to.equal('users');
                 return {
-                    findOne(query, options, callback) {
-                        callback(null, { _id: user, storageUsed: 0 });
+                    async findOne() {
+                        return { _id: user, storageUsed: 0 };
                     }
                 };
             }
@@ -52,13 +52,13 @@ describe('IMAP label bridge', () => {
 
         const messageHandler = {
             counters: {
-                ttlcounter(key, increment, limit, strict, callback) {
-                    callback(null, { success: true });
+                async asyncTTLCounter() {
+                    return { success: true };
                 }
             },
-            add(options, callback) {
+            async addAsync(options) {
                 addOptions = options;
-                callback(null, true, { uid: 1 });
+                return { status: true, data: { uid: 1 } };
             }
         };
         const server = {
@@ -66,8 +66,8 @@ describe('IMAP label bridge', () => {
             loggelf() {}
         };
         const userCache = {
-            get(id, key, options, callback) {
-                callback(null, 0);
+            async getAsync() {
+                return 0;
             }
         };
         const session = {
@@ -112,19 +112,23 @@ describe('IMAP label bridge', () => {
             maxTimeMS() {
                 return this;
             },
-            next(callback) {
-                callback(null, null);
+            async next() {
+                return null;
             },
-            close(callback) {
-                callback();
+            async close() {},
+            async *[Symbol.asyncIterator]() {
+                let doc;
+                while ((doc = await this.next()) !== null) {
+                    yield doc;
+                }
             }
         };
         db.database = {
             collection(name) {
                 if (name === 'mailboxes') {
                     return {
-                        findOne(query, options, callback) {
-                            callback(null, { _id: mailbox, user });
+                        async findOne() {
+                            return { _id: mailbox, user };
                         }
                     };
                 }

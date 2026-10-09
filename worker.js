@@ -74,7 +74,7 @@ async function startServices(services) {
  */
 async function main() {
     try {
-        await util.promisify(db.connect)();
+        await db.connect();
     } catch (err) {
         return fail('Failed to setup database connection', err);
     }

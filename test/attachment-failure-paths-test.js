@@ -164,7 +164,12 @@ describe('Attachment store failure paths', function () {
                 collection: name => {
                     let target = collection(name);
                     return name.endsWith('.files')
-                        ? { ...target, findOneAndUpdate: (query, update, options, callback) => callback(new Error('not primary')) }
+                        ? {
+                              ...target,
+                              findOneAndUpdate: async () => {
+                                  throw new Error('not primary');
+                              }
+                          }
                         : target;
                 }
             };
@@ -191,8 +196,8 @@ describe('Attachment store failure paths', function () {
             storage.gridstore.gridstore.openUploadStreamWithId = (...args) => (++attempts === 1 ? failingUpload(new Error('collision')) : upload(...args));
             let cleanup = storage.gridstore.cleanupGarbage.bind(storage.gridstore);
             let cleanups = 0;
-            storage.gridstore.cleanupGarbage = (id, started, owned, next) =>
-                ++cleanups === 1 ? next(new Error('cleanup failed')) : cleanup(id, started, owned, next);
+            storage.gridstore.cleanupGarbage = (id, started, owned) =>
+                ++cleanups === 1 ? Promise.reject(new Error('cleanup failed')) : cleanup(id, started, owned);
             let id = await create(storage, 'cleanup fails once');
             expect(attempts).to.equal(2);
             expect((await storage.get(id)).count).to.equal(1);
@@ -200,9 +205,8 @@ describe('Attachment store failure paths', function () {
 
         it('does not remove anything after losing the lock of an upload', async function () {
             let cleanups = 0;
-            storage.gridstore.cleanupGarbage = (id, started, owned, next) => {
+            storage.gridstore.cleanupGarbage = async () => {
                 cleanups++;
-                next();
             };
             storage.gridstore.lock.extendLock = () => Promise.resolve({ success: false });
             let { result } = await captureIntervals(async captured => {
@@ -220,9 +224,8 @@ describe('Attachment store failure paths', function () {
 
         it('does not remove anything when the lock is lost while a retry waits', async function () {
             let cleanups = 0;
-            storage.gridstore.cleanupGarbage = (id, started, owned, next) => {
+            storage.gridstore.cleanupGarbage = async () => {
                 cleanups++;
-                next();
             };
             let renewal = { success: true };
             storage.gridstore.lock.extendLock = () => Promise.resolve(renewal);
@@ -244,9 +247,8 @@ describe('Attachment store failure paths', function () {
 
         it('does not trust a lease that ran out while the process was stalled', async function () {
             let cleanups = 0;
-            storage.gridstore.cleanupGarbage = (id, started, owned, next) => {
+            storage.gridstore.cleanupGarbage = async () => {
                 cleanups++;
-                next();
             };
             let now = Date.now;
             try {
@@ -283,16 +285,22 @@ describe('Attachment store failure paths', function () {
                         return target;
                     }
                     return failOn === '.files'
-                        ? { findOne: (query, options, callback) => callback(new Error('files unavailable')) }
-                        : { deleteMany: (query, callback) => callback(new Error('chunks unavailable')) };
+                        ? {
+                              findOne: async () => {
+                                  throw new Error('files unavailable');
+                              }
+                          }
+                        : {
+                              deleteMany: async () => {
+                                  throw new Error('chunks unavailable');
+                              }
+                          };
                 }
             };
             let id = crypto.randomBytes(32);
-            expect((await new Promise(resolve => storage.gridstore.cleanupGarbage(id, Date.now(), () => true, resolve))).message).to.equal('files unavailable');
+            expect((await storage.gridstore.cleanupGarbage(id, Date.now(), () => true).catch(err => err)).message).to.equal('files unavailable');
             failOn = '.chunks';
-            expect((await new Promise(resolve => storage.gridstore.cleanupGarbage(id, Date.now(), () => true, resolve))).message).to.equal(
-                'chunks unavailable'
-            );
+            expect((await storage.gridstore.cleanupGarbage(id, Date.now(), () => true).catch(err => err)).message).to.equal('chunks unavailable');
         });
     });
 

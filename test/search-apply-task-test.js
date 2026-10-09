@@ -96,9 +96,8 @@ describe('Search apply task', function () {
                 },
                 {
                     messageHandler: {
-                        update(...args) {
-                            const callback = args[args.length - 1];
-                            callback(null, 0);
+                        async updateAsync() {
+                            return 0;
                         },
                         async getMailboxAsync(query) {
                             mailboxLookup = query;
@@ -183,9 +182,8 @@ describe('Search apply task', function () {
                 },
                 {
                     messageHandler: {
-                        update(...args) {
-                            const callback = args[args.length - 1];
-                            callback(null, 0);
+                        async updateAsync() {
+                            return 0;
                         },
                         async delAsync(options) {
                             deleted.push(options.messageData._id);
@@ -258,10 +256,9 @@ describe('Search apply task', function () {
 
         try {
             const messageHandler = {
-                update(...args) {
+                async updateAsync(...args) {
                     updated.push({ uid: args[2], changes: args[3] });
-                    const callback = args[args.length - 1];
-                    callback(null, 1);
+                    return 1;
                 },
                 async getMailboxAsync(query) {
                     expect(query.user.toString()).to.equal(user.toString());
@@ -384,9 +381,9 @@ describe('Search apply task', function () {
                     },
                     {
                         messageHandler: {
-                            update(updateUser, mailbox, uid, updates, callback) {
+                            async updateAsync(updateUser, mailbox, uid, updates) {
                                 updated.push({ user: updateUser, mailbox, uid, updates });
-                                callback(null, 1);
+                                return 1;
                             },
                             async getMailboxAsync() {
                                 return { _id: destinationMailbox };
@@ -435,9 +432,7 @@ describe('Search apply task', function () {
                     }))
             );
             expect(updated).to.deep.equal(
-                scenario.updates
-                    ? [{ user, mailbox: destinationMailbox, uid: messages[scenario.destinationIndex].uid, updates: scenario.updates }]
-                    : []
+                scenario.updates ? [{ user, mailbox: destinationMailbox, uid: messages[scenario.destinationIndex].uid, updates: scenario.updates }] : []
             );
             expect([...messagesById.values()].every(message => message.mailbox.equals(destinationMailbox))).to.equal(true);
         });
@@ -479,9 +474,9 @@ describe('Search apply task', function () {
                 { user: user.toHexString(), q: 'after:2025-01-01', action: { seen: true } },
                 {
                     messageHandler: {
-                        update(updateUser, updateMailbox, uid, updates, callback) {
+                        async updateAsync(updateUser, updateMailbox, uid) {
                             updated.push(uid);
-                            callback(null, 1);
+                            return 1;
                         }
                     }
                 }
@@ -535,12 +530,8 @@ describe('Search apply task', function () {
                     },
                     {
                         messageHandler: {
-                            update(updateUser, updateMailbox, uid, updates, callback) {
-                                try {
-                                    return callback(null, apply(uid));
-                                } catch (err) {
-                                    return callback(err);
-                                }
+                            async updateAsync(updateUser, updateMailbox, uid) {
+                                return apply(uid);
                             },
                             async getMailboxAsync() {
                                 return { _id: destination };

@@ -8,84 +8,141 @@ const MailboxHandler = require('../lib/mailbox-handler');
 const MessageHandler = require('../lib/message-handler');
 const ImapNotifier = require('../lib/imap-notifier');
 const Maildropper = require('../lib/maildropper');
+const UserCache = require('../lib/user-cache');
 const { PassThrough, Readable } = require('stream');
 
 const expect = chai.expect;
 
-// The promise variants wrap the callback implementations of the handlers. These
-// tests stub the callback methods, so no database is needed
-describe('Handler promise wrappers', function () {
+// The handlers are implemented with async methods, the callback methods wrap them for
+// the callers that still use callbacks (IMAP command handlers, the delivery plugins).
+// These tests stub the async methods, so no database is needed
+describe('Handler callback wrappers', function () {
     const failure = new Error('expected failure');
 
     const rejectsWith = (promise, err) => assert.rejects(promise, error => error === err);
 
+    // calls a node style method and resolves with the callback arguments
+    const callbackArgs = (fn, ...args) => new Promise(resolve => fn(...args, (...result) => resolve(result)));
+
     describe('MailboxHandler', () => {
         const handler = Object.create(MailboxHandler.prototype);
 
-        it('updateAsync resolves with the status, mailbox id and update result', async () => {
+        it('update() reports the status, mailbox id and update result', async () => {
             const updateResult = { updated: true, changes: { retention: true } };
-            handler.update = (user, mailbox, updates, callback) => {
+            handler.updateAsync = async (user, mailbox, updates) => {
                 expect(updates).to.deep.equal({ retention: 10 });
-                callback(null, true, mailbox, updateResult);
+                return { status: true, mailbox, updateResult };
             };
 
-            expect(await handler.updateAsync('user', 'mailbox', { retention: 10 })).to.deep.equal({ status: true, mailbox: 'mailbox', updateResult });
+            expect(await callbackArgs(handler.update.bind(handler), 'user', 'mailbox', { retention: 10 })).to.deep.equal([null, true, 'mailbox', updateResult]);
         });
 
-        it('updateAsync rejects with the callback error', async () => {
-            handler.update = (user, mailbox, updates, callback) => callback(failure, 'NONEXISTENT');
-            await rejectsWith(handler.updateAsync('user', 'mailbox', {}), failure);
+        it('update() reports the error', async () => {
+            handler.updateAsync = async () => {
+                throw failure;
+            };
+            expect(await callbackArgs(handler.update.bind(handler), 'user', 'mailbox', {})).to.deep.equal([failure]);
         });
 
-        it('delAsync resolves with the deletion status', async () => {
-            handler.del = (user, mailbox, callback) => callback(null, true, mailbox);
-            expect(await handler.delAsync('user', 'mailbox')).to.equal(true);
+        it('del() reports the status and the mailbox id', async () => {
+            handler.delAsync = async () => true;
+            expect(await callbackArgs(handler.del.bind(handler), 'user', 'mailbox')).to.deep.equal([null, true, 'mailbox']);
         });
 
-        it('delAsync rejects with the callback error', async () => {
-            handler.del = (user, mailbox, callback) => callback(failure, 'CANNOT');
-            await rejectsWith(handler.delAsync('user', 'mailbox'), failure);
+        it('rename() reports the status, mailbox id and update result', async () => {
+            handler.renameAsync = async (user, mailbox, newname) => ({ status: true, mailbox, updateResult: { updated: true, changes: {}, path: newname } });
+            expect(await callbackArgs(handler.rename.bind(handler), 'user', 'mailbox', 'new/path', false)).to.deep.equal([
+                null,
+                true,
+                'mailbox',
+                { updated: true, changes: {}, path: 'new/path' }
+            ]);
         });
     });
 
     describe('MessageHandler', () => {
         const handler = Object.create(MessageHandler.prototype);
 
-        it('putAsync resolves with the put result', async () => {
-            handler.put = (messageData, callback) => callback(null, { stored: messageData.id });
-            expect(await handler.putAsync({ id: 'message' })).to.deep.equal({ stored: 'message' });
+        it('put() reports the stored location', async () => {
+            handler.putAsync = async messageData => ({ mailbox: 'mailbox', message: messageData.id, uid: 1 });
+            expect(await callbackArgs(handler.put.bind(handler), { id: 'message' })).to.deep.equal([null, { mailbox: 'mailbox', message: 'message', uid: 1 }]);
         });
 
-        it('putAsync rejects with the callback error', async () => {
-            handler.put = (messageData, callback) => callback(failure);
-            await rejectsWith(handler.putAsync({}), failure);
-        });
-
-        it('updateAsync resolves with the updated count', async () => {
-            handler.update = (user, mailbox, messageQuery, changes, callback) => {
-                expect(changes).to.deep.equal({ seen: true });
-                callback(null, 3);
+        it('put() reports the error', async () => {
+            handler.putAsync = async () => {
+                throw failure;
             };
-            expect(await handler.updateAsync('user', 'mailbox', 1, { seen: true })).to.equal(3);
+            expect(await callbackArgs(handler.put.bind(handler), {})).to.deep.equal([failure]);
         });
 
-        it('updateAsync rejects with the callback error', async () => {
-            handler.update = (user, mailbox, messageQuery, changes, callback) => callback(failure);
-            await rejectsWith(handler.updateAsync('user', 'mailbox', 1, {}), failure);
+        it('update() reports the updated count', async () => {
+            handler.updateAsync = async (user, mailbox, messageQuery, changes) => {
+                expect(changes).to.deep.equal({ seen: true });
+                return 3;
+            };
+            expect(await callbackArgs(handler.update.bind(handler), 'user', 'mailbox', 1, { seen: true })).to.deep.equal([null, 3]);
+        });
+
+        it('flagReferencedMessage() ignores an unknown action', async () => {
+            expect(await handler.flagReferencedMessage('user', { action: 'bounce', mailbox: 'mailbox', id: 1 })).to.be.false;
+            expect(await handler.flagReferencedMessage('user', null)).to.be.false;
         });
     });
 
     describe('ImapNotifier', () => {
         const notifier = Object.create(ImapNotifier.prototype);
 
-        it('addEntriesAsync resolves with the stored entry count', async () => {
-            notifier.addEntries = (mailbox, entries, callback) => callback(null, entries.length);
-            expect(await notifier.addEntriesAsync('mailbox', [{ command: 'EXISTS' }, { command: 'FETCH' }])).to.equal(2);
+        it('addEntries() reports the stored entry count', async () => {
+            notifier.addEntriesAsync = async (mailbox, entries) => entries.length;
+            expect(await callbackArgs(notifier.addEntries.bind(notifier), 'mailbox', [{ command: 'EXISTS' }, { command: 'FETCH' }])).to.deep.equal([null, 2]);
         });
 
-        it('addEntriesAsync rejects with the callback error', async () => {
-            notifier.addEntries = (mailbox, entries, callback) => callback(failure);
-            await rejectsWith(notifier.addEntriesAsync('mailbox', []), failure);
+        it('addEntries() reports the error', async () => {
+            notifier.addEntriesAsync = async () => {
+                throw failure;
+            };
+            expect(await callbackArgs(notifier.addEntries.bind(notifier), 'mailbox', [])).to.deep.equal([failure]);
+        });
+
+        it('addEntriesAsync() resolves with false when there is nothing to store', async () => {
+            const real = Object.create(ImapNotifier.prototype);
+            expect(await real.addEntriesAsync('mailbox', [])).to.be.false;
+            expect(await real.addEntriesAsync('mailbox', null)).to.be.false;
+        });
+    });
+
+    describe('UserCache', () => {
+        const cache = Object.create(UserCache.prototype);
+
+        it('get() reports the cached value', async () => {
+            cache.getAsync = async (user, key) => (key === 'quota' ? 1024 : undefined);
+            expect(await callbackArgs(cache.get.bind(cache), 'user', 'quota', 0)).to.deep.equal([null, 1024]);
+        });
+
+        it('getAsync() falls back to a system setting', async () => {
+            const real = Object.create(UserCache.prototype);
+            real.redis = { hget: async () => null };
+            real.users = { collection: () => ({ findOne: async () => ({ _id: 'user' }) }) };
+            real.settingsHandler = { get: async key => (key === 'const:max:storage' ? 2048 : undefined) };
+            expect(await real.getAsync('user', 'quota', { setting: 'const:max:storage' })).to.equal(2048);
+            expect(await real.getAsync('user', 'quota', 512)).to.equal(512);
+        });
+
+        it('getAsync() caches a stored value', async () => {
+            const real = Object.create(UserCache.prototype);
+            let stored;
+            real.redis = {
+                hget: async () => null,
+                multi: () => ({
+                    hset: (key, field, value) => {
+                        stored = { key, field, value };
+                        return { expire: () => ({ exec: async () => [] }) };
+                    }
+                })
+            };
+            real.users = { collection: () => ({ findOne: async () => ({ _id: 'user', quota: 4096 }) }) };
+            expect(await real.getAsync('user', 'quota', 0)).to.equal(4096);
+            expect(stored).to.deep.equal({ key: 'cached:user', field: 'quota', value: 4096 });
         });
     });
 
@@ -114,13 +171,45 @@ describe('Handler promise wrappers', function () {
             expect(Buffer.concat(received).toString()).to.equal('Subject: test\r\n\r\nbody');
         });
 
-        it('pushStream rejects when the message is not accepted', async () => {
+        it('pushStream accepts a Buffer source', async () => {
+            let received = [];
             maildrop.push = (options, callback) => {
-                setImmediate(() => callback(failure));
+                let message = new PassThrough();
+                message.on('data', chunk => received.push(chunk));
+                message.on('end', () => callback(null, { id: 'queue-id' }));
+                return message;
+            };
+
+            expect(await maildrop.pushStream({ to: ['recipient@example.com'] }, Buffer.from('body'))).to.deep.equal({ id: 'queue-id' });
+            expect(Buffer.concat(received).toString()).to.equal('body');
+        });
+
+        it('pushStream rejects with a normalised error when the message is not accepted', async () => {
+            maildrop.push = (options, callback) => {
+                let err = new Error('rejected by plugin');
+                err.name = 'SMTPReject';
+                setImmediate(() => callback(err));
                 return false;
             };
 
-            await rejectsWith(maildrop.pushStream({ to: [] }, Readable.from(Buffer.from('body'), { objectMode: false })), failure);
+            let err = await maildrop.pushStream({ to: [] }, Buffer.from('body')).catch(error => error);
+            expect(err.message).to.equal('rejected by plugin');
+            expect(err.code).to.equal('MessageRejected');
+            expect(err.responseCode).to.equal(500);
+        });
+
+        it('pushStream keeps the code and status of the push error', async () => {
+            maildrop.push = (options, callback) => {
+                let err = new Error('No valid recipients');
+                err.code = 'ENORECIPIENTS';
+                err.responseCode = 400;
+                setImmediate(() => callback(err));
+                return false;
+            };
+
+            let err = await maildrop.pushStream({ to: [] }, Buffer.from('body')).catch(error => error);
+            expect(err.code).to.equal('ENORECIPIENTS');
+            expect(err.responseCode).to.equal(400);
         });
 
         it('pushStream forwards source stream errors to the queue stream', async () => {

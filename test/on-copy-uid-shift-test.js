@@ -164,11 +164,7 @@ describe('on-copy UID arrays', function () {
             logger: { debug() {}, error() {} },
             loggelf() {},
             notifier: {
-                addEntries(target, entry, cb) {
-                    if (cb) {
-                        return cb();
-                    }
-                },
+                async addEntriesAsync() {},
                 fire() {}
             }
         };
@@ -301,11 +297,8 @@ describe('on-copy UID arrays', function () {
             logger: { debug() {}, error() {} },
             loggelf() {},
             notifier: {
-                addEntries(target, entry, cb) {
+                async addEntriesAsync(target, entry) {
                     calls.notifications.push(entry);
-                    if (cb) {
-                        return cb();
-                    }
                 },
                 fire() {}
             }
@@ -624,11 +617,7 @@ describe('on-copy UID arrays', function () {
             logger: { debug() {}, error() {} },
             loggelf() {},
             notifier: {
-                addEntries(target, entry, cb) {
-                    if (cb) {
-                        return cb();
-                    }
-                },
+                async addEntriesAsync() {},
                 fire() {}
             }
         };
