@@ -161,6 +161,25 @@ const buildDump = async (meta, records) => {
     return await buffer(exporter);
 };
 
+/**
+ * Every entry of a paged listing, following nextCursor. Listings are shared by
+ * all suites, so a test looks for its own entries instead of counting.
+ */
+const listAll = async (server, url) => {
+    const results = [];
+    let next = false;
+    do {
+        const separator = url.includes('?') ? '&' : '?';
+        const response = await server.get(`${url}${separator}limit=250${next ? `&next=${encodeURIComponent(next)}` : ''}`).expect(200);
+        if (response.body.success !== true) {
+            throw new Error(`GET ${url} failed: ${JSON.stringify(response.body).slice(0, 200)}`);
+        }
+        results.push(...response.body.results);
+        next = response.body.nextCursor;
+    } while (next);
+    return results;
+};
+
 // unique per run so a suite can be re-run without a database reset
 const uniqueName = prefix => `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
@@ -172,5 +191,6 @@ module.exports = {
     binaryParser,
     readUpdatesStream,
     buildDump,
+    listAll,
     uniqueName
 };

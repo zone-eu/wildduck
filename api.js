@@ -31,6 +31,7 @@ const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
 const { attachNativeRoutes } = require('./lib/fastify/routes');
+const { attachResponseContractCheck, createViolationLog } = require('./lib/fastify/response-contract');
 const { sharedSchemas, stripInternalKeywords } = require('./lib/fastify/validation');
 const {
     baseServerOptions,
@@ -93,15 +94,8 @@ const MCP_ROUTES = new Map([
 // rendering more than that per nested value
 const INSPECT_OPTIONS = { depth: 3, maxStringLength: 160, maxArrayLength: 20, breakLength: Infinity };
 
-let userHandler;
-let mailboxHandler;
-let messageHandler;
-let storageHandler;
-let auditHandler;
-let settingsHandler;
-let mcpTokenHandler;
-let notifier;
-let apnClient;
+// assigned by createApp(); module level because the TLS SNI callback built in
+// buildServer() logs through it
 let loggelf;
 
 function buildServer() {
@@ -252,15 +246,26 @@ function buildServer() {
 }
 
 /**
- * Starts the API server
+ * Builds the API application with every hook and route registered, without
+ * listening. Expects the database connections in lib/db to be open.
  *
- * @returns {Promise<Object|false>} The fastify instance, or false if the API is disabled
+ * Tests build one in-process and drive it with app.inject().
+ *
+ * @param {Object} [options]
+ * @param {Object} [options.contractViolations] Violation log (createViolationLog()); when set, every reply of a documented
+ *     route is checked against its response model and each difference is recorded (see lib/fastify/response-contract.js)
+ * @returns {Object} Fastify instance
  */
-module.exports = async () => {
-    if (!config.api.enabled) {
-        metrics.setServiceUp('api', false);
-        return false;
-    }
+function createApp(options = {}) {
+    let userHandler;
+    let mailboxHandler;
+    let messageHandler;
+    let storageHandler;
+    let auditHandler;
+    let settingsHandler;
+    let mcpTokenHandler;
+    let notifier;
+    let apnClient;
 
     const component = config.log.gelf.component || 'wildduck';
     const hostname = config.log.gelf.hostname || os.hostname();
@@ -349,6 +354,10 @@ module.exports = async () => {
     attachPayloadStash(app);
     attachResponseHeaders(app, 'WildDuck API');
     attachNativeRoutes(app, routeRegistry);
+
+    if (options.contractViolations) {
+        attachResponseContractCheck(app, finding => options.contractViolations.record(finding));
+    }
 
     // public files (restify serveStatic joined the route path to the root
     // directory, so the files live under public/public)
@@ -585,9 +594,12 @@ module.exports = async () => {
                                 mfaRequired,
                                 mfaVerified,
                                 passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
-                                // if called then refreshes token data for current hash
-                                update: async () =>
+                                // keeps the session valid after its own account changed the password or 2FA
+                                // setup (which bumps authVersion); a change of another account leaves it alone
+                                update: async changedUser =>
+                                    String(changedUser) === tokenData.user &&
                                     setAuthToken(tokenData.user, accessToken, {
+                                        role: tokenData.role,
                                         mfaRequired,
                                         mfaVerified,
                                         passwordChangeRequired: false
@@ -869,6 +881,10 @@ module.exports = async () => {
 
     if (process.env.NODE_ENV === 'test') {
         app.get('/api-methods', { config: { name: 'api-methods' } }, async () => routeRegistry);
+        if (options.contractViolations) {
+            // what the response contract check found so far (paths and kinds, no values)
+            app.get('/api-contract-violations', { config: { name: 'api-contract-violations' } }, async () => options.contractViolations.list());
+        }
     }
 
     // the specification is static once the routes are registered, build once
@@ -879,6 +895,24 @@ module.exports = async () => {
         }
         return openApiDocsCache;
     });
+
+    return app;
+}
+
+/**
+ * Starts the API server
+ *
+ * @returns {Promise<Object|false>} The fastify instance, or false if the API is disabled
+ */
+module.exports = async () => {
+    if (!config.api.enabled) {
+        metrics.setServiceUp('api', false);
+        return false;
+    }
+
+    // the test server checks every reply against its response model, the API
+    // test suite reads the findings from /api-contract-violations at the end
+    const app = createApp(process.env.NODE_ENV === 'test' ? { contractViolations: createViolationLog() } : {});
 
     if (process.env.GENERATE_API_DOCS === 'true') {
         await app.ready();
@@ -902,3 +936,5 @@ module.exports = async () => {
 
     return app;
 };
+
+module.exports.createApp = createApp;

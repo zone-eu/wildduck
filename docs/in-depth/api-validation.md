@@ -159,7 +159,9 @@ A rejected request answers `400`:
 
 Successful responses are `{ "success": true, ... }`. Failures raised by a
 handler are `{ "error": "message", "code": "ErrorCode" }`, with the status
-taken from the error's `responseCode`. Errors carrying the IMAP codes
+taken from the error's `responseCode`. An error without one is a fault the
+handler did not expect, such as a database outage, and is answered with 500
+and the code `InternalError` unless it carries a string code of its own. Errors carrying the IMAP codes
 `ALREADYEXISTS`, `NONEXISTENT` and `CANNOT` are mapped to
 `MailboxExistsError` (400), `NoSuchMailbox` (404) and
 `DisallowedMailboxMethod` (400).
