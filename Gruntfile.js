@@ -57,6 +57,8 @@ module.exports = function (grunt) {
         'test/list-headers-test.js',
         'test/maildropper-test.js',
         'test/message-handler-update-test.js',
+        'test/mongodb-promises-test.js',
+        'test/mongopaging-find-wrapper-test.js',
         'test/message-search-label-test.js',
         'test/mcp-api-client-test.js',
         'test/mcp-cli-test.js',

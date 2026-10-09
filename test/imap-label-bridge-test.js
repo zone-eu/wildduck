@@ -43,8 +43,8 @@ describe('IMAP label bridge', () => {
             collection(name) {
                 expect(name).to.equal('users');
                 return {
-                    findOne(query, options, callback) {
-                        callback(null, { _id: user, storageUsed: 0 });
+                    async findOne() {
+                        return { _id: user, storageUsed: 0 };
                     }
                 };
             }
@@ -112,19 +112,19 @@ describe('IMAP label bridge', () => {
             maxTimeMS() {
                 return this;
             },
-            next(callback) {
-                callback(null, null);
+            async next() {
+                return null;
             },
-            close(callback) {
-                callback();
+            async close() {
+                return;
             }
         };
         db.database = {
             collection(name) {
                 if (name === 'mailboxes') {
                     return {
-                        findOne(query, options, callback) {
-                            callback(null, { _id: mailbox, user });
+                        async findOne() {
+                            return { _id: mailbox, user };
                         }
                     };
                 }

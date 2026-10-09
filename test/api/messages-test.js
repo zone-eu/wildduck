@@ -1130,25 +1130,29 @@ describe('Messages tests', function () {
         const from = 'messagestests'; // Partial match
         const limit = 10;
 
-        const search = await server.get(`/users/${user}/search?order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`).send({});
+        const search = await server.get(`/users/${user}/search?order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`).send({}).expect(200);
 
         const search2 = await server
             .get(`/users/${user}/search?next=${search.body.nextCursor}&order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`)
-            .send({});
+            .send({})
+            .expect(200);
 
         const search3 = await server
             .get(`/users/${user}/search?next=${search2.body.nextCursor}&order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`)
-            .send({});
+            .send({})
+            .expect(200);
 
         const search4 = await server
             .get(`/users/${user}/search?previous=${search3.body.previousCursor}&order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`)
-            .send({});
+            .send({})
+            .expect(200);
 
         expect(search4.body.results).to.deep.eq(search2.body.results); // Check if page 2 is equal to original page 2 after moving back from page 3
 
         const search5 = await server
             .get(`/users/${user}/search?previous=${search4.body.previousCursor}&order=${orderSearch}&mailbox=${testMailbox}&from=${from}&limit=${limit}`)
-            .send({}); // page 2 -> page 1
+            .send({})
+            .expect(200); // page 2 -> page 1
         expect(search5.body.results).to.deep.eq(search.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 
@@ -2259,17 +2263,23 @@ describe('Messages tests', function () {
     it('should GET /users/:user/mailboxes/:mailbox/messages expect success / pagination pages 1 -> 2 -> 3 -> 2 -> 1', async () => {
         const order = 'desc';
 
-        const res = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?order=${order}`).send({});
+        const res = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?order=${order}`).send({}).expect(200);
 
-        const res2 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?next=${res.body.nextCursor}&order=${order}`).send({});
+        const res2 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?next=${res.body.nextCursor}&order=${order}`).send({}).expect(200);
 
-        const res3 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?next=${res2.body.nextCursor}&order=${order}`).send({});
+        const res3 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?next=${res2.body.nextCursor}&order=${order}`).send({}).expect(200);
 
-        const res4 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?previous=${res3.body.previousCursor}&order=${order}`).send({});
+        const res4 = await server
+            .get(`/users/${user}/mailboxes/${testMailbox}/messages?previous=${res3.body.previousCursor}&order=${order}`)
+            .send({})
+            .expect(200);
 
         expect(res4.body.results).to.deep.eq(res2.body.results); // Check if page 2 is equal to original page 2 after moving back from page 3
 
-        const res5 = await server.get(`/users/${user}/mailboxes/${testMailbox}/messages?previous=${res4.body.previousCursor}&page=100?order=${order}`).send({}); // page 2 -> page 1
+        const res5 = await server
+            .get(`/users/${user}/mailboxes/${testMailbox}/messages?previous=${res4.body.previousCursor}&page=100?order=${order}`)
+            .send({})
+            .expect(200); // page 2 -> page 1
         expect(res5.body.results).to.deep.eq(res.body.results); // Check if page 1 is equal to original page 1 after moving back from page 2
     });
 

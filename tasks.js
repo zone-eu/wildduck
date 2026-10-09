@@ -160,58 +160,66 @@ module.exports.start = callback => {
 
     let collections = setupIndexes.collections;
     let collectionpos = 0;
-    let ensureCollections = next => {
+    let ensureCollections = async next => {
         if (collectionpos >= collections.length) {
             log.info('Setup', 'Setup %s collections in MongoDB', collections.length);
             return next();
         }
         let collection = collections[collectionpos++];
-        db[collection.type || 'database'].createCollection(collection.collection, collection.options, err => {
-            if (err && err.codeName !== 'NamespaceExists') {
+        try {
+            await db[collection.type || 'database'].createCollection(collection.collection, collection.options);
+        } catch (err) {
+            if (err.codeName !== 'NamespaceExists') {
                 log.error('Setup', 'Failed creating collection %s %s. %s', collectionpos, JSON.stringify(collection.collection), err.message);
             }
+        }
 
-            ensureCollections(next);
-        });
+        ensureCollections(next);
     };
 
     let deleteindexes = setupIndexes.deleteindexes;
     let deleteindexpos = 0;
-    let deleteIndexes = next => {
+    let deleteIndexes = async next => {
         if (deleteindexpos >= deleteindexes.length) {
             return next();
         }
         let index = deleteindexes[deleteindexpos++];
-        db[index.type || 'database'].collection(index.collection).dropIndex(index.index, (err, r) => {
-            if (r && r.ok) {
+        try {
+            const result = await db[index.type || 'database'].collection(index.collection).dropIndex(index.index);
+            if (result && result.ok) {
                 log.info('Setup', 'Deleted index %s from %s', index.index, index.collection);
             }
-
-            if (err && err.codeName !== 'IndexNotFound' && err.codeName !== 'NamespaceNotFound') {
+        } catch (err) {
+            if (err.codeName !== 'IndexNotFound' && err.codeName !== 'NamespaceNotFound') {
                 log.error('Setup', 'Failed to delete index %s %s. %s', deleteindexpos, JSON.stringify(index.collection + '.' + index.index), err.message);
             }
+        }
 
-            deleteIndexes(next);
-        });
+        deleteIndexes(next);
     };
 
     let indexes = setupIndexes.indexes;
     let indexpos = 0;
-    let ensureIndexes = next => {
+    let ensureIndexes = async next => {
         if (indexpos >= indexes.length) {
             log.info('Setup', 'Setup indexes for %s collections', indexes.length);
             return next();
         }
         let index = indexes[indexpos++];
-        db[index.type || 'database'].collection(index.collection).createIndexes([index.index], (err, r) => {
-            if (err && err.codeName !== 'IndexOptionsConflict') {
-                log.error('Setup', 'Failed creating index %s %s. %s', indexpos, JSON.stringify(index.collection + '.' + index.index.name), err.message);
-            } else if (!err && r.numIndexesAfter !== r.numIndexesBefore) {
-                log.verbose('Setup', 'Created index %s %s', indexpos, JSON.stringify(index.collection + '.' + index.index.name));
-            }
 
+        try {
+            await db[index.type || 'database'].collection(index.collection).createIndexes([index.index]);
+        } catch (err) {
+            if (err.codeName !== 'IndexOptionsConflict') {
+                log.error('Setup', 'Failed creating index %s %s. %s', indexpos, JSON.stringify(index.collection + '.' + index.index.name), err.message);
+            }
             ensureIndexes(next);
-        });
+
+            return;
+        }
+
+        log.verbose('Setup', 'Created index %s %s', indexpos, JSON.stringify(index.collection + '.' + index.index.name));
+        ensureIndexes(next);
     };
 
     gcLock.acquireLock('db_indexes', 5 * 60 * 1000, (err, lock) => {
@@ -299,48 +307,56 @@ function clearExpiredMessages() {
 
             let deleted = 0;
             let clear = () =>
-                cursor.close(() => {
-                    if (deleted) {
-                        log.verbose('GC', 'Deleted %s messages', deleted);
-                    }
-                    return deleteOrphaned(next);
-                });
+                cursor
+                    .close()
+                    .catch(() => false)
+                    .then(() => {
+                        if (deleted) {
+                            log.verbose('GC', 'Deleted %s messages', deleted);
+                        }
+                        return deleteOrphaned(next);
+                    });
 
-            let processNext = () => {
+            let processNext = async () => {
                 if (Date.now() - startTime > consts.GC_INTERVAL * 0.8) {
                     // deleting expired messages has taken too long time, cancel
                     return clear();
                 }
 
-                cursor.next((err, messageData) => {
-                    if (err) {
-                        return done(err);
-                    }
-                    if (!messageData) {
-                        return clear();
-                    }
+                let messageData;
+                try {
+                    messageData = await cursor.next();
+                } catch (err) {
+                    return done(err);
+                }
 
-                    messageHandler.del(
-                        {
-                            messageData,
-                            // do not archive messages of deleted users
-                            archive: !messageData.userDeleted && !messageData.copied
-                        },
-                        err => {
-                            if (err) {
-                                log.error('GC', 'Failed to delete expired message id=%s. %s', messageData._id, err.message);
-                                return cursor.close(() => done(err));
-                            }
-                            log.verbose('GC', 'Deleted expired message id=%s', messageData._id);
-                            deleted++;
-                            if (consts.GC_DELAY_DELETE) {
-                                setTimeout(processNext, consts.GC_DELAY_DELETE);
-                            } else {
-                                setImmediate(processNext);
-                            }
+                if (!messageData) {
+                    return clear();
+                }
+
+                messageHandler.del(
+                    {
+                        messageData,
+                        // do not archive messages of deleted users
+                        archive: !messageData.userDeleted && !messageData.copied
+                    },
+                    err => {
+                        if (err) {
+                            log.error('GC', 'Failed to delete expired message id=%s. %s', messageData._id, err.message);
+                            return cursor
+                                .close()
+                                .catch(() => false)
+                                .then(() => done(err));
                         }
-                    );
-                });
+                        log.verbose('GC', 'Deleted expired message id=%s', messageData._id);
+                        deleted++;
+                        if (consts.GC_DELAY_DELETE) {
+                            setTimeout(processNext, consts.GC_DELAY_DELETE);
+                        } else {
+                            setImmediate(processNext);
+                        }
+                    }
+                );
             };
 
             processNext();
@@ -373,97 +389,105 @@ function clearExpiredMessages() {
 
             let deleted = 0;
             let clear = () =>
-                cursor.close(() => {
-                    if (deleted) {
-                        log.verbose('GC', 'Purged %s messages', deleted);
-                    }
-                    return deleteOrphaned(() => {
-                        auditHandler
-                            .cleanExpired()
-                            .then(() => {
-                                try {
-                                    next();
-                                } catch (err) {
-                                    // ignore, only needed to prevent calling next() twice
-                                }
-                            })
-                            .catch(next);
+                cursor
+                    .close()
+                    .catch(() => false)
+                    .then(() => {
+                        if (deleted) {
+                            log.verbose('GC', 'Purged %s messages', deleted);
+                        }
+                        return deleteOrphaned(() => {
+                            auditHandler
+                                .cleanExpired()
+                                .then(() => {
+                                    try {
+                                        next();
+                                    } catch (err) {
+                                        // ignore, only needed to prevent calling next() twice
+                                    }
+                                })
+                                .catch(next);
+                        });
                     });
-                });
 
-            let processNext = () => {
+            let processNext = async () => {
                 if (Date.now() - startTime > consts.GC_INTERVAL * 0.8) {
                     // deleting expired messages has taken too long time, cancel
                     return clear();
                 }
 
-                cursor.next((err, messageData) => {
+                let messageData;
+                try {
+                    messageData = await cursor.next();
+                } catch (err) {
+                    return done(err);
+                }
+
+                if (!messageData) {
+                    return clear();
+                }
+
+                try {
+                    await db.database.collection('archived').deleteOne({ _id: messageData._id });
+                } catch (err) {
+                    //failed to delete
+                    log.error(
+                        'GC',
+                        'Failed to delete archived message user=%s mailbox=%s uid=%ss id=%s. %s',
+                        messageData.user,
+                        messageData.mailbox,
+                        messageData.uid,
+                        messageData._id,
+                        err.message
+                    );
+                    return cursor
+                        .close()
+                        .catch(() => false)
+                        .then(() => done(err));
+                }
+
+                log.verbose(
+                    'GC',
+                    'Deleted archived message user=%s mailbox=%s uid=%s id=%s',
+                    messageData.user,
+                    messageData.mailbox,
+                    messageData.uid,
+                    messageData._id
+                );
+
+                loggelf({
+                    short_message: '[DELARCH] Deleted archived message',
+                    _mail_action: 'delete_archived',
+                    _service: 'wd_tasks',
+                    _user: messageData.user,
+                    _mailbox: messageData.mailbox,
+                    _uid: messageData.uid,
+                    _archived_id: messageData._id
+                });
+
+                let attachmentIds = Object.keys(messageData.mimeTree.attachmentMap || {}).map(key => messageData.mimeTree.attachmentMap[key]);
+
+                if (!attachmentIds.length) {
+                    // no stored attachments
+                    deleted++;
+                    if (consts.GC_DELAY_DELETE) {
+                        setTimeout(processNext, consts.GC_DELAY_DELETE);
+                    } else {
+                        setImmediate(processNext);
+                    }
+                    return;
+                }
+
+                messageHandler.attachmentStorage.updateMany(attachmentIds, -1, -messageData.magic, err => {
                     if (err) {
-                        return done(err);
+                        // should we care about this error?
                     }
-                    if (!messageData) {
-                        return clear();
+                    deleted++;
+                    if (consts.GC_DELAY_DELETE) {
+                        setTimeout(processNext, consts.GC_DELAY_DELETE);
+                    } else {
+                        setImmediate(processNext);
                     }
-
-                    db.database.collection('archived').deleteOne({ _id: messageData._id }, err => {
-                        if (err) {
-                            //failed to delete
-                            log.error(
-                                'GC',
-                                'Failed to delete archived message user=%s mailbox=%s uid=%ss id=%s. %s',
-                                messageData.user,
-                                messageData.mailbox,
-                                messageData.uid,
-                                messageData._id,
-                                err.message
-                            );
-                            return cursor.close(() => done(err));
-                        }
-
-                        log.verbose(
-                            'GC',
-                            'Deleted archived message user=%s mailbox=%s uid=%s id=%s',
-                            messageData.user,
-                            messageData.mailbox,
-                            messageData.uid,
-                            messageData._id
-                        );
-
-                        loggelf({
-                            short_message: '[DELARCH] Deleted archived message',
-                            _mail_action: 'delete_archived',
-                            _service: 'wd_tasks',
-                            _user: messageData.user,
-                            _mailbox: messageData.mailbox,
-                            _uid: messageData.uid,
-                            _archived_id: messageData._id
-                        });
-
-                        let attachmentIds = Object.keys(messageData.mimeTree.attachmentMap || {}).map(key => messageData.mimeTree.attachmentMap[key]);
-
-                        if (!attachmentIds.length) {
-                            // no stored attachments
-                            deleted++;
-                            if (consts.GC_DELAY_DELETE) {
-                                setTimeout(processNext, consts.GC_DELAY_DELETE);
-                            } else {
-                                setImmediate(processNext);
-                            }
-                            return;
-                        }
-
-                        messageHandler.attachmentStorage.updateMany(attachmentIds, -1, -messageData.magic, err => {
-                            if (err) {
-                                // should we care about this error?
-                            }
-                            deleted++;
-                            if (consts.GC_DELAY_DELETE) {
-                                setTimeout(processNext, consts.GC_DELAY_DELETE);
-                            } else {
-                                setImmediate(processNext);
-                            }
-                        });
-                    });
                 });
             };
 

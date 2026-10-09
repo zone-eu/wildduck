@@ -98,28 +98,28 @@ describe('MessageHandler message updates', function () {
                 switch (name) {
                     case 'mailboxes':
                         return {
-                            findOneAndUpdate(query, update, options, callback) {
+                            async findOneAndUpdate(query, update) {
                                 calls.mailboxUpdates++;
                                 expect(query._id.toString()).to.equal(mailbox.toString());
                                 expect(query.user.toString()).to.equal(user.toString());
                                 expect(update.$inc.modifyIndex).to.equal(1);
-                                return callback(null, {
+                                return {
                                     value: {
                                         _id: mailbox,
                                         user,
                                         modifyIndex: 7
                                     }
-                                });
+                                };
                             },
-                            findOne(query, callback) {
+                            async findOne(query) {
                                 calls.mailboxFinds++;
                                 expect(query._id.toString()).to.equal(mailbox.toString());
                                 expect(query.user.toString()).to.equal(user.toString());
-                                return callback(null, {
+                                return {
                                     _id: mailbox,
                                     user,
                                     modifyIndex: 7
-                                });
+                                };
                             }
                         };
 
@@ -138,11 +138,11 @@ describe('MessageHandler message updates', function () {
                                         expect(projection.uid).to.be.true;
 
                                         return {
-                                            next(callback) {
+                                            async next() {
                                                 if (nextCalls++) {
-                                                    return callback(null, null);
+                                                    return null;
                                                 }
-                                                return callback(null, {
+                                                return {
                                                     _id: message,
                                                     uid: 42,
                                                     size: 1000,
@@ -152,16 +152,16 @@ describe('MessageHandler message updates', function () {
                                                     },
                                                     ...messageOverrides,
                                                     labels: messageLabels
-                                                });
+                                                };
                                             },
-                                            close(callback) {
-                                                return callback();
+                                            async close() {
+                                                return;
                                             }
                                         };
                                     }
                                 };
                             },
-                            findOneAndUpdate(query, update, options, callback) {
+                            async findOneAndUpdate(query, update, options) {
                                 calls.messageUpdates++;
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
@@ -175,7 +175,7 @@ describe('MessageHandler message updates', function () {
                                     expect(update.$addToSet.flags.$each).to.deep.equal(['\\Flagged']);
                                 }
 
-                                return callback(null, {
+                                return {
                                     value: {
                                         _id: message,
                                         uid: 42,
@@ -183,7 +183,7 @@ describe('MessageHandler message updates', function () {
                                         flags: atomicFlags,
                                         labels: atomicLabels
                                     }
-                                });
+                                };
                             }
                         };
 

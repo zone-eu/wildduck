@@ -630,6 +630,7 @@ describe('API tests', function () {
                 .expect(200);
 
             expect(downloadResponse.headers['content-disposition']).to.match(/^inline\b/i);
+            expect(downloadResponse.headers['content-type']).to.match(/^text\/csv\b/i);
             expect(downloadResponse.text).to.equal('test');
         });
 
@@ -668,6 +669,7 @@ describe('API tests', function () {
 
             expect(downloadResponse.headers['content-disposition']).to.match(/^inline\b/i);
             expect(downloadResponse.headers['content-disposition']).to.include(expectedHeaderFilename);
+            expect(downloadResponse.headers['content-type']).to.match(/^text\/csv\b/i);
             expect(downloadResponse.text).to.equal('test');
         });
 

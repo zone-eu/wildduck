@@ -55,17 +55,17 @@ function createState(messageCount = 1, mailboxCount = 1) {
                             expect(query).to.deep.equal({ user });
                             return { toArray: async () => mailboxes.map(mailbox => ({ ...mailbox })) };
                         },
-                        findOne(query, callback) {
-                            callback(null, { ...mailboxes.find(mailbox => mailbox._id.equals(query._id)) });
+                        async findOne(query) {
+                            return { ...mailboxes.find(mailbox => mailbox._id.equals(query._id)) };
                         },
-                        findOneAndUpdate(query, update, options, callback) {
+                        async findOneAndUpdate(query, update) {
                             const mailbox = mailboxes.find(entry => entry._id.equals(query._id));
                             mailbox.modifyIndex += update.$inc.modifyIndex;
                             const value = { ...mailbox };
                             if (state.afterAllocation) {
                                 state.afterAllocation(mailbox);
                             }
-                            callback(null, { value });
+                            return { value };
                         }
                     };
                 case 'messages':
@@ -96,13 +96,13 @@ function createState(messageCount = 1, mailboxCount = 1) {
                             message.labels = message.labels.filter(id => !id.equals(update.$pull.labels));
                             return { value: snapshot(message) };
                         },
-                        updateMany(query, update, callback) {
+                        async updateMany(query, update) {
                             for (const message of state.messages) {
                                 if (message.mailbox.equals(query.mailbox) && query._id.$in.some(id => id.equals(message._id))) {
                                     message.modseq = Math.max(message.modseq, update.$max.modseq);
                                 }
                             }
-                            callback();
+                            return;
                         }
                     };
                 case 'filters':
