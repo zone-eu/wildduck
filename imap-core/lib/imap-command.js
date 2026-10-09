@@ -23,6 +23,20 @@ const MAX_LITERALS = 1000;
 // full sized message literal.
 const LITERAL_BYTES_ALLOWANCE = MAX_MESSAGE_SIZE;
 
+// human readable text for tagged NO/BAD responses that carry a response code but no message
+const RESPONSE_CODE_MESSAGES = new Map([
+    ['ALREADYEXISTS', 'Mailbox already exists'],
+    ['AUTHENTICATIONFAILED', 'Authentication failed'],
+    ['CANNOT', 'Operation not permitted on this mailbox'],
+    ['CLIENTBUG', 'Invalid request'],
+    ['LIMIT', 'Limit reached'],
+    ['NONEXISTENT', 'Mailbox does not exist'],
+    ['NOPERM', 'Permission denied'],
+    ['OVERQUOTA', 'Quota exceeded'],
+    ['TEMPFAIL', 'Temporary failure, try again later'],
+    ['TRYCREATE', 'Target mailbox does not exist']
+]);
+
 const commands = new Map([
     /*eslint-disable global-require*/
     // require must normally be on top of the module
@@ -542,7 +556,10 @@ class IMAPCommand {
                                     )
                                     .concat({
                                         type: 'TEXT',
-                                        value: response.message || this.command + ' completed'
+                                        value:
+                                            response.message ||
+                                            (response.response !== 'OK' && RESPONSE_CODE_MESSAGES.get(response.code)) ||
+                                            this.command + ' completed'
                                     })
                             });
                             responseSent = true;
