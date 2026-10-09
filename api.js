@@ -181,22 +181,22 @@ function buildServer() {
 
     app.removeAllContentTypeParsers();
 
-    const jsonParser = (request, payload, done) => {
+    const jsonParser = async (request, payload) => {
         let data = payload;
         if (Buffer.isBuffer(data)) {
             data = data.toString('utf8');
         }
         if (!data || !data.trim()) {
             // restify skipped parsing empty bodies
-            return done(null, undefined);
+            return undefined;
         }
         try {
-            return done(null, JSON.parse(data));
+            return JSON.parse(data);
         } catch (err) {
             const parseError = new Error('Invalid JSON: ' + err.message);
             parseError.responseCode = 400;
             parseError.code = 'InvalidContent';
-            return done(parseError);
+            throw parseError;
         }
     };
 
@@ -206,19 +206,19 @@ function buildServer() {
     // the ^ anchor also keeps fastify from printing the FSTSEC001 warning
     app.addContentTypeParser(/^application\/[a-z0-9._-]+\+json\b/i, { parseAs: 'buffer' }, jsonParser);
 
-    app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'buffer' }, (request, payload, done) => {
+    app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'buffer' }, async (request, payload) => {
         try {
-            return done(null, qs.parse(payload.toString('utf8')));
+            return qs.parse(payload.toString('utf8'));
         } catch (err) {
             err.responseCode = 400;
-            return done(err);
+            throw err;
         }
     });
 
     // restify's bodyReader explicitly skipped application/octet-stream: the
     // request stream stays unconsumed so handlers can pipe it themselves
     // (POST /data/import does)
-    app.addContentTypeParser('application/octet-stream', (request, payload, done) => done(null, undefined));
+    app.addContentTypeParser('application/octet-stream', async () => undefined);
 
     // restify's bodyParser handed multipart/form-data to formidable and mapped
     // form fields and uploaded file contents into req.params (mapParams +
@@ -240,24 +240,27 @@ function buildServer() {
 
     // everything else: Buffer for binary types, utf8 string for text/*
     // (message/rfc822 uploads and similar raw payloads)
-    app.addContentTypeParser('*', { parseAs: 'buffer' }, (request, payload, done) => {
+    app.addContentTypeParser('*', { parseAs: 'buffer' }, async (request, payload) => {
         const contentType = (request.headers['content-type'] || '').toLowerCase();
         if (/^text\//.test(contentType)) {
-            return done(null, payload.toString('utf8'));
+            return payload.toString('utf8');
         }
-        done(null, payload);
+        return payload;
     });
 
     return app;
 }
 
-module.exports = done => {
+/**
+ * Starts the API server
+ *
+ * @returns {Promise<Object|false>} The fastify instance, or false if the API is disabled
+ */
+module.exports = async () => {
     if (!config.api.enabled) {
         metrics.setServiceUp('api', false);
-        return setImmediate(() => done(null, false));
+        return false;
     }
-
-    let started = false;
 
     const component = config.log.gelf.component || 'wildduck';
     const hostname = config.log.gelf.hostname || os.hostname();
@@ -375,7 +378,8 @@ module.exports = done => {
         // itself is unchanged, and deliberately loose, because that is what every other credential
         // kind has always been read with.
         let bearerToken = McpTokenHandler.getBearerToken(request.headers.authorization);
-        let misplacedMcpToken = McpTokenHandler.isToken(request.query && request.query.accessToken) || McpTokenHandler.isToken(request.headers['x-access-token']);
+        let misplacedMcpToken =
+            McpTokenHandler.isToken(request.query && request.query.accessToken) || McpTokenHandler.isToken(request.headers['x-access-token']);
 
         let accessToken =
             (request.query && request.query.accessToken) ||
@@ -877,39 +881,24 @@ module.exports = done => {
     });
 
     if (process.env.GENERATE_API_DOCS === 'true') {
-        app.ready(() => {
-            try {
-                fs.writeFileSync(Path.join(__dirname, 'docs', 'api', 'openapidocs.json'), JSON.stringify(app.swagger(), null, 4));
-                log.info('API', 'Generated OpenAPI docs to docs/api/openapidocs.json');
-            } catch (err) {
-                log.error('API', 'Failed to generate OpenAPI docs: %s', err.message);
-            }
-        });
+        await app.ready();
+        try {
+            fs.writeFileSync(Path.join(__dirname, 'docs', 'api', 'openapidocs.json'), JSON.stringify(app.swagger(), null, 4));
+            log.info('API', 'Generated OpenAPI docs to docs/api/openapidocs.json');
+        } catch (err) {
+            log.error('API', 'Failed to generate OpenAPI docs: %s', err.message);
+        }
     }
 
     if (process.env.REGENERATE_API_DOCS === 'true') {
         // allow 2.5 seconds for services to start and the api doc to be generated, after that exit process
-        (async function () {
-            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-            await sleep(2500);
-            process.exit(0);
-        })();
+        setTimeout(() => process.exit(0), 2500);
     }
 
-    app.listen({ port: config.api.port, host: config.api.host || '0.0.0.0' }, err => {
-        if (err) {
-            if (!started) {
-                started = true;
-                return done(err);
-            }
-            return log.error('API', err);
-        }
-        if (started) {
-            return app.close();
-        }
-        started = true;
-        metrics.setServiceUp('api', true);
-        log.info('API', 'Server listening on %s:%s', config.api.host || '0.0.0.0', config.api.port);
-        done(null, app);
-    });
+    await app.listen({ port: config.api.port, host: config.api.host || '0.0.0.0' });
+
+    metrics.setServiceUp('api', true);
+    log.info('API', 'Server listening on %s:%s', config.api.host || '0.0.0.0', config.api.port);
+
+    return app;
 };

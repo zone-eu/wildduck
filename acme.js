@@ -22,12 +22,15 @@ const acmeRoutes = require('./lib/api/acme');
 
 let loggelf;
 
-module.exports = done => {
+/**
+ * Starts the ACME challenge agent
+ *
+ * @returns {Promise<Object|false>} The fastify instance, or false if the agent is disabled
+ */
+module.exports = async () => {
     if (!config.acme || !config.acme.agent || !config.acme.agent.enabled) {
-        return setImmediate(() => done(null, false));
+        return false;
     }
-
-    let started = false;
 
     const component = config.log.gelf.component || 'wildduck';
     const hostname = config.log.gelf.hostname || os.hostname();
@@ -83,22 +86,10 @@ module.exports = done => {
     // shared access log hook emits the log line (302 status) and the metric
     app.setNotFoundHandler((request, reply) => reply.redirect(config.acme.agent.redirect, 302));
 
-    app.listen({ port: config.acme.agent.port, host: config.acme.agent.host || '0.0.0.0' }, err => {
-        if (err) {
-            if (!started) {
-                started = true;
-                return done(err);
-            }
-            log.error('ACME', err);
-            return;
-        }
+    await app.listen({ port: config.acme.agent.port, host: config.acme.agent.host || '0.0.0.0' });
 
-        if (started) {
-            return app.close();
-        }
-        started = true;
-        log.info('ACME', 'Server listening on %s:%s', config.acme.agent.host || '0.0.0.0', config.acme.agent.port);
-        log.info('ACME', 'Redirecting non-challenge requests to %s', config.acme.agent.redirect);
-        done(null, app);
-    });
+    log.info('ACME', 'Server listening on %s:%s', config.acme.agent.host || '0.0.0.0', config.acme.agent.port);
+    log.info('ACME', 'Redirecting non-challenge requests to %s', config.acme.agent.redirect);
+
+    return app;
 };

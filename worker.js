@@ -15,6 +15,7 @@ const indexer = require('./indexer');
 const plugins = require('./lib/plugins');
 const db = require('./lib/db');
 const errors = require('./lib/errors');
+const util = require('util');
 
 // preload certificate files
 require('./lib/certs');
@@ -23,15 +24,15 @@ require('./lib/certs');
 // service failing to start is still visible through wildduck_service_up before the process exits.
 // A failure to connect to the database happens before any of this and is not observable this way.
 const SERVICES = [
-    ['Prometheus metrics server', prometheus],
-    ['task runner', tasks.start],
-    ['webhook runner', webhooks.start],
-    ['indexer process', indexer.start],
-    ['IMAP server', imap],
-    ['POP3 server', pop3],
-    ['LMTP server', lmtp],
+    ['Prometheus metrics server', util.promisify(prometheus)],
+    ['task runner', util.promisify(tasks.start)],
+    ['webhook runner', util.promisify(webhooks.start)],
+    ['indexer process', util.promisify(indexer.start)],
+    ['IMAP server', util.promisify(imap)],
+    ['POP3 server', util.promisify(pop3)],
+    ['LMTP server', util.promisify(lmtp)],
     ['API server', api],
-    ['MCP server', mcp],
+    ['MCP server', util.promisify(mcp)],
     ['ACME server', acme]
 ];
 
@@ -52,62 +53,62 @@ function fail(message, err) {
  * Starts the listed services one after another.
  *
  * @param {Array} services List of [name, start] entries.
- * @param {Function} callback Called once every service has started.
- * @returns {void}
+ * @returns {Promise<Boolean>} Resolves with true once every service has started, false if one failed.
  */
-function startServices(services, callback) {
-    let pos = 0;
-
-    let startNext = () => {
-        if (pos >= services.length) {
-            return callback();
+async function startServices(services) {
+    for (let [name, start] of services) {
+        try {
+            await start();
+        } catch (err) {
+            fail(`Failed to start ${name}`, err);
+            return false;
         }
-
-        let [name, start] = services[pos++];
-
-        start(err => {
-            if (err) {
-                return fail(`Failed to start ${name}`, err);
-            }
-            startNext();
-        });
-    };
-
-    startNext();
+    }
+    return true;
 }
 
-// Initialize database connection
-db.connect(err => {
-    if (err) {
+/**
+ * Connects to the databases, starts every service and loads the plugins.
+ *
+ * @returns {Promise<void>}
+ */
+async function main() {
+    try {
+        await util.promisify(db.connect)();
+    } catch (err) {
         return fail('Failed to setup database connection', err);
     }
 
-    startServices(SERVICES, () => {
-        // downgrade user and group if needed
-        if (config.group) {
-            try {
-                process.setgid(config.group);
-                log.info('App', 'Changed group to "%s" (%s)', config.group, process.getgid());
-            } catch (E) {
-                return fail(`Failed to change group to "${config.group}"`, E);
-            }
-        }
+    if (!(await startServices(SERVICES))) {
+        return;
+    }
 
-        if (config.user) {
-            try {
-                process.setuid(config.user);
-                log.info('App', 'Changed user to "%s" (%s)', config.user, process.getuid());
-            } catch (E) {
-                return fail(`Failed to change user to "${config.user}"`, E);
-            }
+    // downgrade user and group if needed
+    if (config.group) {
+        try {
+            process.setgid(config.group);
+            log.info('App', 'Changed group to "%s" (%s)', config.group, process.getgid());
+        } catch (E) {
+            return fail(`Failed to change group to "${config.group}"`, E);
         }
+    }
 
-        plugins.init('receiver');
-        plugins.handler.load(() => {
-            log.verbose('Plugins', 'Plugins loaded');
-            plugins.handler.runHooks('init', [], () => {
-                log.info('App', 'All servers started, ready to process some mail');
-            });
+    if (config.user) {
+        try {
+            process.setuid(config.user);
+            log.info('App', 'Changed user to "%s" (%s)', config.user, process.getuid());
+        } catch (E) {
+            return fail(`Failed to change user to "${config.user}"`, E);
+        }
+    }
+
+    plugins.init('receiver');
+    plugins.handler.load(() => {
+        log.verbose('Plugins', 'Plugins loaded');
+        plugins.handler.runHooks('init', [], () => {
+            log.info('App', 'All servers started, ready to process some mail');
         });
     });
-});
+}
+
+main().catch(err => fail('Failed to start', err));

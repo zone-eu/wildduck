@@ -4,11 +4,14 @@
 // glob only picks up *-test.js.
 
 const crypto = require('crypto');
+const http = require('http');
+const { buffer } = require('stream/consumers');
 const forge = require('node-forge');
 const { ObjectId } = require('mongodb');
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
+const { ExportStream } = require('../../lib/export');
 
 // db.connect has no idempotency guard and opens (and leaks) a fresh
 // MongoDB+Redis connection set on every call, so connect at most once
@@ -100,6 +103,64 @@ const binaryParser = (res, callback) => {
     res.on('end', () => callback(null, Buffer.concat(chunks)));
 };
 
+/**
+ * Opens the SSE updates stream at the given API path and resolves with
+ * { statusCode, headers, data } once the collected output satisfies `until`
+ * (by default the first idle comment) or the response ends. Rejects on timeout.
+ * `afterOpen` runs once the stream is established (first idle comment).
+ */
+const readUpdatesStream = (path, { headers = {}, until = data => data.includes(': idling'), timeout = 5000, afterOpen } = {}) =>
+    new Promise((resolve, reject) => {
+        let settled = false;
+        let data = '';
+        let opened = false;
+        let timer;
+        let req;
+
+        const finish = (err, res) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            req.destroy();
+            if (err) {
+                return reject(err);
+            }
+            resolve({ statusCode: res.statusCode, headers: res.headers, data });
+        };
+
+        timer = setTimeout(() => finish(new Error(`Timeout waiting for stream output, received:\n${data}`)), timeout);
+
+        req = http.get({ host: '127.0.0.1', port: config.api.port, path, headers }, res => {
+            res.setEncoding('utf8');
+            res.on('data', chunk => {
+                data += chunk;
+                if (!opened && afterOpen && data.includes(': idling')) {
+                    opened = true;
+                    afterOpen().catch(err => finish(err));
+                }
+                if (until(data)) {
+                    finish(null, res);
+                }
+            });
+            res.on('end', () => finish(null, res));
+            res.on('error', () => false); // socket teardown after destroy()
+        });
+
+        req.on('error', err => finish(err));
+    });
+
+// builds an export dump (the POST /data/import input) with the given header metadata
+const buildDump = async (meta, records) => {
+    const exporter = new ExportStream(meta);
+    for (const record of records) {
+        exporter.write(record);
+    }
+    exporter.end();
+    return await buffer(exporter);
+};
+
 // unique per run so a suite can be re-run without a database reset
 const uniqueName = prefix => `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
@@ -109,5 +170,7 @@ module.exports = {
     deleteRoleToken,
     generateSelfSignedPair,
     binaryParser,
+    readUpdatesStream,
+    buildDump,
     uniqueName
 };

@@ -4,12 +4,14 @@
 
 'use strict';
 
-const http = require('http');
 const crypto = require('crypto');
 const supertest = require('supertest');
 const chai = require('chai');
+// the dump fixtures are serialized with the same bson version the import handler deserializes with
+const BSON = require('bson');
+const { ObjectId } = BSON;
 const db = require('../../lib/db');
-const { createRoleToken, binaryParser } = require('./_helpers');
+const { createRoleToken, binaryParser, readUpdatesStream, buildDump } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -18,43 +20,6 @@ const config = require('@zone-eu/wild-config');
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 const EXPORT_MAGIC = Buffer.from([0x09, 0x06, 0x82]);
-
-// collect a binary (application/octet-stream) response body as a Buffer
-
-// open an SSE stream, resolve once the first idle comment arrives
-const readUpdatesStream = url =>
-    new Promise((resolve, reject) => {
-        let settled = false;
-
-        const req = http.get(url, res => {
-            let data = '';
-
-            res.on('data', chunk => {
-                data += chunk.toString();
-                if (!settled && data.includes(': idling')) {
-                    settled = true;
-                    req.destroy();
-                    resolve({ statusCode: res.statusCode, headers: res.headers, data });
-                }
-            });
-
-            res.on('end', () => {
-                if (!settled) {
-                    settled = true;
-                    resolve({ statusCode: res.statusCode, headers: res.headers, data });
-                }
-            });
-
-            res.on('error', () => false); // socket teardown after destroy()
-        });
-
-        req.on('error', err => {
-            if (!settled) {
-                settled = true;
-                reject(err);
-            }
-        });
-    });
 
 describe('API Users Extra', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -190,11 +155,78 @@ describe('API Users Extra', function () {
             const filtersResponse = await server.get(`/users/${userA}/filters`).expect(200);
             expect(filtersResponse.body.results.some(entry => entry.id === filterId)).to.be.true;
         });
+
+        it('should POST /data/import expect failure / not an export dump', async () => {
+            const response = await server
+                .post(`/data/import?accessToken=${accessToken}`)
+                .set('Content-Type', 'application/octet-stream')
+                .send(Buffer.from('this is not an export dump'))
+                .expect(500);
+
+            expect(response.body.code).to.equal('INVALID_SEQUENCE');
+        });
+
+        it('should POST /data/import expect failure / wrong dump type', async () => {
+            const dump = await buildDump({ type: 'something_else' }, [
+                { client: 'database', collection: 'filters', entry: BSON.serialize({ _id: new ObjectId(), user: new ObjectId(userA) }) }
+            ]);
+
+            const response = await server
+                .post(`/data/import?accessToken=${accessToken}`)
+                .set('Content-Type', 'application/octet-stream')
+                .send(dump)
+                .expect(500);
+
+            expect(response.body.code).to.equal('INVALID_DATA');
+
+            // the failed import leaves the API usable
+            await server.get(`/users/${userA}`).expect(200);
+        });
+
+        it('should POST /data/import expect success / entries for unknown collections are counted as failed', async () => {
+            const filterId = new ObjectId();
+            const dump = await buildDump({ type: 'wildduck_data_export' }, [
+                { client: 'database', collection: 'secrets', entry: BSON.serialize({ _id: new ObjectId(), user: new ObjectId(userA) }) },
+                {
+                    client: 'database',
+                    collection: 'filters',
+                    entry: BSON.serialize({
+                        _id: filterId,
+                        user: new ObjectId(userA),
+                        name: `Imported filter ${runId}`,
+                        query: { headers: { subject: `import-test-${runId}` } },
+                        action: { seen: true },
+                        disabled: false,
+                        created: new Date()
+                    })
+                }
+            ]);
+
+            const response = await server
+                .post(`/data/import?accessToken=${accessToken}`)
+                .set('Content-Type', 'application/octet-stream')
+                .send(dump)
+                .expect(200);
+
+            expect(response.body.result).to.deep.equal({ entries: 2, imported: 1, failed: 1, existing: 0 });
+
+            // importing the same dump again only finds existing documents
+            const repeatResponse = await server
+                .post(`/data/import?accessToken=${accessToken}`)
+                .set('Content-Type', 'application/octet-stream')
+                .send(dump)
+                .expect(200);
+
+            expect(repeatResponse.body.result).to.deep.equal({ entries: 2, imported: 0, failed: 1, existing: 1 });
+
+            const filtersResponse = await server.get(`/users/${userA}/filters`).expect(200);
+            expect(filtersResponse.body.results.some(entry => entry.id === filterId.toString())).to.be.true;
+        });
     });
 
     describe('updates stream', () => {
         it('should GET /users/{user}/updates expect success', async () => {
-            const result = await readUpdatesStream(`http://127.0.0.1:${config.api.port}/users/${userA}/updates`);
+            const result = await readUpdatesStream(`/users/${userA}/updates`);
 
             expect(result.statusCode).to.equal(200);
             expect(result.headers['content-type']).to.include('text/event-stream');
