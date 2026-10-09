@@ -803,7 +803,7 @@ describe('IMAP Protocol integration tests', function () {
                     resp = resp.toString();
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     expect(/^T3 OK/m.test(resp)).to.be.true;
-                    expect(/^T4 NO \[ALREADYEXISTS\]/m.test(resp)).to.be.true;
+                    expect(/^T4 NO \[ALREADYEXISTS\] Mailbox already exists\r$/m.test(resp)).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\Noselect \\HasChildren) "/" "parent"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "parent/child"\r\n') >= 0).to.be.true;
@@ -2698,7 +2698,7 @@ describe('IMAP Protocol integration tests', function () {
             testClient({ commands: cmds, secure: true, port }, function () {
                 let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/nope"', 'T3 LOGOUT'];
                 testClient({ commands: cmds, secure: true, port }, function (resp) {
-                    expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                    expect(/^T2 NO \[NOPERM\] Permission denied\r$/m.test(resp.toString())).to.be.true;
                     done();
                 });
             });
