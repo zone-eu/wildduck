@@ -12,6 +12,7 @@ chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+const { listAll } = require('./_helpers');
 
 describe('API Filters', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -65,6 +66,8 @@ describe('API Filters', function () {
         }
     });
 
+    const createdFilters = [];
+
     it('should POST /users/{user}/filters expect success', async () => {
         const response = await server
             .post(`/users/${user}/filters`)
@@ -79,6 +82,7 @@ describe('API Filters', function () {
             })
             .expect(200);
         expect(response.body.success).to.be.true;
+        createdFilters.push(response.body.id);
 
         const response2 = await server
             .post(`/users/${user2}/filters`)
@@ -93,6 +97,7 @@ describe('API Filters', function () {
             })
             .expect(200);
         expect(response2.body.success).to.be.true;
+        createdFilters.push(response2.body.id);
 
         const response3 = await server
             .post(`/users/${user}/filters`)
@@ -108,12 +113,16 @@ describe('API Filters', function () {
             .expect(200);
 
         expect(response3.body.success).to.be.true;
+        createdFilters.push(response3.body.id);
     });
 
     it('should GET /filters expect success', async () => {
         const filterListResponse = await server.get(`/filters`).expect(200);
         expect(filterListResponse.body.success).to.be.true;
-        expect(filterListResponse.body.total).to.equal(3);
+
+        // other suites keep filters of their own in the shared database
+        const listed = (await listAll(server, '/filters')).map(entry => entry.id);
+        expect(listed).to.include.members(createdFilters);
     });
 
     it('should GET /filters expect success / with a user token', async () => {
@@ -257,10 +266,7 @@ describe('API Filters', function () {
         expect(ownFiltersEntry.originalAction.targets).to.deep.equal([targetUrl]);
         expect(ownFiltersEntry.targets).to.deep.equal([targetUrl]);
 
-        const allFiltersResponse = await server.get(`/filters`).expect(200);
-        expect(allFiltersResponse.body.success).to.be.true;
-
-        const allFiltersEntry = allFiltersResponse.body.results.find(entry => entry.id === filter);
+        const allFiltersEntry = (await listAll(server, '/filters')).find(entry => entry.id === filter);
         expect(allFiltersEntry).to.exist;
         expect(allFiltersEntry.action).to.deep.equal([['forward to', targetUrl]]);
         expect(allFiltersEntry.originalAction.targets).to.deep.equal([targetUrl]);
@@ -540,17 +546,13 @@ describe('API Filters', function () {
         });
 
         it('should GET /filters expect success / without metaData', async () => {
-            const filterListResponse = await server.get(`/filters`).expect(200);
-            expect(filterListResponse.body.success).to.be.true;
-            let filterData = filterListResponse.body.results.find(f => f.id === metaDataFilter);
+            let filterData = (await listAll(server, '/filters')).find(f => f.id === metaDataFilter);
             expect(filterData).to.exist;
             expect(filterData.metaData).to.not.exist;
         });
 
         it('should GET /filters expect success / with metaData', async () => {
-            const filterListResponse = await server.get(`/filters?metaData=true`).expect(200);
-            expect(filterListResponse.body.success).to.be.true;
-            let filterData = filterListResponse.body.results.find(f => f.id === metaDataFilter);
+            let filterData = (await listAll(server, '/filters?metaData=true')).find(f => f.id === metaDataFilter);
             expect(filterData).to.exist;
             expect(filterData.metaData).to.exist;
         });

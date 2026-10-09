@@ -2,55 +2,109 @@
     "openapiVersion": "3.0.0",
     "info": {
         "title": "WildDuck API",
-        "description": "WildDuck API docs",
+        "description": "REST API for managing WildDuck users, addresses, mailboxes, messages and system settings.",
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         }
     },
-    "servers": [{ "url": "https://api.wildduck.email" }],
+    "servers": [
+        {
+            "url": "https://api.wildduck.email"
+        }
+    ],
     "tags": [
-        { "name": "Addresses" },
-        { "name": "ApplicationPasswords" },
+        {
+            "name": "Users",
+            "description": "User accounts: creation, settings, limits, quota and deletion."
+        },
+        {
+            "name": "Addresses",
+            "description": "Email addresses of users, and forwarded addresses that are not tied to a user account."
+        },
+        {
+            "name": "Mailboxes",
+            "description": "Mailboxes (folders) of a user."
+        },
+        {
+            "name": "Messages",
+            "description": "Messages stored in the mailboxes of a user, labels, and outbound messages that are still queued for delivery."
+        },
         {
             "name": "Archive",
-            "description":
-                "Archive includes all deleted messages. Once messages are old enough then these are permanenetly deleted from the archive as well. Until then you can restore the deleted messages."
+            "description": "The archive keeps deleted messages for a while before they are permanently removed. Until then, archived messages can be restored."
         },
         {
-            "name": "Audit",
-            "description":
-                "Auditing allows to monitor an email account. All existing, deleted and new emails are copied to the auditing system. See also https://github.com/nodemailer/wildduck-audit-manager"
-        },
-        { "name": "Authentication" },
-        { "name": "Autoreplies" },
-        {
-            "name": "Certs",
-            "description":
-                "WildDuck allows to register TLS certificates to be used with SNI connections. These certificates are used by IMAP, POP3, API and SMTP servers when a SNI capable client establishes a TLS connection. This does not apply for MX servers."
+            "name": "Storage",
+            "description": "Storage makes attachment handling easier when composing drafts. Instead of uploading an attachment with every draft update, you upload it to the storage once and link the stored file from the draft."
         },
         {
-            "name": "DKIM",
-            "description":
-                "Whenever an email is sent WildDuck checks if there is a DKIM key registered for the domain name of the sender address and uses it to sign the message."
+            "name": "Submission",
+            "description": "Sending messages from a user account."
+        },
+        {
+            "name": "Filters",
+            "description": "Filters that are applied to incoming messages."
+        },
+        {
+            "name": "Autoreplies",
+            "description": "Vacation autoreplies."
+        },
+        {
+            "name": "Authentication",
+            "description": "Authenticating users, access tokens, and the authentication event log."
+        },
+        {
+            "name": "TwoFactorAuth",
+            "description": "Two-factor authentication with TOTP, WebAuthn or a custom external mechanism."
+        },
+        {
+            "name": "ApplicationPasswords",
+            "description": "Application specific passwords, for clients that can not use two-factor authentication."
+        },
+        {
+            "name": "MCPAccessTokens",
+            "description": "Read-only personal access tokens for the MCP (Model Context Protocol) server."
+        },
+        {
+            "name": "PushSubscriptions",
+            "description": "Apple push notification registrations made by IMAP clients through XAPPLEPUSHSERVICE."
         },
         {
             "name": "DomainAccess",
-            "description": "Add sender domain names to allowlist (messages are all accepted) or blocklist (messages are sent to Spam folder)"
+            "description": "Sender domain allowlists and blocklists per user tag. Mail from an allowlisted domain is never marked as spam, mail from a blocklisted domain always is."
         },
-        { "name": "DomainAliases" },
-        { "name": "Filters" },
-        { "name": "Mailboxes" },
-        { "name": "Messages" },
-        { "name": "Settings" },
         {
-            "name": "Storage",
-            "description":
-                "Storage allows easier attachment handling when composing Draft messages. Instead of uploading the attachmnent with every draft update, you store the attachment to the Storage and then link stored file for the Draft."
+            "name": "DomainAliases",
+            "description": "Domain aliases, so that mail for username@alias is delivered to username@domain."
         },
-        { "name": "Submission" },
-        { "name": "TwoFactorAuth" },
-        { "name": "Users" },
-        { "name": "Webhooks" }
+        {
+            "name": "DKIM",
+            "description": "Whenever an email is sent, WildDuck checks if there is a DKIM key registered for the domain of the sender address and uses it to sign the message."
+        },
+        {
+            "name": "Certs",
+            "description": "TLS certificates for SNI connections. These certificates are used by the IMAP, POP3, API and SMTP servers when an SNI capable client establishes a TLS connection. This does not apply to MX servers."
+        },
+        {
+            "name": "Audit",
+            "description": "Auditing monitors an email account: all existing, deleted and new messages are copied to the audit system. See also https://github.com/nodemailer/wildduck-audit-manager"
+        },
+        {
+            "name": "Webhooks",
+            "description": "Webhook URLs that receive event notifications."
+        },
+        {
+            "name": "Settings",
+            "description": "System-wide settings that override the configuration file defaults."
+        },
+        {
+            "name": "Export",
+            "description": "Exporting and importing user data between WildDuck installations."
+        },
+        {
+            "name": "Health",
+            "description": "Service health checks."
+        }
     ],
     "components": {
         "securitySchemes": {
@@ -58,10 +112,14 @@
                 "name": "X-Access-Token",
                 "type": "apiKey",
                 "in": "header",
-                "description": "If authentication is enabled in the WildDuck configuration, you will need to supply an access token in the `X-Access-Token` header.\n```json\n{\n    \"X-Access-Token\": \"59fc66a03e54454869460e45\"\n}\n```\n"
+                "description": "If authentication is enabled in the WildDuck configuration, supply an access token in the `X-Access-Token` header or in the `accessToken` query parameter.\n```json\n{\n    \"X-Access-Token\": \"59fc66a03e54454869460e45\"\n}\n```\n"
             }
         }
     },
-    "security": [{ "AccessTokenAuth": [] }],
+    "security": [
+        {
+            "AccessTokenAuth": []
+        }
+    ],
     "docsPath": "/docs/api/openapidocs.json"
 }

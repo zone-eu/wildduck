@@ -55,17 +55,17 @@ function createState(messageCount = 1, mailboxCount = 1) {
                             expect(query).to.deep.equal({ user });
                             return { toArray: async () => mailboxes.map(mailbox => ({ ...mailbox })) };
                         },
-                        findOne(query, callback) {
-                            callback(null, { ...mailboxes.find(mailbox => mailbox._id.equals(query._id)) });
+                        async findOne(query) {
+                            return { ...mailboxes.find(mailbox => mailbox._id.equals(query._id)) };
                         },
-                        findOneAndUpdate(query, update, options, callback) {
+                        async findOneAndUpdate(query, update) {
                             const mailbox = mailboxes.find(entry => entry._id.equals(query._id));
                             mailbox.modifyIndex += update.$inc.modifyIndex;
                             const value = { ...mailbox };
                             if (state.afterAllocation) {
                                 state.afterAllocation(mailbox);
                             }
-                            callback(null, { value });
+                            return { value };
                         }
                     };
                 case 'messages':
@@ -78,7 +78,10 @@ function createState(messageCount = 1, mailboxCount = 1) {
                                     return this;
                                 },
                                 async toArray() {
-                                    return state.messages.filter(message => matches(message, query)).slice(0, limit).map(snapshot);
+                                    return state.messages
+                                        .filter(message => matches(message, query))
+                                        .slice(0, limit)
+                                        .map(snapshot);
                                 }
                             };
                         },
@@ -96,13 +99,12 @@ function createState(messageCount = 1, mailboxCount = 1) {
                             message.labels = message.labels.filter(id => !id.equals(update.$pull.labels));
                             return { value: snapshot(message) };
                         },
-                        updateMany(query, update, callback) {
+                        async updateMany(query, update) {
                             for (const message of state.messages) {
                                 if (message.mailbox.equals(query.mailbox) && query._id.$in.some(id => id.equals(message._id))) {
                                     message.modseq = Math.max(message.modseq, update.$max.modseq);
                                 }
                             }
-                            callback();
                         }
                     };
                 case 'filters':
@@ -162,7 +164,17 @@ function createState(messageCount = 1, mailboxCount = 1) {
         run(
             { _id: new ObjectId() },
             { user, label, name: 'Projects' },
-            { messageHandler: { notifier, redis: { async set() { state.countersBumped++; } } }, loggelf() {} },
+            {
+                messageHandler: {
+                    notifier,
+                    redis: {
+                        async set() {
+                            state.countersBumped++;
+                        }
+                    }
+                },
+                loggelf() {}
+            },
             state.database
         );
     return state;
@@ -193,7 +205,11 @@ describe('Label deletion task', () => {
             connection.state = 'Selected';
             connection.selected = { uidList: [message.uid], modifyIndex: 6, notifications: [entry], condstoreEnabled: true };
             connection.logger = { debug() {} };
-            connection.writeStream = { write(response) { writes.push(response); } };
+            connection.writeStream = {
+                write(response) {
+                    writes.push(response);
+                }
+            };
             connection.emitNotifications();
             expect(writes).to.have.length(1);
             expect(writes[0].attributes[1][1].map(flag => flag.value)).to.deep.equal(entry.flags);

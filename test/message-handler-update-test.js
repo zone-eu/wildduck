@@ -63,9 +63,7 @@ describe('MessageHandler message updates', function () {
             return labelRecords.get(name);
         };
         const messageLabels = (messageOverrides?.labelNames || []).map(name => getLabelRecord(name)._id);
-        const atomicLabels = (messageOverrides?.atomicLabelNames ?? messageOverrides?.labelNames ?? []).map(
-            name => getLabelRecord(name)._id
-        );
+        const atomicLabels = (messageOverrides?.atomicLabelNames ?? messageOverrides?.labelNames ?? []).map(name => getLabelRecord(name)._id);
 
         let handler = Object.create(MessageHandler.prototype);
         handler.redis = false;
@@ -85,9 +83,8 @@ describe('MessageHandler message updates', function () {
             get: () => Promise.resolve(100)
         };
         handler.notifier = {
-            addEntries(mailboxData, entries, callback) {
+            async addEntriesAsync(mailboxData, entries) {
                 notified.push(...entries);
-                return callback();
             },
             fire() {
                 fires++;
@@ -98,28 +95,28 @@ describe('MessageHandler message updates', function () {
                 switch (name) {
                     case 'mailboxes':
                         return {
-                            findOneAndUpdate(query, update, options, callback) {
+                            async findOneAndUpdate(query, update) {
                                 calls.mailboxUpdates++;
                                 expect(query._id.toString()).to.equal(mailbox.toString());
                                 expect(query.user.toString()).to.equal(user.toString());
                                 expect(update.$inc.modifyIndex).to.equal(1);
-                                return callback(null, {
+                                return {
                                     value: {
                                         _id: mailbox,
                                         user,
                                         modifyIndex: 7
                                     }
-                                });
+                                };
                             },
-                            findOne(query, callback) {
+                            async findOne(query) {
                                 calls.mailboxFinds++;
                                 expect(query._id.toString()).to.equal(mailbox.toString());
                                 expect(query.user.toString()).to.equal(user.toString());
-                                return callback(null, {
+                                return {
                                     _id: mailbox,
                                     user,
                                     modifyIndex: 7
-                                });
+                                };
                             }
                         };
 
@@ -137,12 +134,13 @@ describe('MessageHandler message updates', function () {
                                         expect(projection._id).to.be.true;
                                         expect(projection.uid).to.be.true;
 
+                                        // a one message cursor
                                         return {
-                                            next(callback) {
+                                            async next() {
                                                 if (nextCalls++) {
-                                                    return callback(null, null);
+                                                    return null;
                                                 }
-                                                return callback(null, {
+                                                return {
                                                     _id: message,
                                                     uid: 42,
                                                     size: 1000,
@@ -152,16 +150,20 @@ describe('MessageHandler message updates', function () {
                                                     },
                                                     ...messageOverrides,
                                                     labels: messageLabels
-                                                });
+                                                };
                                             },
-                                            close(callback) {
-                                                return callback();
+                                            async close() {},
+                                            async *[Symbol.asyncIterator]() {
+                                                let doc;
+                                                while ((doc = await this.next()) !== null) {
+                                                    yield doc;
+                                                }
                                             }
                                         };
                                     }
                                 };
                             },
-                            findOneAndUpdate(query, update, options, callback) {
+                            async findOneAndUpdate(query, update, options) {
                                 calls.messageUpdates++;
                                 expect(query._id.toString()).to.equal(message.toString());
                                 expect(query.mailbox.toString()).to.equal(mailbox.toString());
@@ -175,7 +177,7 @@ describe('MessageHandler message updates', function () {
                                     expect(update.$addToSet.flags.$each).to.deep.equal(['\\Flagged']);
                                 }
 
-                                return callback(null, {
+                                return {
                                     value: {
                                         _id: message,
                                         uid: 42,
@@ -183,7 +185,7 @@ describe('MessageHandler message updates', function () {
                                         flags: atomicFlags,
                                         labels: atomicLabels
                                     }
-                                });
+                                };
                             }
                         };
 
@@ -194,9 +196,7 @@ describe('MessageHandler message updates', function () {
                                 const records = names
                                     ? names.map(getLabelRecord)
                                     : query._id?.$in
-                                      ? query._id.$in
-                                            .map(id => [...labelRecords.values()].find(record => record._id.equals(id)))
-                                            .filter(Boolean)
+                                      ? query._id.$in.map(id => [...labelRecords.values()].find(record => record._id.equals(id))).filter(Boolean)
                                       : [...labelRecords.values()];
                                 return {
                                     async toArray() {
@@ -587,28 +587,20 @@ describe('ImapNotifier marked.ham events', function () {
         };
 
         try {
-            let insertedCount = await new Promise((resolve, reject) => {
-                notifier.addEntries(
-                    {
-                        _id: mailbox,
-                        user,
-                        modifyIndex: 10
-                    },
-                    {
-                        command: 'EXISTS',
-                        uid: 42,
-                        message,
-                        markHam: true,
-                        modseq: 99
-                    },
-                    (err, count) => {
-                        if (err) {
-                            return reject(err);
-                        }
-                        return resolve(count);
-                    }
-                );
-            });
+            let insertedCount = await notifier.addEntriesAsync(
+                {
+                    _id: mailbox,
+                    user,
+                    modifyIndex: 10
+                },
+                {
+                    command: 'EXISTS',
+                    uid: 42,
+                    message,
+                    markHam: true,
+                    modseq: 99
+                }
+            );
 
             expect(insertedCount).to.equal(1);
             expect(journalEntries).to.have.lengthOf(1);

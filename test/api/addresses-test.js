@@ -14,6 +14,9 @@ const config = require('@zone-eu/wild-config');
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 describe('API Users', function () {
+    // the suite can run again against a database that still holds an earlier run
+    const RUN = Date.now().toString(36);
+
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     let user, user2, forwarded;
@@ -23,9 +26,9 @@ describe('API Users', function () {
         const response = await server
             .post('/users')
             .send({
-                username: 'addressuser',
+                username: `addressuser${RUN}`,
                 password: 'secretvalue',
-                address: 'addressuser.addrtest@example.com',
+                address: `addressuser${RUN}.addrtest@example.com`,
                 name: 'address user'
             })
             .expect(200);
@@ -37,9 +40,9 @@ describe('API Users', function () {
         const response2 = await server
             .post('/users')
             .send({
-                username: 'addressuser2',
+                username: `addressuser2${RUN}`,
                 password: 'secretvalue',
-                address: 'addressuser2.addrtest@example.com',
+                address: `addressuser2${RUN}.addrtest@example.com`,
                 name: 'address user 2'
             })
             .expect(200);
@@ -69,8 +72,8 @@ describe('API Users', function () {
         const response = await server
             .post(`/users/${user}/addresses`)
             .send({
-                address: `user1.1.addrtest@example.com`,
-                tags: ['TAG1', 'tag2']
+                address: `user1.1.${RUN}.addrtest@example.com`,
+                tags: [`TAG1${RUN}`, `tag2${RUN}`]
             })
             .expect(200);
         expect(response.body.success).to.be.true;
@@ -78,7 +81,7 @@ describe('API Users', function () {
         const response2 = await server
             .post(`/users/${user2}/addresses`)
             .send({
-                address: `user2.1.addrtest@example.com`
+                address: `user2.1.${RUN}.addrtest@example.com`
             })
             .expect(200);
         expect(response2.body.success).to.be.true;
@@ -86,8 +89,8 @@ describe('API Users', function () {
         const response3 = await server
             .post(`/users/${user}/addresses`)
             .send({
-                address: `user1.2.addrtest@example.com`,
-                tags: ['TAG2', 'tag3']
+                address: `user1.2.${RUN}.addrtest@example.com`,
+                tags: [`TAG2${RUN}`, `tag3${RUN}`]
             })
             .expect(200);
 
@@ -106,13 +109,13 @@ describe('API Users', function () {
     });
 
     it('should GET /addresses expect success / with tags', async () => {
-        const addressListResponse = await server.get(`/addresses?tags=tag2,tag3`).expect(200);
+        const addressListResponse = await server.get(`/addresses?tags=tag2${RUN},tag3${RUN}`).expect(200);
         expect(addressListResponse.body.success).to.be.true;
         expect(addressListResponse.body.total).to.equal(2);
     });
 
     it('should GET /addresses expect success / with required tags', async () => {
-        const addressListResponse = await server.get(`/addresses?requiredTags=tag2,tag3`).expect(200);
+        const addressListResponse = await server.get(`/addresses?requiredTags=tag2${RUN},tag3${RUN}`).expect(200);
         expect(addressListResponse.body.success).to.be.true;
         expect(addressListResponse.body.total).to.equal(1);
     });
@@ -121,7 +124,7 @@ describe('API Users', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'addressuser',
+                username: `addressuser${RUN}`,
                 password: 'secretvalue',
                 token: true
             })
@@ -144,7 +147,7 @@ describe('API Users', function () {
 
         expect(addressListResponse.body.results.length).to.equal(3);
         expect(addressListResponse.body.results.filter(addr => addr.main).length).to.equal(1);
-        expect(addressListResponse.body.results.find(addr => addr.main).address).to.equal('addressuser.addrtest@example.com');
+        expect(addressListResponse.body.results.find(addr => addr.main).address).to.equal(`addressuser${RUN}.addrtest@example.com`);
     });
 
     it('should GET /users/{user}/addresses expect failure / incorrect user', async () => {
@@ -162,7 +165,7 @@ describe('API Users', function () {
         let addressListResponse = await server.get(`/users/${user}/addresses`).expect(200);
         expect(addressListResponse.body.success).to.be.true;
         let addresses = addressListResponse.body.results;
-        let address = addresses.find(addr => addr.address === 'user1.1.addrtest@example.com').id;
+        let address = addresses.find(addr => addr.address === `user1.1.${RUN}.addrtest@example.com`).id;
 
         const response = await server
             .put(`/users/${user}/addresses/${address}`)
@@ -177,7 +180,7 @@ describe('API Users', function () {
 
         expect(addressListResponse.body.results.length).to.equal(3);
         expect(addressListResponse.body.results.filter(addr => addr.main).length).to.equal(1);
-        expect(addressListResponse.body.results.find(addr => addr.main).address).to.equal('user1.1.addrtest@example.com');
+        expect(addressListResponse.body.results.find(addr => addr.main).address).to.equal(`user1.1.${RUN}.addrtest@example.com`);
     });
 
     it('should DELETE /users/{user}/addresses/{address} expect failure', async () => {
@@ -195,7 +198,7 @@ describe('API Users', function () {
         let addressListResponse = await server.get(`/users/${user}/addresses`).expect(200);
         expect(addressListResponse.body.success).to.be.true;
         let addresses = addressListResponse.body.results;
-        let address = addresses.find(addr => addr.address === 'user1.2.addrtest@example.com').id;
+        let address = addresses.find(addr => addr.address === `user1.2.${RUN}.addrtest@example.com`).id;
 
         const response = await server.delete(`/users/${user}/addresses/${address}`).expect(200);
         expect(response.body.success).to.be.true;
@@ -205,9 +208,9 @@ describe('API Users', function () {
         const response = await server
             .post(`/addresses/forwarded`)
             .send({
-                address: `forwarded.1.addrtest@example.com`,
+                address: `forwarded.1.${RUN}.addrtest@example.com`,
                 targets: ['andris@ethereal.email'],
-                tags: ['TAG1', 'tag2']
+                tags: [`TAG1${RUN}`, `tag2${RUN}`]
             })
             .expect(200);
         expect(response.body.success).to.be.true;
@@ -215,7 +218,7 @@ describe('API Users', function () {
     });
 
     it('should GET /addresses expect success / with query', async () => {
-        const addressListResponse = await server.get(`/addresses?query=forwarded.1.addrtest`).expect(200);
+        const addressListResponse = await server.get(`/addresses?query=forwarded.1.${RUN}.addrtest`).expect(200);
         expect(addressListResponse.body.success).to.be.true;
         expect(addressListResponse.body.total).to.equal(1);
         expect(forwarded).to.exist;
@@ -225,12 +228,12 @@ describe('API Users', function () {
         const response = await server
             .put(`/addresses/forwarded/${forwarded}`)
             .send({
-                tags: ['tAG2', 'tAg3']
+                tags: [`tAG2${RUN}`, `tAg3${RUN}`]
             })
             .expect(200);
         expect(response.body.success).to.be.true;
 
-        const addressListResponse = await server.get(`/addresses?query=forwarded.1.addrtest`).expect(200);
+        const addressListResponse = await server.get(`/addresses?query=forwarded.1.${RUN}.addrtest`).expect(200);
         expect(addressListResponse.body.total).to.equal(1);
     });
 });

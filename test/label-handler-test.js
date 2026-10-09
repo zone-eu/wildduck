@@ -2,8 +2,7 @@
 
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
-const { ensureLabels, getRequestedNames, getMessageImapFlags, resolveImapLabels } = require('../lib/label-handler');
-const { labelSchema } = require('../lib/schemas');
+const { isValidLabelName, ensureLabels, getRequestedNames, getMessageImapFlags, resolveImapLabels } = require('../lib/label-handler');
 const { MAX_LABELS } = require('../lib/consts');
 
 function createDatabase(records = []) {
@@ -67,9 +66,9 @@ describe('Persistent labels', () => {
 
     it('treats slash as a literal part of a single label name', () => {
         expect(getRequestedNames(['Projects/čau-😀', 'Projects/čau-😀', '\\Seen', '$Forwarded', '\\Recent', '\\Flagged'])).to.deep.equal(['Projects/čau-😀']);
-        expect(labelSchema.validate('Projects/čau-😀').error).to.equal(undefined);
+        expect(isValidLabelName('Projects/čau-😀')).to.equal(true);
         for (const name of ['\\Seen', '$wdlabel$123']) {
-            expect(labelSchema.validate(name).error).to.be.instanceOf(Error);
+            expect(isValidLabelName(name)).to.equal(false);
         }
     });
 
@@ -90,11 +89,11 @@ describe('Persistent labels', () => {
 
     it('accepts 256 characters with no hierarchy depth limit', () => {
         for (const name of ['a'.repeat(256), 'a/b/c/d/e/f']) {
-            expect(labelSchema.validate(name).error).to.equal(undefined);
+            expect(isValidLabelName(name)).to.equal(true);
             expect(() => getRequestedNames([name])).to.not.throw();
         }
         for (const name of ['a'.repeat(257)]) {
-            expect(labelSchema.validate(name).error).to.be.instanceOf(Error);
+            expect(isValidLabelName(name)).to.equal(false);
             expect(() => getRequestedNames([name])).to.throw();
         }
     });

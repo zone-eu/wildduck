@@ -6,6 +6,7 @@ const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const MessageHandler = require('../lib/message-handler');
 const db = require('../lib/db');
+const { connect } = require('./api/_helpers');
 
 describe('MessageHandler threading updates', function () {
     this.timeout(30000); // eslint-disable-line no-invalid-this
@@ -14,7 +15,7 @@ describe('MessageHandler threading updates', function () {
     let userId;
 
     before(async () => {
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+        await connect();
         handler = new MessageHandler({
             database: db.database,
             users: db.users,

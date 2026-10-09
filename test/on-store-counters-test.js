@@ -26,14 +26,18 @@ describe('on-store counter notifications', () => {
             sort() {
                 return this;
             },
-            next(callback) {
+            async next() {
                 if (this.calls++) {
-                    return callback(null, null);
+                    return null;
                 }
-                callback(null, { _id: message, uid: 1, flags: ['\\Seen', '\\Flagged'], labels: [label._id], modseq: 1 });
+                return { _id: message, uid: 1, flags: ['\\Seen', '\\Flagged'], labels: [label._id], modseq: 1 };
             },
-            close(callback) {
-                callback();
+            async close() {},
+            async *[Symbol.asyncIterator]() {
+                let doc;
+                while ((doc = await this.next()) !== null) {
+                    yield doc;
+                }
             }
         };
 
@@ -41,11 +45,11 @@ describe('on-store counter notifications', () => {
             collection(name) {
                 if (name === 'mailboxes') {
                     return {
-                        findOne(query, options, callback) {
-                            callback(null, { _id: mailbox, user, flags: [] });
+                        async findOne() {
+                            return { _id: mailbox, user, flags: [] };
                         },
-                        findOneAndUpdate(query, update, options, callback) {
-                            callback(null, { value: { modifyIndex: 2 } });
+                        async findOneAndUpdate() {
+                            return { value: { modifyIndex: 2 } };
                         }
                     };
                 }
@@ -64,12 +68,11 @@ describe('on-store counter notifications', () => {
                     find() {
                         return cursor;
                     },
-                    bulkWrite(updates, options, callback) {
+                    async bulkWrite(updates) {
                         expect(updates).to.have.lengthOf(1);
                         const pipelineSet = updates[0].updateOne.update[0].$set;
                         expect(pipelineSet).to.deep.include({ unseen: { $literal: true }, flagged: { $literal: false }, modseq: { $literal: 2 } });
                         expect(pipelineSet.labels.$setUnion[0].$filter.input).to.deep.equal({ $ifNull: ['$labels', []] });
-                        callback();
                     }
                 };
             }
@@ -78,9 +81,8 @@ describe('on-store counter notifications', () => {
         const server = {
             logger: { debug() {} },
             notifier: {
-                addEntries(mailboxData, entries, callback) {
+                async addEntriesAsync(mailboxData, entries) {
                     notification = entries[0];
-                    callback();
                 },
                 fire() {}
             }
@@ -128,11 +130,15 @@ describe('on-store counter notifications', () => {
             sort() {
                 return this;
             },
-            next(callback) {
-                callback(null, this.calls++ ? null : { _id: message, uid: 1, flags: ['\\Seen', `$wdlabel$${previouslyUnknown}`], labels: [], modseq: 1 });
+            async next() {
+                return this.calls++ ? null : { _id: message, uid: 1, flags: ['\\Seen', `$wdlabel$${previouslyUnknown}`], labels: [], modseq: 1 };
             },
-            close(callback) {
-                callback();
+            async close() {},
+            async *[Symbol.asyncIterator]() {
+                let doc;
+                while ((doc = await this.next()) !== null) {
+                    yield doc;
+                }
             }
         };
 
@@ -140,15 +146,14 @@ describe('on-store counter notifications', () => {
             collection(name) {
                 if (name === 'mailboxes') {
                     return {
-                        findOne(query, options, callback) {
-                            callback(null, { _id: mailbox, user, flags: [] });
+                        async findOne() {
+                            return { _id: mailbox, user, flags: [] };
                         },
-                        findOneAndUpdate(query, update, options, callback) {
-                            callback(null, { value: { modifyIndex: 2 } });
+                        async findOneAndUpdate() {
+                            return { value: { modifyIndex: 2 } };
                         },
-                        updateOne(query, update, options, callback) {
+                        async updateOne(query, update) {
                             expect(update.$addToSet.flags.$each).to.deep.equal(['$label1']);
-                            callback();
                         }
                     };
                 }
@@ -166,11 +171,10 @@ describe('on-store counter notifications', () => {
                     find() {
                         return cursor;
                     },
-                    bulkWrite(updates, options, callback) {
+                    async bulkWrite(updates) {
                         const stored = updates[0].updateOne.update[0].$set;
                         expect(stored.flags.$setUnion[1].$literal).to.deep.equal(['$label1']);
                         expect(stored.labels.$setUnion[1].$literal.map(value => value.toString())).to.deep.equal([label._id.toString()]);
-                        callback();
                     }
                 };
             }
@@ -179,9 +183,8 @@ describe('on-store counter notifications', () => {
         const server = {
             logger: { debug() {} },
             notifier: {
-                addEntries(mailboxData, entries, callback) {
+                async addEntriesAsync(mailboxData, entries) {
                     notification = entries[0];
-                    callback();
                 },
                 fire() {}
             }
@@ -199,17 +202,22 @@ describe('on-store counter notifications', () => {
             }
         };
 
-        onStore(server)(mailbox, { messages: [1], action: 'add', value: [`$wdlabel$${label._id}`, `$wdlabel$${previouslyUnknown}`, '$label1'], silent: false }, session, err => {
-            db.database = databaseSnapshot;
-            try {
-                expect(err).to.not.exist;
-                expect(responseFlags).to.deep.equal(['\\Seen', `$wdlabel$${previouslyUnknown}`, '$label1', `$wdlabel$${label._id}`]);
-                expect(notification.addedLabels).to.deep.equal(['Projects/Web']);
-                expect(notification).to.not.have.property('removedLabels');
-                return done();
-            } catch (testErr) {
-                return done(testErr);
+        onStore(server)(
+            mailbox,
+            { messages: [1], action: 'add', value: [`$wdlabel$${label._id}`, `$wdlabel$${previouslyUnknown}`, '$label1'], silent: false },
+            session,
+            err => {
+                db.database = databaseSnapshot;
+                try {
+                    expect(err).to.not.exist;
+                    expect(responseFlags).to.deep.equal(['\\Seen', `$wdlabel$${previouslyUnknown}`, '$label1', `$wdlabel$${label._id}`]);
+                    expect(notification.addedLabels).to.deep.equal(['Projects/Web']);
+                    expect(notification).to.not.have.property('removedLabels');
+                    return done();
+                } catch (testErr) {
+                    return done(testErr);
+                }
             }
-        });
+        );
     });
 });

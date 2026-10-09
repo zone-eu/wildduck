@@ -14,6 +14,9 @@ const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 const ObjectId = require('mongodb').ObjectId;
 
 describe('API tests', function () {
+    // the suite can run again against a database that still holds an earlier run
+    const RUN = Date.now().toString(36);
+
     let userId, asp, address, inbox;
 
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -23,9 +26,9 @@ describe('API tests', function () {
         const response = await server
             .post('/users')
             .send({
-                username: 'testuser',
+                username: `testuser${RUN}`,
                 password: 'secretpass',
-                address: 'testuser@example.com',
+                address: `testuser${RUN}@example.com`,
                 name: 'test user'
             })
             .expect(200);
@@ -51,7 +54,7 @@ describe('API tests', function () {
             const response = await server
                 .post('/domainaliases')
                 .send({
-                    alias: 'jõgeva.öö',
+                    alias: `jõgeva${RUN}.öö`,
                     domain: 'example.com'
                 })
                 .expect(200);
@@ -88,7 +91,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@example.com',
+                    username: `testuser${RUN}@example.com`,
                     password: 'secretpass',
                     scope: 'master'
                 })
@@ -100,7 +103,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@example.com',
+                    username: `testuser${RUN}@example.com`,
                     password: 'invalid',
                     scope: 'master'
                 })
@@ -113,7 +116,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@jõgeva.öö',
+                    username: `testuser${RUN}@jõgeva${RUN}.öö`,
                     password: 'secretpass',
                     scope: 'master'
                 })
@@ -125,7 +128,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@jõgeva.öö',
+                    username: `testuser${RUN}@jõgeva${RUN}.öö`,
                     password: 'invalid',
                     scope: 'master'
                 })
@@ -140,7 +143,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/preauth`)
                 .send({
-                    username: 'testuser@example.com',
+                    username: `testuser${RUN}@example.com`,
                     scope: 'master'
                 })
                 .expect(200);
@@ -151,7 +154,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/preauth`)
                 .send({
-                    username: 'testuser@jõgeva.öö',
+                    username: `testuser${RUN}@jõgeva${RUN}.öö`,
                     scope: 'master'
                 })
                 .expect(200);
@@ -210,7 +213,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@jõgeva.öö',
+                    username: `testuser${RUN}@jõgeva${RUN}.öö`,
                     password: asp,
                     scope: 'imap'
                 })
@@ -222,7 +225,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@jõgeva.öö',
+                    username: `testuser${RUN}@jõgeva${RUN}.öö`,
                     password: 'a'.repeat(16),
                     scope: 'imap'
                 })
@@ -234,7 +237,7 @@ describe('API tests', function () {
             const response = await server
                 .post(`/authenticate`)
                 .send({
-                    username: 'testuser@jõgeva.öö',
+                    username: `testuser${RUN}@jõgeva${RUN}.öö`,
                     password: asp,
                     scope: 'master'
                 })
@@ -249,7 +252,7 @@ describe('API tests', function () {
             const response = await server.get(`/users/${userId}/addresses`).expect(200);
             expect(response.body.success).to.be.true;
             expect(response.body.results.length).to.equal(1);
-            expect(response.body.results[0].address).to.equal('testuser@example.com');
+            expect(response.body.results[0].address).to.equal(`testuser${RUN}@example.com`);
             expect(response.body.results[0].main).to.be.true;
         });
 
@@ -257,7 +260,7 @@ describe('API tests', function () {
             const response1 = await server
                 .post(`/users/${userId}/addresses`)
                 .send({
-                    address: 'alias1@example.com',
+                    address: `alias1${RUN}@example.com`,
                     main: true,
                     metaData: {
                         tere: 123
@@ -269,7 +272,7 @@ describe('API tests', function () {
             const response2 = await server
                 .post(`/users/${userId}/addresses`)
                 .send({
-                    address: 'alias2@example.com'
+                    address: `alias2${RUN}@example.com`
                 })
                 .expect(200);
             expect(response2.body.success).to.be.true;
@@ -279,7 +282,7 @@ describe('API tests', function () {
             const response = await server.get(`/users/${userId}`).expect(200);
             expect(response.body.success).to.be.true;
             expect(response.body.id).to.equal(userId);
-            expect(response.body.address).to.equal('alias1@example.com');
+            expect(response.body.address).to.equal(`alias1${RUN}@example.com`);
         });
 
         it('should GET /users/:user/addresses expect success / (updated listing)', async () => {
@@ -290,15 +293,15 @@ describe('API tests', function () {
 
             response.body.results.sort((a, b) => a.id.localeCompare(b.id));
 
-            expect(response.body.results[0].address).to.equal('testuser@example.com');
+            expect(response.body.results[0].address).to.equal(`testuser${RUN}@example.com`);
             expect(response.body.results[0].main).to.be.false;
 
-            expect(response.body.results[1].address).to.equal('alias1@example.com');
+            expect(response.body.results[1].address).to.equal(`alias1${RUN}@example.com`);
             expect(response.body.results[1].main).to.be.true;
             expect(response.body.results[1].metaData).to.not.exist;
 
             // no metaData present
-            expect(response.body.results[2].address).to.equal('alias2@example.com');
+            expect(response.body.results[2].address).to.equal(`alias2${RUN}@example.com`);
             expect(response.body.results[2].main).to.be.false;
 
             address = response.body.results[2];
@@ -315,7 +318,7 @@ describe('API tests', function () {
             expect(response.body.results.length).to.equal(2);
             response.body.results.sort((a, b) => a.id.localeCompare(b.id));
 
-            expect(response.body.results[1].address).to.equal('alias1@example.com');
+            expect(response.body.results[1].address).to.equal(`alias1${RUN}@example.com`);
             expect(response.body.results[1].main).to.be.true;
             expect(response.body.results[1].metaData.tere).to.equal(123);
 
@@ -334,10 +337,10 @@ describe('API tests', function () {
             expect(response.body.results.length).to.equal(2);
             response.body.results.sort((a, b) => a.id.localeCompare(b.id));
 
-            expect(response.body.results[0].address).to.equal('testuser@example.com');
+            expect(response.body.results[0].address).to.equal(`testuser${RUN}@example.com`);
             expect(response.body.results[0].main).to.be.false;
 
-            expect(response.body.results[1].address).to.equal('alias1@example.com');
+            expect(response.body.results[1].address).to.equal(`alias1${RUN}@example.com`);
             expect(response.body.results[1].main).to.be.true;
         });
 
@@ -348,7 +351,7 @@ describe('API tests', function () {
                 const response = await server
                     .post(`/addresses/forwarded`)
                     .send({
-                        address: 'my.new.address@example.com',
+                        address: `my.new.address${RUN}@example.com`,
                         targets: ['my.old.address@example.com', 'smtp://mx2.zone.eu:25'],
                         forwards: 500,
                         metaData: {
@@ -482,7 +485,7 @@ describe('API tests', function () {
     });
 
     describe('domainaccess', () => {
-        let tag = 'account:123';
+        let tag = `account:${RUN}`;
         let domain;
 
         it('should POST /domainaccess/:tag/:action expect success / action: block', async () => {
@@ -563,7 +566,7 @@ describe('API tests', function () {
             const message = {
                 from: {
                     name: 'test tester',
-                    address: 'testuser@example.com'
+                    address: `testuser${RUN}@example.com`
                 },
                 subject: 'hello world',
                 text: 'Hello hello world!',
@@ -602,7 +605,7 @@ describe('API tests', function () {
             const message = {
                 from: {
                     name: 'test tester',
-                    address: 'testuser@example.com'
+                    address: `testuser${RUN}@example.com`
                 },
                 subject: 'attachment disposition',
                 text: 'Hello hello world!',
@@ -639,7 +642,7 @@ describe('API tests', function () {
             const message = {
                 from: {
                     name: 'test tester',
-                    address: 'testuser@example.com'
+                    address: `testuser${RUN}@example.com`
                 },
                 subject: 'attachment disposition utf8',
                 text: 'Hello hello world!',
@@ -834,6 +837,9 @@ describe('API tests', function () {
             expect(updateResponse.body.code).to.equal('NotEnoughPrivileges');
             expect(updateResponse.body.error).to.be.a('string').and.not.empty;
 
+            const deleteResponse = await server.delete(`/users/${otherUserId}/outbound/${submitResponse.body.queueId}`).expect(403);
+            expect(deleteResponse.body.code).to.equal('NotEnoughPrivileges');
+
             await server.delete(`/users/${userId}/outbound/${submitResponse.body.queueId}`).expect(200);
             await server.delete(`/users/${otherUserId}`).expect(200);
         });
@@ -858,20 +864,26 @@ describe('API tests', function () {
                 html: '<p>Hello hello world!</p>'
             };
 
+            // a global setting: restored afterwards, later suites and runs share it
+            const previous = (await server.get('/settings/const:max:rcpt_to').expect(200)).body.value;
             const settingsResponse = await server.post(`/settings/const:max:rcpt_to`).send({ value: 3 }).expect(200);
             expect(settingsResponse.body.success).to.be.true;
 
-            const response = await server.post(`/users/${userId}/mailboxes/${inbox}/messages`).send(message).expect(200);
-            expect(response.body.success).to.be.true;
-            expect(response.body.message.id).to.be.gt(0);
+            try {
+                const response = await server.post(`/users/${userId}/mailboxes/${inbox}/messages`).send(message).expect(200);
+                expect(response.body.success).to.be.true;
+                expect(response.body.message.id).to.be.gt(0);
 
-            let sendTime = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-            const submitResponse = await server
-                .post(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}/submit`)
-                .send({ sendTime })
-                .expect(403);
+                let sendTime = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+                const submitResponse = await server
+                    .post(`/users/${userId}/mailboxes/${inbox}/messages/${response.body.message.id}/submit`)
+                    .send({ sendTime })
+                    .expect(403);
 
-            expect(submitResponse.body.code).to.equal('TooMany');
+                expect(submitResponse.body.code).to.equal('TooMany');
+            } finally {
+                await server.post('/settings/const:max:rcpt_to').send({ value: previous }).expect(200);
+            }
         });
 
         it('should GET /users/:user/addressregister expect success', async () => {

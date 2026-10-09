@@ -14,10 +14,12 @@ const simpleParser = require('mailparser').simpleParser;
 const nodemailer = require('nodemailer');
 const { ImapFlow } = require('imapflow');
 
+const config = require('@zone-eu/wild-config');
+
 const transporter = nodemailer.createTransport({
     lmtp: true,
     host: '127.0.0.1',
-    port: 2424,
+    port: config.lmtp.port,
     logger: false,
     debug: false,
     tls: {
@@ -28,9 +30,13 @@ const transporter = nodemailer.createTransport({
 const expect = chai.expect;
 chai.config.includeStack = true;
 
-const URL = 'http://127.0.0.1:8080';
+const URL = `http://127.0.0.1:${config.api.port}`;
 const user2PubKey = fs.readFileSync(__dirname + '/fixtures/user2-public.key', 'utf-8');
 const user3PubKey = fs.readFileSync(__dirname + '/fixtures/user3-public.key', 'utf-8');
+
+// the suite can run again against a database that still holds an earlier run
+const RUN = Date.now().toString(36);
+const allRecipients = [1, 2, 3, 4, 5].map(i => `user${i}${RUN}@example.com`);
 
 describe('Send multiple messages', function () {
     this.timeout(100 * 1000); // eslint-disable-line
@@ -40,42 +46,42 @@ describe('Send multiple messages', function () {
     before(async () => {
         const users = [
             {
-                username: 'user1',
+                username: `user1${RUN}`,
                 password: 'secretpass',
-                address: 'user1@example.com',
+                address: `user1${RUN}@example.com`,
                 name: 'user1'
             },
             {
-                username: 'user2',
+                username: `user2${RUN}`,
                 password: 'secretpass',
-                address: 'user2@example.com',
+                address: `user2${RUN}@example.com`,
                 name: 'user2',
                 pubKey: user2PubKey,
                 encryptMessages: true,
                 encryptForwarded: true
             },
             {
-                username: 'user3',
+                username: `user3${RUN}`,
                 password: 'secretpass',
-                address: 'user3@example.com',
+                address: `user3${RUN}@example.com`,
                 name: 'user3',
                 pubKey: user3PubKey,
                 encryptMessages: true,
                 encryptForwarded: true
             },
             {
-                username: 'user4',
+                username: `user4${RUN}`,
                 password: 'secretpass',
-                address: 'user4@example.com',
+                address: `user4${RUN}@example.com`,
                 name: 'user4',
                 pubKey: user2PubKey,
                 encryptMessages: false,
                 encryptForwarded: true
             },
             {
-                username: 'user5',
+                username: `user5${RUN}`,
                 password: 'secretpass',
-                address: 'user5@example.com',
+                address: `user5${RUN}@example.com`,
                 name: 'user5'
             }
         ];
@@ -100,7 +106,7 @@ describe('Send multiple messages', function () {
     });
 
     it('Send mail to all users', async () => {
-        let recipients = ['user1@example.com', 'user2@example.com', 'user3@example.com', 'user4@example.com', 'user5@example.com'];
+        let recipients = [...allRecipients];
         let subject = 'Test ööö message [' + Date.now() + ']';
         const info = await transporter.sendMail({
             envelope: {
@@ -149,7 +155,7 @@ describe('Send multiple messages', function () {
                 }
             ]
         });
-        expect(info.accepted).to.deep.equal(['user1@example.com', 'user2@example.com', 'user3@example.com', 'user4@example.com', 'user5@example.com']);
+        expect(info.accepted).to.deep.equal(allRecipients);
 
         const getJson = async url => {
             const { body } = await request(url);
@@ -192,11 +198,11 @@ describe('Send multiple messages', function () {
         };
 
         const expectedRecipients = [
-            { address: 'user1@example.com', name: 'User #1' },
-            { address: 'user2@example.com', name: 'User #2' },
-            { address: 'user3@example.com', name: 'User #3' },
-            { address: 'user4@example.com', name: 'User #4' },
-            { address: 'user5@example.com', name: 'User #5' }
+            { address: `user1${RUN}@example.com`, name: 'User #1' },
+            { address: `user2${RUN}@example.com`, name: 'User #2' },
+            { address: `user3${RUN}@example.com`, name: 'User #3' },
+            { address: `user4${RUN}@example.com`, name: 'User #4' },
+            { address: `user5${RUN}@example.com`, name: 'User #5' }
         ];
 
         for (const user of [1, 4, 5]) {
@@ -210,14 +216,14 @@ describe('Send multiple messages', function () {
                 expect(hashA).equal(hashB);
             }
             expect(message.parsed.to.value).deep.equal(expectedRecipients);
-            expect(message.parsed.headers.get('delivered-to').value[0].address).equal('user' + user + '@example.com');
+            expect(message.parsed.headers.get('delivered-to').value[0].address).equal(`user${user}${RUN}@example.com`);
         }
 
         for (const user of [2, 3]) {
             const message = await getFirstMessage(userIds[user - 1]);
             expect(message.subject).to.equal(subject);
             expect(message.parsed.to.value).deep.equal(expectedRecipients);
-            expect(message.parsed.headers.get('delivered-to').value[0].address).equal('user' + user + '@example.com');
+            expect(message.parsed.headers.get('delivered-to').value[0].address).equal(`user${user}${RUN}@example.com`);
             expect(message.parsed.attachments.length).equal(2);
             expect(message.parsed.attachments[0].contentType).equal('application/pgp-encrypted');
             expect(message.parsed.attachments[0].content.toString()).equal('Version: 1\r\n');
@@ -245,10 +251,10 @@ describe('Send multiple messages', function () {
 
         const client = new ImapFlow({
             host: '127.0.0.1',
-            port: 9993,
+            port: config.imap.port,
             secure: true,
             auth: {
-                user: 'user4',
+                user: `user4${RUN}`,
                 pass: 'secretpass'
             },
             tls: {

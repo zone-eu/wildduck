@@ -10,6 +10,7 @@ chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+const { listAll } = require('./_helpers');
 
 describe('API DKIM', function () {
     let dkim;
@@ -102,10 +103,11 @@ describe('API DKIM', function () {
 
     it('should GET /dkim expect success', async () => {
         const response = await server.get(`/dkim`).expect(200);
-
         expect(response.body.success).to.be.true;
-        expect(response.body.results.length).to.equal(1);
-        expect(response.body.results.find(entry => entry.id === dkim)).to.exist;
+
+        // other suites keep keys of their own in the shared database
+        const results = await listAll(server, '/dkim');
+        expect(results.find(entry => entry.id === dkim)).to.exist;
     });
 
     it('should DELETE /dkim/:dkim expect success', async () => {

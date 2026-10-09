@@ -3,7 +3,6 @@
 
 'use strict';
 
-const crypto = require('crypto');
 const util = require('util');
 const supertest = require('supertest');
 const chai = require('chai');
@@ -11,6 +10,7 @@ const { ObjectId } = require('mongodb');
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
+const { connect, createRoleToken } = require('./_helpers');
 const AuditHandler = require('../../lib/audit-handler');
 const MessageHandler = require('../../lib/message-handler');
 const auditTask = util.promisify(require('../../lib/tasks/audit'));
@@ -30,44 +30,7 @@ describe('Audit API tests', function () {
     const createdUsers = [];
     const createdAudits = [];
 
-    const connectDatabase = async () => {
-        if (db.database && db.redis) {
-            return;
-        }
-
-        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
-    };
-
     const uniqueUsername = prefix => `${prefix}${Date.now()}${Math.random().toString(16).slice(2)}`;
-
-    const createRoleToken = async role => {
-        const accessToken = crypto.randomBytes(20).toString('hex');
-        const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-        const tokenData = {
-            user: 'root',
-            role,
-            ttl: 3600,
-            created: Date.now().toString()
-        };
-
-        tokenData.s = crypto
-            .createHmac('sha256', config.api.accessControl.secret)
-            .update(
-                JSON.stringify({
-                    token: accessToken,
-                    user: tokenData.user,
-                    role: tokenData.role
-                })
-            )
-            .digest('hex');
-
-        await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
-
-        return {
-            accessToken,
-            tokenHash
-        };
-    };
 
     const createUser = async prefix => {
         const username = uniqueUsername(prefix);
@@ -208,7 +171,7 @@ describe('Audit API tests', function () {
     };
 
     before(async () => {
-        await connectDatabase();
+        await connect();
 
         auditHandler = new AuditHandler({
             database: db.database,
