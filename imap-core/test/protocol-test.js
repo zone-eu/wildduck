@@ -2704,6 +2704,20 @@ describe('IMAP Protocol integration tests', function () {
             });
         });
 
+        it('should refuse a top level folder with NOPERM when only a folder is shared', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/nope"', 'T3 CREATE "Other Users/nobody/nope"', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp)).to.be.true;
+                    expect(/^T3 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
         it('should remove an account grant with DELETEACL', function (done) {
             let cmds = [
                 'T1 LOGIN testuser pass',
