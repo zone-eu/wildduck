@@ -7,6 +7,7 @@ const chai = require('chai');
 const expect = chai.expect;
 const Duplex = require('stream').Duplex;
 const { IMAPConnection } = require('../lib/imap-connection');
+const idleCommand = require('../lib/commands/idle');
 
 chai.config.includeStack = true;
 
@@ -110,5 +111,24 @@ describe('IMAPConnection formatResponse', function () {
         });
 
         expect(response.attributes[1][1]).to.deep.equal([{ type: 'ATOM', value: '7' }]);
+    });
+});
+
+describe('IMAPConnection close', function () {
+    it('should clear the active IDLE timeout', function () {
+        const connection = createConnection();
+        connection._server.options.idleTimeout = 60 * 1000;
+        connection.send = () => {};
+        connection.emitNotifications = () => {};
+
+        idleCommand.handler.call(connection, {}, () => {}, () => {});
+
+        const idleTimeout = connection._idleTimeout;
+        expect(idleTimeout).to.exist;
+
+        connection._onClose();
+
+        expect(idleTimeout._destroyed).to.be.true;
+        expect(connection._idleTimeout).to.be.null;
     });
 });
