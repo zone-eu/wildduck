@@ -4,8 +4,9 @@ echo "which mongo"
 which mongo
 
 DBNAME="$1"
-# API endpoint of the running test server, overridable so the suite can run on a non-default port
-APIURL="http://127.0.0.1:${2:-8080}"
+# API endpoint of the running test server: the second argument, else the port wild-config
+# picks up for the server (APPCONF_api_port), else the default
+APIURL="http://127.0.0.1:${2:-${APPCONF_api_port:-8080}}"
 
 echo "Clearing DB"
 mongosh "$DBNAME" --eval "db.getCollectionNames().forEach(function(key){db[key].deleteMany({});})" > /dev/null

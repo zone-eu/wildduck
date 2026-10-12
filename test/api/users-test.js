@@ -2,13 +2,13 @@
 
 'use strict';
 
-const crypto = require('crypto');
 const supertest = require('supertest');
 const chai = require('chai');
 const { once } = require('events');
 const BSON = require('bson');
 const { ExportStream } = require('../../lib/export');
 const db = require('../../lib/db');
+const { createRoleToken } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -36,38 +36,10 @@ const createImportBuffer = async entries => {
     return Buffer.concat(chunks);
 };
 
-const createRoleToken = async role => {
-    await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
-
-    const accessToken = crypto.randomBytes(20).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-    const tokenData = {
-        user: 'root',
-        role,
-        ttl: 3600,
-        created: Date.now().toString()
-    };
-
-    tokenData.s = crypto
-        .createHmac('sha256', config.api.accessControl.secret)
-        .update(
-            JSON.stringify({
-                token: accessToken,
-                user: tokenData.user,
-                role: tokenData.role
-            })
-        )
-        .digest('hex');
-
-    await db.redis.multi().hmset(`tn:token:${tokenHash}`, tokenData).expire(`tn:token:${tokenHash}`, Number(tokenData.ttl)).exec();
-
-    return {
-        accessToken,
-        tokenHash
-    };
-};
-
 describe('API Users', function () {
+    // the suite can run again against a database that still holds an earlier run
+    const RUN = Date.now().toString(36);
+
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     let user, user2, token;
@@ -76,9 +48,9 @@ describe('API Users', function () {
         const response = await server
             .post('/users')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 name: 'John Smith',
-                address: 'john@example.com',
+                address: `john${RUN}@example.com`,
                 password: 'secretvalue',
                 hashedPassword: false,
                 emptyAddress: false,
@@ -130,7 +102,7 @@ describe('API Users', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: 'secretvalue'
             })
             .expect(200);
@@ -138,10 +110,10 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body).to.deep.equal({
             success: true,
-            address: 'john@example.com',
+            address: `john${RUN}@example.com`,
             id: user,
             passwordPwned: true,
-            username: 'myuser2',
+            username: `myuser2${RUN}`,
             scope: 'master',
             require2fa: false,
             require2faEnabled: true,
@@ -153,7 +125,7 @@ describe('API Users', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: 'invalidpass'
             })
             .expect(403);
@@ -164,7 +136,7 @@ describe('API Users', function () {
         const response = await server
             .post('/users')
             .send({
-                username: 'ömyuser2',
+                username: `ömyuser2${RUN}`,
                 name: 'John Smith',
                 password: 'secretvalue'
             })
@@ -177,7 +149,7 @@ describe('API Users', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: 'secretvalue',
                 token: true
             })
@@ -200,7 +172,7 @@ describe('API Users', function () {
         const response = await server
             .post('/users')
             .send({
-                username: 'myuser2hash',
+                username: `myuser2hash${RUN}`,
                 name: 'John Smith',
                 // password: 'test',
                 password: '$argon2i$v=19$m=16,t=2,p=1$SFpGczI1bWV1RVRpYjNYaw$EBE/WnOGeWint3eQ+SQ7Sg',
@@ -214,7 +186,7 @@ describe('API Users', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2hash',
+                username: `myuser2hash${RUN}`,
                 password: 'test'
             })
             .expect(200);
@@ -222,10 +194,10 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body).to.deep.equal({
             success: true,
-            address: `myuser2hash@${os.hostname().toLowerCase()}`,
+            address: `myuser2hash${RUN}@${os.hostname().toLowerCase()}`,
             id: user2,
             passwordPwned: true,
-            username: 'myuser2hash',
+            username: `myuser2hash${RUN}`,
             scope: 'master',
             require2fa: false,
             require2faEnabled: false,
@@ -234,7 +206,7 @@ describe('API Users', function () {
     });
 
     it('should GET /users/resolve/{username} expect success', async () => {
-        const response = await server.get('/users/resolve/myuser2').expect(200);
+        const response = await server.get(`/users/resolve/myuser2${RUN}`).expect(200);
 
         expect(response.body).to.deep.equal({
             success: true,
@@ -248,7 +220,7 @@ describe('API Users', function () {
     });
 
     it('should GET /users expect success', async () => {
-        const response = await server.get('/users?query=myuser2').expect(200);
+        const response = await server.get(`/users?query=myuser2${RUN}`).expect(200);
 
         expect(response.body.success).to.be.true;
         expect(response.body.results.find(entry => entry.id === user)).to.exist;
@@ -348,7 +320,7 @@ describe('API Users', function () {
         const authResponse1 = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: 'secretvalue',
                 token: true
             })
@@ -362,7 +334,7 @@ describe('API Users', function () {
         const authResponse2 = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: 'secretvalue',
                 token: true
             })
@@ -432,7 +404,7 @@ describe('API Users', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: response.body.password
             })
             .expect(200);
@@ -440,9 +412,9 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body).to.deep.equal({
             success: true,
-            address: 'john@example.com',
+            address: `john${RUN}@example.com`,
             id: user,
-            username: 'myuser2',
+            username: `myuser2${RUN}`,
             scope: 'master',
             require2fa: false,
             require2faEnabled: false,
@@ -466,7 +438,7 @@ describe('API Users', function () {
         await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: response.body.password
             })
             .expect(403);
@@ -495,7 +467,7 @@ describe('API Users', function () {
         await server
             .post('/authenticate')
             .send({
-                username: 'myuser2',
+                username: `myuser2${RUN}`,
                 password: 'secretvalue'
             })
             .expect(403);
@@ -505,8 +477,8 @@ describe('API Users', function () {
         const response = await server.get(`/users/${user}/restore`).expect(200);
         expect(response.body.success).to.be.true;
 
-        expect(response.body.username).to.equal('myuser2');
-        expect(response.body.recoverableAddresses).to.deep.equal(['john@example.com']);
+        expect(response.body.username).to.equal(`myuser2${RUN}`);
+        expect(response.body.recoverableAddresses).to.deep.equal([`john${RUN}@example.com`]);
     });
 
     it('should POST /users/{user}/restore expect success', async () => {
@@ -514,16 +486,16 @@ describe('API Users', function () {
         expect(response.body.success).to.be.true;
 
         expect(response.body.addresses.recovered).to.gte(1);
-        expect(response.body.addresses.main).to.equal('john@example.com');
+        expect(response.body.addresses.main).to.equal(`john${RUN}@example.com`);
     });
 
     it('should POST /users expect success / with DES hash', async () => {
         const response = await server
             .post('/users')
             .send({
-                username: 'desuser',
+                username: `desuser${RUN}`,
                 name: 'Crypt Des',
-                address: 'des@example.com',
+                address: `des${RUN}@example.com`,
                 password: 'sBk81TlWxyZlc',
                 hashedPassword: true
             })
@@ -535,7 +507,7 @@ describe('API Users', function () {
         const authResponseSuccess = await server
             .post('/authenticate')
             .send({
-                username: 'desuser',
+                username: `desuser${RUN}`,
                 password: '12Mina34Ise56P.'
             })
             .expect(200);
@@ -544,7 +516,7 @@ describe('API Users', function () {
         const authResponseFail = await server
             .post('/authenticate')
             .send({
-                username: 'desuser',
+                username: `desuser${RUN}`,
                 password: 'wrongpass'
             })
             .expect(403);

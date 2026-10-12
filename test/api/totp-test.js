@@ -14,6 +14,9 @@ const config = require('@zone-eu/wild-config');
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 describe('API TOTP', function () {
+    // the suite can run again against a database that still holds an earlier run
+    const RUN = Date.now().toString(36);
+
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
     let user;
@@ -25,9 +28,9 @@ describe('API TOTP', function () {
         const response = await server
             .post('/users')
             .send({
-                username: 'totpnonceuser',
+                username: `totpnonceuser${RUN}`,
                 name: 'Totp Nonce User',
-                address: 'totpnonce@example.com',
+                address: `totpnonce${RUN}@example.com`,
                 password: 'totpsecretvalue'
             })
             .expect(200);
@@ -68,7 +71,7 @@ describe('API TOTP', function () {
         const response = await server
             .post('/authenticate')
             .send({
-                username: 'totpnonceuser',
+                username: `totpnonceuser${RUN}`,
                 password: 'totpsecretvalue',
                 token: true
             })
@@ -161,9 +164,9 @@ describe('API TOTP', function () {
         const createResponse = await server
             .post('/users')
             .send({
-                username: 'custom2fauser',
+                username: `custom2fauser${RUN}`,
                 name: 'Custom 2FA User',
-                address: 'custom2fa@example.com',
+                address: `custom2fa${RUN}@example.com`,
                 password: 'custom2fasecret'
             })
             .expect(200);
@@ -177,7 +180,7 @@ describe('API TOTP', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username: 'custom2fauser',
+                username: `custom2fauser${RUN}`,
                 password: 'custom2fasecret',
                 token: true
             })

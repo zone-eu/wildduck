@@ -102,3 +102,18 @@ after('Generate test overview table after all tests', async () => {
 
     console.log('These titles were not included in the overview as they are wrong format:', unsupportedTitles);
 });
+
+// The test server checks every reply of a documented route against its
+// response model (lib/fastify/response-contract.js). Anything it found during
+// the run is a model that does not match what the handler returns, or an
+// error reply without the {error, code} contract.
+// eslint-disable-next-line no-undef
+after('Check the replies against the response models', async () => {
+    const response = await server.get('/api-contract-violations');
+    const found = (response.body || []).map(
+        f => `${f.method} ${f.route} ${f.statusCode} ${f.path}: ${f.kind}${f.expected ? ` (${f.expected} -> ${f.actual})` : ''} x${f.count}`
+    );
+    if (found.length) {
+        throw new Error(`Replies that do not match their response model:\n${found.join('\n')}`);
+    }
+});
