@@ -27,13 +27,18 @@ Deletion sends per-message flag updates to connected clients. Label names are
 matched exactly by REST search, including leading and trailing whitespace.
 
 The REST message search `q` parameter also accepts `label:` to match an assigned
-label by its exact name. Label filters follow the same boolean rules as other
+label by its exact name or ID. A value containing exactly 24 hexadecimal characters
+is resolved as an ID, like mailbox searches, even when quoted. Other values are
+resolved as exact names. ID lookups only match active labels owned by the searched
+user. Label filters follow the same boolean rules as other
 search terms: terms are combined with `AND` by default, and `OR` can express
 alternatives.
 
 ```text
 label:Work OR label:Personal
 label:Work AND label:Urgent
+label:507f1f77bcf86cd799439011 OR label:Personal
+label:507f1f77bcf86cd799439011 AND label:Urgent
 ```
 
 Quote names that contain spaces. Quoted label names preserve exact whitespace
@@ -50,7 +55,7 @@ Prefix a label filter with `-` to exclude messages assigned that label:
 -label:Work
 ```
 
-An unknown label name or a label being deleted matches no messages. Its
+An unknown label name or ID, another user's label ID, or a label being deleted matches no messages. Its
 negated form therefore excludes nothing.
 
 IMAP `FETCH FLAGS` represents an assigned label as `$wdlabel$` followed by its
