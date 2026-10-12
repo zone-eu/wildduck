@@ -394,6 +394,8 @@ class IMAPConnection extends EventEmitter {
      */
     _onClose(/* hadError */) {
         clearTimeout(this._closingTimeout);
+        clearTimeout(this._idleTimeout);
+        this._idleTimeout = null;
 
         if (this._closed) {
             return;
