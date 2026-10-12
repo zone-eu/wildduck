@@ -83,11 +83,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
 
         handler.settingsHandler = { get: () => Promise.resolve(100) };
         handler.notifier = {
-            addEntries: (mailbox, entries, cb) => {
-                if (cb) {
-                    return cb();
-                }
-            },
+            addEntriesAsync: async () => {},
             fire: () => {}
         };
         handler.indexer = { getMaildata: () => ({ attachments: [], magic: 'new-magic' }) };
@@ -273,11 +269,7 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         };
 
         handler.notifier = {
-            addEntries: (mailbox, entries, cb) => {
-                if (cb) {
-                    return cb();
-                }
-            },
+            addEntriesAsync: async () => {},
             fire: () => {}
         };
 
@@ -426,10 +418,9 @@ describe('moveAsync label counter notifications', function () {
         };
         handler.settingsHandler = { get: async () => 100 };
         handler.notifier = {
-            addEntries(mailbox, entries, callback) {
+            async addEntriesAsync(mailbox, entries) {
                 const target = mailbox._id.equals(sourceMailbox) ? sourceEntries : targetEntries;
                 target.push(...entries);
-                callback();
             },
             fire() {}
         };

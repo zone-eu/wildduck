@@ -21,6 +21,9 @@ module.exports = {
         // esm only since v18, breaks the CommonJS CLI scripts in bin/
         'yargs',
 
+        // 1.0.11 needs @zone-eu/types 0.1.7, which requires the mongodb 7 driver (overrides pin types to 0.1.6)
+        '@zone-eu/wild-plugins',
+
         // new major upgrade requires rewrite
         'mongo-cursor-pagination',
         'accesscontrol',
