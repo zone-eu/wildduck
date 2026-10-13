@@ -37,6 +37,12 @@ const parseEvents = data =>
         })
         .filter(entry => entry);
 
+const getLatestJournalId = async (userId, db) => {
+    const latest = await db.database.collection('journal').findOne({ user: new ObjectId(userId) }, { sort: { _id: -1 } });
+    // no entries yet: replay from the very beginning
+    return latest ? latest._id : new ObjectId('000000000000000000000000');
+};
+
 describe('API Updates stream', function () {
     this.timeout(15000); // eslint-disable-line no-invalid-this
 
@@ -155,5 +161,212 @@ describe('API Updates stream', function () {
         expect(exists).to.exist;
         expect(exists.payload.mailbox).to.equal(inbox);
         expect(exists.id).to.be.a('string').that.is.not.empty;
+    });
+});
+
+describe('API Updates stream system flag counters', function () {
+    this.timeout(15000); // eslint-disable-line no-invalid-this
+
+    const runId = Date.now().toString(36);
+    const username = `flagstream-${runId}`;
+
+    let user;
+    let inbox;
+
+    const postMessage = async subject => {
+        const response = await server
+            .post(`/users/${user}/mailboxes/${inbox}/messages`)
+            .send({
+                unseen: true,
+                from: { address: 'flag-sender@example.com' },
+                to: [{ address: `${username}@web.zone.test` }],
+                subject,
+                text: 'Flag counter stream test'
+            })
+            .expect(200);
+        return response.body.message.id;
+    };
+
+    const updateMessage = (uid, changes) => server.put(`/users/${user}/mailboxes/${inbox}/messages/${uid}`).send(changes).expect(200);
+
+    before(async () => {
+        const userResponse = await server
+            .post('/users')
+            .send({
+                username,
+                password: 'secretpassword',
+                address: `${username}@web.zone.test`,
+                name: 'flag stream user'
+            })
+            .expect(200);
+        user = userResponse.body.id;
+
+        const mailboxesResponse = await server.get(`/users/${user}/mailboxes`).expect(200);
+        inbox = mailboxesResponse.body.results.find(entry => entry.path === 'INBOX').id;
+    });
+
+    after(async () => {
+        if (user) {
+            await server.delete(`/users/${user}`).expect(200);
+        }
+    });
+
+    it('replays FLAG_COUNTERS for flag and unseen changes and never emits FLAGGED_COUNTER', async () => {
+        const anchor = await getLatestJournalId(user, db);
+        const uidSeen = await postMessage(`Flag stream seen ${runId}`);
+        const uidFlagged = await postMessage(`Flag stream flagged ${runId}`);
+        await updateMessage(uidSeen, { seen: true });
+        await updateMessage(uidFlagged, { flagged: true });
+
+        const result = await readUpdatesStream(`/users/${user}/updates`, {
+            headers: { 'Last-Event-ID': anchor.toString() },
+            until: data => data.includes('"flag": "flagged"') && data.includes('"flag": "unread"'),
+            timeout: 10000
+        });
+        expect(result.statusCode).to.equal(200);
+
+        const events = parseEvents(result.data);
+        const flagged = events.filter(event => event.payload.command === 'FLAG_COUNTERS' && event.payload.flag === 'flagged');
+        const unread = events.filter(event => event.payload.command === 'FLAG_COUNTERS' && event.payload.flag === 'unread');
+
+        expect(flagged.length).to.equal(1);
+        expect(flagged[0].payload).to.include({ total: 1, unseen: 1 });
+        expect(unread.length).to.equal(1);
+        expect(unread[0].payload).to.include({ total: 1, unseen: 1 });
+
+        const counters = events.filter(event => event.payload.command === 'COUNTERS');
+        expect(counters.length).to.equal(1);
+        expect(counters[0].payload).to.include({ mailbox: inbox, total: 2, unseen: 1 });
+
+        expect(result.data).to.not.include('"command": "FLAGGED_COUNTER"');
+    });
+
+    it('replays the unread FLAG_COUNTERS when unseen mail is expunged or its mailbox is deleted', async () => {
+        const anchor = await getLatestJournalId(user, db);
+        const uid = await postMessage(`Flag stream expunge ${runId}`);
+
+        const tmpResponse = await server.post(`/users/${user}/mailboxes`).send({ path: `Tmp ${runId}` }).expect(200);
+        const tmpMailbox = tmpResponse.body.id;
+        await server
+            .post(`/users/${user}/mailboxes/${tmpMailbox}/messages`)
+            .send({
+                unseen: true,
+                from: { address: 'flag-sender@example.com' },
+                to: [{ address: `${username}@web.zone.test` }],
+                subject: `Flag stream mailbox delete ${runId}`,
+                text: 'Flag counter stream test'
+            })
+            .expect(200);
+
+        await server.delete(`/users/${user}/mailboxes/${inbox}/messages/${uid}`).expect(200);
+        await server.delete(`/users/${user}/mailboxes/${tmpMailbox}`).expect(200);
+
+        const result = await readUpdatesStream(`/users/${user}/updates`, {
+            headers: { 'Last-Event-ID': anchor.toString() },
+            until: data => data.includes('"flag": "unread"'),
+            timeout: 10000
+        });
+        expect(result.statusCode).to.equal(200);
+
+        const events = parseEvents(result.data);
+        const unread = events.filter(event => event.payload.command === 'FLAG_COUNTERS' && event.payload.flag === 'unread');
+        expect(unread.length).to.equal(1);
+        // the flagged-unseen message from the previous test is still in the account
+        expect(unread[0].payload).to.include({ total: 1, unseen: 1 });
+        expect(result.data).to.not.include('"command": "FLAGGED_COUNTER"');
+    });
+});
+
+describe('API Updates stream label counters', function () {
+    this.timeout(15000); // eslint-disable-line no-invalid-this
+
+    const runId = Date.now().toString(36);
+    const username = `labelstream-${runId}`;
+    const labelName = `Stream Label ${runId}`;
+
+    let user;
+    let inbox;
+    let labelId;
+
+    const postMessage = async subject => {
+        const response = await server
+            .post(`/users/${user}/mailboxes/${inbox}/messages`)
+            .send({
+                unseen: true,
+                from: { address: 'label-sender@example.com' },
+                to: [{ address: `${username}@web.zone.test` }],
+                subject,
+                text: 'Label counter stream test'
+            })
+            .expect(200);
+        return response.body.message.id;
+    };
+
+    before(async () => {
+        const userResponse = await server
+            .post('/users')
+            .send({
+                username,
+                password: 'secretpassword',
+                address: `${username}@web.zone.test`,
+                name: 'label stream user'
+            })
+            .expect(200);
+        user = userResponse.body.id;
+
+        const mailboxesResponse = await server.get(`/users/${user}/mailboxes`).expect(200);
+        inbox = mailboxesResponse.body.results.find(entry => entry.path === 'INBOX').id;
+
+        const labelResponse = await server.post(`/users/${user}/labels`).send({ name: labelName }).expect(200);
+        labelId = labelResponse.body.id;
+    });
+
+    after(async () => {
+        if (user) {
+            await server.delete(`/users/${user}`).expect(200);
+        }
+    });
+
+    it('replays LABEL_COUNTERS with the labelId alongside the label name', async () => {
+        const anchor = await getLatestJournalId(user, db);
+        const uid = await postMessage(`Label stream ${runId}`);
+        await server.put(`/users/${user}/mailboxes/${inbox}/messages/${uid}`).send({ labels: [labelName] }).expect(200);
+
+        const result = await readUpdatesStream(`/users/${user}/updates`, {
+            headers: { 'Last-Event-ID': anchor.toString() },
+            until: data => data.includes('"command": "LABEL_COUNTERS"'),
+            timeout: 10000
+        });
+        expect(result.statusCode).to.equal(200);
+
+        const events = parseEvents(result.data);
+        const labelEvents = events.filter(event => event.payload.command === 'LABEL_COUNTERS');
+        expect(labelEvents.length).to.equal(1);
+        expect(labelEvents[0].payload).to.include({ label: labelName, labelId, total: 1, unseen: 1 });
+        expect(labelEvents[0].payload.labelId).to.be.a('string');
+    });
+
+    it('replays LABEL_COUNTERS with the same labelId after a label rename', async () => {
+        const renamedName = `${labelName} (renamed)`;
+        await server.put(`/users/${user}/labels/${labelId}`).send({ name: renamedName }).expect(200);
+        // the renamed name is tracked once its counters are read
+        await server.get(`/users/${user}/label-counters/${encodeURIComponent(renamedName)}`).expect(200);
+
+        const anchor = await getLatestJournalId(user, db);
+        const uid = await postMessage(`Label stream renamed ${runId}`);
+        await server.put(`/users/${user}/mailboxes/${inbox}/messages/${uid}`).send({ labels: [renamedName] }).expect(200);
+
+        const result = await readUpdatesStream(`/users/${user}/updates`, {
+            headers: { 'Last-Event-ID': anchor.toString() },
+            until: data => data.includes('"command": "LABEL_COUNTERS"'),
+            timeout: 10000
+        });
+        expect(result.statusCode).to.equal(200);
+
+        const events = parseEvents(result.data);
+        const labelEvents = events.filter(event => event.payload.command === 'LABEL_COUNTERS');
+        expect(labelEvents.length).to.equal(1);
+        expect(labelEvents[0].payload).to.include({ label: renamedName, labelId, total: 2, unseen: 2 });
+        expect(labelEvents[0].payload.labelId).to.be.a('string');
     });
 });

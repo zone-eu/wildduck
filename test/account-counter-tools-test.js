@@ -191,6 +191,158 @@ describe('Account counter tools', () => {
         expect(aggregates).to.equal(1);
     });
 
+    it('counts label messages in the searchable mailbox scope', async () => {
+        const user = new ObjectId();
+        const mailbox = new ObjectId();
+        const label = new ObjectId();
+        const db = {
+            redis: createRedis(),
+            database: {
+                collection(name) {
+                    if (name === 'mailboxes') {
+                        return {
+                            find(query) {
+                                expect(query).to.deep.equal({ user, specialUse: { $nin: ['\\Junk', '\\Trash'] } });
+                                return { toArray: async () => [{ _id: mailbox }] };
+                            }
+                        };
+                    }
+                    if (name === 'labels') {
+                        return {
+                            async findOne(query) {
+                                expect(query).to.deep.equal({ user, name: 'project', deleting: { $ne: true } });
+                                return { _id: label };
+                            }
+                        };
+                    }
+                    expect(name).to.equal('messages');
+                    return {
+                        async countDocuments(query, options) {
+                            expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, labels: label, searchable: true });
+                            expect(options.maxTimeMS).to.equal(consts.DB_MAX_TIME_MESSAGES_SEARCH);
+                            return 2;
+                        }
+                    };
+                }
+            }
+        };
+
+        expect(await tools.getLabelCounter(db, user, 'project', undefined, true)).to.equal(2);
+    });
+
+    it('separates label counter cache keys by searchable scope', async () => {
+        const user = new ObjectId();
+        const mailbox = new ObjectId();
+        const label = new ObjectId();
+        const redis = createRedis();
+        const queries = [];
+        let mailboxFinds = 0;
+        const db = {
+            redis,
+            database: {
+                collection(name) {
+                    if (name === 'mailboxes') {
+                        return {
+                            find(query) {
+                                mailboxFinds++;
+                                expect(query).to.deep.equal(
+                                    mailboxFinds === 2 ? { user } : { user, specialUse: { $nin: ['\\Junk', '\\Trash'] } }
+                                );
+                                return { toArray: async () => [{ _id: mailbox }] };
+                            }
+                        };
+                    }
+                    if (name === 'labels') {
+                        return {
+                            async findOne() {
+                                return { _id: label };
+                            }
+                        };
+                    }
+                    expect(name).to.equal('messages');
+                    return {
+                        async countDocuments(query) {
+                            queries.push(query);
+                            return queries.length;
+                        }
+                    };
+                }
+            }
+        };
+
+        expect(await tools.getLabelCounter(db, user, 'project', undefined, true)).to.equal(1);
+        expect(await tools.getLabelCounter(db, user, 'project', undefined, false)).to.equal(2);
+        expect(await tools.getLabelCounter(db, user, 'project', undefined, true)).to.equal(1);
+        expect(await tools.getLabelCounter(db, user, 'project', 'unseen', true)).to.equal(3);
+        expect(queries).to.deep.equal([
+            { mailbox: { $in: [mailbox] }, labels: label, searchable: true },
+            { mailbox: { $in: [mailbox] }, labels: label },
+            { mailbox: { $in: [mailbox] }, labels: label, unseen: true, searchable: true }
+        ]);
+        expect(mailboxFinds).to.equal(3);
+    });
+
+    it('loads all label counters with one aggregate in the searchable scope', async () => {
+        const user = new ObjectId();
+        const mailbox = new ObjectId();
+        const labels = [
+            { _id: new ObjectId(), name: 'Finance' },
+            { _id: new ObjectId(), name: 'Work Projects' }
+        ];
+        const db = {
+            redis: createRedis(),
+            database: {
+                collection(name) {
+                    if (name === 'labels') {
+                        return {
+                            find() {
+                                return {
+                                    sort() {
+                                        return this;
+                                    },
+                                    async toArray() {
+                                        return labels;
+                                    }
+                                };
+                            }
+                        };
+                    }
+                    if (name === 'mailboxes') {
+                        return {
+                            find(query) {
+                                expect(query).to.deep.equal({ user, specialUse: { $nin: ['\\Junk', '\\Trash'] } });
+                                return { toArray: async () => [{ _id: mailbox }] };
+                            }
+                        };
+                    }
+                    expect(name).to.equal('messages');
+                    return {
+                        aggregate(pipeline, options) {
+                            expect(pipeline[0]).to.deep.equal({
+                                $match: {
+                                    mailbox: { $in: [mailbox] },
+                                    labels: { $in: labels.map(label => label._id) },
+                                    searchable: true
+                                }
+                            });
+                            expect(options.maxTimeMS).to.equal(consts.DB_MAX_TIME_MESSAGES_SEARCH);
+                            return {
+                                async toArray() {
+                                    return [{ _id: labels[0]._id, total: 3, unseen: 2 }];
+                                }
+                            };
+                        }
+                    };
+                }
+            }
+        };
+
+        expect(await tools.getUserLabels(db, user, true, true)).to.deep.equal([
+            { id: labels[0]._id.toString(), name: 'Finance', metaData: undefined, total: 3, unseen: 2 },
+            { id: labels[1]._id.toString(), name: 'Work Projects', metaData: undefined, total: 0, unseen: 0 }
+        ]);
+    });
+
     it('counts flagged and unread messages within the user mailbox scope', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
