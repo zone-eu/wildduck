@@ -191,16 +191,13 @@ describe('Account counter tools', () => {
         expect(aggregates).to.equal(1);
     });
 
-    it('counts each supported message flag within the user mailbox scope', async () => {
+    it('counts flagged and unread messages within the user mailbox scope', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const otherMailbox = new ObjectId();
         const expected = {
-            seen: { unseen: false },
-            answered: { flags: '\\Answered' },
             flagged: { flagged: true },
-            deleted: { undeleted: false },
-            draft: { draft: true }
+            unread: { unseen: true }
         };
 
         for (const [flag, condition] of Object.entries(expected)) {
@@ -210,12 +207,17 @@ describe('Account counter tools', () => {
                 database: {
                     collection(name) {
                         if (name === 'mailboxes') {
-                            return { find: () => ({ toArray: async () => [{ _id: mailbox }] }) };
+                            return {
+                                find(query) {
+                                    expect(query).to.deep.equal({ user, specialUse: { $nin: ['\\Junk', '\\Trash'] } });
+                                    return { toArray: async () => [{ _id: mailbox }] };
+                                }
+                            };
                         }
                         expect(name).to.equal('messages');
                         return {
                             async countDocuments(query) {
-                                expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, ...condition });
+                                expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, ...condition, searchable: true });
                                 expect(query.mailbox.$in).to.not.include(otherMailbox);
                                 return 4;
                             }
@@ -224,21 +226,28 @@ describe('Account counter tools', () => {
                 }
             };
 
-            expect(await tools.getFlagCounter(db, user, flag)).to.equal(4);
+            expect(await tools.getFlagCounter(db, user, flag, undefined, true)).to.equal(4);
         }
     });
 
-    it('adds unseen filtering, returns zero for seen and unseen, and keeps flag caches separate', async () => {
+    it('counts unread as unseen and separates cache keys by searchable scope', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const redis = createRedis();
         const queries = [];
+        let mailboxFinds = 0;
         const db = {
             redis,
             database: {
                 collection(name) {
                     if (name === 'mailboxes') {
-                        return { find: () => ({ toArray: async () => [{ _id: mailbox }] }) };
+                        return {
+                            find(query) {
+                                mailboxFinds++;
+                                expect(query).to.deep.equal(mailboxFinds === 2 ? { user } : { user, specialUse: { $nin: ['\\Junk', '\\Trash'] } });
+                                return { toArray: async () => [{ _id: mailbox }] };
+                            }
+                        };
                     }
                     expect(name).to.equal('messages');
                     return {
@@ -251,12 +260,13 @@ describe('Account counter tools', () => {
             }
         };
 
-        expect(await tools.getFlagCounter(db, user, 'flagged', 'unseen')).to.equal(1);
-        expect(await tools.getFlagCounter(db, user, 'draft', 'unseen')).to.equal(2);
-        expect(await tools.getFlagCounter(db, user, 'seen', 'unseen')).to.equal(0);
+        expect(await tools.getFlagCounter(db, user, 'flagged', undefined, true)).to.equal(1);
+        expect(await tools.getFlagCounter(db, user, 'flagged', undefined, false)).to.equal(2);
+        expect(await tools.getFlagCounter(db, user, 'unread', undefined, true)).to.equal(3);
         expect(queries).to.deep.equal([
-            { mailbox: { $in: [mailbox] }, flagged: true, unseen: true },
-            { mailbox: { $in: [mailbox] }, draft: true, unseen: true }
+            { mailbox: { $in: [mailbox] }, flagged: true, searchable: true },
+            { mailbox: { $in: [mailbox] }, flagged: true },
+            { mailbox: { $in: [mailbox] }, unseen: true, searchable: true }
         ]);
     });
 
@@ -269,7 +279,12 @@ describe('Account counter tools', () => {
             database: {
                 collection(name) {
                     if (name === 'mailboxes') {
-                        return { find: () => ({ toArray: async () => [{ _id: mailbox }] }) };
+                        return {
+                            find(query) {
+                                expect(query).to.deep.equal({ user, specialUse: { $nin: ['\\Junk', '\\Trash'] } });
+                                return { toArray: async () => [{ _id: mailbox }] };
+                            }
+                        };
                     }
                     return {
                         async countDocuments(value) {
@@ -281,8 +296,8 @@ describe('Account counter tools', () => {
             }
         };
 
-        expect(await tools.getFlaggedCounter(db, user)).to.equal(3);
-        expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, flagged: true });
+        expect(await tools.getFlaggedCounter(db, user, undefined, true)).to.equal(3);
+        expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, flagged: true, searchable: true });
         let error;
         try {
             await tools.getFlagCounter(db, user, 'Flagged');

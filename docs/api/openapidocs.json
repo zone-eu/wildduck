@@ -5055,8 +5055,18 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters across the user’s mailboxes for a system flag. Supported flags: seen, answered, flagged, deleted and draft. The unseen count for seen is always zero.",
+                "description": "Returns flagged or unread message counters. By default, excludes Junk, Trash and non-searchable messages.",
                 "parameters": [
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "searchable",
+                        "required": false,
+                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                    },
                     {
                         "schema": {
                             "type": "string",
@@ -5094,11 +5104,8 @@
                         "schema": {
                             "type": "string",
                             "enum": [
-                                "seen",
-                                "answered",
                                 "flagged",
-                                "deleted",
-                                "draft"
+                                "unread"
                             ]
                         },
                         "in": "path",
@@ -5153,8 +5160,18 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for flagged messages. Alias for flag-counters/flagged.",
+                "description": "Returns total and unseen counters for flagged messages. Alias for flag-counters/flagged; by default excludes Junk, Trash and non-searchable messages.",
                 "parameters": [
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "searchable",
+                        "required": false,
+                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                    },
                     {
                         "schema": {
                             "type": "string",
