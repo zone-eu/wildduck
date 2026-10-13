@@ -83,3 +83,90 @@ describe('Message search label validation', () => {
         });
     }
 });
+
+describe('Message search label resolution', () => {
+    const NO_MATCH = new ObjectId('0'.repeat(24));
+
+    // fake labels store: serves live documents by _id (id lookup) or by name (name lookup)
+    const createLabelsDb = records => {
+        const user = new ObjectId();
+        const live = record => !!record && record.deleting !== true;
+        return {
+            user,
+            db: {
+                users: {
+                    collection() {
+                        return {
+                            async findOne() {
+                                return { _id: user };
+                            }
+                        };
+                    }
+                },
+                database: {
+                    collection(collectionName) {
+                        expect(collectionName).to.equal('labels');
+                        return {
+                            async findOne(query) {
+                                let record;
+                                if (query._id) {
+                                    record = records.find(entry => entry._id.toString() === query._id.toString());
+                                } else if (query.name) {
+                                    record = records.find(entry => entry.name === query.name);
+                                }
+                                return live(record) ? { _id: record._id } : null;
+                            }
+                        };
+                    }
+                }
+            }
+        };
+    };
+
+    it('resolves the structured label filter by label id', async () => {
+        const labelId = new ObjectId();
+        const { user, db } = createLabelsDb([{ _id: labelId, name: 'Projects' }]);
+        const { filter } = await prepareSearchFilter(db, user, { label: labelId.toString() });
+        expect(filter.labels).to.equal(labelId);
+    });
+
+    it('prefers the label id over a label named with that id', async () => {
+        const labelId = new ObjectId();
+        const hexName = labelId.toString();
+        const { user, db } = createLabelsDb([
+            { _id: labelId, name: 'Real Label' },
+            { _id: new ObjectId(), name: hexName }
+        ]);
+        const { filter } = await prepareSearchFilter(db, user, { label: hexName });
+        expect(filter.labels).to.equal(labelId);
+    });
+
+    it('falls back to the name lookup when the label id does not exist', async () => {
+        const labelId = new ObjectId();
+        const hexName = new ObjectId().toString();
+        const { user, db } = createLabelsDb([{ _id: labelId, name: hexName }]);
+        const { filter } = await prepareSearchFilter(db, user, { label: hexName });
+        expect(filter.labels).to.equal(labelId);
+    });
+
+    it('falls back to the name lookup when the label id is being deleted', async () => {
+        const dyingLabelId = new ObjectId();
+        const hexName = dyingLabelId.toString();
+        const fallbackLabelId = new ObjectId();
+        const { user, db } = createLabelsDb([
+            { _id: dyingLabelId, name: 'Dying Label', deleting: true },
+            { _id: fallbackLabelId, name: hexName }
+        ]);
+        const { filter } = await prepareSearchFilter(db, user, { label: hexName });
+        expect(filter.labels).to.equal(fallbackLabelId);
+    });
+
+    it('keeps the no-results sentinel when neither id nor name resolves', async () => {
+        const labelId = new ObjectId();
+        const { user, db } = createLabelsDb([{ _id: labelId, name: 'Projects' }]);
+        const byId = await prepareSearchFilter(db, user, { label: new ObjectId().toString() });
+        expect(byId.filter.labels).to.deep.equal(NO_MATCH);
+        const byName = await prepareSearchFilter(db, user, { label: 'No Such Label' });
+        expect(byName.filter.labels).to.deep.equal(NO_MATCH);
+    });
+});

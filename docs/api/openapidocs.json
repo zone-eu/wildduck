@@ -6668,7 +6668,7 @@
                         "in": "query",
                         "name": "label",
                         "required": false,
-                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
+                        "description": "If set, then matches only messages that have this custom label set. Accepts either the label ID (a 24 character hex string) or the label name, which is matched exactly, including whitespace"
                     },
                     {
                         "schema": {
@@ -7244,7 +7244,7 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "maxLength": 256,
-                                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
+                                        "description": "If set, then matches only messages that have this custom label set. Accepts either the label ID (a 24 character hex string) or the label name, which is matched exactly, including whitespace"
                                     },
                                     "useAndSearch": {
                                         "type": "boolean",
