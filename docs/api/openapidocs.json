@@ -5048,6 +5048,104 @@
                 }
             }
         },
+        "/users/{user}/flag-counters/{flag}": {
+            "get": {
+                "operationId": "getFlagCounters",
+                "summary": "Get system flag counters",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Returns total and unseen counters across the user’s mailboxes for a system flag. Supported flags: seen, answered, flagged, deleted and draft. The unseen count for seen is always zero.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "seen",
+                                "answered",
+                                "flagged",
+                                "deleted",
+                                "draft"
+                            ]
+                        },
+                        "in": "path",
+                        "name": "flag",
+                        "required": true,
+                        "description": "System flag to count"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "FlagCounterResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "flag": {
+                                            "type": "string",
+                                            "description": "System flag name"
+                                        },
+                                        "total": {
+                                            "type": "number",
+                                            "description": "Total number of messages with this flag"
+                                        },
+                                        "unseen": {
+                                            "type": "number",
+                                            "description": "Unseen number of messages with this flag"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "flag",
+                                        "total",
+                                        "unseen"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/flagged-counter": {
             "get": {
                 "operationId": "getFlaggedCounter",
@@ -5055,7 +5153,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for flagged messages",
+                "description": "Returns total and unseen counters for flagged messages. Alias for flag-counters/flagged.",
                 "parameters": [
                     {
                         "schema": {
@@ -5106,11 +5204,11 @@
                                         },
                                         "total": {
                                             "type": "number",
-                                            "description": "Total number of flagged messages"
+                                            "description": "Total number of messages with this flag"
                                         },
                                         "unseen": {
                                             "type": "number",
-                                            "description": "Unseen number of flagged messages"
+                                            "description": "Unseen number of messages with this flag"
                                         }
                                     },
                                     "required": [
