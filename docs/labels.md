@@ -19,12 +19,20 @@ a label name register it automatically.
 
 `GET /users/:user/labels` lists `id`, `name`, and optional `metaData` for each
 label, including labels without messages. `?counters=true` adds `total` and
-`unseen`. `GET /users/:user/labels/:label` fetches one label by its ID, allowing
+`unseen`, counted over searchable mailboxes (Junk, Trash and non-searchable
+messages excluded) by default; the `searchable` query param defaults to `true`
+and `searchable=false` counts over the whole account. Counter cache keys are
+scope-aware, so the two scopes never serve each other's cached values.
+`GET /users/:user/label-counters/:label` returns the same `total` and `unseen`
+counters for one label, with the same `searchable` param.
+`GET /users/:user/labels/:label` fetches one label by its ID, allowing
 an IMAP client to resolve an ID seen in a flag. `PUT /users/:user/labels/:label`
 updates the name or metadata without changing the ID. `DELETE` on that route
 schedules removal of that label alone and its message and filter assignments.
-Deletion sends per-message flag updates to connected clients. Label names are
-matched exactly by REST search, including leading and trailing whitespace.
+Deletion sends per-message flag updates to connected clients. REST search
+resolves a label by its 24-character hex label ID as well as by its exact name,
+including leading and trailing whitespace, in the structured `label` filter and
+in the `label:` search keyword, which also supports negation.
 
 IMAP `FETCH FLAGS` represents an assigned label as `$wdlabel$` followed by its
 24-character lowercase ObjectId. For example, `$wdlabel$507f1f77bcf86cd799439011`.
