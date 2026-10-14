@@ -98,16 +98,24 @@ describe('API flag counters', function () {
         }
     });
 
-    it('returns flagged and unread counts in searchable mailboxes and supports the all-mailbox override', async () => {
-        for (const flag of ['flagged', 'unread']) {
+    it('returns system flag counts in searchable mailboxes and supports the all-mailbox override', async () => {
+        const searchableExpectations = {
+            seen: { total: 1, unseen: 0 },
+            answered: { total: 1, unseen: 1 },
+            flagged: { total: 1, unseen: 1 },
+            deleted: { total: 1, unseen: 1 },
+            draft: { total: 1, unseen: 1 },
+            unread: { total: 4, unseen: 4 }
+        };
+        for (const [flag, { total, unseen }] of Object.entries(searchableExpectations)) {
             const response = await request('GET', `/users/${user}/flag-counters/${flag}`);
             expect(response.statusCode).to.equal(200);
-            expect(response.json()).to.deep.equal({ success: true, flag, total: flag === 'flagged' ? 1 : 4, unseen: flag === 'flagged' ? 1 : 4 });
+            expect(response.json()).to.deep.equal({ success: true, flag, total, unseen });
         }
 
-        const all = await request('GET', `/users/${user}/flag-counters/flagged?searchable=false`);
-        expect(all.statusCode).to.equal(200);
-        expect(all.json()).to.deep.equal({ success: true, flag: 'flagged', total: 4, unseen: 4 });
+        const allFlagged = await request('GET', `/users/${user}/flag-counters/flagged?searchable=false`);
+        expect(allFlagged.statusCode).to.equal(200);
+        expect(allFlagged.json()).to.deep.equal({ success: true, flag: 'flagged', total: 4, unseen: 4 });
 
         const allUnread = await request('GET', `/users/${user}/flag-counters/unread?searchable=false`);
         expect(allUnread.statusCode).to.equal(200);
@@ -156,11 +164,6 @@ describe('API flag counters', function () {
         const invalid = await request('GET', `/users/${user}/flag-counters/other`);
         expect(invalid.statusCode).to.equal(400);
         expect(invalid.json()).to.include({ code: 'InputValidationError' });
-
-        for (const flag of ['seen', 'answered', 'deleted', 'draft']) {
-            const unsupported = await request('GET', `/users/${user}/flag-counters/${flag}`);
-            expect(unsupported.statusCode).to.equal(400);
-        }
 
         const invalidSearchable = await request('GET', `/users/${user}/flag-counters/flagged?searchable=maybe`);
         expect(invalidSearchable.statusCode).to.equal(400);

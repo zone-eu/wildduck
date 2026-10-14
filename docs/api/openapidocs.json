@@ -5075,7 +5075,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns flagged or unread message counters. By default, excludes Junk, Trash and non-searchable messages.",
+                "description": "Returns total and unseen counters for a system flag. Supported flags: seen, answered, flagged, deleted, draft and unread. By default, excludes Junk, Trash and non-searchable messages. The unseen count for seen is always zero.",
                 "parameters": [
                     {
                         "schema": {
@@ -5124,7 +5124,11 @@
                         "schema": {
                             "type": "string",
                             "enum": [
+                                "seen",
+                                "answered",
                                 "flagged",
+                                "deleted",
+                                "draft",
                                 "unread"
                             ]
                         },

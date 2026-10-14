@@ -458,4 +458,17 @@ describe('Account counter tools', () => {
         }
         expect(error).to.be.instanceOf(Error);
     });
+
+    it('returns zero for the unseen count of the seen flag without querying mailboxes or messages', async () => {
+        const user = new ObjectId();
+        const db = {
+            redis: createRedis(),
+            database: {
+                collection(name) {
+                    throw new Error(`unexpected collection lookup: ${name}`);
+                }
+            }
+        };
+        expect(await tools.getFlagCounter(db, user, 'seen', 'unseen', true)).to.equal(0);
+    });
 });
