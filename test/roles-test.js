@@ -49,7 +49,7 @@ describe('Roles', () => {
 
             // the fast path exists because accesscontrol normalizes its glob list once per row;
             // it is only correct while it answers what the library would
-            for (let resource of ['users', 'addresses', 'mailboxes', 'messages']) {
+            for (let resource of ['users', 'addresses', 'mailboxes', 'messages', 'labels']) {
                 let permission = roles.can('mcp:read').readOwn(resource);
 
                 expect(roles.filterFields(permission, sample), resource).to.deep.equal(permission.filter(sample));
@@ -123,6 +123,28 @@ describe('Roles', () => {
             expect(body).to.include({ success: true, total: 2, nextCursor: 'abc' });
             expect(body.results).to.have.length(2);
             body.results.forEach(result => expect(result).to.not.have.any.keys('user', 'metaData', 'headers'));
+        });
+
+        it('should preserve label listings and filter their fields with optional counters', () => {
+            let labelPermission = roles.can('mcp:read').readOwn('labels');
+            expect(labelPermission.granted).to.equal(true);
+
+            for (let counters of [{}, { total: 3, unseen: 1 }]) {
+                let label = { id: 'label-1', name: 'Work', ...counters };
+                let listing = { success: true, labels: [{ ...label, metaData: { private: true }, user: MESSAGE.user }] };
+
+                expect(roles.filterResponseBody(labelPermission, listing, 'labels')).to.deep.equal({ success: true, labels: [label] });
+                expect(listing.labels[0]).to.have.property('metaData');
+            }
+
+            expect(roles.filterResponseBody(labelPermission, { success: true, labels: [] }, 'labels')).to.deep.equal({ success: true, labels: [] });
+        });
+
+        it('should not treat a message with labels as a label listing', () => {
+            let body = roles.filterResponseBody(permission(), { success: true, ...MESSAGE, labels: ['Work'] });
+
+            expect(body).to.include({ success: true, id: 1, subject: 'Quarterly invoice' });
+            expect(body).to.not.have.any.keys('labels', 'user', 'metaData', 'headers', 'envelope');
         });
 
         it('should leave a value that is not a resource body untouched', () => {

@@ -133,7 +133,7 @@ One user may hold up to `MAX_MCP_TOKEN_COUNT` tokens. Minting and revoking are r
 
 ### Access level
 
-Every token stores an access level, resolved into `req.role` when it authenticates. Only `mcp:read` exists today, granting read access to that user's own account, addresses, mailboxes and messages, and nothing else. The level is defined in `config/roles.json` like every other role, including the field allowlist, so what an agent may see is declared in one place. The allowlist is applied by the API on the way out, not only by the MCP service, so the credential is bounded by it whatever client presents it.
+Every token stores an access level, resolved into `req.role` when it authenticates. Only `mcp:read` exists today, granting read access to that user's own account, addresses, mailboxes, labels and messages, and nothing else. The level is defined in `config/roles.json` like every other role, including the field allowlist, so what an agent may see is declared in one place. The allowlist is applied by the API on the way out, not only by the MCP service, so the credential is bounded by it whatever client presents it. Labels expose only their ID, name and optional total/unread counters, custom metadata is excluded.
 
 ## Client configuration
 

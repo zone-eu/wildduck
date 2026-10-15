@@ -191,12 +191,21 @@ describe('MCP service integration', function () {
     it('lists persistent labels with optional counters through the API', async () => {
         let label = await api('POST', `/users/${user.id}/labels`, { name: 'Empty MCP label', metaData: { private: true } });
         let listed = await client.callTool({ name: 'list_labels', arguments: {} });
-        expect(listed.isError).to.not.equal(true);
+        expect(listed.isError, JSON.stringify(listed.content)).to.not.equal(true);
         expect(listed.structuredContent.labels).to.deep.include({ id: label.id, name: 'Empty MCP label' });
 
         let counted = await client.callTool({ name: 'list_labels', arguments: { include_counters: true } });
-        expect(counted.isError).to.not.equal(true);
+        expect(counted.isError, JSON.stringify(counted.content)).to.not.equal(true);
         expect(counted.structuredContent.labels).to.deep.include({ id: label.id, name: 'Empty MCP label', total: 0, unseen: 0 });
+
+        // The API applies the same field allowlist even when the bearer is used directly.
+        for (let counters of [false, true]) {
+            let response = await authed(`/labels?counters=${counters}`);
+            expect(response.status).to.equal(200);
+            expect((await response.json()).labels).to.deep.equal([
+                { id: label.id, name: 'Empty MCP label', ...(counters ? { total: 0, unseen: 0 } : {}) }
+            ]);
+        }
     });
 
     it('returns a bounded, sanitized body and reads on from an offset', async () => {
@@ -262,6 +271,10 @@ describe('MCP service integration', function () {
             ['GET', '/addressregister?query=a'],
             ['GET', '/updates'],
             ['GET', '/mcp-tokens'],
+            ['GET', '/labels/507f191e810c19729de860ea'],
+            ['POST', '/labels'],
+            ['PUT', '/labels/507f191e810c19729de860ea'],
+            ['DELETE', '/labels/507f191e810c19729de860ea'],
             ['PUT', '/logout'],
             ['DELETE', `/mailboxes/${inbox.id}/messages/${uid}`]
         ]) {
