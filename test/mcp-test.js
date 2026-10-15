@@ -60,6 +60,9 @@ function createReader() {
         async listMessages() {
             return { total: 0, nextCursor: null, messages: [] };
         },
+        async listLabels() {
+            return [{ id: 'label-id', name: 'Work' }];
+        },
         async searchMessages() {
             return { total: 0, nextCursor: null, messages: [] };
         },
@@ -250,6 +253,7 @@ describe('Read-only MCP service', function () {
             expect(result.tools.map(tool => tool.name)).to.deep.equal([
                 'get_account',
                 'list_mailboxes',
+                'list_labels',
                 'list_messages',
                 'search_messages',
                 'get_message',
@@ -282,6 +286,10 @@ describe('Read-only MCP service', function () {
             let mailboxes = await client.callTool({ name: 'list_mailboxes', arguments: {} });
             expect(mailboxes.isError).not.to.equal(true);
             expect(mailboxes.structuredContent.mailboxes[0]).not.to.have.property('specialUse');
+
+            let labels = await client.callTool({ name: 'list_labels', arguments: {} });
+            expect(labels.isError).not.to.equal(true);
+            expect(labels.structuredContent.labels).to.deep.equal([{ id: 'label-id', name: 'Work' }]);
 
             let messages = await client.callTool({ name: 'list_messages', arguments: { mailbox: 'INBOX' } });
             expect(messages.isError).not.to.equal(true);

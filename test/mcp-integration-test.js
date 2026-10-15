@@ -155,6 +155,7 @@ describe('MCP service integration', function () {
             'get_account',
             'get_message',
             'get_message_text',
+            'list_labels',
             'list_mailboxes',
             'list_messages',
             'search_messages'
@@ -185,6 +186,17 @@ describe('MCP service integration', function () {
         expect(message).to.not.have.any.keys('user', 'outbound', 'metaData', 'forwardTargets');
 
         uid = message.uid;
+    });
+
+    it('lists persistent labels with optional counters through the API', async () => {
+        let label = await api('POST', `/users/${user.id}/labels`, { name: 'Empty MCP label', metaData: { private: true } });
+        let listed = await client.callTool({ name: 'list_labels', arguments: {} });
+        expect(listed.isError).to.not.equal(true);
+        expect(listed.structuredContent.labels).to.deep.include({ id: label.id, name: 'Empty MCP label' });
+
+        let counted = await client.callTool({ name: 'list_labels', arguments: { include_counters: true } });
+        expect(counted.isError).to.not.equal(true);
+        expect(counted.structuredContent.labels).to.deep.include({ id: label.id, name: 'Empty MCP label', total: 0, unseen: 0 });
     });
 
     it('returns a bounded, sanitized body and reads on from an offset', async () => {
