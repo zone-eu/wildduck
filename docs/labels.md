@@ -19,12 +19,27 @@ a label name register it automatically.
 
 `GET /users/:user/labels` lists `id`, `name`, and optional `metaData` for each
 label, including labels without messages. `?counters=true` adds `total` and
-`unseen`. `GET /users/:user/labels/:label` fetches one label by its ID, allowing
+`unseen`, counted over searchable mailboxes (Junk, Trash and non-searchable
+messages excluded) by default; the `searchable` query param defaults to `true`
+and `searchable=false` counts over the whole account. Counter cache keys are
+scope-aware, so the two scopes never serve each other's cached values.
+`GET /users/:user/label-counters/:label` returns the same `total` and `unseen`
+counters for one label, with the same `searchable` param.
+`GET /users/:user/labels/:label` fetches one label by its ID, allowing
 an IMAP client to resolve an ID seen in a flag. `PUT /users/:user/labels/:label`
 updates the name or metadata without changing the ID. `DELETE` on that route
 schedules removal of that label alone and its message and filter assignments.
 Deletion sends per-message flag updates to connected clients. Label names are
 matched exactly by REST search, including leading and trailing whitespace.
+
+Updates streams emit searchable `LABEL_COUNTERS` with `label`, `labelId`,
+`total`, and `unseen`. Active labels retain their ID when renamed; deleting
+labels are excluded from ID resolution. System counter events use
+`FLAG_COUNTERS` with `flag`, `total`, and `unseen` for `flagged` and `unread`.
+Unread has equal total
+and unseen counts. The REST flag-counter endpoint supports all six system
+flags (`seen`, `answered`, `flagged`, `deleted`, `draft`, and `unread`), with
+`unseen: 0` for `seen`.
 
 IMAP `FETCH FLAGS` represents an assigned label as `$wdlabel$` followed by its
 24-character lowercase ObjectId. For example, `$wdlabel$507f1f77bcf86cd799439011`.
