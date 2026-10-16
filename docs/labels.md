@@ -26,13 +26,20 @@ schedules removal of that label alone and its message and filter assignments.
 Deletion sends per-message flag updates to connected clients. Label names are
 matched exactly by REST search, including leading and trailing whitespace.
 
-The REST message search `q` parameter also accepts `label:` to match an assigned
-label by its exact name or ID. A value containing exactly 24 hexadecimal characters
-is resolved as an ID, like mailbox searches, even when quoted. Other values are
-resolved as exact names. ID lookups only match active labels owned by the searched
-user. Label filters follow the same boolean rules as other
-search terms: terms are combined with `AND` by default, and `OR` can express
-alternatives.
+REST message search accepts labels through both the structured `label` filter
+(a label name or ID) and the `q` parameter's `label:` term. For either form,
+an exact 24-hex value first resolves as an ID, but only when it identifies an
+active label owned by the searched user. If that ID is missing, belongs to
+another user, or is being deleted, search falls back to an exact label-name
+lookup, again restricted to active labels owned by the searched user. This
+allows a label whose name is 24 hexadecimal characters to match
+when no active owned ID takes precedence. If neither lookup matches, the filter
+matches no messages. Names preserve exact case and whitespace; they are not
+trimmed or case-folded.
+
+`label:` terms follow the boolean rules of other search terms: terms combine
+with `AND` by default, `OR` expresses alternatives, and a leading `-` negates
+the term.
 
 ```text
 label:Work OR label:Personal
