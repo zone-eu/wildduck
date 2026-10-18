@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.53.0](https://github.com/zone-eu/wildduck/compare/v1.52.0...v1.53.0) (2026-10-18)
+
+
+### Features
+
+* **api:** migrate the HTTP API from Restify + Joi to Fastify + JSON Schema ([#1131](https://github.com/zone-eu/wildduck/issues/1131)) ([c3f1484](https://github.com/zone-eu/wildduck/commit/c3f1484d003b5ed6bd8d1acb456aa2003086610a))
+
+
+### Bug Fixes
+
+* add agents.md with current state and dev ([#1201](https://github.com/zone-eu/wildduck/issues/1201)) ([4064397](https://github.com/zone-eu/wildduck/commit/4064397b839167cc89a9bf2fd66d5b22f5d115cf))
+* **attachments:** check base64 structure before decoding an incoming attachment ([a88367d](https://github.com/zone-eu/wildduck/commit/a88367d98256323f40f47ca4a58089e9fb03500c))
+* **imap:** clear IDLE timeout when connection closes ([#1199](https://github.com/zone-eu/wildduck/issues/1199)) ([#1203](https://github.com/zone-eu/wildduck/issues/1203)) ([6b7071d](https://github.com/zone-eu/wildduck/commit/6b7071d6528ba2729149a02420178f807ee09286))
+* trim the line ends of a DKIM body in linear time ([1936e2f](https://github.com/zone-eu/wildduck/commit/1936e2f912ce451e0b4cbc1846d4562e789bdbd6))
+
 ## [1.52.0](https://github.com/zone-eu/wildduck/compare/v1.51.4...v1.52.0) (2026-10-06)
 
 
