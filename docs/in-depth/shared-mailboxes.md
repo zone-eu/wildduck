@@ -195,5 +195,6 @@ which usernames exist on the server.
     support is enabled, as the namespace prefixes take over. Rename such folders before enabling.
 -   **POP3 is unaffected.** POP3 only ever exposes the INBOX of the authenticated user.
 -   Changes made through the HTTP API notify the sessions of the mailbox owner but not of other users sharing
-    the mailbox; changes made over IMAP notify everyone. Haraka and ZoneMTA hosts must run this fork's library
-    version, otherwise users of shared mailboxes do not receive real time notifications for incoming mail.
+    the mailbox; changes made over IMAP notify everyone. Haraka and ZoneMTA hosts must run a WildDuck library version
+    with ACL support, otherwise delivery still works but users of shared mailboxes do not receive real time
+    notifications for incoming mail.
