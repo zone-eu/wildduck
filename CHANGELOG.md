@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.53.0](https://github.com/zone-eu/wildduck/compare/v1.52.3...v1.53.0) (2026-10-19)
+
+
+### Features
+
+* **imap:** rebuild stored messages byte for byte with versioned MIME trees ([#1197](https://github.com/zone-eu/wildduck/issues/1197)) ([#1220](https://github.com/zone-eu/wildduck/issues/1220)) ([6edba74](https://github.com/zone-eu/wildduck/commit/6edba74798ffe3246c1ea7bcb26ed9a6e0d25428))
+
 ## [1.52.3](https://github.com/zone-eu/wildduck/compare/v1.52.2...v1.52.3) (2026-10-19)
 
 
