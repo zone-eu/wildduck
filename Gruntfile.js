@@ -10,6 +10,15 @@ module.exports = function (grunt) {
         stdout: true,
         stderr: true
     };
+    // a second server with ACL disabled, the default configuration of existing deployments. It answers
+    // on ports of its own, so waiting for it can never reach the main test server
+    const aclOffApiPort = 18080;
+    const aclOffEnv = {
+        ...process.env,
+        APPCONF_imap_acl_enabled: 'false',
+        APPCONF_api_port: String(aclOffApiPort),
+        APPCONF_imap_port: '19993'
+    };
     // imap-core tests that need no MongoDB, Redis or running server
     const imapUnitTests = [
         'imap-core/test/attachment-codec-test.js',
@@ -87,6 +96,13 @@ module.exports = function (grunt) {
                     async: true
                 }
             },
+            'server-acl-off': {
+                command: 'node server.js',
+                options: {
+                    async: true,
+                    execOptions: { env: aclOffEnv }
+                }
+            },
             'mocha-imap': {
                 command: `${mocha} "imap-core/test/**/*-test.js"`,
                 options: mochaOutput
@@ -104,9 +120,13 @@ module.exports = function (grunt) {
                 options: mochaOutput
             },
             'mocha-api': {
-                // the POP3 and unit files match the glob too, they already ran in their own targets
-                command: `${mocha} ${['test/pop3-*-test.js', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
+                // the POP3, unit and ACL-off files match the glob too, they run in their own targets
+                command: `${mocha} ${['test/pop3-*-test.js', 'test/acl-disabled-test.js', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
                 options: mochaOutput
+            },
+            'mocha-acl-off': {
+                command: `${mocha} test/acl-disabled-test.js`,
+                options: { ...mochaOutput, execOptions: { env: aclOffEnv } }
             },
             options: {
                 stdout: data => console.log(data.toString().trim()),
@@ -121,7 +141,7 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks('grunt-shell-spawn');
 
     // waits until the test server answers /health, instead of a fixed delay
-    grunt.registerTask('wait:server', 'Wait for the API server', function () {
+    grunt.registerTask('wait:server', 'Wait for the API server', function (port) {
         const done = this.async(); // eslint-disable-line no-invalid-this
         const config = require('@zone-eu/wild-config'); // eslint-disable-line global-require
         const deadline = Date.now() + 60 * 1000;
@@ -141,7 +161,7 @@ module.exports = function (grunt) {
         };
 
         check = () => {
-            const req = http.get({ host: '127.0.0.1', port: config.api.port, path: '/health', timeout: 2000 }, res => {
+            const req = http.get({ host: '127.0.0.1', port: Number(port) || config.api.port, path: '/health', timeout: 2000 }, res => {
                 let body = '';
                 res.on('data', chunk => (body += chunk));
                 res.on('end', () => {
@@ -165,8 +185,9 @@ module.exports = function (grunt) {
     // Tasks
     // mocha-imap globs every imap-core test, so the in-process ones must not be listed again here
     const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api'];
-    grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
-    grunt.registerTask('testonly', ['shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
+    const aclOffTests = ['shell:server-acl-off', `wait:server:${aclOffApiPort}`, 'shell:mocha-acl-off', 'shell:server-acl-off:kill'];
+    grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', ...mochaTests, 'shell:server:kill', ...aclOffTests]);
+    grunt.registerTask('testonly', ['shell:server', 'wait:server', ...mochaTests, 'shell:server:kill', ...aclOffTests]);
     // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
     grunt.registerTask('proto', ['shell:mocha-imap-unit', 'shell:mocha-pop3', 'shell:mocha-unit']);
 };
