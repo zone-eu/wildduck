@@ -1,8 +1,10 @@
 {
+    "last-release-sha": "f02b34cde8f0b6302a24de886c29ea83d79474df",
     "packages": {
         ".": {
             "release-type": "node",
             "package-name": "@zone-eu/wildduck",
+            "release-as": "1.52.1",
             "pull-request-title-pattern": "chore${scope}: release ${version} [skip-ci]",
             "include-component-in-tag": false,
             "draft": true,
