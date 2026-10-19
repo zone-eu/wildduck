@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.1](https://github.com/zone-eu/wildduck/compare/v1.51.4...v1.52.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* restore draft forwarding and submit fixes ([#1214](https://github.com/zone-eu/wildduck/issues/1214)) ([84ce949](https://github.com/zone-eu/wildduck/commit/84ce9495b6e386a2f6f8582dbf99bc6690ae98b4))
+
 ## [1.51.4](https://github.com/zone-eu/wildduck/compare/v1.51.3...v1.51.4) (2026-09-27)
 
 
