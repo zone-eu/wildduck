@@ -156,6 +156,12 @@ removing a domain from a group immediately hides existing grants that now cross 
 tenant scope are indistinguishable from users that do not exist, so grant management can not be used to probe
 which usernames exist on the server.
 
+The tenant of a user follows the domain of their primary address, which users can change themselves: the `user`
+role may add any unclaimed address, on any domain, over the HTTP API and make it the primary address. A user
+holding such a token can therefore move into another customer's tenant, see which usernames exist there and share
+folders with its users. Where users get `user` role tokens and tenants must stay apart, remove the `create` and
+`update` permissions of the `addresses` resource from the `user` role in `config/roles.json`.
+
 ## Semantics and limitations
 
 -   **Seen state is shared.** WildDuck stores `\Seen` per message, so one user reading a message marks it read
