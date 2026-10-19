@@ -26,7 +26,7 @@
     "license": "EUPL-1.2",
     "homepage": "https://wildduck.email/",
     "devDependencies": {
-        "@modelcontextprotocol/client": "2.1.0",
+        "@modelcontextprotocol/client": "2.2.0",
         "ajv": "8.20.0",
         "chai": "4.3.10",
         "docsify-cli": "5.0.0",
