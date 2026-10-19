@@ -87,6 +87,10 @@ only for one member with a folder grant of `lr`. Because rights are positive onl
 folder below the account default (down to hiding it, by withholding the `l` right) but can not deny it entirely
 while the account wide grant stands.
 
+`SETACL` modifiers act on the folder entry. On a folder covered only by the account wide grant, `+rights` and
+`-rights` start from the account rights and store the result as a folder grant, which from then on overrides the
+account wide grant for that folder.
+
 Account wide grants use the same commands as folder grants, addressed to the account node:
 
 ```
