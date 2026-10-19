@@ -2396,6 +2396,20 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should report the quota root of an owner when any grant holds the lookup or read right', function (done) {
+            // the insert-only grant is stored first, so a single row lookup would find it before the other one
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 SETACL INBOX seconduser i', 'T4 SETACL Projects seconduser lr', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 GETQUOTA "Other Users/testuser"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^\* QUOTA "Other Users\/testuser" \(STORAGE \d+ \d+\)/m.test(resp.toString())).to.be.true;
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
         it('should manage subscriptions of shared mailboxes', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
 
