@@ -172,7 +172,8 @@ which usernames exist on the server.
     original key holder. Consequently, sharing an encrypted mailbox shares ciphertext.
 -   **Moving between accounts is copy and expunge.** MOVE where source and destination belong to different users
     copies the messages into the target (with quota transfer and target encryption policy) and then expunges the
-    source messages without archiving them.
+    source messages without archiving them. A plain COPY into another account leaves the source as it is: only a
+    copy within the same account exempts a deleted message from archiving.
 -   **Flags are filtered by rights.** STORE ignores flag changes the user has no right for and only fails when
     nothing is permitted. Replacing the flag list preserves flag classes the user may not modify. APPEND and COPY
     silently drop flags the user has no right to set in the target mailbox.
