@@ -410,4 +410,21 @@ describe('ACL API tests', function () {
             expect(response.body.success).to.be.true;
         });
     });
+
+    describe('domain groups', function () {
+        it('should DELETE /domaingroups/{domain} expect failure / domain is not in a group', async () => {
+            const response = await server.delete('/domaingroups/ungrouped-example.com').expect(404);
+            expect(response.body.code).to.equal('DomainNotFound');
+        });
+
+        it('should DELETE /domaingroups/{domain} expect failure / invalid domain', async () => {
+            const response = await server.delete('/domaingroups/invalid_domain').expect(400);
+            expect(response.body.code).to.equal('InputValidationError');
+        });
+
+        it('should POST /domaingroups expect failure / invalid domain', async () => {
+            const response = await server.post('/domaingroups').send({ group: 'acltenant', domain: 'invalid_domain' }).expect(400);
+            expect(response.body.code).to.equal('InputValidationError');
+        });
+    });
 });
