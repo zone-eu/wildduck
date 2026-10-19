@@ -44,8 +44,7 @@ module.exports = {
 
         let flags = [].concat(command.attributes[pos + 2] || []).map(flag => ((flag && flag.value) || '').toString());
 
-        // false means the modifier was not given at all, 0 is a valid value with its own meaning
-        let unchangedSince = false;
+        let unchangedSince = 0;
         let silent = false;
 
         // extensions are available as the optional argument at index 1
@@ -56,8 +55,7 @@ module.exports = {
                 return callback(new Error('Invalid modifier for STORE'));
             }
             unchangedSince = Number(extensions[1]);
-            // RFC 7162 3.1.3: the modifier itself enables CONDSTORE, whatever the value is
-            if (!this.selected.condstoreEnabled) {
+            if (unchangedSince && !this.selected.condstoreEnabled) {
                 this.condstoreEnabled = this.selected.condstoreEnabled = true;
             }
         }
@@ -118,7 +116,7 @@ module.exports = {
             _flags: flags.join(', '),
             _store_action: action,
             _silent: silent ? 'yes' : '',
-            _modseq: unchangedSince === false ? '' : unchangedSince
+            _modseq: unchangedSince
         };
 
         this._server.onStore(
@@ -149,7 +147,7 @@ module.exports = {
                 if (modified && modified.length) {
                     logdata._modified = modified.length;
                     message = 'Conditional UID STORE failed';
-                } else if (message && unchangedSince !== false) {
+                } else if (message && unchangedSince) {
                     message = 'Conditional UID STORE completed';
                 }
 
@@ -163,8 +161,8 @@ module.exports = {
                         typeof success === 'string'
                             ? success.toUpperCase()
                             : modified && modified.length
-                              ? 'MODIFIED ' + imapTools.packMessageRange(modified)
-                              : false,
+                            ? 'MODIFIED ' + imapTools.packMessageRange(modified)
+                            : false,
                     message
                 });
             }

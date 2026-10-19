@@ -7,7 +7,6 @@
 const supertest = require('supertest');
 const chai = require('chai');
 const db = require('../../lib/db');
-const { connect } = require('./_helpers');
 const ObjectId = require('mongodb').ObjectId;
 const taskMailboxRetention = require('../../lib/tasks/mailbox-retention');
 
@@ -26,7 +25,7 @@ describe('Mailboxes tests', function () {
     let mailboxForPut;
 
     before(async () => {
-        await connect();
+        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
 
         // ensure that we have an existing user account
         const response = await server
@@ -993,7 +992,7 @@ describe('Mailboxes tests', function () {
         const response = await server.post(`/users/${user}/mailboxes`).send({ path, hidden: false }).expect(400);
 
         expect(response.body.code).to.eq('InputValidationError');
-        expect(response.body.error).to.eq('"path" contains an invalid value');
+        expect(response.body.error).to.eq('"path" with value "somepath/abc/" matches the inverted pattern: /\\/{2,}|\\/$/');
     });
 
     it('should PUT /users/{user}/mailboxes/{mailbox} expect failure / trailing slash', async () => {
@@ -1002,6 +1001,6 @@ describe('Mailboxes tests', function () {
         const response = await server.put(`/users/${user}/mailboxes/${mailboxForPut}`).send({ path, hidden: false }).expect(400);
 
         expect(response.body.code).to.eq('InputValidationError');
-        expect(response.body.error).to.eq('"path" contains an invalid value');
+        expect(response.body.error).to.eq('"path" with value "somepath/abc/" matches the inverted pattern: /\\/{2,}|\\/$/');
     });
 });

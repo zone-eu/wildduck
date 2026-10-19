@@ -21,16 +21,6 @@ let START_CHAR_LIST = [0x28, 0x3c, 0x5b]; // ['(', '<', '[']
  */
 module.exports = (response, isLogging) => {
     let output = new PassThrough();
-    // the literal being streamed and a way to stop waiting for it; destroying the output must release it,
-    // a pipe does not do that
-    let active;
-    let abandon;
-    output.once('close', () => {
-        if (active) {
-            active.destroy();
-            abandon(new Error('Response stream was closed'));
-        }
-    });
 
     let processStream = async () => {
         let start = (response.tag || '') + (response.command ? ' ' + response.command : '');
@@ -42,11 +32,6 @@ module.exports = (response, isLogging) => {
 
         // emits data to socket or pushes to queue if previous write is still being processed
         let emit = async (stream, expectedLength, startFrom, maxLength) => {
-            if (output.destroyed) {
-                // nobody is reading any more, stop building the response
-                throw new Error('Response stream was closed');
-            }
-
             if (resp.length) {
                 // emit queued response
                 output.write(Buffer.concat(resp));
@@ -65,30 +50,25 @@ module.exports = (response, isLogging) => {
             }
 
             return new Promise((resolve, reject) => {
+                expectedLength = maxLength ? Math.min(expectedLength, startFrom + maxLength) : expectedLength;
                 startFrom = startFrom || 0;
                 maxLength = maxLength || 0;
-                expectedLength = maxLength ? Math.min(expectedLength, startFrom + maxLength) : expectedLength;
 
-                // a limiter that has to pad or truncate means the announced literal length and the
-                // message bytes disagree. The literal stays well formed, the consumer gets told
-                let limiter;
                 if (stream.isLimited) {
                     // stream is already limited
-                    limiter = new LengthLimiter(expectedLength - startFrom, ' ', 0);
+                    let limiter = new LengthLimiter(expectedLength - startFrom, ' ', 0);
+                    stream.pipe(limiter).pipe(output, {
+                        end: false
+                    });
+                    limiter.once('end', () => resolve());
                 } else {
                     // force limites
-                    limiter = new LengthLimiter(expectedLength, ' ', startFrom);
+                    let limiter = new LengthLimiter(expectedLength, ' ', startFrom);
+                    stream.pipe(limiter).pipe(output, {
+                        end: false
+                    });
+                    limiter.once('end', () => resolve());
                 }
-                limiter.on('mismatch', info => output.emit('literalMismatch', info));
-                active = stream;
-                abandon = reject;
-                stream.pipe(limiter).pipe(output, {
-                    end: false
-                });
-                limiter.once('end', () => {
-                    active = null;
-                    resolve();
-                });
 
                 // pass errors to output
                 stream.once('error', reject);
@@ -168,13 +148,10 @@ module.exports = (response, isLogging) => {
                         nodeValue = nodeValue.toString();
                     }
 
-                    let isStream = !!(nodeValue && typeof nodeValue.pipe === 'function');
                     let len;
-                    // the bytes the literal is made of, so the announced octet count can not
-                    // disagree with what is written (RFC 3501 4.3)
-                    let buf = null;
 
-                    if (isStream) {
+                    // Figure out correct byte length
+                    if (nodeValue && typeof nodeValue.pipe === 'function') {
                         len = node.expectedLength || 0;
                         if (node.startFrom) {
                             len -= node.startFrom;
@@ -183,8 +160,7 @@ module.exports = (response, isLogging) => {
                             len = Math.min(len, node.maxLength);
                         }
                     } else {
-                        buf = Buffer.isBuffer(nodeValue) ? nodeValue : Buffer.from((nodeValue || '').toString(), 'binary');
-                        len = buf.length;
+                        len = (nodeValue || '').toString().length;
                     }
 
                     if (isLogging) {
@@ -192,33 +168,26 @@ module.exports = (response, isLogging) => {
                     } else {
                         resp.push(Buffer.from('{' + Math.max(len, 0) + '}\r\n'));
 
-                        if (isStream) {
+                        if (nodeValue && typeof nodeValue.pipe === 'function') {
+                            //value is a stream object
                             // emit existing string before passing the stream
                             await emit(nodeValue, node.expectedLength, node.startFrom, node.maxLength);
+                        } else if (Buffer.isBuffer(nodeValue)) {
+                            resp.push(nodeValue);
                         } else {
-                            resp.push(buf);
+                            resp.push(Buffer.from((nodeValue || '').toString('binary'), 'binary'));
                         }
                     }
                     break;
                 }
-                case 'STRING': {
-                    if (isLogging && node.value && node.value.length > 20) {
+                case 'STRING':
+                    if (isLogging && node.value.length > 20) {
                         resp.push(Buffer.from('"(* ' + node.value.length + 'B string *)"'));
-                        break;
+                    } else {
+                        // JSON.stringify conveniently adds enclosing quotes and escapes any "\ occurrences
+                        resp.push(Buffer.from(JSON.stringify((node.value || '').toString('binary')), 'binary'));
                     }
-
-                    // RFC 3501 9 only allows DQUOTE and backslash to be escaped inside a quoted
-                    // string, so a value that holds CR or LF has to go out as a literal instead
-                    let value = (node.value || '').toString('binary');
-                    if (imapFormalSyntax.needsLiteral(value)) {
-                        resp.push(Buffer.from('{' + Buffer.byteLength(value, 'binary') + '}\r\n', 'binary'));
-                        resp.push(Buffer.from(value, 'binary'));
-                        break;
-                    }
-
-                    resp.push(Buffer.from(imapFormalSyntax.quote(value), 'binary'));
                     break;
-                }
 
                 case 'TEXT':
                 case 'SEQUENCE':
@@ -237,8 +206,8 @@ module.exports = (response, isLogging) => {
                 case 'SECTION': {
                     val = (node.value || '').toString();
 
-                    if (imapFormalSyntax.needsQuoting(val)) {
-                        val = imapFormalSyntax.quote(val);
+                    if (imapFormalSyntax.verify(val.charAt(0) === '\\' ? val.substr(1) : val, imapFormalSyntax['ATOM-CHAR']()) >= 0) {
+                        val = JSON.stringify(val);
                     }
 
                     resp.push(Buffer.from(val));
@@ -272,9 +241,7 @@ module.exports = (response, isLogging) => {
                 output.end();
             })
             .catch(err => {
-                if (!output.destroyed) {
-                    output.emit('error', err);
-                }
+                output.emit('error', err);
             });
     });
 

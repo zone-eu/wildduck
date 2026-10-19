@@ -87,14 +87,15 @@ module.exports = {
                 logdata._response = success;
                 this._server.loggelf(logdata);
 
-                // RFC 6851 4.4: "If at least one message was moved, the server MUST send the updated
-                // per-mailbox modification sequence using the HIGHESTMODSEQ response code ... in the
-                // tagged or untagged OK response." The tagged OK already carries COPYUID
-                if (info && info.highestModseq) {
-                    imapTools.sendHighestModseq(this, info.highestModseq);
-                }
-
-                let code = imapTools.getCopyUidCode(success, info);
+                let code =
+                    typeof success === 'string'
+                        ? success.toUpperCase()
+                        : 'COPYUID ' +
+                          info.uidValidity +
+                          ' ' +
+                          imapTools.packMessageRange(info.sourceUid) +
+                          ' ' +
+                          imapTools.packMessageRange(info.destinationUid);
 
                 callback(null, {
                     response: success === true ? 'OK' : 'NO',

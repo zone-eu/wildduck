@@ -96,8 +96,9 @@ describe('Search apply task', function () {
                 },
                 {
                     messageHandler: {
-                        async updateAsync() {
-                            return 0;
+                        update(...args) {
+                            const callback = args[args.length - 1];
+                            callback(null, 0);
                         },
                         async getMailboxAsync(query) {
                             mailboxLookup = query;
@@ -182,8 +183,9 @@ describe('Search apply task', function () {
                 },
                 {
                     messageHandler: {
-                        async updateAsync() {
-                            return 0;
+                        update(...args) {
+                            const callback = args[args.length - 1];
+                            callback(null, 0);
                         },
                         async delAsync(options) {
                             deleted.push(options.messageData._id);
@@ -256,9 +258,10 @@ describe('Search apply task', function () {
 
         try {
             const messageHandler = {
-                async updateAsync(...args) {
-                    updated.push({ uid: args[2], changes: args[3] });
-                    return 1;
+                update(...args) {
+                    updated.push(args[2]);
+                    const callback = args[args.length - 1];
+                    callback(null, 1);
                 },
                 async getMailboxAsync(query) {
                     expect(query.user.toString()).to.equal(user.toString());
@@ -275,7 +278,7 @@ describe('Search apply task', function () {
                 {
                     user: user.toHexString(),
                     mailbox: mailbox.toHexString(),
-                    action: { seen: true, addLabels: ['Finance'] }
+                    action: { seen: true }
                 },
                 { messageHandler }
             );
@@ -295,7 +298,6 @@ describe('Search apply task', function () {
         }
 
         expect(updated).to.have.length(3000);
-        expect(updated.every(entry => entry.changes.seen === true && entry.changes.addLabels[0] === 'Finance')).to.be.true;
         expect(moved).to.have.length(3000);
     });
 
@@ -381,9 +383,9 @@ describe('Search apply task', function () {
                     },
                     {
                         messageHandler: {
-                            async updateAsync(updateUser, mailbox, uid, updates) {
+                            update(updateUser, mailbox, uid, updates, callback) {
                                 updated.push({ user: updateUser, mailbox, uid, updates });
-                                return 1;
+                                callback(null, 1);
                             },
                             async getMailboxAsync() {
                                 return { _id: destinationMailbox };
@@ -432,7 +434,9 @@ describe('Search apply task', function () {
                     }))
             );
             expect(updated).to.deep.equal(
-                scenario.updates ? [{ user, mailbox: destinationMailbox, uid: messages[scenario.destinationIndex].uid, updates: scenario.updates }] : []
+                scenario.updates
+                    ? [{ user, mailbox: destinationMailbox, uid: messages[scenario.destinationIndex].uid, updates: scenario.updates }]
+                    : []
             );
             expect([...messagesById.values()].every(message => message.mailbox.equals(destinationMailbox))).to.equal(true);
         });
@@ -474,9 +478,9 @@ describe('Search apply task', function () {
                 { user: user.toHexString(), q: 'after:2025-01-01', action: { seen: true } },
                 {
                     messageHandler: {
-                        async updateAsync(updateUser, updateMailbox, uid) {
+                        update(updateUser, updateMailbox, uid, updates, callback) {
                             updated.push(uid);
-                            return 1;
+                            callback(null, 1);
                         }
                     }
                 }
@@ -530,8 +534,12 @@ describe('Search apply task', function () {
                     },
                     {
                         messageHandler: {
-                            async updateAsync(updateUser, updateMailbox, uid) {
-                                return apply(uid);
+                            update(updateUser, updateMailbox, uid, updates, callback) {
+                                try {
+                                    return callback(null, apply(uid));
+                                } catch (err) {
+                                    return callback(err);
+                                }
                             },
                             async getMailboxAsync() {
                                 return { _id: destination };

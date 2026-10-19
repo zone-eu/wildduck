@@ -7,17 +7,32 @@
 // tag XAPPLEPUSHSERVICE aps-version 2 aps-account-id 0715A26B-CA09-4730-A419-793000CA982E aps-device-token 2918390218931890821908309283098109381029309829018310983092892829 aps-subtopic com.apple.mobilemail mailboxes (INBOX Notes)
 //
 
-const imapTools = require('../imap-tools');
-
 const requiredKeys = ['aps-version', 'aps-account-id', 'aps-device-token', 'aps-subtopic', 'mailboxes'];
-
-const isTextNode = node => !!node && !Array.isArray(node) && ['ATOM', 'STRING'].includes(node.type);
 
 module.exports = {
     state: ['Authenticated', 'Selected'],
 
     // the input is a key-value set which is not supported by the default schema handler
     schema: false,
+
+    // [
+    //   { type: 'ATOM', value: 'aps-version' },
+    //   { type: 'ATOM', value: '2' },
+    //   { type: 'ATOM', value: 'aps-account-id' },
+    //   { type: 'ATOM', value: 'xxxxxxx' },
+    //   { type: 'ATOM', value: 'aps-device-token' },
+    //   {
+    //     type: 'ATOM',
+    //     value: 'xxxxxx'
+    //   },
+    //   { type: 'ATOM', value: 'aps-subtopic' },
+    //   { type: 'ATOM', value: 'com.apple.mobilemail' },
+    //   { type: 'ATOM', value: 'mailboxes' },
+    //   [
+    //     { type: 'STRING', value: 'Sent Mail' },
+    //     { type: 'STRING', value: 'INBOX' }
+    //   ]
+    // ]
 
     handler(command, callback) {
         // Command = {
@@ -45,6 +60,7 @@ module.exports = {
 
         const apsConfig = this._server.options.aps || {};
 
+        // Reject if not enabled
         if (!apsConfig.enabled) {
             return callback(null, {
                 response: 'BAD',
@@ -65,14 +81,12 @@ module.exports = {
         //   ]
         // }
 
-        const normalizeMailbox = value => imapTools.normalizeMailbox(Buffer.from(value || '', 'binary').toString(), !this.acceptUTF8Enabled);
-
         let data = {};
         let keyName;
         for (let i = 0, len = (command.attributes || []).length; i < len; i++) {
             let isKey = i % 2 === 0;
             let attr = command.attributes[i];
-            if (isKey && !isTextNode(attr)) {
+            if (isKey && !['ATOM', 'STRING'].includes(attr.type)) {
                 return callback(null, {
                     response: 'BAD',
                     message: `Invalid argument for ${command.command}`
@@ -84,20 +98,21 @@ module.exports = {
             }
 
             if (!requiredKeys.includes(keyName)) {
-                continue;
+                // skip unknown keys
             }
 
-            if (isTextNode(attr)) {
+            if (['ATOM', 'STRING'].includes(attr.type)) {
                 data[keyName] = (attr.value || '').toString();
             } else if (Array.isArray(attr) && keyName === 'mailboxes') {
-                data[keyName] = attr
+                let mailboxes = attr
                     .map(entry => {
-                        if (isTextNode(entry)) {
-                            return normalizeMailbox((entry.value || '').toString());
+                        if (['ATOM', 'STRING'].includes(entry.type)) {
+                            return (entry.value || '').toString();
                         }
                         return false;
                     })
                     .filter(name => name);
+                data[keyName] = mailboxes;
             }
         }
 
@@ -109,13 +124,6 @@ module.exports = {
                     message: `Missing required arguments for ${command.command}`
                 });
             }
-        }
-
-        if (data.mailboxes !== undefined && !Array.isArray(data.mailboxes)) {
-            return callback(null, {
-                response: 'BAD',
-                message: 'Mailboxes must be a list'
-            });
         }
 
         const version = data['aps-version'];
@@ -144,7 +152,7 @@ module.exports = {
             short_message: '[XAPPLEPUSHSERVICE]',
             _mail_action: 'xapplepushservice',
             _accountId: accountID,
-            _deviceToken: (deviceToken || '').slice(0, 4) + '...',
+            _deviceToken: deviceToken,
             _subTopic: subTopic,
             _mailboxes: mailboxes,
             _user: this.session.user.id.toString(),

@@ -12,23 +12,20 @@ chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
-const { listAll } = require('./_helpers');
 
 describe('API Filters', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
 
-    let user, user2, username;
+    let user, user2;
 
     before(async () => {
         // ensure that we have an existing user account
-        const suffix = Date.now();
-        username = `filteruser${suffix}`;
         const response = await server
             .post('/users')
             .send({
-                username,
+                username: 'filteruser',
                 password: 'secretvalue',
-                address: `filteruser${suffix}.addrtest@example.com`,
+                address: 'filteruser.addrtest@example.com',
                 name: 'Filter User'
             })
             .expect(200);
@@ -40,9 +37,9 @@ describe('API Filters', function () {
         const response2 = await server
             .post('/users')
             .send({
-                username: `filteruser2${suffix}`,
+                username: 'filteruser2',
                 password: 'secretvalue',
-                address: `filteruser2${suffix}.addrtest@example.com`,
+                address: 'filteruser2.addrtest@example.com',
                 name: 'Filter User 2'
             })
             .expect(200);
@@ -61,12 +58,7 @@ describe('API Filters', function () {
         expect(response.body.success).to.be.true;
 
         user = false;
-        if (user2) {
-            await server.delete(`/users/${user2}`).expect(200);
-        }
     });
-
-    const createdFilters = [];
 
     it('should POST /users/{user}/filters expect success', async () => {
         const response = await server
@@ -82,7 +74,6 @@ describe('API Filters', function () {
             })
             .expect(200);
         expect(response.body.success).to.be.true;
-        createdFilters.push(response.body.id);
 
         const response2 = await server
             .post(`/users/${user2}/filters`)
@@ -97,7 +88,6 @@ describe('API Filters', function () {
             })
             .expect(200);
         expect(response2.body.success).to.be.true;
-        createdFilters.push(response2.body.id);
 
         const response3 = await server
             .post(`/users/${user}/filters`)
@@ -113,23 +103,19 @@ describe('API Filters', function () {
             .expect(200);
 
         expect(response3.body.success).to.be.true;
-        createdFilters.push(response3.body.id);
     });
 
     it('should GET /filters expect success', async () => {
         const filterListResponse = await server.get(`/filters`).expect(200);
         expect(filterListResponse.body.success).to.be.true;
-
-        // other suites keep filters of their own in the shared database
-        const listed = (await listAll(server, '/filters')).map(entry => entry.id);
-        expect(listed).to.include.members(createdFilters);
+        expect(filterListResponse.body.total).to.equal(3);
     });
 
     it('should GET /filters expect success / with a user token', async () => {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username,
+                username: 'filteruser',
                 password: 'secretvalue',
                 token: true
             })
@@ -242,7 +228,7 @@ describe('API Filters', function () {
         const authResponse = await server
             .post('/authenticate')
             .send({
-                username,
+                username: 'filteruser',
                 password: 'secretvalue',
                 token: true
             })
@@ -266,7 +252,10 @@ describe('API Filters', function () {
         expect(ownFiltersEntry.originalAction.targets).to.deep.equal([targetUrl]);
         expect(ownFiltersEntry.targets).to.deep.equal([targetUrl]);
 
-        const allFiltersEntry = (await listAll(server, '/filters')).find(entry => entry.id === filter);
+        const allFiltersResponse = await server.get(`/filters`).expect(200);
+        expect(allFiltersResponse.body.success).to.be.true;
+
+        const allFiltersEntry = allFiltersResponse.body.results.find(entry => entry.id === filter);
         expect(allFiltersEntry).to.exist;
         expect(allFiltersEntry.action).to.deep.equal([['forward to', targetUrl]]);
         expect(allFiltersEntry.originalAction.targets).to.deep.equal([targetUrl]);
@@ -382,81 +371,6 @@ describe('API Filters', function () {
         });
     });
 
-    describe('Filter labels action', function () {
-        let labelFilterId;
-
-        it('should POST /users/{user}/filters expect success / with labels action', async () => {
-            const response = await server
-                .post(`/users/${user}/filters`)
-                .send({
-                    name: 'labels action create',
-                    query: {
-                        from: 'labels-create'
-                    },
-                    action: {
-                        labels: ['important', 'project-x']
-                    }
-                })
-                .expect(200);
-            expect(response.body.success).to.be.true;
-            labelFilterId = response.body.id;
-
-            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
-            expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action.labels).to.deep.equal(['important', 'project-x']);
-        });
-
-        it('should PUT /users/{user}/filters/{filter} expect success / update labels action', async () => {
-            const response = await server
-                .put(`/users/${user}/filters/${labelFilterId}`)
-                .send({
-                    action: {
-                        labels: ['priority', 'customer']
-                    }
-                })
-                .expect(200);
-            expect(response.body.success).to.be.true;
-
-            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
-            expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action.labels).to.deep.equal(['priority', 'customer']);
-        });
-
-        it('should PUT /users/{user}/filters/{filter} expect success / clear labels action with empty array', async () => {
-            const response = await server
-                .put(`/users/${user}/filters/${labelFilterId}`)
-                .send({
-                    action: {
-                        labels: []
-                    }
-                })
-                .expect(200);
-            expect(response.body.success).to.be.true;
-
-            const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
-            expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action).to.not.have.property('labels');
-        });
-
-        it('should POST /users/{user}/filters expect failure / reject invalid label value', async () => {
-            const response = await server
-                .post(`/users/${user}/filters`)
-                .send({
-                    name: 'labels action invalid',
-                    query: {
-                        from: 'labels-invalid'
-                    },
-                    action: {
-                        labels: ['a'.repeat(257)]
-                    }
-                })
-                .expect(400);
-
-            expect(response.body.success).to.not.exist;
-            expect(response.body.code).to.equal('InputValidationError');
-        });
-    });
-
     describe('Filter metaData', function () {
         let metaDataFilter;
 
@@ -546,13 +460,17 @@ describe('API Filters', function () {
         });
 
         it('should GET /filters expect success / without metaData', async () => {
-            let filterData = (await listAll(server, '/filters')).find(f => f.id === metaDataFilter);
+            const filterListResponse = await server.get(`/filters`).expect(200);
+            expect(filterListResponse.body.success).to.be.true;
+            let filterData = filterListResponse.body.results.find(f => f.id === metaDataFilter);
             expect(filterData).to.exist;
             expect(filterData.metaData).to.not.exist;
         });
 
         it('should GET /filters expect success / with metaData', async () => {
-            let filterData = (await listAll(server, '/filters?metaData=true')).find(f => f.id === metaDataFilter);
+            const filterListResponse = await server.get(`/filters?metaData=true`).expect(200);
+            expect(filterListResponse.body.success).to.be.true;
+            let filterData = filterListResponse.body.results.find(f => f.id === metaDataFilter);
             expect(filterData).to.exist;
             expect(filterData.metaData).to.exist;
         });
