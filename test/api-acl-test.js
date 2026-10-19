@@ -5,7 +5,9 @@
 
 const supertest = require('supertest');
 const chai = require('chai');
+const { ObjectId } = require('mongodb');
 const db = require('../lib/db');
+const userDeleteTask = require('../lib/tasks/user-delete');
 const { connect } = require('./api/_helpers');
 
 const expect = chai.expect;
@@ -371,6 +373,41 @@ describe('ACL API tests', function () {
 
             response = await server.get(`/users/${grantee}/acl/shared`).expect(200);
             expect(response.body.results.find(entryData => entryData.owner === team && entryData.account)).to.not.exist;
+        });
+    });
+
+    describe('user deletion', function () {
+        it('should kick grantees from the mailboxes of a deleted owner', async () => {
+            let response = await server
+                .post('/users')
+                .send({
+                    username: 'acldeletedowner',
+                    password: 'secretpass',
+                    address: 'acldeletedowner@example.com'
+                })
+                .expect(200);
+            const deletedOwner = response.body.id;
+
+            response = await server.get(`/users/${deletedOwner}/mailboxes`).expect(200);
+            const mailboxIds = response.body.results.map(mailboxData => mailboxData.id);
+            const ownerInbox = response.body.results.find(mailboxData => mailboxData.path === 'INBOX').id;
+
+            await server.put(`/users/${deletedOwner}/mailboxes/${ownerInbox}/acl`).send({ identifier: 'aclgrantee', rights: 'lr' }).expect(200);
+            await server.put(`/users/${deletedOwner}/acl/account`).send({ identifier: 'aclgrantee', rights: 'lr' }).expect(200);
+
+            // run the cleanup the way the tasks service does, with a notifier that records the kicks
+            await connect();
+            const dropped = new Set();
+            const notifier = { fire: (user, payload) => dropped.add(`${user}:${payload.command}:${payload.mailbox}`) };
+            await new Promise((resolve, reject) =>
+                userDeleteTask({ _id: new ObjectId() }, { user: new ObjectId(deletedOwner) }, { notifier }, err => (err ? reject(err) : resolve()))
+            );
+
+            // the account grant reaches every mailbox of the owner, the folder grant only repeats INBOX
+            expect([...dropped].sort()).to.deep.equal(mailboxIds.map(mailbox => `${grantee}:DROP:${mailbox}`).sort());
+
+            response = await server.delete(`/users/${deletedOwner}`).expect(200);
+            expect(response.body.success).to.be.true;
         });
     });
 });
