@@ -12,7 +12,6 @@ chai.config.includeStack = true;
 
 const config = require('@zone-eu/wild-config');
 const db = require('../../lib/db');
-const { connect } = require('./_helpers');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -61,7 +60,7 @@ describe('HIBP', function () {
         );
 
     before(async () => {
-        await connect();
+        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
 
         userId = await createUser({
             username,

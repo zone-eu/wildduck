@@ -4,8 +4,7 @@ module.exports = {
     state: ['Authenticated', 'Selected'],
 
     handler(command, callback, next) {
-        this._idleTimeout = setTimeout(() => {
-            this._idleTimeout = null;
+        let idleTimeout = setTimeout(() => {
             if (typeof this._server.onIdleEnd === 'function') {
                 this._server.onIdleEnd(this.selected && this.selected.mailbox, this.session);
             }
@@ -16,8 +15,7 @@ module.exports = {
         this._nextHandler = (token, next) => {
             this._nextHandler = false;
             this.idling = false;
-            clearTimeout(this._idleTimeout);
-            this._idleTimeout = null;
+            clearTimeout(idleTimeout);
             next(); // keep the parser flowing
 
             if (typeof this._server.onIdleEnd === 'function') {

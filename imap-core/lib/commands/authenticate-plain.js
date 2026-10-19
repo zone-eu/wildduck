@@ -40,8 +40,7 @@ module.exports = {
                 next(); // keep the parser flowing
                 authenticate(this, token, requireClientToken, callback);
             };
-            // RFC 3501 9: continue-req = "+" SP (resp-text / base64) CRLF, the space is not optional
-            this.send('+ ');
+            this.send('+');
             return next(); // resume input parser. Normally this is done by callback() but we need the next input sooner
         }
 
@@ -60,8 +59,7 @@ function authenticate(connection, token, requireClientToken, callback) {
     }
 
     let username = (data[1] || '').toString().trim();
-    // RFC 4616 2: "The authcid and passwd productions are form-free", SAFE includes SP
-    let password = (data[2] || '').toString();
+    let password = (data[2] || '').toString().trim();
     let clientToken = (data[3] || '').toString().trim() || false;
 
     // Do auth
@@ -91,12 +89,6 @@ function authenticate(connection, token, requireClientToken, callback) {
                     'PLAIN',
                     err.message
                 );
-
-                if (err.response) {
-                    // the handler built a complete response, keep its response code
-                    return callback(null, err);
-                }
-
                 return callback(err);
             }
 
@@ -146,9 +138,7 @@ function authenticate(connection, token, requireClientToken, callback) {
 
             callback(null, {
                 response: 'OK',
-                // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F), and a leading "[" would be read as
-                // a response code, so the client supplied username does not belong here
-                message: 'Logged in'
+                message: Buffer.from(username + ' authenticated').toString('binary')
             });
         }
     );

@@ -1,7 +1,5 @@
 'use strict';
 
-const imapTools = require('../imap-tools');
-
 module.exports = {
     state: 'Selected',
 
@@ -14,8 +12,11 @@ module.exports = {
             });
         }
 
+        // Do nothing if in read only mode
         if (this.selected.readOnly) {
-            return callback(null, imapTools.READ_ONLY_RESPONSE);
+            return callback(null, {
+                response: 'OK'
+            });
         }
 
         if (this.session.commandCounters[command.command.toUpperCase().trim()] > 1000) {

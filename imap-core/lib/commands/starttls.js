@@ -3,7 +3,8 @@
 // openssl s_client -starttls imap -crlf -connect localhost:1143
 
 const tls = require('tls');
-const imapTools = require('../imap-tools');
+
+const SOCKET_TIMEOUT = 30 * 60 * 1000;
 
 module.exports = {
     handler(command, callback) {
@@ -86,7 +87,7 @@ function upgrade(connection) {
     secureSocket.once('_tlsError', err => connection._onError(err));
     secureSocket.once('clientError', err => connection._onError(err));
 
-    secureSocket.setTimeout(imapTools.getSocketTimeout(connection), () => connection._onTimeout());
+    secureSocket.setTimeout(connection._server.options.socketTimeout || SOCKET_TIMEOUT, () => connection._onTimeout());
 
     secureSocket.on('secure', () => {
         // Check again if connection is still active

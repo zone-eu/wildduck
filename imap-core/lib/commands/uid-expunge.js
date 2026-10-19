@@ -21,8 +21,11 @@ module.exports = {
             });
         }
 
+        // Do nothing if in read only mode
         if (this.selected.readOnly) {
-            return callback(null, imapTools.READ_ONLY_RESPONSE);
+            return callback(null, {
+                response: 'OK'
+            });
         }
 
         let range = (command.attributes[0] && command.attributes[0].value) || '';

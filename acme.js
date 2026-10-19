@@ -1,36 +1,66 @@
 'use strict';
 
 const config = require('@zone-eu/wild-config');
-const fastify = require('fastify');
+const restify = require('restify');
 const log = require('npmlog');
+const logger = require('restify-logger');
 const db = require('./lib/db');
 const Gelf = require('gelf');
 const os = require('os');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
-const { attachNativeRoutes } = require('./lib/fastify/routes');
-const {
-    baseServerOptions,
-    attachRequestDecorations,
-    attachReplyDecorations,
-    attachPayloadStash,
-    attachResponseHeaders,
-    attachAccessLog,
-    attachErrorHandler
-} = require('./lib/fastify/bootstrap');
 
 const acmeRoutes = require('./lib/api/acme');
 
 let loggelf;
 
-/**
- * Starts the ACME challenge agent
- *
- * @returns {Promise<Object|false>} The fastify instance, or false if the agent is disabled
- */
-module.exports = async () => {
-    if (!config.acme || !config.acme.agent || !config.acme.agent.enabled) {
-        return false;
+const serverOptions = {
+    name: 'WildDuck ACME Agent',
+    strictRouting: true,
+    maxParamLength: 196
+};
+
+const server = restify.createServer(serverOptions);
+
+// res.pipe does not work if Gzip is enabled
+//server.use(restify.plugins.gzipResponse());
+
+server.use(
+    restify.plugins.queryParser({
+        allowDots: true,
+        mapParams: true
+    })
+);
+
+logger.token('user-ip', req => ((req.params && req.params.ip) || '').toString().substr(0, 40) || '-');
+logger.token('user-sess', req => (req.params && req.params.sess) || '-');
+
+logger.token('user', req => (req.user && req.user.toString()) || '-');
+logger.token('url', req => {
+    if (/\baccessToken=/.test(req.url)) {
+        return req.url.replace(/\baccessToken=[^&]+/g, 'accessToken=' + 'x'.repeat(6));
     }
+    return req.url;
+});
+
+server.use(
+    logger(':remote-addr :user [:user-ip/:user-sess] :method :url :status :time-spent :append', {
+        stream: {
+            write: message => {
+                message = (message || '').toString();
+                if (message) {
+                    log.http('ACME', message.replace('\n', '').trim());
+                }
+            }
+        }
+    })
+);
+
+module.exports = done => {
+    if (!config.acme || !config.acme.agent || !config.acme.agent.enabled) {
+        return setImmediate(() => done(null, false));
+    }
+
+    let started = false;
 
     const component = config.log.gelf.component || 'wildduck';
     const hostname = config.log.gelf.hostname || os.hostname();
@@ -67,29 +97,25 @@ module.exports = async () => {
         gelf.emit('gelf.log', message);
     };
 
-    const app = fastify(baseServerOptions());
+    server.loggelf = message => loggelf(message);
 
-    attachRequestDecorations(app);
-    attachReplyDecorations(app);
-    attachPayloadStash(app);
-    attachResponseHeaders(app, 'WildDuck ACME Agent');
-    attachAccessLog(app, 'ACME');
-    attachErrorHandler(app, 'ACME');
-    attachNativeRoutes(app, {});
+    acmeRoutes(db, server);
 
-    app.decorate('loggelf', message => loggelf(message));
+    server.on('error', err => {
+        if (!started) {
+            started = true;
+            return done(err);
+        }
 
-    // the ACME http-01 challenge route
-    acmeRoutes(db, app);
+        log.error('ACME', err);
+    });
 
-    // catch-all redirect for everything that is not a challenge request; the
-    // shared access log hook emits the log line (302 status) and the metric
-    app.setNotFoundHandler((request, reply) => reply.redirect(config.acme.agent.redirect, 302));
-
-    await app.listen({ port: config.acme.agent.port, host: config.acme.agent.host || '0.0.0.0' });
-
-    log.info('ACME', 'Server listening on %s:%s', config.acme.agent.host || '0.0.0.0', config.acme.agent.port);
-    log.info('ACME', 'Redirecting non-challenge requests to %s', config.acme.agent.redirect);
-
-    return app;
+    server.listen(config.acme.agent.port, config.acme.agent.host, () => {
+        if (started) {
+            return server.close();
+        }
+        started = true;
+        log.info('ACME', 'Server listening on %s:%s', config.acme.agent.host || '0.0.0.0', config.acme.agent.port);
+        done(null, server);
+    });
 };

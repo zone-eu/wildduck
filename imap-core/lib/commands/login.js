@@ -18,8 +18,7 @@ module.exports = {
 
     handler(command, callback) {
         let username = Buffer.from((command.attributes[0].value || '').toString().trim(), 'binary').toString();
-        // the password is taken as sent, RFC 3501 6.2.3 puts no transformation on it
-        let password = Buffer.from((command.attributes[1].value || '').toString(), 'binary').toString();
+        let password = Buffer.from((command.attributes[1].value || '').toString().trim(), 'binary').toString();
 
         if (!this.secure && !this._server.options.disableSTARTTLS && !this._server.options.ignoreSTARTTLS) {
             // Only allow authentication using TLS
@@ -129,9 +128,7 @@ module.exports = {
 
                 callback(null, {
                     response: 'OK',
-                    // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F), and a leading "[" would be read as
-                    // a response code, so the client supplied username does not belong here
-                    message: 'Logged in'
+                    message: Buffer.from(username + ' authenticated').toString('binary')
                 });
             }
         );
