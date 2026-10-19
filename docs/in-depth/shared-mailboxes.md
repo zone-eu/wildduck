@@ -182,9 +182,9 @@ which usernames exist on the server.
 -   **Created sub-mailboxes inherit folder grants.** A mailbox created inside a shared hierarchy belongs to the
     account owner and inherits the explicit folder grants of its parent (it is additionally covered by any
     account wide grant, as every mailbox of the owner is).
--   **Subscriptions are personal.** SUBSCRIBE and UNSUBSCRIBE of a folder shared by a folder grant affect only
-    the grantee's subscription, stored on the grant. Folders reached through an account wide grant share that
-    grant's single subscription state, so they are subscribed or unsubscribed as a set, not individually.
+-   **Subscriptions are personal.** SUBSCRIBE and UNSUBSCRIBE of a shared folder affect only the grantee's
+    subscription. It is stored on the folder grant, or for a folder reached through an account wide grant in a
+    list of unsubscribed folders on that grant, so new folders of the account start subscribed.
 -   **Revocation disconnects.** Removing rights from a user kicks their active sessions out of the mailbox, as
     does deleting a shared mailbox. Narrowing or removing an account wide grant kicks the grantee from every
     mailbox of the owner.

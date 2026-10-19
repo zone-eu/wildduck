@@ -2705,6 +2705,31 @@ describe('IMAP Protocol integration tests', function () {
             });
         });
 
+        it('should track subscriptions of account grant folders per folder', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 SETACL "Other Users/testuser" seconduser lrs', 'T4 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 UNSUBSCRIBE "Other Users/testuser/Projects"',
+                    'T3 LSUB "" "*"',
+                    'T4 SUBSCRIBE "Other Users/testuser/Projects"',
+                    'T5 LSUB "" "*"',
+                    'T6 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    let unsubscribed = resp.slice(resp.indexOf('T2 OK'), resp.indexOf('T3 OK'));
+                    let subscribed = resp.slice(resp.indexOf('T4 OK'), resp.indexOf('T5 OK'));
+                    // only the unsubscribed folder leaves LSUB, and SUBSCRIBE brings it back
+                    expect(unsubscribed.indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                    expect(unsubscribed.indexOf('"Other Users/testuser/Projects"') >= 0).to.be.false;
+                    expect(subscribed.indexOf('"Other Users/testuser/Projects"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
         it('should create a top level folder with the account create right', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrswipkxtea', 'T3 LOGOUT'];
 

@@ -290,7 +290,6 @@ describe('ACL API tests', function () {
             expect(response.body.results[0].user).to.equal(grantee);
             expect(response.body.results[0].username).to.equal('aclgrantee');
             expect(response.body.results[0].rights).to.equal('lrswipkxtea');
-            expect(response.body.results[0].subscribed).to.be.true;
         });
 
         it('should GET /users/{user}/acl/shared expect success / account grant entry', async () => {
