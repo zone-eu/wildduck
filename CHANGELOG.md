@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.2](https://github.com/zone-eu/wildduck/compare/v1.52.1...v1.52.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* Release/1.52.2 ([#1216](https://github.com/zone-eu/wildduck/issues/1216)) ([884ed8e](https://github.com/zone-eu/wildduck/commit/884ed8e1b99e4011fe79a6bfd8483c0352e70160))
+
 ## [1.52.1](https://github.com/zone-eu/wildduck/compare/v1.51.4...v1.52.1) (2026-10-19)
 
 
