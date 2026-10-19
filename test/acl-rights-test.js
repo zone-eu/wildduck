@@ -6,6 +6,8 @@ const chai = require('chai');
 const expect = chai.expect;
 chai.config.includeStack = true;
 
+const config = require('@zone-eu/wild-config');
+const { ObjectId } = require('mongodb');
 const acl = require('../lib/acl');
 
 describe('ACL rights helpers', function () {
@@ -85,6 +87,20 @@ describe('ACL rights helpers', function () {
         it('should not append virtual rights without member rights', function () {
             expect(acl.formatResponseRights('lrs')).to.equal('lrs');
             expect(acl.formatResponseRights('')).to.equal('');
+        });
+    });
+
+    describe('#asyncCheckTenantScope', function () {
+        it('should let every user share with the server scope', async function () {
+            let scope = config.imap.acl.scope;
+            config.imap.acl.scope = 'server';
+            try {
+                expect(acl.getTenantScope()).to.equal('server');
+                // nothing is looked up, so even unknown users share the tenant
+                expect(await acl.asyncCheckTenantScope(new ObjectId(), new ObjectId())).to.be.true;
+            } finally {
+                config.imap.acl.scope = scope;
+            }
         });
     });
 });

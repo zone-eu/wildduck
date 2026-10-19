@@ -50,6 +50,7 @@ module.exports = function (grunt) {
         'test/apn-client-test.js',
         'test/imap-notifier-apn-test.js',
         'test/xapplepushservice-validation-test.js',
+        'test/acl-rights-test.js',
         'test/certs-test.js',
         'test/checkrangequery-test.js',
         'test/create-decipher-test.js',
