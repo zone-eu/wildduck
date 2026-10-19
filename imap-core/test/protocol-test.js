@@ -2805,6 +2805,38 @@ describe('IMAP Protocol integration tests', function () {
             });
         });
 
+        it('should rename a folder to the top level with the account create right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 CREATE Projects/Sub', 'T4 SETACL "Other Users/testuser" seconduser lrswipkxtea', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 RENAME "Other Users/testuser/Projects/Sub" "Other Users/testuser/Sub"',
+                    'T3 LIST "" "Other Users/testuser/*"',
+                    'T4 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('"Other Users/testuser/Sub"') >= 0).to.be.true;
+                    expect(resp.indexOf('"Other Users/testuser/Projects/Sub"') < 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should refuse renaming a folder to the top level with NOPERM when only a folder is shared', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 CREATE Projects/Sub', 'T4 SETACL Projects/Sub seconduser lrx', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 RENAME "Other Users/testuser/Projects/Sub" "Other Users/testuser/Sub"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
         it('should refuse a top level folder with NOPERM when only a folder is shared', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
 
