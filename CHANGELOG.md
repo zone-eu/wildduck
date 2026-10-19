@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.3](https://github.com/zone-eu/wildduck/compare/v1.52.2...v1.52.3) (2026-10-19)
+
+
+### Bug Fixes
+
+* ZMS-5: Full XAPPLEPUSHSERVICE support ([#1090](https://github.com/zone-eu/wildduck/issues/1090)) ([#1218](https://github.com/zone-eu/wildduck/issues/1218)) ([63a0498](https://github.com/zone-eu/wildduck/commit/63a04985d0b5c3cae276d77d690715d279888ee4))
+
 ## [1.52.2](https://github.com/zone-eu/wildduck/compare/v1.52.1...v1.52.2) (2026-10-19)
 
 
