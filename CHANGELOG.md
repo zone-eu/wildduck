@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.53.1](https://github.com/zone-eu/wildduck/compare/v1.53.0...v1.53.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* ZMS-109: Add s3 storage support instead and alongside gridfs ([#1195](https://github.com/zone-eu/wildduck/issues/1195)) ([#1222](https://github.com/zone-eu/wildduck/issues/1222)) ([8775fa6](https://github.com/zone-eu/wildduck/commit/8775fa6106582094909ca91b4be8b84a823a1bdb))
+
 ## [1.53.0](https://github.com/zone-eu/wildduck/compare/v1.52.3...v1.53.0) (2026-10-19)
 
 
