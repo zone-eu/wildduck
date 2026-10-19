@@ -5,6 +5,8 @@
 
 const supertest = require('supertest');
 const chai = require('chai');
+const db = require('../lib/db');
+const { connect } = require('./api/_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -310,6 +312,38 @@ describe('ACL API tests', function () {
 
             response = await server.get(`/users/${team}/acl/account`).expect(200);
             expect(response.body.results[0].rights).to.equal('lrs');
+        });
+
+        it('should PUT /users/{user}/mailboxes/{mailbox}/acl expect success / narrowing the account rights kicks the grantee', async () => {
+            let response = await server.get(`/users/${team}/mailboxes`).expect(200);
+            const teamInbox = response.body.results.find(mailboxData => mailboxData.path === 'INBOX').id;
+
+            await connect();
+            const subscriber = db.redis.duplicate();
+            let timer;
+            try {
+                const dropped = new Promise((resolve, reject) => {
+                    timer = setTimeout(() => reject(new Error('No DROP notification for the grantee')), 3000);
+                    subscriber.on('message', (channel, message) => {
+                        const data = JSON.parse(message);
+                        if (data.e === grantee && data.p && data.p.command === 'DROP' && data.p.mailbox === teamInbox) {
+                            resolve();
+                        }
+                    });
+                });
+                await subscriber.subscribe('wd_events');
+
+                // the folder has no grant of its own, so the grantee holds the account rights lrs
+                response = await server.put(`/users/${team}/mailboxes/${teamInbox}/acl`).send({ identifier: 'aclgrantee', rights: 'l' }).expect(200);
+                expect(response.body.success).to.be.true;
+                await dropped;
+            } finally {
+                clearTimeout(timer);
+                subscriber.disconnect();
+            }
+
+            response = await server.delete(`/users/${team}/mailboxes/${teamInbox}/acl/${grantee}`).expect(200);
+            expect(response.body.success).to.be.true;
         });
 
         it('should PUT /users/{user}/acl/account expect failure / shared account as grantee', async () => {
