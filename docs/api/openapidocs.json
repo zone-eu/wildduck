@@ -18052,7 +18052,7 @@
                                                     },
                                                     "subscribed": {
                                                         "type": "boolean",
-                                                        "description": "Subscription status of the user for this mailbox"
+                                                        "description": "Subscription status of the user for this mailbox, not set for an account wide grant"
                                                     },
                                                     "created": {
                                                         "type": "string",
@@ -18065,8 +18065,7 @@
                                                     "path",
                                                     "owner",
                                                     "ownerName",
-                                                    "rights",
-                                                    "subscribed"
+                                                    "rights"
                                                 ]
                                             }
                                         }
@@ -18472,10 +18471,6 @@
                                                         "type": "string",
                                                         "description": "RFC 4314 rights characters"
                                                     },
-                                                    "subscribed": {
-                                                        "type": "boolean",
-                                                        "description": "Grantee subscription status for this account"
-                                                    },
                                                     "created": {
                                                         "type": "string",
                                                         "format": "date-time",
@@ -18485,8 +18480,7 @@
                                                 "required": [
                                                     "user",
                                                     "username",
-                                                    "rights",
-                                                    "subscribed"
+                                                    "rights"
                                                 ]
                                             }
                                         }
