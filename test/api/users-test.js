@@ -670,6 +670,21 @@ describe('API Users', function () {
                 .expect(403);
         });
 
+        it('should GET /users/{user} expect failure / tokens of a shared account', async () => {
+            // tokens an administrator mints for a shared account must not work either
+            const { accessToken, tokenHash } = await createRoleToken('user', sharedUser);
+            try {
+                const response = await server.get(`/users/${sharedUser}?accessToken=${accessToken}`).expect(403);
+                expect(response.body.code).to.equal('InvalidToken');
+            } finally {
+                await db.redis.del(`tn:token:${tokenHash}`);
+            }
+
+            const mcpToken = await server.post(`/users/${sharedUser}/mcp-tokens`).send({ description: 'agent' }).expect(200);
+            const mcpResponse = await server.get(`/users/${sharedUser}`).set('Authorization', `Bearer ${mcpToken.body.token}`).expect(403);
+            expect(mcpResponse.body.code).to.equal('InvalidToken');
+        });
+
         it('should DELETE /users/{user} expect success / shared account', async () => {
             const response = await server.delete(`/users/${sharedUser}`).expect(200);
             expect(response.body.success).to.be.true;
