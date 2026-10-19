@@ -880,7 +880,8 @@ function createApp(options = {}) {
         healthRoutes(db, app, loggelf);
         mcpTokensRoutes(app, mcpTokenHandler);
 
-        if (config.imap.acl && config.imap.acl.enabled) {
+        // a docs build registers them regardless, so the spec does not depend on the config it runs with
+        if ((config.imap.acl && config.imap.acl.enabled) || process.env.GENERATE_API_DOCS === 'true') {
             aclRoutes(db, app, notifier, loggelf);
             domaingroupsRoutes(db, app);
         }
