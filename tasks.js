@@ -561,7 +561,7 @@ function processTask(task, data, callback) {
             );
 
         case 'user-delete':
-            return taskUserDelete(task, data, { loggelf }, err => {
+            return taskUserDelete(task, data, { notifier: messageHandler.notifier, loggelf }, err => {
                 if (err) {
                     return callback(err);
                 }
