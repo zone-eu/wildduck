@@ -43,7 +43,7 @@ curl --silent -XPOST "$APIURL/users/$USERID/mailboxes/$INBOXID/messages?date=14-
 
 curl --silent -XPOST "$APIURL/users/$USERID/mailboxes/$INBOXID/messages?unseen=false" \
 	-H 'Content-type: message/rfc822' \
-	--data-binary "@fixtures/fix2.eml"
+	--data-binary "@fixtures/mimetorture.eml"
 
 curl --silent -XPOST "$APIURL/users/$USERID/mailboxes/$INBOXID/messages?unseen=false" \
 	-H 'Content-type: message/rfc822' \

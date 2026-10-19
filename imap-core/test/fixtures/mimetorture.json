@@ -1,58 +1,7 @@
 {
-    "childNodes": [{
-        "header": [
-            "Content-Type: text/plain; CHARSET=US-ASCII",
-            "Content-Transfer-Encoding: 8bit"
-        ],
-        "parsedHeader": {
-            "content-transfer-encoding": "8bit",
-            "content-type": {
-                "value": "text/plain",
-                "type": "text",
-                "subtype": "plain",
-                "params": {
-                    "charset": "US-ASCII"
-                },
-                "hasParams": true
-            }
-        },
-        "body": "Welcome to Ryan Finnie's MIME torture test.  This message was designed\r\nto introduce a couple of the newer features of MIME-aware MUAs, features\r\nthat have come around since the days of the original MIME torture test.\r\n\r\nJust to be clear, this message SUPPLEMENTS the original torture test,\r\nnot replaces it.  The original test is still very much valid these days,\r\nand new MUAs should strive to first pass the original test, then this\r\none.\r\n\r\nBy the way, the message/rfc822 parts have Content-Descriptions\r\ncontaining Futurama quotes.  Bonus points if the MUA display these\r\nsomewhere.\r\n\r\nHave fun!\r\n\r\nRyan Finnie\r\n",
-        "multipart": false,
-        "boundary": false,
-        "lineCount": 17,
-        "size": 617
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: I'll be whatever I wanna do. --Fry",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "I'll be whatever I wanna do. --Fry",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: plain jane message\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nMessage-Id: <1066973156.4264.42.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:25:56 -0700\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nSubject: plain jane message\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: text/plain\r\nMessage-Id: <1066973156.4264.42.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:25:56 -0700\r\nContent-Transfer-Encoding: 7bit\r\n\r\nThis is a plain text/plain message.  Nothing fancy here...",
-        "multipart": false,
-        "boundary": false,
-        "message": {
+    "childNodes": [
+        {
             "header": [
-                "Subject: plain jane message",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Message-Id: <1066973156.4264.42.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 22:25:56 -0700",
                 "Content-Type: text/plain; CHARSET=US-ASCII",
                 "Content-Transfer-Encoding: 8bit"
             ],
@@ -66,55 +15,50 @@
                         "charset": "US-ASCII"
                     },
                     "hasParams": true
-                },
-                "date": "23 Oct 2003 22:25:56 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066973156.4264.42.camel@localhost>",
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "plain jane message"
+                }
             },
-            "body": "Subject: plain jane message\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: text/plain\r\nMessage-Id: <1066973156.4264.42.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:25:56 -0700\r\nContent-Transfer-Encoding: 7bit\r\n\r\nThis is a plain text/plain message.  Nothing fancy here...",
+            "body": {
+                "$buffer": "V2VsY29tZSB0byBSeWFuIEZpbm5pZSdzIE1JTUUgdG9ydHVyZSB0ZXN0LiAgVGhpcyBtZXNzYWdlIHdhcyBkZXNpZ25lZA0KdG8gaW50cm9kdWNlIGEgY291cGxlIG9mIHRoZSBuZXdlciBmZWF0dXJlcyBvZiBNSU1FLWF3YXJlIE1VQXMsIGZlYXR1cmVzDQp0aGF0IGhhdmUgY29tZSBhcm91bmQgc2luY2UgdGhlIGRheXMgb2YgdGhlIG9yaWdpbmFsIE1JTUUgdG9ydHVyZSB0ZXN0Lg0KDQpKdXN0IHRvIGJlIGNsZWFyLCB0aGlzIG1lc3NhZ2UgU1VQUExFTUVOVFMgdGhlIG9yaWdpbmFsIHRvcnR1cmUgdGVzdCwNCm5vdCByZXBsYWNlcyBpdC4gIFRoZSBvcmlnaW5hbCB0ZXN0IGlzIHN0aWxsIHZlcnkgbXVjaCB2YWxpZCB0aGVzZSBkYXlzLA0KYW5kIG5ldyBNVUFzIHNob3VsZCBzdHJpdmUgdG8gZmlyc3QgcGFzcyB0aGUgb3JpZ2luYWwgdGVzdCwgdGhlbiB0aGlzDQpvbmUuDQoNCkJ5IHRoZSB3YXksIHRoZSBtZXNzYWdlL3JmYzgyMiBwYXJ0cyBoYXZlIENvbnRlbnQtRGVzY3JpcHRpb25zDQpjb250YWluaW5nIEZ1dHVyYW1hIHF1b3Rlcy4gIEJvbnVzIHBvaW50cyBpZiB0aGUgTVVBIGRpc3BsYXkgdGhlc2UNCnNvbWV3aGVyZS4NCg0KSGF2ZSBmdW4hDQoNClJ5YW4gRmlubmllDQo="
+            },
             "multipart": false,
             "boundary": false,
-            "lineCount": 10,
-            "size": 311
+            "lineCount": 16,
+            "size": 617
         },
-        "lineCount": 19,
-        "size": 582
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Would you kindly shut your noise-hole? --Bender",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: I'll be whatever I wanna do. --Fry",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "I'll be whatever I wanna do. --Fry",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
             },
-            "content-description": "Would you kindly shut your noise-hole? --Bender",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: messages inside messages inside...\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-9Brg7LoMERBrIDtMRose\"\r\nMessage-Id: <1066976111.4263.74.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 23:15:11 -0700\r\n\r\n\r\n--=-9Brg7LoMERBrIDtMRose\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nWhile a message/rfc822 part inside another message/rfc822 part in a\r\nmessage isn't too strange, 200 iterations of that would be.  The MUA\r\nshould have some sense when to stop looping through.\r\n\r\n--=-9Brg7LoMERBrIDtMRose\r\nContent-Disposition: inline\r\nContent-Description: At the risk of sounding negative, no. --Leela\r\nContent-Type: message/rfc822\r\n\r\nSubject: the original message\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-XFYecI7w+0shpolXq8bb\"\r\nMessage-Id: <1066975745.4263.70.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 23:09:05 -0700\r\n\r\n\r\n--=-XFYecI7w+0shpolXq8bb\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nby this point, I should be the 3rd layer deep!\r\n\r\nI also have an attachment.\r\n\r\n--=-XFYecI7w+0shpolXq8bb\r\nContent-Disposition: attachment; filename=foo.gz\r\nContent-Transfer-Encoding: base64\r\nContent-Type: application/x-gzip; NAME=foo.gz\r\n\r\nH4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n\r\n--=-XFYecI7w+0shpolXq8bb--\r\n\r\n--=-9Brg7LoMERBrIDtMRose--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
+            "body": {
+                "$buffer": "U3ViamVjdDogcGxhaW4gamFuZSBtZXNzYWdlDQpGcm9tOiBSeWFuIEZpbm5pZSA8cmZpbm5pZUBkb21haW4uZG9tPg0KVG86IGJvYkBkb21haW4uZG9tDQpNZXNzYWdlLUlkOiA8MTA2Njk3MzE1Ni40MjY0LjQyLmNhbWVsQGxvY2FsaG9zdD4NCk1pbWUtVmVyc2lvbjogMS4wDQpEYXRlOiAyMyBPY3QgMjAwMyAyMjoyNTo1NiAtMDcwMA0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBDSEFSU0VUPVVTLUFTQ0lJDQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA4Yml0DQoNClN1YmplY3Q6IHBsYWluIGphbmUgbWVzc2FnZQ0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluDQpNZXNzYWdlLUlkOiA8MTA2Njk3MzE1Ni40MjY0LjQyLmNhbWVsQGxvY2FsaG9zdD4NCk1pbWUtVmVyc2lvbjogMS4wDQpEYXRlOiAyMyBPY3QgMjAwMyAyMjoyNTo1NiAtMDcwMA0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogN2JpdA0KDQpUaGlzIGlzIGEgcGxhaW4gdGV4dC9wbGFpbiBtZXNzYWdlLiAgTm90aGluZyBmYW5jeSBoZXJlLi4u"
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
                 "header": [
+                    "Subject: plain jane message",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Message-Id: <1066973156.4264.42.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 22:25:56 -0700",
                     "Content-Type: text/plain; CHARSET=US-ASCII",
                     "Content-Transfer-Encoding: 8bit"
                 ],
@@ -128,39 +72,65 @@
                             "charset": "US-ASCII"
                         },
                         "hasParams": true
-                    }
-                },
-                "body": "While a message/rfc822 part inside another message/rfc822 part in a\r\nmessage isn't too strange, 200 iterations of that would be.  The MUA\r\nshould have some sense when to stop looping through.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 4,
-                "size": 193
-            }, {
-                "header": [
-                    "Content-Disposition: inline",
-                    "Content-Description: At the risk of sounding negative, no. --Leela",
-                    "Content-Type: message/rfc822"
-                ],
-                "parsedHeader": {
-                    "content-type": {
-                        "value": "message/rfc822",
-                        "type": "message",
-                        "subtype": "rfc822",
-                        "params": {}
                     },
-                    "content-description": "At the risk of sounding negative, no. --Leela",
-                    "content-disposition": {
-                        "value": "inline",
-                        "type": "inline",
-                        "subtype": "",
-                        "params": {}
-                    }
+                    "date": "23 Oct 2003 22:25:56 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066973156.4264.42.camel@localhost>",
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "plain jane message"
                 },
-                "body": "Subject: the original message\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-XFYecI7w+0shpolXq8bb\"\r\nMessage-Id: <1066975745.4263.70.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 23:09:05 -0700\r\n\r\n\r\n--=-XFYecI7w+0shpolXq8bb\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nby this point, I should be the 3rd layer deep!\r\n\r\nI also have an attachment.\r\n\r\n--=-XFYecI7w+0shpolXq8bb\r\nContent-Disposition: attachment; filename=foo.gz\r\nContent-Transfer-Encoding: base64\r\nContent-Type: application/x-gzip; NAME=foo.gz\r\n\r\nH4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n\r\n--=-XFYecI7w+0shpolXq8bb--\r\n",
+                "body": {
+                    "$buffer": "U3ViamVjdDogcGxhaW4gamFuZSBtZXNzYWdlDQpGcm9tOiBSeWFuIEZpbm5pZSA8cmZpbm5pZUBkb21haW4uZG9tPg0KVG86IGJvYkBkb21haW4uZG9tDQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW4NCk1lc3NhZ2UtSWQ6IDwxMDY2OTczMTU2LjQyNjQuNDIuY2FtZWxAbG9jYWxob3N0Pg0KTWltZS1WZXJzaW9uOiAxLjANCkRhdGU6IDIzIE9jdCAyMDAzIDIyOjI1OjU2IC0wNzAwDQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA3Yml0DQoNClRoaXMgaXMgYSBwbGFpbiB0ZXh0L3BsYWluIG1lc3NhZ2UuICBOb3RoaW5nIGZhbmN5IGhlcmUuLi4="
+                },
                 "multipart": false,
                 "boundary": false,
-                "message": {
-                    "childNodes": [{
+                "lineCount": 9,
+                "size": 311,
+                "v": 2
+            },
+            "lineCount": 18,
+            "size": 582
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: Would you kindly shut your noise-hole? --Bender",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "Would you kindly shut your noise-hole? --Bender",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogbWVzc2FnZXMgaW5zaWRlIG1lc3NhZ2VzIGluc2lkZS4uLg0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSI9LTlCcmc3TG9NRVJCcklEdE1Sb3NlIg0KTWVzc2FnZS1JZDogPDEwNjY5NzYxMTEuNDI2My43NC5jYW1lbEBsb2NhbGhvc3Q+DQpNaW1lLVZlcnNpb246IDEuMA0KRGF0ZTogMjMgT2N0IDIwMDMgMjM6MTU6MTEgLTA3MDANCg0KDQotLT0tOUJyZzdMb01FUkJySUR0TVJvc2UNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgQ0hBUlNFVD1VUy1BU0NJSQ0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogOGJpdA0KDQpXaGlsZSBhIG1lc3NhZ2UvcmZjODIyIHBhcnQgaW5zaWRlIGFub3RoZXIgbWVzc2FnZS9yZmM4MjIgcGFydCBpbiBhDQptZXNzYWdlIGlzbid0IHRvbyBzdHJhbmdlLCAyMDAgaXRlcmF0aW9ucyBvZiB0aGF0IHdvdWxkIGJlLiAgVGhlIE1VQQ0Kc2hvdWxkIGhhdmUgc29tZSBzZW5zZSB3aGVuIHRvIHN0b3AgbG9vcGluZyB0aHJvdWdoLg0KDQotLT0tOUJyZzdMb01FUkJySUR0TVJvc2UNCkNvbnRlbnQtRGlzcG9zaXRpb246IGlubGluZQ0KQ29udGVudC1EZXNjcmlwdGlvbjogQXQgdGhlIHJpc2sgb2Ygc291bmRpbmcgbmVnYXRpdmUsIG5vLiAtLUxlZWxhDQpDb250ZW50LVR5cGU6IG1lc3NhZ2UvcmZjODIyDQoNClN1YmplY3Q6IHRoZSBvcmlnaW5hbCBtZXNzYWdlDQpGcm9tOiBSeWFuIEZpbm5pZSA8cmZpbm5pZUBkb21haW4uZG9tPg0KVG86IGJvYkBkb21haW4uZG9tDQpDb250ZW50LVR5cGU6IG11bHRpcGFydC9taXhlZDsgYm91bmRhcnk9Ij0tWEZZZWNJN3crMHNocG9sWHE4YmIiDQpNZXNzYWdlLUlkOiA8MTA2Njk3NTc0NS40MjYzLjcwLmNhbWVsQGxvY2FsaG9zdD4NCk1pbWUtVmVyc2lvbjogMS4wDQpEYXRlOiAyMyBPY3QgMjAwMyAyMzowOTowNSAtMDcwMA0KDQoNCi0tPS1YRlllY0k3dyswc2hwb2xYcThiYg0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBDSEFSU0VUPVVTLUFTQ0lJDQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA4Yml0DQoNCmJ5IHRoaXMgcG9pbnQsIEkgc2hvdWxkIGJlIHRoZSAzcmQgbGF5ZXIgZGVlcCENCg0KSSBhbHNvIGhhdmUgYW4gYXR0YWNobWVudC4NCg0KLS09LVhGWWVjSTd3KzBzaHBvbFhxOGJiDQpDb250ZW50LURpc3Bvc2l0aW9uOiBhdHRhY2htZW50OyBmaWxlbmFtZT1mb28uZ3oNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IGJhc2U2NA0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi94LWd6aXA7IE5BTUU9Zm9vLmd6DQoNCkg0c0lBT0hCbUQ4QUE0dk1MMVhQeVZISVN5MUxMVkpJeTh4TFVjaE5WZVFDQUhiZTc2NFdBQUFBDQoNCi0tPS1YRlllY0k3dyswc2hwb2xYcThiYi0tDQoNCi0tPS05QnJnN0xvTUVSQnJJRHRNUm9zZS0tDQo="
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
                         "header": [
                             "Content-Type: text/plain; CHARSET=US-ASCII",
                             "Content-Transfer-Encoding: 8bit"
@@ -177,16 +147,354 @@
                                 "hasParams": true
                             }
                         },
-                        "body": "by this point, I should be the 3rd layer deep!\r\n\r\nI also have an attachment.\r\n",
+                        "body": {
+                            "$buffer": "V2hpbGUgYSBtZXNzYWdlL3JmYzgyMiBwYXJ0IGluc2lkZSBhbm90aGVyIG1lc3NhZ2UvcmZjODIyIHBhcnQgaW4gYQ0KbWVzc2FnZSBpc24ndCB0b28gc3RyYW5nZSwgMjAwIGl0ZXJhdGlvbnMgb2YgdGhhdCB3b3VsZCBiZS4gIFRoZSBNVUENCnNob3VsZCBoYXZlIHNvbWUgc2Vuc2Ugd2hlbiB0byBzdG9wIGxvb3BpbmcgdGhyb3VnaC4NCg=="
+                        },
                         "multipart": false,
                         "boundary": false,
-                        "lineCount": 4,
-                        "size": 78
-                    }, {
+                        "lineCount": 3,
+                        "size": 193
+                    },
+                    {
                         "header": [
-                            "Content-Disposition: attachment; filename=foo.gz",
+                            "Content-Disposition: inline",
+                            "Content-Description: At the risk of sounding negative, no. --Leela",
+                            "Content-Type: message/rfc822"
+                        ],
+                        "parsedHeader": {
+                            "content-type": {
+                                "value": "message/rfc822",
+                                "type": "message",
+                                "subtype": "rfc822",
+                                "params": {}
+                            },
+                            "content-description": "At the risk of sounding negative, no. --Leela",
+                            "content-disposition": {
+                                "value": "inline",
+                                "type": "inline",
+                                "subtype": "",
+                                "params": {}
+                            }
+                        },
+                        "body": {
+                            "$buffer": "U3ViamVjdDogdGhlIG9yaWdpbmFsIG1lc3NhZ2UNCkZyb206IFJ5YW4gRmlubmllIDxyZmlubmllQGRvbWFpbi5kb20+DQpUbzogYm9iQGRvbWFpbi5kb20NCkNvbnRlbnQtVHlwZTogbXVsdGlwYXJ0L21peGVkOyBib3VuZGFyeT0iPS1YRlllY0k3dyswc2hwb2xYcThiYiINCk1lc3NhZ2UtSWQ6IDwxMDY2OTc1NzQ1LjQyNjMuNzAuY2FtZWxAbG9jYWxob3N0Pg0KTWltZS1WZXJzaW9uOiAxLjANCkRhdGU6IDIzIE9jdCAyMDAzIDIzOjA5OjA1IC0wNzAwDQoNCg0KLS09LVhGWWVjSTd3KzBzaHBvbFhxOGJiDQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW47IENIQVJTRVQ9VVMtQVNDSUkNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IDhiaXQNCg0KYnkgdGhpcyBwb2ludCwgSSBzaG91bGQgYmUgdGhlIDNyZCBsYXllciBkZWVwIQ0KDQpJIGFsc28gaGF2ZSBhbiBhdHRhY2htZW50Lg0KDQotLT0tWEZZZWNJN3crMHNocG9sWHE4YmINCkNvbnRlbnQtRGlzcG9zaXRpb246IGF0dGFjaG1lbnQ7IGZpbGVuYW1lPWZvby5neg0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogYmFzZTY0DQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL3gtZ3ppcDsgTkFNRT1mb28uZ3oNCg0KSDRzSUFPSEJtRDhBQTR2TUwxWFB5VkhJU3kxTExWSkl5OHhMVWNoTlZlUUNBSGJlNzY0V0FBQUENCg0KLS09LVhGWWVjSTd3KzBzaHBvbFhxOGJiLS0NCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "message": {
+                            "childNodes": [
+                                {
+                                    "header": [
+                                        "Content-Type: text/plain; CHARSET=US-ASCII",
+                                        "Content-Transfer-Encoding: 8bit"
+                                    ],
+                                    "parsedHeader": {
+                                        "content-transfer-encoding": "8bit",
+                                        "content-type": {
+                                            "value": "text/plain",
+                                            "type": "text",
+                                            "subtype": "plain",
+                                            "params": {
+                                                "charset": "US-ASCII"
+                                            },
+                                            "hasParams": true
+                                        }
+                                    },
+                                    "body": {
+                                        "$buffer": "YnkgdGhpcyBwb2ludCwgSSBzaG91bGQgYmUgdGhlIDNyZCBsYXllciBkZWVwIQ0KDQpJIGFsc28gaGF2ZSBhbiBhdHRhY2htZW50Lg0K"
+                                    },
+                                    "multipart": false,
+                                    "boundary": false,
+                                    "lineCount": 3,
+                                    "size": 78
+                                },
+                                {
+                                    "header": [
+                                        "Content-Disposition: attachment; filename=foo.gz",
+                                        "Content-Transfer-Encoding: base64",
+                                        "Content-Type: application/x-gzip; NAME=foo.gz"
+                                    ],
+                                    "parsedHeader": {
+                                        "content-type": {
+                                            "value": "application/x-gzip",
+                                            "type": "application",
+                                            "subtype": "x-gzip",
+                                            "params": {
+                                                "name": "foo.gz"
+                                            },
+                                            "hasParams": true
+                                        },
+                                        "content-transfer-encoding": "base64",
+                                        "content-disposition": {
+                                            "value": "attachment",
+                                            "type": "attachment",
+                                            "subtype": "",
+                                            "params": {
+                                                "filename": "foo.gz"
+                                            },
+                                            "hasParams": true
+                                        }
+                                    },
+                                    "body": {
+                                        "$buffer": "SDRzSUFPSEJtRDhBQTR2TUwxWFB5VkhJU3kxTExWSkl5OHhMVWNoTlZlUUNBSGJlNzY0V0FBQUENCg=="
+                                    },
+                                    "multipart": false,
+                                    "boundary": false,
+                                    "lineCount": 1,
+                                    "size": 58
+                                }
+                            ],
+                            "header": [
+                                "Subject: the original message",
+                                "From: Ryan Finnie <rfinnie@domain.dom>",
+                                "To: bob@domain.dom",
+                                "Content-Type: multipart/mixed; boundary=\"=-XFYecI7w+0shpolXq8bb\"",
+                                "Message-Id: <1066975745.4263.70.camel@localhost>",
+                                "Mime-Version: 1.0",
+                                "Date: 23 Oct 2003 23:09:05 -0700"
+                            ],
+                            "parsedHeader": {
+                                "date": "23 Oct 2003 23:09:05 -0700",
+                                "mime-version": "1.0",
+                                "message-id": "<1066975745.4263.70.camel@localhost>",
+                                "content-type": {
+                                    "value": "multipart/mixed",
+                                    "type": "multipart",
+                                    "subtype": "mixed",
+                                    "params": {
+                                        "boundary": "=-XFYecI7w+0shpolXq8bb"
+                                    },
+                                    "hasParams": true
+                                },
+                                "to": [
+                                    {
+                                        "address": "bob@domain.dom",
+                                        "name": ""
+                                    }
+                                ],
+                                "from": [
+                                    {
+                                        "address": "rfinnie@domain.dom",
+                                        "name": "Ryan Finnie"
+                                    }
+                                ],
+                                "subject": "the original message"
+                            },
+                            "body": {
+                                "$buffer": "DQo="
+                            },
+                            "epilogue": {
+                                "$buffer": "DQo="
+                            },
+                            "multipart": "mixed",
+                            "boundary": "=-XFYecI7w+0shpolXq8bb",
+                            "lineCount": 0,
+                            "size": 2,
+                            "v": 2
+                        },
+                        "lineCount": 25,
+                        "size": 697
+                    }
+                ],
+                "header": [
+                    "Subject: messages inside messages inside...",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/mixed; boundary=\"=-9Brg7LoMERBrIDtMRose\"",
+                    "Message-Id: <1066976111.4263.74.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 23:15:11 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 23:15:11 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066976111.4263.74.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/mixed",
+                        "type": "multipart",
+                        "subtype": "mixed",
+                        "params": {
+                            "boundary": "=-9Brg7LoMERBrIDtMRose"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "messages inside messages inside..."
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "mixed",
+                "boundary": "=-9Brg7LoMERBrIDtMRose",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 49,
+            "size": 1460
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: Dirt doesn't need luck! --Professor",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "Dirt doesn't need luck! --Professor",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogdGhpcyBtZXNzYWdlIEpVU1QgY29udGFpbnMgYW4gYXR0YWNobWVudA0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9YmxhaC5neg0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogYmFzZTY0DQpDb250ZW50LURlc2NyaXB0aW9uOiBBdHRhY2htZW50IGhhcyBpZGVudGljYWwgY29udGVudCB0byBhYm92ZSBmb28uZ3oNCk1lc3NhZ2UtSWQ6IDwxMDY2OTc0MDQ4LjQyNjQuNjIuY2FtZWxAbG9jYWxob3N0Pg0KTWltZS1WZXJzaW9uOiAxLjANCkRhdGU6IDIzIE9jdCAyMDAzIDIyOjQwOjQ5IC0wNzAwDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL3gtZ3ppcDsgTkFNRT1ibGFoLmd6DQoNClN1YmplY3R0aGlzbWVzc2FnZUpVU1Rjb250YWluc2FuYXR0YWNobWVudEZyb21SeWFuRmlubmllcmZpbm5pZWRvbWFpbmRvbVRvYm8NCmJkb21haW5kb21Db250ZW50RGlzcG9zaXRpb25hdHRhY2htZW50ZmlsZW5hbWVBYmxhaGd6Q29udGVudFR5cGVhcHBsaWNhdGlvbi8NCnhnemlwbmFtZUFibGFoZ3pDb250ZW50VHJhbnNmZXJFbmNvZGluZ2Jhc2U2NENvbnRlbnREZXNjcmlwdGlvbkF0dGFjaG1lbnRoYXMNCmlkZW50aWNhbGNvbnRlbnR0b2Fib3ZlZm9vZ3pNZXNzYWdlSWQxMDY2OTc0MDQ4NDI2NDYyY2FtZWxsb2NhbGhvc3RNaW1lVmVyc2kNCm9uMTBEYXRlMjNPY3QyMDAzMjI0MDQ5MDcwMEg0c0lBT0hCbUQ4QUE0dk1MMVhQeVZISVN5MUxMVkpJeTh4TFVjaE5WZVFDQUhiZTcNCjY0V0ENCg=="
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "header": [
+                    "Subject: this message JUST contains an attachment",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Disposition: attachment; filename=blah.gz",
+                    "Content-Transfer-Encoding: base64",
+                    "Content-Description: Attachment has identical content to above foo.gz",
+                    "Message-Id: <1066974048.4264.62.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 22:40:49 -0700",
+                    "Content-Type: application/x-gzip; NAME=blah.gz"
+                ],
+                "parsedHeader": {
+                    "content-type": {
+                        "value": "application/x-gzip",
+                        "type": "application",
+                        "subtype": "x-gzip",
+                        "params": {
+                            "name": "blah.gz"
+                        },
+                        "hasParams": true
+                    },
+                    "date": "23 Oct 2003 22:40:49 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066974048.4264.62.camel@localhost>",
+                    "content-description": "Attachment has identical content to above foo.gz",
+                    "content-transfer-encoding": "base64",
+                    "content-disposition": {
+                        "value": "attachment",
+                        "type": "attachment",
+                        "subtype": "",
+                        "params": {
+                            "filename": "blah.gz"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "this message JUST contains an attachment"
+                },
+                "body": {
+                    "$buffer": "U3ViamVjdHRoaXNtZXNzYWdlSlVTVGNvbnRhaW5zYW5hdHRhY2htZW50RnJvbVJ5YW5GaW5uaWVyZmlubmllZG9tYWluZG9tVG9ibw0KYmRvbWFpbmRvbUNvbnRlbnREaXNwb3NpdGlvbmF0dGFjaG1lbnRmaWxlbmFtZUFibGFoZ3pDb250ZW50VHlwZWFwcGxpY2F0aW9uLw0KeGd6aXBuYW1lQWJsYWhnekNvbnRlbnRUcmFuc2ZlckVuY29kaW5nYmFzZTY0Q29udGVudERlc2NyaXB0aW9uQXR0YWNobWVudGhhcw0KaWRlbnRpY2FsY29udGVudHRvYWJvdmVmb29nek1lc3NhZ2VJZDEwNjY5NzQwNDg0MjY0NjJjYW1lbGxvY2FsaG9zdE1pbWVWZXJzaQ0Kb24xMERhdGUyM09jdDIwMDMyMjQwNDkwNzAwSDRzSUFPSEJtRDhBQTR2TUwxWFB5VkhJU3kxTExWSkl5OHhMVWNoTlZlUUNBSGJlNw0KNjRXQQ0K"
+                },
+                "multipart": false,
+                "boundary": false,
+                "lineCount": 6,
+                "size": 396,
+                "v": 2
+            },
+            "lineCount": 17,
+            "size": 817
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: Hold still, I don't have good depth perception! --Leela",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "Hold still, I don't have good depth perception! --Leela",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogQXR0YWNobWVudCBmaWxlbmFtZSB2cy4gbmFtZQ0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSI9LTEwNjY5NzU3NTZqZDAyIg0KTWVzc2FnZS1JZDogPDEwNjY5NzU3NTYuNDI2My43MC5jYW1lbEBsb2NhbGhvc3Q+DQpNaW1lLVZlcnNpb246IDEuMA0KRGF0ZTogMjMgT2N0IDIwMDMgMjM6MDk6MTYgLTA3MDANCg0KDQotLT0tMTA2Njk3NTc1NmpkMDINCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgQ0hBUlNFVD1VUy1BU0NJSQ0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogOGJpdA0KDQpJbiB0aGlzIG1lc3NhZ2UncyBhdHRhY2htZW50LCB0aGUgQ29udGVudC1EaXNwb3NpdGlvbiBoYXMgYQ0KZmlsZW5hbWUgb2YgYmxhaDEuZ3osIHdoaWxlIHRoZSBDb250ZW50LVR5cGUgaGFzIGEgbmFtZSBvZg0KYmxhaDIuZ3ouICBXaGF0IHNob3VsZCBiZSBkb25lPyAgV2VsbCwgc2luY2UgdGhpcyBpcyBhbiBhdHRhY2htZW50DQooYXMgaW5kaWNhdGVkIGluIHRoZSBDb250ZW50LURpc3Bvc2l0aW9uKSwgdGhlIE1VQSBzaG91bGQNCnN1Z2dlc3QgYSBmaWxlbmFtZSBvZiBibGFoMS5nei4gIFRoZSBNVUEgKkNPVUxEKiBmaW5kIGEgd2F5IHRvDQpyZXByZXNlbnQgdGhlIG5hbWUgb2YgYmxhaDIuZ3ogc29tZXdoZXJlIGVsc2UsIGl0J3Mgbm90IG5lZWRlZC4NCg0KLS09LTEwNjY5NzU3NTZqZDAyDQpDb250ZW50LURpc3Bvc2l0aW9uOiBhdHRhY2htZW50OyBmaWxlbmFtZT1ibGFoMS5neg0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogYmFzZTY0DQpDb250ZW50LURlc2NyaXB0aW9uOiBmaWxlbmFtZSBpcyBibGFoMS5neiwgbmFtZSBpcyBibGFoMi5neg0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi94LWd6aXA7IE5BTUU9YmxhaDIuZ3oNCg0KSDRzSUFPSEJtRDhBQTR2TUwxWFB5VkhJU3kxTExWSkl5OHhMVWNoTlZlUUNBSGJlNzY0V0FBQUENCg0KLS09LTEwNjY5NzU3NTZqZDAyLS0NCg=="
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "header": [
+                            "Content-Type: text/plain; CHARSET=US-ASCII",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/plain",
+                                "type": "text",
+                                "subtype": "plain",
+                                "params": {
+                                    "charset": "US-ASCII"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "SW4gdGhpcyBtZXNzYWdlJ3MgYXR0YWNobWVudCwgdGhlIENvbnRlbnQtRGlzcG9zaXRpb24gaGFzIGENCmZpbGVuYW1lIG9mIGJsYWgxLmd6LCB3aGlsZSB0aGUgQ29udGVudC1UeXBlIGhhcyBhIG5hbWUgb2YNCmJsYWgyLmd6LiAgV2hhdCBzaG91bGQgYmUgZG9uZT8gIFdlbGwsIHNpbmNlIHRoaXMgaXMgYW4gYXR0YWNobWVudA0KKGFzIGluZGljYXRlZCBpbiB0aGUgQ29udGVudC1EaXNwb3NpdGlvbiksIHRoZSBNVUEgc2hvdWxkDQpzdWdnZXN0IGEgZmlsZW5hbWUgb2YgYmxhaDEuZ3ouICBUaGUgTVVBICpDT1VMRCogZmluZCBhIHdheSB0bw0KcmVwcmVzZW50IHRoZSBuYW1lIG9mIGJsYWgyLmd6IHNvbWV3aGVyZSBlbHNlLCBpdCdzIG5vdCBuZWVkZWQuDQo="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 6,
+                        "size": 377
+                    },
+                    {
+                        "header": [
+                            "Content-Disposition: attachment; filename=blah1.gz",
                             "Content-Transfer-Encoding: base64",
-                            "Content-Type: application/x-gzip; NAME=foo.gz"
+                            "Content-Description: filename is blah1.gz, name is blah2.gz",
+                            "Content-Type: application/x-gzip; NAME=blah2.gz"
                         ],
                         "parsedHeader": {
                             "content-type": {
@@ -194,1183 +502,1113 @@
                                 "type": "application",
                                 "subtype": "x-gzip",
                                 "params": {
-                                    "name": "foo.gz"
+                                    "name": "blah2.gz"
                                 },
                                 "hasParams": true
                             },
+                            "content-description": "filename is blah1.gz, name is blah2.gz",
                             "content-transfer-encoding": "base64",
                             "content-disposition": {
                                 "value": "attachment",
                                 "type": "attachment",
                                 "subtype": "",
                                 "params": {
-                                    "filename": "foo.gz"
+                                    "filename": "blah1.gz"
                                 },
                                 "hasParams": true
                             }
                         },
-                        "body": "H4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n",
+                        "body": {
+                            "$buffer": "SDRzSUFPSEJtRDhBQTR2TUwxWFB5VkhJU3kxTExWSkl5OHhMVWNoTlZlUUNBSGJlNzY0V0FBQUENCg=="
+                        },
                         "multipart": false,
                         "boundary": false,
-                        "lineCount": 2,
+                        "lineCount": 1,
                         "size": 58
-                    }],
-                    "header": [
-                        "Subject: the original message",
-                        "From: Ryan Finnie <rfinnie@domain.dom>",
-                        "To: bob@domain.dom",
-                        "Content-Type: multipart/mixed; boundary=\"=-XFYecI7w+0shpolXq8bb\"",
-                        "Message-Id: <1066975745.4263.70.camel@localhost>",
-                        "Mime-Version: 1.0",
-                        "Date: 23 Oct 2003 23:09:05 -0700"
-                    ],
-                    "parsedHeader": {
-                        "date": "23 Oct 2003 23:09:05 -0700",
-                        "mime-version": "1.0",
-                        "message-id": "<1066975745.4263.70.camel@localhost>",
-                        "content-type": {
-                            "value": "multipart/mixed",
-                            "type": "multipart",
-                            "subtype": "mixed",
-                            "params": {
-                                "boundary": "=-XFYecI7w+0shpolXq8bb"
-                            },
-                            "hasParams": true
-                        },
-                        "to": [{
-                            "address": "bob@domain.dom",
-                            "name": ""
-                        }],
-                        "from": [{
-                            "address": "rfinnie@domain.dom",
-                            "name": "Ryan Finnie"
-                        }],
-                        "subject": "the original message"
-                    },
-                    "body": "\r\n",
-                    "multipart": "mixed",
-                    "boundary": "=-XFYecI7w+0shpolXq8bb",
-                    "lineCount": 2,
-                    "size": 2
-                },
-                "lineCount": 26,
-                "size": 697
-            }],
-            "header": [
-                "Subject: messages inside messages inside...",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/mixed; boundary=\"=-9Brg7LoMERBrIDtMRose\"",
-                "Message-Id: <1066976111.4263.74.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 23:15:11 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 23:15:11 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066976111.4263.74.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/mixed",
-                    "type": "multipart",
-                    "subtype": "mixed",
-                    "params": {
-                        "boundary": "=-9Brg7LoMERBrIDtMRose"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "messages inside messages inside..."
-            },
-            "body": "\r\n",
-            "multipart": "mixed",
-            "boundary": "=-9Brg7LoMERBrIDtMRose",
-            "lineCount": 2,
-            "size": 2
-        },
-        "lineCount": 50,
-        "size": 1460
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Dirt doesn't need luck! --Professor",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "Dirt doesn't need luck! --Professor",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: this message JUST contains an attachment\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Disposition: attachment; filename=blah.gz\r\nContent-Transfer-Encoding: base64\r\nContent-Description: Attachment has identical content to above foo.gz\r\nMessage-Id: <1066974048.4264.62.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:40:49 -0700\r\nContent-Type: application/x-gzip; NAME=blah.gz\r\n\r\nSubjectthismessageJUSTcontainsanattachmentFromRyanFinnierfinniedomaindomTobo\r\nbdomaindomContentDispositionattachmentfilenameAblahgzContentTypeapplication/\r\nxgzipnameAblahgzContentTransferEncodingbase64ContentDescriptionAttachmenthas\r\nidenticalcontenttoabovefoogzMessageId1066974048426462camellocalhostMimeVersi\r\non10Date23Oct20032240490700H4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe7\r\n64WA\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "header": [
-                "Subject: this message JUST contains an attachment",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Disposition: attachment; filename=blah.gz",
-                "Content-Transfer-Encoding: base64",
-                "Content-Description: Attachment has identical content to above foo.gz",
-                "Message-Id: <1066974048.4264.62.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 22:40:49 -0700",
-                "Content-Type: application/x-gzip; NAME=blah.gz"
-            ],
-            "parsedHeader": {
-                "content-type": {
-                    "value": "application/x-gzip",
-                    "type": "application",
-                    "subtype": "x-gzip",
-                    "params": {
-                        "name": "blah.gz"
-                    },
-                    "hasParams": true
-                },
-                "date": "23 Oct 2003 22:40:49 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066974048.4264.62.camel@localhost>",
-                "content-description": "Attachment has identical content to above foo.gz",
-                "content-transfer-encoding": "base64",
-                "content-disposition": {
-                    "value": "attachment",
-                    "type": "attachment",
-                    "subtype": "",
-                    "params": {
-                        "filename": "blah.gz"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "this message JUST contains an attachment"
-            },
-            "body": "SubjectthismessageJUSTcontainsanattachmentFromRyanFinnierfinniedomaindomTobo\r\nbdomaindomContentDispositionattachmentfilenameAblahgzContentTypeapplication/\r\nxgzipnameAblahgzContentTransferEncodingbase64ContentDescriptionAttachmenthas\r\nidenticalcontenttoabovefoogzMessageId1066974048426462camellocalhostMimeVersi\r\non10Date23Oct20032240490700H4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe7\r\n64WA\r\n",
-            "multipart": false,
-            "boundary": false,
-            "lineCount": 7,
-            "size": 396
-        },
-        "lineCount": 18,
-        "size": 817
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Hold still, I don't have good depth perception! --Leela",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "Hold still, I don't have good depth perception! --Leela",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: Attachment filename vs. name\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-1066975756jd02\"\r\nMessage-Id: <1066975756.4263.70.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 23:09:16 -0700\r\n\r\n\r\n--=-1066975756jd02\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nIn this message's attachment, the Content-Disposition has a\r\nfilename of blah1.gz, while the Content-Type has a name of\r\nblah2.gz.  What should be done?  Well, since this is an attachment\r\n(as indicated in the Content-Disposition), the MUA should\r\nsuggest a filename of blah1.gz.  The MUA *COULD* find a way to\r\nrepresent the name of blah2.gz somewhere else, it's not needed.\r\n\r\n--=-1066975756jd02\r\nContent-Disposition: attachment; filename=blah1.gz\r\nContent-Transfer-Encoding: base64\r\nContent-Description: filename is blah1.gz, name is blah2.gz\r\nContent-Type: application/x-gzip; NAME=blah2.gz\r\n\r\nH4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n\r\n--=-1066975756jd02--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "header": [
-                    "Content-Type: text/plain; CHARSET=US-ASCII",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/plain",
-                        "type": "text",
-                        "subtype": "plain",
-                        "params": {
-                            "charset": "US-ASCII"
-                        },
-                        "hasParams": true
                     }
-                },
-                "body": "In this message's attachment, the Content-Disposition has a\r\nfilename of blah1.gz, while the Content-Type has a name of\r\nblah2.gz.  What should be done?  Well, since this is an attachment\r\n(as indicated in the Content-Disposition), the MUA should\r\nsuggest a filename of blah1.gz.  The MUA *COULD* find a way to\r\nrepresent the name of blah2.gz somewhere else, it's not needed.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 7,
-                "size": 377
-            }, {
+                ],
                 "header": [
-                    "Content-Disposition: attachment; filename=blah1.gz",
-                    "Content-Transfer-Encoding: base64",
-                    "Content-Description: filename is blah1.gz, name is blah2.gz",
-                    "Content-Type: application/x-gzip; NAME=blah2.gz"
+                    "Subject: Attachment filename vs. name",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/mixed; boundary=\"=-1066975756jd02\"",
+                    "Message-Id: <1066975756.4263.70.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 23:09:16 -0700"
                 ],
                 "parsedHeader": {
-                    "content-type": {
-                        "value": "application/x-gzip",
-                        "type": "application",
-                        "subtype": "x-gzip",
-                        "params": {
-                            "name": "blah2.gz"
-                        },
-                        "hasParams": true
-                    },
-                    "content-description": "filename is blah1.gz, name is blah2.gz",
-                    "content-transfer-encoding": "base64",
-                    "content-disposition": {
-                        "value": "attachment",
-                        "type": "attachment",
-                        "subtype": "",
-                        "params": {
-                            "filename": "blah1.gz"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "H4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 2,
-                "size": 58
-            }],
-            "header": [
-                "Subject: Attachment filename vs. name",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/mixed; boundary=\"=-1066975756jd02\"",
-                "Message-Id: <1066975756.4263.70.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 23:09:16 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 23:09:16 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066975756.4263.70.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/mixed",
-                    "type": "multipart",
-                    "subtype": "mixed",
-                    "params": {
-                        "boundary": "=-1066975756jd02"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "Attachment filename vs. name"
-            },
-            "body": "\r\n",
-            "multipart": "mixed",
-            "boundary": "=-1066975756jd02",
-            "lineCount": 2,
-            "size": 2
-        },
-        "lineCount": 30,
-        "size": 1045
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Hello little man.  I WILL DESTROY YOU! --Moro",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "Hello little man.  I WILL DESTROY YOU! --Moro",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: No filename?  No problem!\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-1066975756jd03\"\r\nMessage-Id: <1066975761.4263.70.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 23:09:21 -0700\r\n\r\n\r\n--=-1066975756jd03\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nWhen searching for a suitable name to suggest for a filename,\r\nthe MUA should probably follow this order.  First, look for\r\nContent-Disposition's filename attribute.  If that is missing,\r\nlook for Content-Type's file attribute.  If that is also missing,\r\nI would recomment taking the Content-Description, stripping off\r\nany characters that cannot be used in a filename, and suggesting\r\nthat.\r\n\r\nIf none of those fields are available, the MUA could just make\r\nup a random filename.  SOMETHING is better than nothing.\r\n\r\n--=-1066975756jd03\r\nContent-Disposition: attachment\r\nContent-Transfer-Encoding: base64\r\nContent-Description: I'm getting sick of witty things to say\r\nContent-Type: application/x-gzip\r\n\r\nH4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n\r\n--=-1066975756jd03--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "header": [
-                    "Content-Type: text/plain; CHARSET=US-ASCII",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/plain",
-                        "type": "text",
-                        "subtype": "plain",
-                        "params": {
-                            "charset": "US-ASCII"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "When searching for a suitable name to suggest for a filename,\r\nthe MUA should probably follow this order.  First, look for\r\nContent-Disposition's filename attribute.  If that is missing,\r\nlook for Content-Type's file attribute.  If that is also missing,\r\nI would recomment taking the Content-Description, stripping off\r\nany characters that cannot be used in a filename, and suggesting\r\nthat.\r\n\r\nIf none of those fields are available, the MUA could just make\r\nup a random filename.  SOMETHING is better than nothing.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 11,
-                "size": 517
-            }, {
-                "header": [
-                    "Content-Disposition: attachment",
-                    "Content-Transfer-Encoding: base64",
-                    "Content-Description: I'm getting sick of witty things to say",
-                    "Content-Type: application/x-gzip"
-                ],
-                "parsedHeader": {
-                    "content-type": {
-                        "value": "application/x-gzip",
-                        "type": "application",
-                        "subtype": "x-gzip",
-                        "params": {}
-                    },
-                    "content-description": "I'm getting sick of witty things to say",
-                    "content-transfer-encoding": "base64",
-                    "content-disposition": {
-                        "value": "attachment",
-                        "type": "attachment",
-                        "subtype": "",
-                        "params": {}
-                    }
-                },
-                "body": "H4sIAOHBmD8AA4vML1XPyVHISy1LLVJIy8xLUchNVeQCAHbe764WAAAA\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 2,
-                "size": 58
-            }],
-            "header": [
-                "Subject: No filename?  No problem!",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/mixed; boundary=\"=-1066975756jd03\"",
-                "Message-Id: <1066975761.4263.70.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 23:09:21 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 23:09:21 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066975761.4263.70.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/mixed",
-                    "type": "multipart",
-                    "subtype": "mixed",
-                    "params": {
-                        "boundary": "=-1066975756jd03"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "No filename?  No problem!"
-            },
-            "body": "\r\n",
-            "multipart": "mixed",
-            "boundary": "=-1066975756jd03",
-            "lineCount": 2,
-            "size": 2
-        },
-        "lineCount": 34,
-        "size": 1149
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Friends! Help! A guinea pig tricked me! --Zoidberg",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "Friends! Help! A guinea pig tricked me! --Zoidberg",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: html and text, both inline\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-ZCKMfHzvHMyK1iBu4kff\"\r\nMessage-Id: <1066974044.4264.62.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:40:45 -0700\r\n\r\n\r\n--=-ZCKMfHzvHMyK1iBu4kff\r\nContent-Type: text/html; CHARSET=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; CHARSET=UTF-8\">\r\n  <META NAME=\"GENERATOR\" CONTENT=\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<FONT COLOR=\"#f8cc00\">This is the HTML part.</FONT><BR>\r\nIt should be displayed inline.\r\n</BODY>\r\n</HTML>\r\n\r\n--=-ZCKMfHzvHMyK1iBu4kff\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nThis is the text part.\r\nIt should ALSO be displayed inline.\r\n\r\n--=-ZCKMfHzvHMyK1iBu4kff--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "header": [
-                    "Content-Type: text/html; CHARSET=utf-8",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/html",
-                        "type": "text",
-                        "subtype": "html",
-                        "params": {
-                            "charset": "utf-8"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; CHARSET=UTF-8\">\r\n  <META NAME=\"GENERATOR\" CONTENT=\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<FONT COLOR=\"#f8cc00\">This is the HTML part.</FONT><BR>\r\nIt should be displayed inline.\r\n</BODY>\r\n</HTML>\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 12,
-                "size": 327
-            }, {
-                "header": [
-                    "Content-Type: text/plain; CHARSET=US-ASCII",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/plain",
-                        "type": "text",
-                        "subtype": "plain",
-                        "params": {
-                            "charset": "US-ASCII"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "This is the text part.\r\nIt should ALSO be displayed inline.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 3,
-                "size": 61
-            }],
-            "header": [
-                "Subject: html and text, both inline",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/mixed; boundary=\"=-ZCKMfHzvHMyK1iBu4kff\"",
-                "Message-Id: <1066974044.4264.62.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 22:40:45 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 22:40:45 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066974044.4264.62.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/mixed",
-                    "type": "multipart",
-                    "subtype": "mixed",
-                    "params": {
-                        "boundary": "=-ZCKMfHzvHMyK1iBu4kff"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "html and text, both inline"
-            },
-            "body": "\r\n",
-            "multipart": "mixed",
-            "boundary": "=-ZCKMfHzvHMyK1iBu4kff",
-            "lineCount": 2,
-            "size": 2
-        },
-        "lineCount": 34,
-        "size": 896
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Smeesh! --Amy",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "Smeesh! --Amy",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: text and text, both inline\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-pNc4wtlOIxs8RcX7H/AK\"\r\nMessage-Id: <1066974089.4265.64.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:41:29 -0700\r\n\r\n\r\n--=-pNc4wtlOIxs8RcX7H/AK\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nThis is the first text part.\r\nIt should be displayed inline.\r\n\r\n--=-pNc4wtlOIxs8RcX7H/AK\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nThis is the second text part.\r\nIt should also be displayed inline.\r\n\r\n--=-pNc4wtlOIxs8RcX7H/AK--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "header": [
-                    "Content-Type: text/plain; CHARSET=US-ASCII",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/plain",
-                        "type": "text",
-                        "subtype": "plain",
-                        "params": {
-                            "charset": "US-ASCII"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "This is the first text part.\r\nIt should be displayed inline.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 3,
-                "size": 62
-            }, {
-                "header": [
-                    "Content-Type: text/plain; CHARSET=US-ASCII",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/plain",
-                        "type": "text",
-                        "subtype": "plain",
-                        "params": {
-                            "charset": "US-ASCII"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "This is the second text part.\r\nIt should also be displayed inline.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 3,
-                "size": 68
-            }],
-            "header": [
-                "Subject: text and text, both inline",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/mixed; boundary=\"=-pNc4wtlOIxs8RcX7H/AK\"",
-                "Message-Id: <1066974089.4265.64.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 22:41:29 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 22:41:29 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066974089.4265.64.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/mixed",
-                    "type": "multipart",
-                    "subtype": "mixed",
-                    "params": {
-                        "boundary": "=-pNc4wtlOIxs8RcX7H/AK"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "text and text, both inline"
-            },
-            "body": "\r\n",
-            "multipart": "mixed",
-            "boundary": "=-pNc4wtlOIxs8RcX7H/AK",
-            "lineCount": 2,
-            "size": 2
-        },
-        "lineCount": 25,
-        "size": 642
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: That's not a cigar. Uh... and it's not mine. --Hermes",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "That's not a cigar. Uh... and it's not mine. --Hermes",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: HTML and...  HTML?\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/mixed; boundary=\"=-zxh/IezwzZITiphpcbJZ\"\r\nMessage-Id: <1066973957.4263.59.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:39:17 -0700\r\n\r\n\r\n--=-zxh/IezwzZITiphpcbJZ\r\nContent-Type: text/html; CHARSET=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; CHARSET=UTF-8\">\r\n  <META NAME=\"GENERATOR\" CONTENT=\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<B>Bold!!!</B><BR>\r\n<BR>\r\nWhat do we have here...  This message is an HTML message.  Also attached\r\nis an HTML FILE.  Both of these are in a multipart/mixed part.<BR>\r\n<BR>\r\nNow, the first HTML part (what you're reading now) should be displayed\r\nif the MUA is HTML-capable.  If it is not, the MUA could possibly offer\r\nthis part up as an attachment to download, seeing as how no plaintext\r\npart is offered as an alternative.<BR>\r\n<BR>\r\nHowever, the second HTML part is listed with a disposition as\r\nattachment.  Therefore, it should be offered as an attachment, not\r\ndisplayed inline.\r\n</BODY>\r\n</HTML>\r\n\r\n--=-zxh/IezwzZITiphpcbJZ\r\nContent-Disposition: attachment; filename=htmlfile.html\r\nContent-Type: text/html; NAME=htmlfile.html; CHARSET=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n<html>\r\n<head><title>This is an Attachment</title></head>\r\n<body>\r\n<p>The title says it all...</p>\r\n</body>\r\n</html>\r\n\r\n--=-zxh/IezwzZITiphpcbJZ--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "header": [
-                    "Content-Type: text/html; CHARSET=utf-8",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/html",
-                        "type": "text",
-                        "subtype": "html",
-                        "params": {
-                            "charset": "utf-8"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; CHARSET=UTF-8\">\r\n  <META NAME=\"GENERATOR\" CONTENT=\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<B>Bold!!!</B><BR>\r\n<BR>\r\nWhat do we have here...  This message is an HTML message.  Also attached\r\nis an HTML FILE.  Both of these are in a multipart/mixed part.<BR>\r\n<BR>\r\nNow, the first HTML part (what you're reading now) should be displayed\r\nif the MUA is HTML-capable.  If it is not, the MUA could possibly offer\r\nthis part up as an attachment to download, seeing as how no plaintext\r\npart is offered as an alternative.<BR>\r\n<BR>\r\nHowever, the second HTML part is listed with a disposition as\r\nattachment.  Therefore, it should be offered as an attachment, not\r\ndisplayed inline.\r\n</BODY>\r\n</HTML>\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 23,
-                "size": 824
-            }, {
-                "header": [
-                    "Content-Disposition: attachment; filename=htmlfile.html",
-                    "Content-Type: text/html; NAME=htmlfile.html; CHARSET=UTF-8",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/html",
-                        "type": "text",
-                        "subtype": "html",
-                        "params": {
-                            "name": "htmlfile.html",
-                            "charset": "UTF-8"
-                        },
-                        "hasParams": true
-                    },
-                    "content-disposition": {
-                        "value": "attachment",
-                        "type": "attachment",
-                        "subtype": "",
-                        "params": {
-                            "filename": "htmlfile.html"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "<html>\r\n<head><title>This is an Attachment</title></head>\r\n<body>\r\n<p>The title says it all...</p>\r\n</body>\r\n</html>\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 7,
-                "size": 118
-            }],
-            "header": [
-                "Subject: HTML and...  HTML?",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/mixed; boundary=\"=-zxh/IezwzZITiphpcbJZ\"",
-                "Message-Id: <1066973957.4263.59.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 22:39:17 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 22:39:17 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066973957.4263.59.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/mixed",
-                    "type": "multipart",
-                    "subtype": "mixed",
-                    "params": {
-                        "boundary": "=-zxh/IezwzZITiphpcbJZ"
-                    },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "HTML and...  HTML?"
-            },
-            "body": "\r\n",
-            "multipart": "mixed",
-            "boundary": "=-zxh/IezwzZITiphpcbJZ",
-            "lineCount": 2,
-            "size": 2
-        },
-        "lineCount": 50,
-        "size": 1515
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: The spirit is willing, but the flesh is spongy, and\r\n    bruised. --Zapp",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "The spirit is willing, but the flesh is spongy, and bruised. --Zapp",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: smiley!\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/signed; micalg=pgp-sha1; protocol=\"application/pgp-signature\"; boundary=\"=-vH3FQO9a8icUn1ROCoAi\"\r\nMessage-Id: <1066972996.4264.39.camel@localhost>\r\nMime-Version: 1.0\r\nDate: 23 Oct 2003 22:23:16 -0700\r\n\r\n\r\n--=-vH3FQO9a8icUn1ROCoAi\r\nContent-Type: multipart/mixed; boundary=\"=-CgV5jm9HAY9VbUlAuneA\"\r\n\r\n\r\n--=-CgV5jm9HAY9VbUlAuneA\r\nContent-Type: multipart/related; type=\"multipart/alternative\";\r\n    boundary=\"=-GpwozF9CQ7NdF+fd+vMG\"\r\n\r\n\r\n--=-GpwozF9CQ7NdF+fd+vMG\r\nContent-Type: multipart/alternative; boundary=\"=-dHujWM/Xizz57x/JOmDF\"\r\n\r\n\r\n--=-dHujWM/Xizz57x/JOmDF\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nIf this sentence is red, you are viewing the HTML part.\r\nWow, what a complicated message.  This message is laid out as so:\r\n\r\nmultipart/signed\r\n| multipart/mixed\r\n| | mutipart/related\r\n| | | multipart/alternative\r\n| | | | text/plain\r\n| | | | text/html\r\n| | | image/png (smiley)\r\n| | image/gif (dot)\r\n| application/pgp-signature\r\n\r\n:)\r\n\r\nA smiley face should be embedded into the HTML part above (if you are\r\nviewing the HTML part), while the red square dot should be attached, not\r\ndisplayed inline.  Additionally, this whole message is PGP signed.\r\n\r\nThis message introduces a few tricks that the MUA should cope with.=20\r\nFirst of all, the related / alternative combination doesn't make much\r\nsense.  Here's the current setup in pseudo-code:\r\n\r\nrelationship between (alternative: HTML or text part) and PNG part\r\n\r\nWhy would the text part be related in anyway to the PNG?  Instead, the\r\ncorrect and more logical way to do things would be:\r\n\r\nalternative: (relationship between HTML and PNG parts) or text part\r\n\r\nHowever, many MUAs compose a message using the first method, so this\r\nshould be taken care of when parsing the message.\r\n\r\nAdditionally, notice that the inline image has a disposition of\r\n\"attachment\".  Despite this being in there, the smiley should be\r\nembedded inline in the HTML part, not offered as an attachment.=20\r\nConversely, the GIF image should be offered as an attachment, not\r\ndisplayed inline.\r\n\r\nIf the MUA is not PGP capable, at the very least it should recognize\r\nmultipart/signed the same as multipart/mixed, and offer the\r\napplication/pgp-signature part as an attachment.\r\n\r\n--=-dHujWM/Xizz57x/JOmDF\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=3D\"Content-Type\" CONTENT=3D\"text/html; CHARSET=3DUTF-8\">\r\n  <META NAME=3D\"GENERATOR\" CONTENT=3D\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<FONT COLOR=3D\"#f80000\">If this sentence is red, you are viewing the HTML p=\r\nart.</FONT><BR>\r\nWow, what a complicated message.Â  This message is laid out as so:<BR>\r\n<BR>\r\nmultipart/signed<BR>\r\n| multipart/mixed<BR>\r\n| | mutipart/related<BR>\r\n| | | multipart/alternative<BR>\r\n| | | | text/plain<BR>\r\n| | | | text/html<BR>\r\n| | | image/png (smiley)<BR>\r\n| | image/gif (dot)<BR>\r\n| application/pgp-signature<BR>\r\n<BR>\r\n<IMG SRC=3D\"cid:1066971953.4232.15.camel@localhost\" ALIGN=3D\"bottom\" ALT=3D=\r\n\":)\" BORDER=3D\"0\"><BR>\r\n<BR>\r\nA smiley face should be embedded into the HTML part above (if you are viewi=\r\nng the HTML part), while the red square dot should be attached, not display=\r\ned inline.Â  Additionally, this whole message is PGP signed.<BR>\r\n<BR>\r\nThis message introduces a few tricks that the MUA should cope with.Â  F=\r\nirst of all, the related / alternative combination doesn't make much sense.=\r\nÂ  Here's the current setup in pseudo-code:<BR>\r\n<BR>\r\n<I>relationship between (alternative: HTML or text part) and PNG part</I><B=\r\nR>\r\n<BR>\r\nWhy would the text part be related in anyway to the PNG?Â  Instead, the=\r\n correct and more logical way to do things would be:<BR>\r\n<BR>\r\nalternative: (relationship between HTML and PNG parts) or text part<BR>\r\n<BR>\r\nHowever, many MUAs compose a message using the first method, so this should=\r\n be taken care of when parsing the message.<BR>\r\n<BR>\r\nAdditionally, notice that the inline image has a disposition of \"attac=\r\nhment\".Â  Despite this being in there, the smiley should be embedd=\r\ned inline in the HTML part, not offered as an attachment.Â  Conversely,=\r\n the GIF image should be offered as an attachment, not displayed inline.<BR=\r\n>\r\n<BR>\r\nIf the MUA is not PGP capable, at the very least it should recognize multip=\r\nart/signed the same as multipart/mixed, and offer the application/pgp-signa=\r\nture part as an attachment.\r\n</BODY>\r\n</HTML>\r\n\r\n--=-dHujWM/Xizz57x/JOmDF--\r\n\r\n--=-GpwozF9CQ7NdF+fd+vMG\r\nContent-ID: <1066971953.4232.15.camel@localhost>\r\nContent-Disposition: attachment; filename=smiley-3.png\r\nContent-Type: image/png; name=smiley-3.png\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAC+klEQVR42n2TbUjVdxTHP/+H69Xd\r\na2VWlFe69rzthZJUoxeNOWoFGxEhYRRFmZSVW2u9ab2KejWE1qDNBkEQhS82VoiaZkVPmoWaKNM5\r\nmA+opbd771//997//T/+epHBarEPHA6Hc84XDnwP/JcwcBS4AVgzcR04ONN7C+md+pcPCz44dPLA\r\narZs/gg1UABuGkvvp7X1Iad+itE/YtUAle8TuH26sujzqq/LkJQsnOQQVmIASVJQMhehZORiJwc5\r\nd76FH2pf3gY2Aigzy7+eObqmtOqbXbjGGHZqCM+eQpJ9AHhWFCc5CAjWf1KAkppc+qg3vRCol4Fw\r\n0aqcisOVW3HTE7hmBElSKD/5GFkNMhH1KDvegST78CwNSfZxeM88VuYrh4CwAuxqvxL6MnPuWiy9\r\nH1kNUPH9fZofDKPpHn8/z+Z6Yw8JK5stX5VhRO6h+OfiV3WaHxtPVKAwmF+KqXUDMkgqZ0+UoKcE\r\nP57/GXOqh46ODqrPXUQfufb6YOGxJOQD2CaHQnnlAJ4zDXggHBYvK6ap6Rau+RIz1k7djd+YHrqM\r\npXUC4KQnWTRPAdiuRqNRkFQG/omRNJOsKVQw408xtS4QDsI10AaqEY6O8Fzq70fJy3XI8gsA5HTa\r\nrBdOkvwFKj39EWrr/sJzEnj29OvsphGugfBsLlwbZnjcYN36LxiLuADtMtCUetFAcE4ee8s+pbHV\r\nYtOemwhHx3MSaPEY3X9OUnqsk5a2OMeP7KC3t4u+3gRALUC4cEW2eN62Q4ze3SAiz74TDxvOiI+X\r\nBcTsoCoyfJKYn6OKmrMbxGRnlXhyJSSqv80Vq0KSAFa+ceKl0wcK9lfsW42TGsE/pxhfcDmKfz6e\r\nFUPg4iRH6Ov6g9EJh1t341xusWuAyn9b+c7BrbklJ8oDZGTOQpL9ePY08SmDpCEwbcHwuE370yku\r\nNlj3gM/e90yXliyU9+8sCVJYlEUgU8IwBZruMThm83uzxsAYV4Hd/A9h4BjQBthAFOgDLgDF7w6/\r\nArI6YJ0eTQeGAAAAAElFTkSuQmCC\r\n\r\n--=-GpwozF9CQ7NdF+fd+vMG--\r\n\r\n--=-CgV5jm9HAY9VbUlAuneA\r\nContent-Disposition: attachment; filename=dot.gif\r\nContent-Type: image/gif; name=dot.gif\r\nContent-Transfer-Encoding: base64\r\n\r\nR0lGODdhCgAKAKEAAAAAANUAAP///8PDwywAAAAACgAKAEACHZSPMssLKoIMYLyR1I2z3sZsE2VB\r\nowcBqlqurloAADs=\r\n\r\n--=-CgV5jm9HAY9VbUlAuneA--\r\n\r\n--=-vH3FQO9a8icUn1ROCoAi\r\nContent-Type: application/pgp-signature; name=signature.asc\r\nContent-Description: This is a digitally signed message part\r\n\r\n-----BEGIN PGP SIGNATURE-----\r\nVersion: GnuPG v1.2.2 (GNU/Linux)\r\n\r\niD8DBQA/mLdEKZYQqSA+yiURAjAnAJ90G22jbX/Broy0F541R0UUbsb6zgCeJn0d\r\n02Vq9Sv6aXE+YM0lRn3jZDc=\r\n=uwCM\r\n-----END PGP SIGNATURE-----\r\n\r\n--=-vH3FQO9a8icUn1ROCoAi--",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "childNodes": [{
-                    "childNodes": [{
-                        "childNodes": [{
-                            "header": [
-                                "Content-Type: text/plain",
-                                "Content-Transfer-Encoding: quoted-printable"
-                            ],
-                            "parsedHeader": {
-                                "content-transfer-encoding": "quoted-printable",
-                                "content-type": {
-                                    "value": "text/plain",
-                                    "type": "text",
-                                    "subtype": "plain",
-                                    "params": {}
-                                }
-                            },
-                            "body": "If this sentence is red, you are viewing the HTML part.\r\nWow, what a complicated message.  This message is laid out as so:\r\n\r\nmultipart/signed\r\n| multipart/mixed\r\n| | mutipart/related\r\n| | | multipart/alternative\r\n| | | | text/plain\r\n| | | | text/html\r\n| | | image/png (smiley)\r\n| | image/gif (dot)\r\n| application/pgp-signature\r\n\r\n:)\r\n\r\nA smiley face should be embedded into the HTML part above (if you are\r\nviewing the HTML part), while the red square dot should be attached, not\r\ndisplayed inline.  Additionally, this whole message is PGP signed.\r\n\r\nThis message introduces a few tricks that the MUA should cope with.=20\r\nFirst of all, the related / alternative combination doesn't make much\r\nsense.  Here's the current setup in pseudo-code:\r\n\r\nrelationship between (alternative: HTML or text part) and PNG part\r\n\r\nWhy would the text part be related in anyway to the PNG?  Instead, the\r\ncorrect and more logical way to do things would be:\r\n\r\nalternative: (relationship between HTML and PNG parts) or text part\r\n\r\nHowever, many MUAs compose a message using the first method, so this\r\nshould be taken care of when parsing the message.\r\n\r\nAdditionally, notice that the inline image has a disposition of\r\n\"attachment\".  Despite this being in there, the smiley should be\r\nembedded inline in the HTML part, not offered as an attachment.=20\r\nConversely, the GIF image should be offered as an attachment, not\r\ndisplayed inline.\r\n\r\nIf the MUA is not PGP capable, at the very least it should recognize\r\nmultipart/signed the same as multipart/mixed, and offer the\r\napplication/pgp-signature part as an attachment.\r\n",
-                            "multipart": false,
-                            "boundary": false,
-                            "lineCount": 43,
-                            "size": 1606
-                        }, {
-                            "header": [
-                                "Content-Type: text/html; charset=utf-8",
-                                "Content-Transfer-Encoding: quoted-printable"
-                            ],
-                            "parsedHeader": {
-                                "content-transfer-encoding": "quoted-printable",
-                                "content-type": {
-                                    "value": "text/html",
-                                    "type": "text",
-                                    "subtype": "html",
-                                    "params": {
-                                        "charset": "utf-8"
-                                    },
-                                    "hasParams": true
-                                }
-                            },
-                            "body": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=3D\"Content-Type\" CONTENT=3D\"text/html; CHARSET=3DUTF-8\">\r\n  <META NAME=3D\"GENERATOR\" CONTENT=3D\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<FONT COLOR=3D\"#f80000\">If this sentence is red, you are viewing the HTML p=\r\nart.</FONT><BR>\r\nWow, what a complicated message.Â  This message is laid out as so:<BR>\r\n<BR>\r\nmultipart/signed<BR>\r\n| multipart/mixed<BR>\r\n| | mutipart/related<BR>\r\n| | | multipart/alternative<BR>\r\n| | | | text/plain<BR>\r\n| | | | text/html<BR>\r\n| | | image/png (smiley)<BR>\r\n| | image/gif (dot)<BR>\r\n| application/pgp-signature<BR>\r\n<BR>\r\n<IMG SRC=3D\"cid:1066971953.4232.15.camel@localhost\" ALIGN=3D\"bottom\" ALT=3D=\r\n\":)\" BORDER=3D\"0\"><BR>\r\n<BR>\r\nA smiley face should be embedded into the HTML part above (if you are viewi=\r\nng the HTML part), while the red square dot should be attached, not display=\r\ned inline.Â  Additionally, this whole message is PGP signed.<BR>\r\n<BR>\r\nThis message introduces a few tricks that the MUA should cope with.Â  F=\r\nirst of all, the related / alternative combination doesn't make much sense.=\r\nÂ  Here's the current setup in pseudo-code:<BR>\r\n<BR>\r\n<I>relationship between (alternative: HTML or text part) and PNG part</I><B=\r\nR>\r\n<BR>\r\nWhy would the text part be related in anyway to the PNG?Â  Instead, the=\r\n correct and more logical way to do things would be:<BR>\r\n<BR>\r\nalternative: (relationship between HTML and PNG parts) or text part<BR>\r\n<BR>\r\nHowever, many MUAs compose a message using the first method, so this should=\r\n be taken care of when parsing the message.<BR>\r\n<BR>\r\nAdditionally, notice that the inline image has a disposition of \"attac=\r\nhment\".Â  Despite this being in there, the smiley should be embedd=\r\ned inline in the HTML part, not offered as an attachment.Â  Conversely,=\r\n the GIF image should be offered as an attachment, not displayed inline.<BR=\r\n>\r\n<BR>\r\nIf the MUA is not PGP capable, at the very least it should recognize multip=\r\nart/signed the same as multipart/mixed, and offer the application/pgp-signa=\r\nture part as an attachment.\r\n</BODY>\r\n</HTML>\r\n",
-                            "multipart": false,
-                            "boundary": false,
-                            "lineCount": 55,
-                            "size": 2135
-                        }],
-                        "header": [
-                            "Content-Type: multipart/alternative; boundary=\"=-dHujWM/Xizz57x/JOmDF\""
-                        ],
-                        "parsedHeader": {
-                            "content-type": {
-                                "value": "multipart/alternative",
-                                "type": "multipart",
-                                "subtype": "alternative",
-                                "params": {
-                                    "boundary": "=-dHujWM/Xizz57x/JOmDF"
-                                },
-                                "hasParams": true
-                            }
-                        },
-                        "body": "\r\n",
-                        "multipart": "alternative",
-                        "boundary": "=-dHujWM/Xizz57x/JOmDF",
-                        "lineCount": 2,
-                        "size": 2
-                    }, {
-                        "header": [
-                            "Content-ID: <1066971953.4232.15.camel@localhost>",
-                            "Content-Disposition: attachment; filename=smiley-3.png",
-                            "Content-Type: image/png; name=smiley-3.png",
-                            "Content-Transfer-Encoding: base64"
-                        ],
-                        "parsedHeader": {
-                            "content-transfer-encoding": "base64",
-                            "content-type": {
-                                "value": "image/png",
-                                "type": "image",
-                                "subtype": "png",
-                                "params": {
-                                    "name": "smiley-3.png"
-                                },
-                                "hasParams": true
-                            },
-                            "content-disposition": {
-                                "value": "attachment",
-                                "type": "attachment",
-                                "subtype": "",
-                                "params": {
-                                    "filename": "smiley-3.png"
-                                },
-                                "hasParams": true
-                            },
-                            "content-id": "<1066971953.4232.15.camel@localhost>"
-                        },
-                        "body": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAC+klEQVR42n2TbUjVdxTHP/+H69Xd\r\na2VWlFe69rzthZJUoxeNOWoFGxEhYRRFmZSVW2u9ab2KejWE1qDNBkEQhS82VoiaZkVPmoWaKNM5\r\nmA+opbd771//997//T/+epHBarEPHA6Hc84XDnwP/JcwcBS4AVgzcR04ONN7C+md+pcPCz44dPLA\r\narZs/gg1UABuGkvvp7X1Iad+itE/YtUAle8TuH26sujzqq/LkJQsnOQQVmIASVJQMhehZORiJwc5\r\nd76FH2pf3gY2Aigzy7+eObqmtOqbXbjGGHZqCM+eQpJ9AHhWFCc5CAjWf1KAkppc+qg3vRCol4Fw\r\n0aqcisOVW3HTE7hmBElSKD/5GFkNMhH1KDvegST78CwNSfZxeM88VuYrh4CwAuxqvxL6MnPuWiy9\r\nH1kNUPH9fZofDKPpHn8/z+Z6Yw8JK5stX5VhRO6h+OfiV3WaHxtPVKAwmF+KqXUDMkgqZ0+UoKcE\r\nP57/GXOqh46ODqrPXUQfufb6YOGxJOQD2CaHQnnlAJ4zDXggHBYvK6ap6Rau+RIz1k7djd+YHrqM\r\npXUC4KQnWTRPAdiuRqNRkFQG/omRNJOsKVQw408xtS4QDsI10AaqEY6O8Fzq70fJy3XI8gsA5HTa\r\nrBdOkvwFKj39EWrr/sJzEnj29OvsphGugfBsLlwbZnjcYN36LxiLuADtMtCUetFAcE4ee8s+pbHV\r\nYtOemwhHx3MSaPEY3X9OUnqsk5a2OMeP7KC3t4u+3gRALUC4cEW2eN62Q4ze3SAiz74TDxvOiI+X\r\nBcTsoCoyfJKYn6OKmrMbxGRnlXhyJSSqv80Vq0KSAFa+ceKl0wcK9lfsW42TGsE/pxhfcDmKfz6e\r\nFUPg4iRH6Ov6g9EJh1t341xusWuAyn9b+c7BrbklJ8oDZGTOQpL9ePY08SmDpCEwbcHwuE370yku\r\nNlj3gM/e90yXliyU9+8sCVJYlEUgU8IwBZruMThm83uzxsAYV4Hd/A9h4BjQBthAFOgDLgDF7w6/\r\nArI6YJ0eTQeGAAAAAElFTkSuQmCC\r\n",
-                        "multipart": false,
-                        "boundary": false,
-                        "lineCount": 16,
-                        "size": 1122
-                    }],
-                    "header": [
-                        "Content-Type: multipart/related; type=\"multipart/alternative\";\r\n    boundary=\"=-GpwozF9CQ7NdF+fd+vMG\""
-                    ],
-                    "parsedHeader": {
-                        "content-type": {
-                            "value": "multipart/related",
-                            "type": "multipart",
-                            "subtype": "related",
-                            "params": {
-                                "type": "multipart/alternative",
-                                "boundary": "=-GpwozF9CQ7NdF+fd+vMG"
-                            },
-                            "hasParams": true
-                        }
-                    },
-                    "body": "\r\n",
-                    "multipart": "related",
-                    "boundary": "=-GpwozF9CQ7NdF+fd+vMG",
-                    "lineCount": 2,
-                    "size": 2
-                }, {
-                    "header": [
-                        "Content-Disposition: attachment; filename=dot.gif",
-                        "Content-Type: image/gif; name=dot.gif",
-                        "Content-Transfer-Encoding: base64"
-                    ],
-                    "parsedHeader": {
-                        "content-transfer-encoding": "base64",
-                        "content-type": {
-                            "value": "image/gif",
-                            "type": "image",
-                            "subtype": "gif",
-                            "params": {
-                                "name": "dot.gif"
-                            },
-                            "hasParams": true
-                        },
-                        "content-disposition": {
-                            "value": "attachment",
-                            "type": "attachment",
-                            "subtype": "",
-                            "params": {
-                                "filename": "dot.gif"
-                            },
-                            "hasParams": true
-                        }
-                    },
-                    "body": "R0lGODdhCgAKAKEAAAAAANUAAP///8PDwywAAAAACgAKAEACHZSPMssLKoIMYLyR1I2z3sZsE2VB\r\nowcBqlqurloAADs=\r\n",
-                    "multipart": false,
-                    "boundary": false,
-                    "lineCount": 3,
-                    "size": 96
-                }],
-                "header": [
-                    "Content-Type: multipart/mixed; boundary=\"=-CgV5jm9HAY9VbUlAuneA\""
-                ],
-                "parsedHeader": {
+                    "date": "23 Oct 2003 23:09:16 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066975756.4263.70.camel@localhost>",
                     "content-type": {
                         "value": "multipart/mixed",
                         "type": "multipart",
                         "subtype": "mixed",
                         "params": {
-                            "boundary": "=-CgV5jm9HAY9VbUlAuneA"
+                            "boundary": "=-1066975756jd02"
                         },
                         "hasParams": true
-                    }
-                },
-                "body": "\r\n",
-                "multipart": "mixed",
-                "boundary": "=-CgV5jm9HAY9VbUlAuneA",
-                "lineCount": 2,
-                "size": 2
-            }, {
-                "header": [
-                    "Content-Type: application/pgp-signature; name=signature.asc",
-                    "Content-Description: This is a digitally signed message part"
-                ],
-                "parsedHeader": {
-                    "content-description": "This is a digitally signed message part",
-                    "content-type": {
-                        "value": "application/pgp-signature",
-                        "type": "application",
-                        "subtype": "pgp-signature",
-                        "params": {
-                            "name": "signature.asc"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "-----BEGIN PGP SIGNATURE-----\r\nVersion: GnuPG v1.2.2 (GNU/Linux)\r\n\r\niD8DBQA/mLdEKZYQqSA+yiURAjAnAJ90G22jbX/Broy0F541R0UUbsb6zgCeJn0d\r\n02Vq9Sv6aXE+YM0lRn3jZDc=\r\n=uwCM\r\n-----END PGP SIGNATURE-----\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 8,
-                "size": 196
-            }],
-            "header": [
-                "Subject: smiley!",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/signed; micalg=pgp-sha1; protocol=\"application/pgp-signature\"; boundary=\"=-vH3FQO9a8icUn1ROCoAi\"",
-                "Message-Id: <1066972996.4264.39.camel@localhost>",
-                "Mime-Version: 1.0",
-                "Date: 23 Oct 2003 22:23:16 -0700"
-            ],
-            "parsedHeader": {
-                "date": "23 Oct 2003 22:23:16 -0700",
-                "mime-version": "1.0",
-                "message-id": "<1066972996.4264.39.camel@localhost>",
-                "content-type": {
-                    "value": "multipart/signed",
-                    "type": "multipart",
-                    "subtype": "signed",
-                    "params": {
-                        "micalg": "pgp-sha1",
-                        "protocol": "application/pgp-signature",
-                        "boundary": "=-vH3FQO9a8icUn1ROCoAi"
                     },
-                    "hasParams": true
-                },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "smiley!"
-            },
-            "body": "",
-            "multipart": "signed",
-            "boundary": "=-vH3FQO9a8icUn1ROCoAi",
-            "lineCount": 1,
-            "size": 0
-        },
-        "lineCount": 177,
-        "size": 6648
-    }, {
-        "header": [
-            "Content-Disposition: inline",
-            "Content-Description: Kittens give Morbo gas. --Morbo",
-            "Content-Type: message/rfc822"
-        ],
-        "parsedHeader": {
-            "content-type": {
-                "value": "message/rfc822",
-                "type": "message",
-                "subtype": "rfc822",
-                "params": {}
-            },
-            "content-description": "Kittens give Morbo gas. --Morbo",
-            "content-disposition": {
-                "value": "inline",
-                "type": "inline",
-                "subtype": "",
-                "params": {}
-            }
-        },
-        "body": "Subject: the PROPER way to do alternative/related\r\nFrom: Ryan Finnie <rfinnie@domain.dom>\r\nTo: bob@domain.dom\r\nContent-Type: multipart/alternative; type=\"multipart/alternative\"; boundary=\"=-tyGlQ9JvB5uvPWzozI+y\"\r\nMessage-Id: <1066973557.4265.51.camel@localhost>\r\nMime-Version: 1.0\r\nX-Mailer: Not Evolution\r\nDate: 23 Oct 2003 22:32:37 -0700\r\n\r\n\r\n--=-tyGlQ9JvB5uvPWzozI+y\r\nContent-Type: text/plain; CHARSET=US-ASCII\r\nContent-Transfer-Encoding: 8bit\r\n\r\nIf this sentence is green, you're viewing the HTML part.\r\n\r\nNow, this is the way that all MUAs SHOULD treat this kind of situation.\r\nThe layout is like so:\r\n\r\nmultipart/alternative\r\n| text/plain\r\n| multipart/related\r\n| | text/html\r\n| | image/gif\r\n\r\nSee?  The GIF (which by the way should be inline towards the top of this\r\nmessage) is related to the HTML, and that whole block is an alternative\r\nto a text/plain part.  This is the opposite of the way shown in the\r\nprevious email.\r\n\r\nAlso, the embedded image here does not have a filename.  As mentioned\r\nabove, the MUA should suggest something as a filename, even here (the\r\nuser may want to save the embedded image, so a filename would be\r\nhelpful).  In this case, I would recommend appending the random text\r\nto be suggested to the user with the part's subtype, in this case\r\nsomething like c20vsidlkvm.gif.\r\n\r\n--=-tyGlQ9JvB5uvPWzozI+y\r\nContent-Type: multipart/related; boundary=\"=-bFkxH1S3HVGcxi+o/5jG\"\r\n\r\n\r\n--=-bFkxH1S3HVGcxi+o/5jG\r\nContent-Type: text/html; CHARSET=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; CHARSET=UTF-8\">\r\n  <META NAME=\"GENERATOR\" CONTENT=\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<FONT COLOR=\"#00fc00\">If this sentence is green, you're viewing the HTML part.</FONT><BR>\r\n<IMG SRC=\"cid:1066973340.4232.46.camel@localhost\" ALIGN=\"top\" ALT=\"\" BORDER=\"0\"><BR>\r\nNow, this is the way that all MUAs <B>SHOULD</B> treat this kind of situation.Â  The layout is like so:<BR>\r\n<BR>\r\nmultipart/alternative<BR>\r\n| text/plain<BR>\r\n| multipart/related<BR>\r\n| | text/html<BR>\r\n| | image/gif<BR>\r\n<BR>\r\nSee?Â  The GIF (which by the way should be inline towards the top of this message) is related to the HTML, and that whole block is an alternative to a text/plain part.Â  This is the opposite of the way shown in the previous email.<BR>\r\n<BR>\r\nAlso, the embedded image here does not have a filename.Â   As mentioned above, the MUA should suggest something as a filename, even here (the user may want to save the embedded image, so a filename would be helpful).Â   In this case, I would recommend appending the random text to be suggested to the user with the part's subtype, in this case something like c20vsidlkvm.gif.\r\n</BODY>\r\n</HTML>\r\n\r\n--=-bFkxH1S3HVGcxi+o/5jG\r\nContent-ID: <1066973340.4232.46.camel@localhost>\r\nContent-Transfer-Encoding: base64\r\nContent-Type: image/gif\r\n\r\nR0lGODlhBQALAPIAAKIA/64A/8ZL/////8BS/2QDANZ//wAAACH5BAEAAAMALAAAAAAFAAsAAAMY\r\nOBIytsIYEoiEl0lqFWgKM4zkUJzjWQwJADs=\r\n\r\n--=-bFkxH1S3HVGcxi+o/5jG--\r\n\r\n--=-tyGlQ9JvB5uvPWzozI+y--\r\n",
-        "multipart": false,
-        "boundary": false,
-        "message": {
-            "childNodes": [{
-                "header": [
-                    "Content-Type: text/plain; CHARSET=US-ASCII",
-                    "Content-Transfer-Encoding: 8bit"
-                ],
-                "parsedHeader": {
-                    "content-transfer-encoding": "8bit",
-                    "content-type": {
-                        "value": "text/plain",
-                        "type": "text",
-                        "subtype": "plain",
-                        "params": {
-                            "charset": "US-ASCII"
-                        },
-                        "hasParams": true
-                    }
-                },
-                "body": "If this sentence is green, you're viewing the HTML part.\r\n\r\nNow, this is the way that all MUAs SHOULD treat this kind of situation.\r\nThe layout is like so:\r\n\r\nmultipart/alternative\r\n| text/plain\r\n| multipart/related\r\n| | text/html\r\n| | image/gif\r\n\r\nSee?  The GIF (which by the way should be inline towards the top of this\r\nmessage) is related to the HTML, and that whole block is an alternative\r\nto a text/plain part.  This is the opposite of the way shown in the\r\nprevious email.\r\n\r\nAlso, the embedded image here does not have a filename.  As mentioned\r\nabove, the MUA should suggest something as a filename, even here (the\r\nuser may want to save the embedded image, so a filename would be\r\nhelpful).  In this case, I would recommend appending the random text\r\nto be suggested to the user with the part's subtype, in this case\r\nsomething like c20vsidlkvm.gif.\r\n",
-                "multipart": false,
-                "boundary": false,
-                "lineCount": 23,
-                "size": 862
-            }, {
-                "childNodes": [{
-                    "header": [
-                        "Content-Type: text/html; CHARSET=utf-8",
-                        "Content-Transfer-Encoding: 8bit"
-                    ],
-                    "parsedHeader": {
-                        "content-transfer-encoding": "8bit",
-                        "content-type": {
-                            "value": "text/html",
-                            "type": "text",
-                            "subtype": "html",
-                            "params": {
-                                "charset": "utf-8"
-                            },
-                            "hasParams": true
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
                         }
-                    },
-                    "body": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 TRANSITIONAL//EN\">\r\n<HTML>\r\n<HEAD>\r\n  <META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; CHARSET=UTF-8\">\r\n  <META NAME=\"GENERATOR\" CONTENT=\"GtkHTML/1.1.10\">\r\n</HEAD>\r\n<BODY>\r\n<FONT COLOR=\"#00fc00\">If this sentence is green, you're viewing the HTML part.</FONT><BR>\r\n<IMG SRC=\"cid:1066973340.4232.46.camel@localhost\" ALIGN=\"top\" ALT=\"\" BORDER=\"0\"><BR>\r\nNow, this is the way that all MUAs <B>SHOULD</B> treat this kind of situation.Â  The layout is like so:<BR>\r\n<BR>\r\nmultipart/alternative<BR>\r\n| text/plain<BR>\r\n| multipart/related<BR>\r\n| | text/html<BR>\r\n| | image/gif<BR>\r\n<BR>\r\nSee?Â  The GIF (which by the way should be inline towards the top of this message) is related to the HTML, and that whole block is an alternative to a text/plain part.Â  This is the opposite of the way shown in the previous email.<BR>\r\n<BR>\r\nAlso, the embedded image here does not have a filename.Â   As mentioned above, the MUA should suggest something as a filename, even here (the user may want to save the embedded image, so a filename would be helpful).Â   In this case, I would recommend appending the random text to be suggested to the user with the part's subtype, in this case something like c20vsidlkvm.gif.\r\n</BODY>\r\n</HTML>\r\n",
-                    "multipart": false,
-                    "boundary": false,
-                    "lineCount": 23,
-                    "size": 1263
-                }, {
-                    "header": [
-                        "Content-ID: <1066973340.4232.46.camel@localhost>",
-                        "Content-Transfer-Encoding: base64",
-                        "Content-Type: image/gif"
                     ],
-                    "parsedHeader": {
-                        "content-type": {
-                            "value": "image/gif",
-                            "type": "image",
-                            "subtype": "gif",
-                            "params": {}
-                        },
-                        "content-transfer-encoding": "base64",
-                        "content-id": "<1066973340.4232.46.camel@localhost>"
-                    },
-                    "body": "R0lGODlhBQALAPIAAKIA/64A/8ZL/////8BS/2QDANZ//wAAACH5BAEAAAMALAAAAAAFAAsAAAMY\r\nOBIytsIYEoiEl0lqFWgKM4zkUJzjWQwJADs=\r\n",
-                    "multipart": false,
-                    "boundary": false,
-                    "lineCount": 3,
-                    "size": 116
-                }],
-                "header": [
-                    "Content-Type: multipart/related; boundary=\"=-bFkxH1S3HVGcxi+o/5jG\""
-                ],
-                "parsedHeader": {
-                    "content-type": {
-                        "value": "multipart/related",
-                        "type": "multipart",
-                        "subtype": "related",
-                        "params": {
-                            "boundary": "=-bFkxH1S3HVGcxi+o/5jG"
-                        },
-                        "hasParams": true
-                    }
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "Attachment filename vs. name"
                 },
-                "body": "\r\n",
-                "multipart": "related",
-                "boundary": "=-bFkxH1S3HVGcxi+o/5jG",
-                "lineCount": 2,
-                "size": 2
-            }],
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "mixed",
+                "boundary": "=-1066975756jd02",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 29,
+            "size": 1045
+        },
+        {
             "header": [
-                "Subject: the PROPER way to do alternative/related",
-                "From: Ryan Finnie <rfinnie@domain.dom>",
-                "To: bob@domain.dom",
-                "Content-Type: multipart/alternative; type=\"multipart/alternative\"; boundary=\"=-tyGlQ9JvB5uvPWzozI+y\"",
-                "Message-Id: <1066973557.4265.51.camel@localhost>",
-                "Mime-Version: 1.0",
-                "X-Mailer: Not Evolution",
-                "Date: 23 Oct 2003 22:32:37 -0700"
+                "Content-Disposition: inline",
+                "Content-Description: Hello little man.  I WILL DESTROY YOU! --Moro",
+                "Content-Type: message/rfc822"
             ],
             "parsedHeader": {
-                "date": "23 Oct 2003 22:32:37 -0700",
-                "x-mailer": "Not Evolution",
-                "mime-version": "1.0",
-                "message-id": "<1066973557.4265.51.camel@localhost>",
                 "content-type": {
-                    "value": "multipart/alternative",
-                    "type": "multipart",
-                    "subtype": "alternative",
-                    "params": {
-                        "type": "multipart/alternative",
-                        "boundary": "=-tyGlQ9JvB5uvPWzozI+y"
-                    },
-                    "hasParams": true
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
                 },
-                "to": [{
-                    "address": "bob@domain.dom",
-                    "name": ""
-                }],
-                "from": [{
-                    "address": "rfinnie@domain.dom",
-                    "name": "Ryan Finnie"
-                }],
-                "subject": "the PROPER way to do alternative/related"
+                "content-description": "Hello little man.  I WILL DESTROY YOU! --Moro",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
             },
-            "body": "\r\n",
-            "multipart": "alternative",
-            "boundary": "=-tyGlQ9JvB5uvPWzozI+y",
-            "lineCount": 2,
-            "size": 2
+            "body": {
+                "$buffer": "U3ViamVjdDogTm8gZmlsZW5hbWU/ICBObyBwcm9ibGVtIQ0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSI9LTEwNjY5NzU3NTZqZDAzIg0KTWVzc2FnZS1JZDogPDEwNjY5NzU3NjEuNDI2My43MC5jYW1lbEBsb2NhbGhvc3Q+DQpNaW1lLVZlcnNpb246IDEuMA0KRGF0ZTogMjMgT2N0IDIwMDMgMjM6MDk6MjEgLTA3MDANCg0KDQotLT0tMTA2Njk3NTc1NmpkMDMNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgQ0hBUlNFVD1VUy1BU0NJSQ0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogOGJpdA0KDQpXaGVuIHNlYXJjaGluZyBmb3IgYSBzdWl0YWJsZSBuYW1lIHRvIHN1Z2dlc3QgZm9yIGEgZmlsZW5hbWUsDQp0aGUgTVVBIHNob3VsZCBwcm9iYWJseSBmb2xsb3cgdGhpcyBvcmRlci4gIEZpcnN0LCBsb29rIGZvcg0KQ29udGVudC1EaXNwb3NpdGlvbidzIGZpbGVuYW1lIGF0dHJpYnV0ZS4gIElmIHRoYXQgaXMgbWlzc2luZywNCmxvb2sgZm9yIENvbnRlbnQtVHlwZSdzIGZpbGUgYXR0cmlidXRlLiAgSWYgdGhhdCBpcyBhbHNvIG1pc3NpbmcsDQpJIHdvdWxkIHJlY29tbWVudCB0YWtpbmcgdGhlIENvbnRlbnQtRGVzY3JpcHRpb24sIHN0cmlwcGluZyBvZmYNCmFueSBjaGFyYWN0ZXJzIHRoYXQgY2Fubm90IGJlIHVzZWQgaW4gYSBmaWxlbmFtZSwgYW5kIHN1Z2dlc3RpbmcNCnRoYXQuDQoNCklmIG5vbmUgb2YgdGhvc2UgZmllbGRzIGFyZSBhdmFpbGFibGUsIHRoZSBNVUEgY291bGQganVzdCBtYWtlDQp1cCBhIHJhbmRvbSBmaWxlbmFtZS4gIFNPTUVUSElORyBpcyBiZXR0ZXIgdGhhbiBub3RoaW5nLg0KDQotLT0tMTA2Njk3NTc1NmpkMDMNCkNvbnRlbnQtRGlzcG9zaXRpb246IGF0dGFjaG1lbnQNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IGJhc2U2NA0KQ29udGVudC1EZXNjcmlwdGlvbjogSSdtIGdldHRpbmcgc2ljayBvZiB3aXR0eSB0aGluZ3MgdG8gc2F5DQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL3gtZ3ppcA0KDQpINHNJQU9IQm1EOEFBNHZNTDFYUHlWSElTeTFMTFZKSXk4eExVY2hOVmVRQ0FIYmU3NjRXQUFBQQ0KDQotLT0tMTA2Njk3NTc1NmpkMDMtLQ0K"
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "header": [
+                            "Content-Type: text/plain; CHARSET=US-ASCII",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/plain",
+                                "type": "text",
+                                "subtype": "plain",
+                                "params": {
+                                    "charset": "US-ASCII"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "V2hlbiBzZWFyY2hpbmcgZm9yIGEgc3VpdGFibGUgbmFtZSB0byBzdWdnZXN0IGZvciBhIGZpbGVuYW1lLA0KdGhlIE1VQSBzaG91bGQgcHJvYmFibHkgZm9sbG93IHRoaXMgb3JkZXIuICBGaXJzdCwgbG9vayBmb3INCkNvbnRlbnQtRGlzcG9zaXRpb24ncyBmaWxlbmFtZSBhdHRyaWJ1dGUuICBJZiB0aGF0IGlzIG1pc3NpbmcsDQpsb29rIGZvciBDb250ZW50LVR5cGUncyBmaWxlIGF0dHJpYnV0ZS4gIElmIHRoYXQgaXMgYWxzbyBtaXNzaW5nLA0KSSB3b3VsZCByZWNvbW1lbnQgdGFraW5nIHRoZSBDb250ZW50LURlc2NyaXB0aW9uLCBzdHJpcHBpbmcgb2ZmDQphbnkgY2hhcmFjdGVycyB0aGF0IGNhbm5vdCBiZSB1c2VkIGluIGEgZmlsZW5hbWUsIGFuZCBzdWdnZXN0aW5nDQp0aGF0Lg0KDQpJZiBub25lIG9mIHRob3NlIGZpZWxkcyBhcmUgYXZhaWxhYmxlLCB0aGUgTVVBIGNvdWxkIGp1c3QgbWFrZQ0KdXAgYSByYW5kb20gZmlsZW5hbWUuICBTT01FVEhJTkcgaXMgYmV0dGVyIHRoYW4gbm90aGluZy4NCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 10,
+                        "size": 517
+                    },
+                    {
+                        "header": [
+                            "Content-Disposition: attachment",
+                            "Content-Transfer-Encoding: base64",
+                            "Content-Description: I'm getting sick of witty things to say",
+                            "Content-Type: application/x-gzip"
+                        ],
+                        "parsedHeader": {
+                            "content-type": {
+                                "value": "application/x-gzip",
+                                "type": "application",
+                                "subtype": "x-gzip",
+                                "params": {}
+                            },
+                            "content-description": "I'm getting sick of witty things to say",
+                            "content-transfer-encoding": "base64",
+                            "content-disposition": {
+                                "value": "attachment",
+                                "type": "attachment",
+                                "subtype": "",
+                                "params": {}
+                            }
+                        },
+                        "body": {
+                            "$buffer": "SDRzSUFPSEJtRDhBQTR2TUwxWFB5VkhJU3kxTExWSkl5OHhMVWNoTlZlUUNBSGJlNzY0V0FBQUENCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 1,
+                        "size": 58
+                    }
+                ],
+                "header": [
+                    "Subject: No filename?  No problem!",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/mixed; boundary=\"=-1066975756jd03\"",
+                    "Message-Id: <1066975761.4263.70.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 23:09:21 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 23:09:21 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066975761.4263.70.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/mixed",
+                        "type": "multipart",
+                        "subtype": "mixed",
+                        "params": {
+                            "boundary": "=-1066975756jd03"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "No filename?  No problem!"
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "mixed",
+                "boundary": "=-1066975756jd03",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 33,
+            "size": 1149
         },
-        "lineCount": 80,
-        "size": 3092
-    }],
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: Friends! Help! A guinea pig tricked me! --Zoidberg",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "Friends! Help! A guinea pig tricked me! --Zoidberg",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogaHRtbCBhbmQgdGV4dCwgYm90aCBpbmxpbmUNCkZyb206IFJ5YW4gRmlubmllIDxyZmlubmllQGRvbWFpbi5kb20+DQpUbzogYm9iQGRvbWFpbi5kb20NCkNvbnRlbnQtVHlwZTogbXVsdGlwYXJ0L21peGVkOyBib3VuZGFyeT0iPS1aQ0tNZkh6dkhNeUsxaUJ1NGtmZiINCk1lc3NhZ2UtSWQ6IDwxMDY2OTc0MDQ0LjQyNjQuNjIuY2FtZWxAbG9jYWxob3N0Pg0KTWltZS1WZXJzaW9uOiAxLjANCkRhdGU6IDIzIE9jdCAyMDAzIDIyOjQwOjQ1IC0wNzAwDQoNCg0KLS09LVpDS01mSHp2SE15SzFpQnU0a2ZmDQpDb250ZW50LVR5cGU6IHRleHQvaHRtbDsgQ0hBUlNFVD11dGYtOA0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogOGJpdA0KDQo8IURPQ1RZUEUgSFRNTCBQVUJMSUMgIi0vL1czQy8vRFREIEhUTUwgNC4wIFRSQU5TSVRJT05BTC8vRU4iPg0KPEhUTUw+DQo8SEVBRD4NCiAgPE1FVEEgSFRUUC1FUVVJVj0iQ29udGVudC1UeXBlIiBDT05URU5UPSJ0ZXh0L2h0bWw7IENIQVJTRVQ9VVRGLTgiPg0KICA8TUVUQSBOQU1FPSJHRU5FUkFUT1IiIENPTlRFTlQ9Ikd0a0hUTUwvMS4xLjEwIj4NCjwvSEVBRD4NCjxCT0RZPg0KPEZPTlQgQ09MT1I9IiNmOGNjMDAiPlRoaXMgaXMgdGhlIEhUTUwgcGFydC48L0ZPTlQ+PEJSPg0KSXQgc2hvdWxkIGJlIGRpc3BsYXllZCBpbmxpbmUuDQo8L0JPRFk+DQo8L0hUTUw+DQoNCi0tPS1aQ0tNZkh6dkhNeUsxaUJ1NGtmZg0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBDSEFSU0VUPVVTLUFTQ0lJDQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA4Yml0DQoNClRoaXMgaXMgdGhlIHRleHQgcGFydC4NCkl0IHNob3VsZCBBTFNPIGJlIGRpc3BsYXllZCBpbmxpbmUuDQoNCi0tPS1aQ0tNZkh6dkhNeUsxaUJ1NGtmZi0tDQo="
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "header": [
+                            "Content-Type: text/html; CHARSET=utf-8",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/html",
+                                "type": "text",
+                                "subtype": "html",
+                                "params": {
+                                    "charset": "utf-8"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "PCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUUkFOU0lUSU9OQUwvL0VOIj4NCjxIVE1MPg0KPEhFQUQ+DQogIDxNRVRBIEhUVFAtRVFVSVY9IkNvbnRlbnQtVHlwZSIgQ09OVEVOVD0idGV4dC9odG1sOyBDSEFSU0VUPVVURi04Ij4NCiAgPE1FVEEgTkFNRT0iR0VORVJBVE9SIiBDT05URU5UPSJHdGtIVE1MLzEuMS4xMCI+DQo8L0hFQUQ+DQo8Qk9EWT4NCjxGT05UIENPTE9SPSIjZjhjYzAwIj5UaGlzIGlzIHRoZSBIVE1MIHBhcnQuPC9GT05UPjxCUj4NCkl0IHNob3VsZCBiZSBkaXNwbGF5ZWQgaW5saW5lLg0KPC9CT0RZPg0KPC9IVE1MPg0K"
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 11,
+                        "size": 327
+                    },
+                    {
+                        "header": [
+                            "Content-Type: text/plain; CHARSET=US-ASCII",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/plain",
+                                "type": "text",
+                                "subtype": "plain",
+                                "params": {
+                                    "charset": "US-ASCII"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "VGhpcyBpcyB0aGUgdGV4dCBwYXJ0Lg0KSXQgc2hvdWxkIEFMU08gYmUgZGlzcGxheWVkIGlubGluZS4NCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 2,
+                        "size": 61
+                    }
+                ],
+                "header": [
+                    "Subject: html and text, both inline",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/mixed; boundary=\"=-ZCKMfHzvHMyK1iBu4kff\"",
+                    "Message-Id: <1066974044.4264.62.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 22:40:45 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 22:40:45 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066974044.4264.62.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/mixed",
+                        "type": "multipart",
+                        "subtype": "mixed",
+                        "params": {
+                            "boundary": "=-ZCKMfHzvHMyK1iBu4kff"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "html and text, both inline"
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "mixed",
+                "boundary": "=-ZCKMfHzvHMyK1iBu4kff",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 33,
+            "size": 896
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: Smeesh! --Amy",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "Smeesh! --Amy",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogdGV4dCBhbmQgdGV4dCwgYm90aCBpbmxpbmUNCkZyb206IFJ5YW4gRmlubmllIDxyZmlubmllQGRvbWFpbi5kb20+DQpUbzogYm9iQGRvbWFpbi5kb20NCkNvbnRlbnQtVHlwZTogbXVsdGlwYXJ0L21peGVkOyBib3VuZGFyeT0iPS1wTmM0d3RsT0l4czhSY1g3SC9BSyINCk1lc3NhZ2UtSWQ6IDwxMDY2OTc0MDg5LjQyNjUuNjQuY2FtZWxAbG9jYWxob3N0Pg0KTWltZS1WZXJzaW9uOiAxLjANCkRhdGU6IDIzIE9jdCAyMDAzIDIyOjQxOjI5IC0wNzAwDQoNCg0KLS09LXBOYzR3dGxPSXhzOFJjWDdIL0FLDQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW47IENIQVJTRVQ9VVMtQVNDSUkNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IDhiaXQNCg0KVGhpcyBpcyB0aGUgZmlyc3QgdGV4dCBwYXJ0Lg0KSXQgc2hvdWxkIGJlIGRpc3BsYXllZCBpbmxpbmUuDQoNCi0tPS1wTmM0d3RsT0l4czhSY1g3SC9BSw0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBDSEFSU0VUPVVTLUFTQ0lJDQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA4Yml0DQoNClRoaXMgaXMgdGhlIHNlY29uZCB0ZXh0IHBhcnQuDQpJdCBzaG91bGQgYWxzbyBiZSBkaXNwbGF5ZWQgaW5saW5lLg0KDQotLT0tcE5jNHd0bE9JeHM4UmNYN0gvQUstLQ0K"
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "header": [
+                            "Content-Type: text/plain; CHARSET=US-ASCII",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/plain",
+                                "type": "text",
+                                "subtype": "plain",
+                                "params": {
+                                    "charset": "US-ASCII"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "VGhpcyBpcyB0aGUgZmlyc3QgdGV4dCBwYXJ0Lg0KSXQgc2hvdWxkIGJlIGRpc3BsYXllZCBpbmxpbmUuDQo="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 2,
+                        "size": 62
+                    },
+                    {
+                        "header": [
+                            "Content-Type: text/plain; CHARSET=US-ASCII",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/plain",
+                                "type": "text",
+                                "subtype": "plain",
+                                "params": {
+                                    "charset": "US-ASCII"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "VGhpcyBpcyB0aGUgc2Vjb25kIHRleHQgcGFydC4NCkl0IHNob3VsZCBhbHNvIGJlIGRpc3BsYXllZCBpbmxpbmUuDQo="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 2,
+                        "size": 68
+                    }
+                ],
+                "header": [
+                    "Subject: text and text, both inline",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/mixed; boundary=\"=-pNc4wtlOIxs8RcX7H/AK\"",
+                    "Message-Id: <1066974089.4265.64.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 22:41:29 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 22:41:29 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066974089.4265.64.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/mixed",
+                        "type": "multipart",
+                        "subtype": "mixed",
+                        "params": {
+                            "boundary": "=-pNc4wtlOIxs8RcX7H/AK"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "text and text, both inline"
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "mixed",
+                "boundary": "=-pNc4wtlOIxs8RcX7H/AK",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 24,
+            "size": 642
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: That's not a cigar. Uh... and it's not mine. --Hermes",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "That's not a cigar. Uh... and it's not mine. --Hermes",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogSFRNTCBhbmQuLi4gIEhUTUw/DQpGcm9tOiBSeWFuIEZpbm5pZSA8cmZpbm5pZUBkb21haW4uZG9tPg0KVG86IGJvYkBkb21haW4uZG9tDQpDb250ZW50LVR5cGU6IG11bHRpcGFydC9taXhlZDsgYm91bmRhcnk9Ij0tenhoL0llend6WklUaXBocGNiSloiDQpNZXNzYWdlLUlkOiA8MTA2Njk3Mzk1Ny40MjYzLjU5LmNhbWVsQGxvY2FsaG9zdD4NCk1pbWUtVmVyc2lvbjogMS4wDQpEYXRlOiAyMyBPY3QgMjAwMyAyMjozOToxNyAtMDcwMA0KDQoNCi0tPS16eGgvSWV6d3paSVRpcGhwY2JKWg0KQ29udGVudC1UeXBlOiB0ZXh0L2h0bWw7IENIQVJTRVQ9dXRmLTgNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IDhiaXQNCg0KPCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUUkFOU0lUSU9OQUwvL0VOIj4NCjxIVE1MPg0KPEhFQUQ+DQogIDxNRVRBIEhUVFAtRVFVSVY9IkNvbnRlbnQtVHlwZSIgQ09OVEVOVD0idGV4dC9odG1sOyBDSEFSU0VUPVVURi04Ij4NCiAgPE1FVEEgTkFNRT0iR0VORVJBVE9SIiBDT05URU5UPSJHdGtIVE1MLzEuMS4xMCI+DQo8L0hFQUQ+DQo8Qk9EWT4NCjxCPkJvbGQhISE8L0I+PEJSPg0KPEJSPg0KV2hhdCBkbyB3ZSBoYXZlIGhlcmUuLi4gIFRoaXMgbWVzc2FnZSBpcyBhbiBIVE1MIG1lc3NhZ2UuICBBbHNvIGF0dGFjaGVkDQppcyBhbiBIVE1MIEZJTEUuICBCb3RoIG9mIHRoZXNlIGFyZSBpbiBhIG11bHRpcGFydC9taXhlZCBwYXJ0LjxCUj4NCjxCUj4NCk5vdywgdGhlIGZpcnN0IEhUTUwgcGFydCAod2hhdCB5b3UncmUgcmVhZGluZyBub3cpIHNob3VsZCBiZSBkaXNwbGF5ZWQNCmlmIHRoZSBNVUEgaXMgSFRNTC1jYXBhYmxlLiAgSWYgaXQgaXMgbm90LCB0aGUgTVVBIGNvdWxkIHBvc3NpYmx5IG9mZmVyDQp0aGlzIHBhcnQgdXAgYXMgYW4gYXR0YWNobWVudCB0byBkb3dubG9hZCwgc2VlaW5nIGFzIGhvdyBubyBwbGFpbnRleHQNCnBhcnQgaXMgb2ZmZXJlZCBhcyBhbiBhbHRlcm5hdGl2ZS48QlI+DQo8QlI+DQpIb3dldmVyLCB0aGUgc2Vjb25kIEhUTUwgcGFydCBpcyBsaXN0ZWQgd2l0aCBhIGRpc3Bvc2l0aW9uIGFzDQphdHRhY2htZW50LiAgVGhlcmVmb3JlLCBpdCBzaG91bGQgYmUgb2ZmZXJlZCBhcyBhbiBhdHRhY2htZW50LCBub3QNCmRpc3BsYXllZCBpbmxpbmUuDQo8L0JPRFk+DQo8L0hUTUw+DQoNCi0tPS16eGgvSWV6d3paSVRpcGhwY2JKWg0KQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9aHRtbGZpbGUuaHRtbA0KQ29udGVudC1UeXBlOiB0ZXh0L2h0bWw7IE5BTUU9aHRtbGZpbGUuaHRtbDsgQ0hBUlNFVD1VVEYtOA0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogOGJpdA0KDQo8aHRtbD4NCjxoZWFkPjx0aXRsZT5UaGlzIGlzIGFuIEF0dGFjaG1lbnQ8L3RpdGxlPjwvaGVhZD4NCjxib2R5Pg0KPHA+VGhlIHRpdGxlIHNheXMgaXQgYWxsLi4uPC9wPg0KPC9ib2R5Pg0KPC9odG1sPg0KDQotLT0tenhoL0llend6WklUaXBocGNiSlotLQ0K"
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "header": [
+                            "Content-Type: text/html; CHARSET=utf-8",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/html",
+                                "type": "text",
+                                "subtype": "html",
+                                "params": {
+                                    "charset": "utf-8"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "PCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUUkFOU0lUSU9OQUwvL0VOIj4NCjxIVE1MPg0KPEhFQUQ+DQogIDxNRVRBIEhUVFAtRVFVSVY9IkNvbnRlbnQtVHlwZSIgQ09OVEVOVD0idGV4dC9odG1sOyBDSEFSU0VUPVVURi04Ij4NCiAgPE1FVEEgTkFNRT0iR0VORVJBVE9SIiBDT05URU5UPSJHdGtIVE1MLzEuMS4xMCI+DQo8L0hFQUQ+DQo8Qk9EWT4NCjxCPkJvbGQhISE8L0I+PEJSPg0KPEJSPg0KV2hhdCBkbyB3ZSBoYXZlIGhlcmUuLi4gIFRoaXMgbWVzc2FnZSBpcyBhbiBIVE1MIG1lc3NhZ2UuICBBbHNvIGF0dGFjaGVkDQppcyBhbiBIVE1MIEZJTEUuICBCb3RoIG9mIHRoZXNlIGFyZSBpbiBhIG11bHRpcGFydC9taXhlZCBwYXJ0LjxCUj4NCjxCUj4NCk5vdywgdGhlIGZpcnN0IEhUTUwgcGFydCAod2hhdCB5b3UncmUgcmVhZGluZyBub3cpIHNob3VsZCBiZSBkaXNwbGF5ZWQNCmlmIHRoZSBNVUEgaXMgSFRNTC1jYXBhYmxlLiAgSWYgaXQgaXMgbm90LCB0aGUgTVVBIGNvdWxkIHBvc3NpYmx5IG9mZmVyDQp0aGlzIHBhcnQgdXAgYXMgYW4gYXR0YWNobWVudCB0byBkb3dubG9hZCwgc2VlaW5nIGFzIGhvdyBubyBwbGFpbnRleHQNCnBhcnQgaXMgb2ZmZXJlZCBhcyBhbiBhbHRlcm5hdGl2ZS48QlI+DQo8QlI+DQpIb3dldmVyLCB0aGUgc2Vjb25kIEhUTUwgcGFydCBpcyBsaXN0ZWQgd2l0aCBhIGRpc3Bvc2l0aW9uIGFzDQphdHRhY2htZW50LiAgVGhlcmVmb3JlLCBpdCBzaG91bGQgYmUgb2ZmZXJlZCBhcyBhbiBhdHRhY2htZW50LCBub3QNCmRpc3BsYXllZCBpbmxpbmUuDQo8L0JPRFk+DQo8L0hUTUw+DQo="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 22,
+                        "size": 824
+                    },
+                    {
+                        "header": [
+                            "Content-Disposition: attachment; filename=htmlfile.html",
+                            "Content-Type: text/html; NAME=htmlfile.html; CHARSET=UTF-8",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/html",
+                                "type": "text",
+                                "subtype": "html",
+                                "params": {
+                                    "name": "htmlfile.html",
+                                    "charset": "UTF-8"
+                                },
+                                "hasParams": true
+                            },
+                            "content-disposition": {
+                                "value": "attachment",
+                                "type": "attachment",
+                                "subtype": "",
+                                "params": {
+                                    "filename": "htmlfile.html"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "PGh0bWw+DQo8aGVhZD48dGl0bGU+VGhpcyBpcyBhbiBBdHRhY2htZW50PC90aXRsZT48L2hlYWQ+DQo8Ym9keT4NCjxwPlRoZSB0aXRsZSBzYXlzIGl0IGFsbC4uLjwvcD4NCjwvYm9keT4NCjwvaHRtbD4NCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 6,
+                        "size": 118
+                    }
+                ],
+                "header": [
+                    "Subject: HTML and...  HTML?",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/mixed; boundary=\"=-zxh/IezwzZITiphpcbJZ\"",
+                    "Message-Id: <1066973957.4263.59.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 22:39:17 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 22:39:17 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066973957.4263.59.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/mixed",
+                        "type": "multipart",
+                        "subtype": "mixed",
+                        "params": {
+                            "boundary": "=-zxh/IezwzZITiphpcbJZ"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "HTML and...  HTML?"
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "mixed",
+                "boundary": "=-zxh/IezwzZITiphpcbJZ",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 49,
+            "size": 1515
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: The spirit is willing, but the flesh is spongy, and\r\n    bruised. --Zapp",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "The spirit is willing, but the flesh is spongy, and bruised. --Zapp",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogc21pbGV5IQ0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvc2lnbmVkOyBtaWNhbGc9cGdwLXNoYTE7IHByb3RvY29sPSJhcHBsaWNhdGlvbi9wZ3Atc2lnbmF0dXJlIjsgYm91bmRhcnk9Ij0tdkgzRlFPOWE4aWNVbjFST0NvQWkiDQpNZXNzYWdlLUlkOiA8MTA2Njk3Mjk5Ni40MjY0LjM5LmNhbWVsQGxvY2FsaG9zdD4NCk1pbWUtVmVyc2lvbjogMS4wDQpEYXRlOiAyMyBPY3QgMjAwMyAyMjoyMzoxNiAtMDcwMA0KDQoNCi0tPS12SDNGUU85YThpY1VuMVJPQ29BaQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSI9LUNnVjVqbTlIQVk5VmJVbEF1bmVBIg0KDQoNCi0tPS1DZ1Y1am05SEFZOVZiVWxBdW5lQQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvcmVsYXRlZDsgdHlwZT0ibXVsdGlwYXJ0L2FsdGVybmF0aXZlIjsNCiAgICBib3VuZGFyeT0iPS1HcHdvekY5Q1E3TmRGK2ZkK3ZNRyINCg0KDQotLT0tR3B3b3pGOUNRN05kRitmZCt2TUcNCkNvbnRlbnQtVHlwZTogbXVsdGlwYXJ0L2FsdGVybmF0aXZlOyBib3VuZGFyeT0iPS1kSHVqV00vWGl6ejU3eC9KT21ERiINCg0KDQotLT0tZEh1aldNL1hpeno1N3gvSk9tREYNCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbg0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogcXVvdGVkLXByaW50YWJsZQ0KDQpJZiB0aGlzIHNlbnRlbmNlIGlzIHJlZCwgeW91IGFyZSB2aWV3aW5nIHRoZSBIVE1MIHBhcnQuDQpXb3csIHdoYXQgYSBjb21wbGljYXRlZCBtZXNzYWdlLiAgVGhpcyBtZXNzYWdlIGlzIGxhaWQgb3V0IGFzIHNvOg0KDQptdWx0aXBhcnQvc2lnbmVkDQp8IG11bHRpcGFydC9taXhlZA0KfCB8IG11dGlwYXJ0L3JlbGF0ZWQNCnwgfCB8IG11bHRpcGFydC9hbHRlcm5hdGl2ZQ0KfCB8IHwgfCB0ZXh0L3BsYWluDQp8IHwgfCB8IHRleHQvaHRtbA0KfCB8IHwgaW1hZ2UvcG5nIChzbWlsZXkpDQp8IHwgaW1hZ2UvZ2lmIChkb3QpDQp8IGFwcGxpY2F0aW9uL3BncC1zaWduYXR1cmUNCg0KOikNCg0KQSBzbWlsZXkgZmFjZSBzaG91bGQgYmUgZW1iZWRkZWQgaW50byB0aGUgSFRNTCBwYXJ0IGFib3ZlIChpZiB5b3UgYXJlDQp2aWV3aW5nIHRoZSBIVE1MIHBhcnQpLCB3aGlsZSB0aGUgcmVkIHNxdWFyZSBkb3Qgc2hvdWxkIGJlIGF0dGFjaGVkLCBub3QNCmRpc3BsYXllZCBpbmxpbmUuICBBZGRpdGlvbmFsbHksIHRoaXMgd2hvbGUgbWVzc2FnZSBpcyBQR1Agc2lnbmVkLg0KDQpUaGlzIG1lc3NhZ2UgaW50cm9kdWNlcyBhIGZldyB0cmlja3MgdGhhdCB0aGUgTVVBIHNob3VsZCBjb3BlIHdpdGguPTIwDQpGaXJzdCBvZiBhbGwsIHRoZSByZWxhdGVkIC8gYWx0ZXJuYXRpdmUgY29tYmluYXRpb24gZG9lc24ndCBtYWtlIG11Y2gNCnNlbnNlLiAgSGVyZSdzIHRoZSBjdXJyZW50IHNldHVwIGluIHBzZXVkby1jb2RlOg0KDQpyZWxhdGlvbnNoaXAgYmV0d2VlbiAoYWx0ZXJuYXRpdmU6IEhUTUwgb3IgdGV4dCBwYXJ0KSBhbmQgUE5HIHBhcnQNCg0KV2h5IHdvdWxkIHRoZSB0ZXh0IHBhcnQgYmUgcmVsYXRlZCBpbiBhbnl3YXkgdG8gdGhlIFBORz8gIEluc3RlYWQsIHRoZQ0KY29ycmVjdCBhbmQgbW9yZSBsb2dpY2FsIHdheSB0byBkbyB0aGluZ3Mgd291bGQgYmU6DQoNCmFsdGVybmF0aXZlOiAocmVsYXRpb25zaGlwIGJldHdlZW4gSFRNTCBhbmQgUE5HIHBhcnRzKSBvciB0ZXh0IHBhcnQNCg0KSG93ZXZlciwgbWFueSBNVUFzIGNvbXBvc2UgYSBtZXNzYWdlIHVzaW5nIHRoZSBmaXJzdCBtZXRob2QsIHNvIHRoaXMNCnNob3VsZCBiZSB0YWtlbiBjYXJlIG9mIHdoZW4gcGFyc2luZyB0aGUgbWVzc2FnZS4NCg0KQWRkaXRpb25hbGx5LCBub3RpY2UgdGhhdCB0aGUgaW5saW5lIGltYWdlIGhhcyBhIGRpc3Bvc2l0aW9uIG9mDQoiYXR0YWNobWVudCIuICBEZXNwaXRlIHRoaXMgYmVpbmcgaW4gdGhlcmUsIHRoZSBzbWlsZXkgc2hvdWxkIGJlDQplbWJlZGRlZCBpbmxpbmUgaW4gdGhlIEhUTUwgcGFydCwgbm90IG9mZmVyZWQgYXMgYW4gYXR0YWNobWVudC49MjANCkNvbnZlcnNlbHksIHRoZSBHSUYgaW1hZ2Ugc2hvdWxkIGJlIG9mZmVyZWQgYXMgYW4gYXR0YWNobWVudCwgbm90DQpkaXNwbGF5ZWQgaW5saW5lLg0KDQpJZiB0aGUgTVVBIGlzIG5vdCBQR1AgY2FwYWJsZSwgYXQgdGhlIHZlcnkgbGVhc3QgaXQgc2hvdWxkIHJlY29nbml6ZQ0KbXVsdGlwYXJ0L3NpZ25lZCB0aGUgc2FtZSBhcyBtdWx0aXBhcnQvbWl4ZWQsIGFuZCBvZmZlciB0aGUNCmFwcGxpY2F0aW9uL3BncC1zaWduYXR1cmUgcGFydCBhcyBhbiBhdHRhY2htZW50Lg0KDQotLT0tZEh1aldNL1hpeno1N3gvSk9tREYNCkNvbnRlbnQtVHlwZTogdGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04DQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiBxdW90ZWQtcHJpbnRhYmxlDQoNCjwhRE9DVFlQRSBIVE1MIFBVQkxJQyAiLS8vVzNDLy9EVEQgSFRNTCA0LjAgVFJBTlNJVElPTkFMLy9FTiI+DQo8SFRNTD4NCjxIRUFEPg0KICA8TUVUQSBIVFRQLUVRVUlWPTNEIkNvbnRlbnQtVHlwZSIgQ09OVEVOVD0zRCJ0ZXh0L2h0bWw7IENIQVJTRVQ9M0RVVEYtOCI+DQogIDxNRVRBIE5BTUU9M0QiR0VORVJBVE9SIiBDT05URU5UPTNEIkd0a0hUTUwvMS4xLjEwIj4NCjwvSEVBRD4NCjxCT0RZPg0KPEZPTlQgQ09MT1I9M0QiI2Y4MDAwMCI+SWYgdGhpcyBzZW50ZW5jZSBpcyByZWQsIHlvdSBhcmUgdmlld2luZyB0aGUgSFRNTCBwPQ0KYXJ0LjwvRk9OVD48QlI+DQpXb3csIHdoYXQgYSBjb21wbGljYXRlZCBtZXNzYWdlLsKgIFRoaXMgbWVzc2FnZSBpcyBsYWlkIG91dCBhcyBzbzo8QlI+DQo8QlI+DQptdWx0aXBhcnQvc2lnbmVkPEJSPg0KfCBtdWx0aXBhcnQvbWl4ZWQ8QlI+DQp8IHwgbXV0aXBhcnQvcmVsYXRlZDxCUj4NCnwgfCB8IG11bHRpcGFydC9hbHRlcm5hdGl2ZTxCUj4NCnwgfCB8IHwgdGV4dC9wbGFpbjxCUj4NCnwgfCB8IHwgdGV4dC9odG1sPEJSPg0KfCB8IHwgaW1hZ2UvcG5nIChzbWlsZXkpPEJSPg0KfCB8IGltYWdlL2dpZiAoZG90KTxCUj4NCnwgYXBwbGljYXRpb24vcGdwLXNpZ25hdHVyZTxCUj4NCjxCUj4NCjxJTUcgU1JDPTNEImNpZDoxMDY2OTcxOTUzLjQyMzIuMTUuY2FtZWxAbG9jYWxob3N0IiBBTElHTj0zRCJib3R0b20iIEFMVD0zRD0NCiI6KSIgQk9SREVSPTNEIjAiPjxCUj4NCjxCUj4NCkEgc21pbGV5IGZhY2Ugc2hvdWxkIGJlIGVtYmVkZGVkIGludG8gdGhlIEhUTUwgcGFydCBhYm92ZSAoaWYgeW91IGFyZSB2aWV3aT0NCm5nIHRoZSBIVE1MIHBhcnQpLCB3aGlsZSB0aGUgcmVkIHNxdWFyZSBkb3Qgc2hvdWxkIGJlIGF0dGFjaGVkLCBub3QgZGlzcGxheT0NCmVkIGlubGluZS7CoCBBZGRpdGlvbmFsbHksIHRoaXMgd2hvbGUgbWVzc2FnZSBpcyBQR1Agc2lnbmVkLjxCUj4NCjxCUj4NClRoaXMgbWVzc2FnZSBpbnRyb2R1Y2VzIGEgZmV3IHRyaWNrcyB0aGF0IHRoZSBNVUEgc2hvdWxkIGNvcGUgd2l0aC7CoCBGPQ0KaXJzdCBvZiBhbGwsIHRoZSByZWxhdGVkIC8gYWx0ZXJuYXRpdmUgY29tYmluYXRpb24gZG9lc24ndCBtYWtlIG11Y2ggc2Vuc2UuPQ0KwqAgSGVyZSdzIHRoZSBjdXJyZW50IHNldHVwIGluIHBzZXVkby1jb2RlOjxCUj4NCjxCUj4NCjxJPnJlbGF0aW9uc2hpcCBiZXR3ZWVuIChhbHRlcm5hdGl2ZTogSFRNTCBvciB0ZXh0IHBhcnQpIGFuZCBQTkcgcGFydDwvST48Qj0NClI+DQo8QlI+DQpXaHkgd291bGQgdGhlIHRleHQgcGFydCBiZSByZWxhdGVkIGluIGFueXdheSB0byB0aGUgUE5HP8KgIEluc3RlYWQsIHRoZT0NCiBjb3JyZWN0IGFuZCBtb3JlIGxvZ2ljYWwgd2F5IHRvIGRvIHRoaW5ncyB3b3VsZCBiZTo8QlI+DQo8QlI+DQphbHRlcm5hdGl2ZTogKHJlbGF0aW9uc2hpcCBiZXR3ZWVuIEhUTUwgYW5kIFBORyBwYXJ0cykgb3IgdGV4dCBwYXJ0PEJSPg0KPEJSPg0KSG93ZXZlciwgbWFueSBNVUFzIGNvbXBvc2UgYSBtZXNzYWdlIHVzaW5nIHRoZSBmaXJzdCBtZXRob2QsIHNvIHRoaXMgc2hvdWxkPQ0KIGJlIHRha2VuIGNhcmUgb2Ygd2hlbiBwYXJzaW5nIHRoZSBtZXNzYWdlLjxCUj4NCjxCUj4NCkFkZGl0aW9uYWxseSwgbm90aWNlIHRoYXQgdGhlIGlubGluZSBpbWFnZSBoYXMgYSBkaXNwb3NpdGlvbiBvZiAiYXR0YWM9DQpobWVudCIuwqAgRGVzcGl0ZSB0aGlzIGJlaW5nIGluIHRoZXJlLCB0aGUgc21pbGV5IHNob3VsZCBiZSBlbWJlZGQ9DQplZCBpbmxpbmUgaW4gdGhlIEhUTUwgcGFydCwgbm90IG9mZmVyZWQgYXMgYW4gYXR0YWNobWVudC7CoCBDb252ZXJzZWx5LD0NCiB0aGUgR0lGIGltYWdlIHNob3VsZCBiZSBvZmZlcmVkIGFzIGFuIGF0dGFjaG1lbnQsIG5vdCBkaXNwbGF5ZWQgaW5saW5lLjxCUj0NCj4NCjxCUj4NCklmIHRoZSBNVUEgaXMgbm90IFBHUCBjYXBhYmxlLCBhdCB0aGUgdmVyeSBsZWFzdCBpdCBzaG91bGQgcmVjb2duaXplIG11bHRpcD0NCmFydC9zaWduZWQgdGhlIHNhbWUgYXMgbXVsdGlwYXJ0L21peGVkLCBhbmQgb2ZmZXIgdGhlIGFwcGxpY2F0aW9uL3BncC1zaWduYT0NCnR1cmUgcGFydCBhcyBhbiBhdHRhY2htZW50Lg0KPC9CT0RZPg0KPC9IVE1MPg0KDQotLT0tZEh1aldNL1hpeno1N3gvSk9tREYtLQ0KDQotLT0tR3B3b3pGOUNRN05kRitmZCt2TUcNCkNvbnRlbnQtSUQ6IDwxMDY2OTcxOTUzLjQyMzIuMTUuY2FtZWxAbG9jYWxob3N0Pg0KQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9c21pbGV5LTMucG5nDQpDb250ZW50LVR5cGU6IGltYWdlL3BuZzsgbmFtZT1zbWlsZXktMy5wbmcNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IGJhc2U2NA0KDQppVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBQkFBQUFBUUNBWUFBQUFmOC85aEFBQUMra2xFUVZSNDJuMlRiVWpWZHhUSFAvK0g2OVhkDQphMlZXbEZlNjlyenRoWkpVb3hlTk9Xb0ZHeEVoWVJSRm1aU1ZXMnU5YWIyS2VqV0UxcUROQmtFUWhTODJWb2lhWmtWUG1vV2FLTk01DQptQStvcGJkNzcxLy85OTcvL1QvK2VwSEJhckVQSEE2SGM4NFhEbndQL0pjd2NCUzRBVmd6Y1IwNE9OTjdDK21kK3BjUEN6NDRkUExBDQphclpzL2dnMVVBQnVHa3Z2cDdYMUlhZCtpdEUvWXRVQWxlOFR1SDI2c3VqenFxL0xrSlFzbk9RUVZtSUFTVkpRTWhlaFpPUmlKd2M1DQpkNzZGSDJwZjNnWTJBaWd6eTcrZU9icW10T3FiWGJqR0dIWnFDTStlUXBKOUFIaFdGQ2M1Q0FqV2YxS0FrcHBjK3FnM3ZSQ29sNEZ3DQowYXFjaXNPVlczSFRFN2htQkVsU0tELzVHRmtOTWhIMUtEdmVnU1Q3OEN3TlNmWnhlTTg4VnVZcmg0Q3dBdXhxdnhMNk1uUHVXaXk5DQpIMWtOVVBIOWZab2ZES1BwSG44L3orWjZZdzhKSzVzdFg1VmhSTzZoK09maVYzV2FIeHRQVktBd21GK0txWFVETWtncVowK1VvS2NFDQpQNTcvR1hPcWg0Nk9EcXJQWFVRZnVmYjZZT0d4Sk9RRDJDYUhRbm5sQUo0ekRYZ2dIQll2SzZhcDZSYXUrUkl6MWs3ZGpkK1lIcnFNDQpwWFVDNEtRbldUUlBBZGl1UnFOUmtGUUcvb21STkpPc0tWUXc0MDh4dFM0UURzSTEwQWFxRVk2TzhGenE3MGZKeTNYSThnc0E1SFRhDQpyQmRPa3Z3RktqMzlFV3JyL3NKekVuajI5T3ZzcGhHdWdmQnNMbHdiWm5qY1lOMzZMeGlMdUFEdE10Q1VldEZBY0U0ZWU4cytwYkhWDQpZdE9lbXdoSHgzTVNhUEVZM1g5T1VucXNrNWEyT01lUDdLQzN0NHUrM2dSQUxVQzRjRVcyZU42MlE0emUzU0Fpejc0VER4dk9pSStYDQpCY1Rzb0NveWZKS1luNk9LbXJNYnhHUm5sWGh5SlNTcXY4MFZxMEtTQUZhK2NlS2wwd2NLOWxmc1c0MlRHc0UvcHhoZmNEbUtmejZlDQpGVVBnNGlSSDZPdjZnOUVKaDF0MzQxeHVzV3VBeW45YitjN0JyYmtsSjhvRFpHVE9RcEw5ZVBZMDhTbURwQ0V3YmNId3VFMzcweWt1DQpObGozZ00vZTkweVhsaXlVOSs4c0NWSllsRVVnVThJd0JacnVNVGhtODN1enhzQVlWNEhkL0E5aDRCalFCdGhBRk9nRExnREY3dzYvDQpBckk2WUowZVRRZUdBQUFBQUVsRlRrU3VRbUNDDQoNCi0tPS1HcHdvekY5Q1E3TmRGK2ZkK3ZNRy0tDQoNCi0tPS1DZ1Y1am05SEFZOVZiVWxBdW5lQQ0KQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9ZG90LmdpZg0KQ29udGVudC1UeXBlOiBpbWFnZS9naWY7IG5hbWU9ZG90LmdpZg0KQ29udGVudC1UcmFuc2Zlci1FbmNvZGluZzogYmFzZTY0DQoNClIwbEdPRGRoQ2dBS0FLRUFBQUFBQU5VQUFQLy8vOFBEd3l3QUFBQUFDZ0FLQUVBQ0haU1BNc3NMS29JTVlMeVIxSTJ6M3Nac0UyVkINCm93Y0JxbHF1cmxvQUFEcz0NCg0KLS09LUNnVjVqbTlIQVk5VmJVbEF1bmVBLS0NCg0KLS09LXZIM0ZRTzlhOGljVW4xUk9Db0FpDQpDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL3BncC1zaWduYXR1cmU7IG5hbWU9c2lnbmF0dXJlLmFzYw0KQ29udGVudC1EZXNjcmlwdGlvbjogVGhpcyBpcyBhIGRpZ2l0YWxseSBzaWduZWQgbWVzc2FnZSBwYXJ0DQoNCi0tLS0tQkVHSU4gUEdQIFNJR05BVFVSRS0tLS0tDQpWZXJzaW9uOiBHbnVQRyB2MS4yLjIgKEdOVS9MaW51eCkNCg0KaUQ4REJRQS9tTGRFS1pZUXFTQSt5aVVSQWpBbkFKOTBHMjJqYlgvQnJveTBGNTQxUjBVVWJzYjZ6Z0NlSm4wZA0KMDJWcTlTdjZhWEUrWU0wbFJuM2paRGM9DQo9dXdDTQ0KLS0tLS1FTkQgUEdQIFNJR05BVFVSRS0tLS0tDQoNCi0tPS12SDNGUU85YThpY1VuMVJPQ29BaS0t"
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "childNodes": [
+                            {
+                                "childNodes": [
+                                    {
+                                        "childNodes": [
+                                            {
+                                                "header": [
+                                                    "Content-Type: text/plain",
+                                                    "Content-Transfer-Encoding: quoted-printable"
+                                                ],
+                                                "parsedHeader": {
+                                                    "content-transfer-encoding": "quoted-printable",
+                                                    "content-type": {
+                                                        "value": "text/plain",
+                                                        "type": "text",
+                                                        "subtype": "plain",
+                                                        "params": {}
+                                                    }
+                                                },
+                                                "body": {
+                                                    "$buffer": "SWYgdGhpcyBzZW50ZW5jZSBpcyByZWQsIHlvdSBhcmUgdmlld2luZyB0aGUgSFRNTCBwYXJ0Lg0KV293LCB3aGF0IGEgY29tcGxpY2F0ZWQgbWVzc2FnZS4gIFRoaXMgbWVzc2FnZSBpcyBsYWlkIG91dCBhcyBzbzoNCg0KbXVsdGlwYXJ0L3NpZ25lZA0KfCBtdWx0aXBhcnQvbWl4ZWQNCnwgfCBtdXRpcGFydC9yZWxhdGVkDQp8IHwgfCBtdWx0aXBhcnQvYWx0ZXJuYXRpdmUNCnwgfCB8IHwgdGV4dC9wbGFpbg0KfCB8IHwgfCB0ZXh0L2h0bWwNCnwgfCB8IGltYWdlL3BuZyAoc21pbGV5KQ0KfCB8IGltYWdlL2dpZiAoZG90KQ0KfCBhcHBsaWNhdGlvbi9wZ3Atc2lnbmF0dXJlDQoNCjopDQoNCkEgc21pbGV5IGZhY2Ugc2hvdWxkIGJlIGVtYmVkZGVkIGludG8gdGhlIEhUTUwgcGFydCBhYm92ZSAoaWYgeW91IGFyZQ0Kdmlld2luZyB0aGUgSFRNTCBwYXJ0KSwgd2hpbGUgdGhlIHJlZCBzcXVhcmUgZG90IHNob3VsZCBiZSBhdHRhY2hlZCwgbm90DQpkaXNwbGF5ZWQgaW5saW5lLiAgQWRkaXRpb25hbGx5LCB0aGlzIHdob2xlIG1lc3NhZ2UgaXMgUEdQIHNpZ25lZC4NCg0KVGhpcyBtZXNzYWdlIGludHJvZHVjZXMgYSBmZXcgdHJpY2tzIHRoYXQgdGhlIE1VQSBzaG91bGQgY29wZSB3aXRoLj0yMA0KRmlyc3Qgb2YgYWxsLCB0aGUgcmVsYXRlZCAvIGFsdGVybmF0aXZlIGNvbWJpbmF0aW9uIGRvZXNuJ3QgbWFrZSBtdWNoDQpzZW5zZS4gIEhlcmUncyB0aGUgY3VycmVudCBzZXR1cCBpbiBwc2V1ZG8tY29kZToNCg0KcmVsYXRpb25zaGlwIGJldHdlZW4gKGFsdGVybmF0aXZlOiBIVE1MIG9yIHRleHQgcGFydCkgYW5kIFBORyBwYXJ0DQoNCldoeSB3b3VsZCB0aGUgdGV4dCBwYXJ0IGJlIHJlbGF0ZWQgaW4gYW55d2F5IHRvIHRoZSBQTkc/ICBJbnN0ZWFkLCB0aGUNCmNvcnJlY3QgYW5kIG1vcmUgbG9naWNhbCB3YXkgdG8gZG8gdGhpbmdzIHdvdWxkIGJlOg0KDQphbHRlcm5hdGl2ZTogKHJlbGF0aW9uc2hpcCBiZXR3ZWVuIEhUTUwgYW5kIFBORyBwYXJ0cykgb3IgdGV4dCBwYXJ0DQoNCkhvd2V2ZXIsIG1hbnkgTVVBcyBjb21wb3NlIGEgbWVzc2FnZSB1c2luZyB0aGUgZmlyc3QgbWV0aG9kLCBzbyB0aGlzDQpzaG91bGQgYmUgdGFrZW4gY2FyZSBvZiB3aGVuIHBhcnNpbmcgdGhlIG1lc3NhZ2UuDQoNCkFkZGl0aW9uYWxseSwgbm90aWNlIHRoYXQgdGhlIGlubGluZSBpbWFnZSBoYXMgYSBkaXNwb3NpdGlvbiBvZg0KImF0dGFjaG1lbnQiLiAgRGVzcGl0ZSB0aGlzIGJlaW5nIGluIHRoZXJlLCB0aGUgc21pbGV5IHNob3VsZCBiZQ0KZW1iZWRkZWQgaW5saW5lIGluIHRoZSBIVE1MIHBhcnQsIG5vdCBvZmZlcmVkIGFzIGFuIGF0dGFjaG1lbnQuPTIwDQpDb252ZXJzZWx5LCB0aGUgR0lGIGltYWdlIHNob3VsZCBiZSBvZmZlcmVkIGFzIGFuIGF0dGFjaG1lbnQsIG5vdA0KZGlzcGxheWVkIGlubGluZS4NCg0KSWYgdGhlIE1VQSBpcyBub3QgUEdQIGNhcGFibGUsIGF0IHRoZSB2ZXJ5IGxlYXN0IGl0IHNob3VsZCByZWNvZ25pemUNCm11bHRpcGFydC9zaWduZWQgdGhlIHNhbWUgYXMgbXVsdGlwYXJ0L21peGVkLCBhbmQgb2ZmZXIgdGhlDQphcHBsaWNhdGlvbi9wZ3Atc2lnbmF0dXJlIHBhcnQgYXMgYW4gYXR0YWNobWVudC4NCg=="
+                                                },
+                                                "multipart": false,
+                                                "boundary": false,
+                                                "lineCount": 42,
+                                                "size": 1606
+                                            },
+                                            {
+                                                "header": [
+                                                    "Content-Type: text/html; charset=utf-8",
+                                                    "Content-Transfer-Encoding: quoted-printable"
+                                                ],
+                                                "parsedHeader": {
+                                                    "content-transfer-encoding": "quoted-printable",
+                                                    "content-type": {
+                                                        "value": "text/html",
+                                                        "type": "text",
+                                                        "subtype": "html",
+                                                        "params": {
+                                                            "charset": "utf-8"
+                                                        },
+                                                        "hasParams": true
+                                                    }
+                                                },
+                                                "body": {
+                                                    "$buffer": "PCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUUkFOU0lUSU9OQUwvL0VOIj4NCjxIVE1MPg0KPEhFQUQ+DQogIDxNRVRBIEhUVFAtRVFVSVY9M0QiQ29udGVudC1UeXBlIiBDT05URU5UPTNEInRleHQvaHRtbDsgQ0hBUlNFVD0zRFVURi04Ij4NCiAgPE1FVEEgTkFNRT0zRCJHRU5FUkFUT1IiIENPTlRFTlQ9M0QiR3RrSFRNTC8xLjEuMTAiPg0KPC9IRUFEPg0KPEJPRFk+DQo8Rk9OVCBDT0xPUj0zRCIjZjgwMDAwIj5JZiB0aGlzIHNlbnRlbmNlIGlzIHJlZCwgeW91IGFyZSB2aWV3aW5nIHRoZSBIVE1MIHA9DQphcnQuPC9GT05UPjxCUj4NCldvdywgd2hhdCBhIGNvbXBsaWNhdGVkIG1lc3NhZ2UuwqAgVGhpcyBtZXNzYWdlIGlzIGxhaWQgb3V0IGFzIHNvOjxCUj4NCjxCUj4NCm11bHRpcGFydC9zaWduZWQ8QlI+DQp8IG11bHRpcGFydC9taXhlZDxCUj4NCnwgfCBtdXRpcGFydC9yZWxhdGVkPEJSPg0KfCB8IHwgbXVsdGlwYXJ0L2FsdGVybmF0aXZlPEJSPg0KfCB8IHwgfCB0ZXh0L3BsYWluPEJSPg0KfCB8IHwgfCB0ZXh0L2h0bWw8QlI+DQp8IHwgfCBpbWFnZS9wbmcgKHNtaWxleSk8QlI+DQp8IHwgaW1hZ2UvZ2lmIChkb3QpPEJSPg0KfCBhcHBsaWNhdGlvbi9wZ3Atc2lnbmF0dXJlPEJSPg0KPEJSPg0KPElNRyBTUkM9M0QiY2lkOjEwNjY5NzE5NTMuNDIzMi4xNS5jYW1lbEBsb2NhbGhvc3QiIEFMSUdOPTNEImJvdHRvbSIgQUxUPTNEPQ0KIjopIiBCT1JERVI9M0QiMCI+PEJSPg0KPEJSPg0KQSBzbWlsZXkgZmFjZSBzaG91bGQgYmUgZW1iZWRkZWQgaW50byB0aGUgSFRNTCBwYXJ0IGFib3ZlIChpZiB5b3UgYXJlIHZpZXdpPQ0KbmcgdGhlIEhUTUwgcGFydCksIHdoaWxlIHRoZSByZWQgc3F1YXJlIGRvdCBzaG91bGQgYmUgYXR0YWNoZWQsIG5vdCBkaXNwbGF5PQ0KZWQgaW5saW5lLsKgIEFkZGl0aW9uYWxseSwgdGhpcyB3aG9sZSBtZXNzYWdlIGlzIFBHUCBzaWduZWQuPEJSPg0KPEJSPg0KVGhpcyBtZXNzYWdlIGludHJvZHVjZXMgYSBmZXcgdHJpY2tzIHRoYXQgdGhlIE1VQSBzaG91bGQgY29wZSB3aXRoLsKgIEY9DQppcnN0IG9mIGFsbCwgdGhlIHJlbGF0ZWQgLyBhbHRlcm5hdGl2ZSBjb21iaW5hdGlvbiBkb2Vzbid0IG1ha2UgbXVjaCBzZW5zZS49DQrCoCBIZXJlJ3MgdGhlIGN1cnJlbnQgc2V0dXAgaW4gcHNldWRvLWNvZGU6PEJSPg0KPEJSPg0KPEk+cmVsYXRpb25zaGlwIGJldHdlZW4gKGFsdGVybmF0aXZlOiBIVE1MIG9yIHRleHQgcGFydCkgYW5kIFBORyBwYXJ0PC9JPjxCPQ0KUj4NCjxCUj4NCldoeSB3b3VsZCB0aGUgdGV4dCBwYXJ0IGJlIHJlbGF0ZWQgaW4gYW55d2F5IHRvIHRoZSBQTkc/wqAgSW5zdGVhZCwgdGhlPQ0KIGNvcnJlY3QgYW5kIG1vcmUgbG9naWNhbCB3YXkgdG8gZG8gdGhpbmdzIHdvdWxkIGJlOjxCUj4NCjxCUj4NCmFsdGVybmF0aXZlOiAocmVsYXRpb25zaGlwIGJldHdlZW4gSFRNTCBhbmQgUE5HIHBhcnRzKSBvciB0ZXh0IHBhcnQ8QlI+DQo8QlI+DQpIb3dldmVyLCBtYW55IE1VQXMgY29tcG9zZSBhIG1lc3NhZ2UgdXNpbmcgdGhlIGZpcnN0IG1ldGhvZCwgc28gdGhpcyBzaG91bGQ9DQogYmUgdGFrZW4gY2FyZSBvZiB3aGVuIHBhcnNpbmcgdGhlIG1lc3NhZ2UuPEJSPg0KPEJSPg0KQWRkaXRpb25hbGx5LCBub3RpY2UgdGhhdCB0aGUgaW5saW5lIGltYWdlIGhhcyBhIGRpc3Bvc2l0aW9uIG9mICJhdHRhYz0NCmhtZW50Ii7CoCBEZXNwaXRlIHRoaXMgYmVpbmcgaW4gdGhlcmUsIHRoZSBzbWlsZXkgc2hvdWxkIGJlIGVtYmVkZD0NCmVkIGlubGluZSBpbiB0aGUgSFRNTCBwYXJ0LCBub3Qgb2ZmZXJlZCBhcyBhbiBhdHRhY2htZW50LsKgIENvbnZlcnNlbHksPQ0KIHRoZSBHSUYgaW1hZ2Ugc2hvdWxkIGJlIG9mZmVyZWQgYXMgYW4gYXR0YWNobWVudCwgbm90IGRpc3BsYXllZCBpbmxpbmUuPEJSPQ0KPg0KPEJSPg0KSWYgdGhlIE1VQSBpcyBub3QgUEdQIGNhcGFibGUsIGF0IHRoZSB2ZXJ5IGxlYXN0IGl0IHNob3VsZCByZWNvZ25pemUgbXVsdGlwPQ0KYXJ0L3NpZ25lZCB0aGUgc2FtZSBhcyBtdWx0aXBhcnQvbWl4ZWQsIGFuZCBvZmZlciB0aGUgYXBwbGljYXRpb24vcGdwLXNpZ25hPQ0KdHVyZSBwYXJ0IGFzIGFuIGF0dGFjaG1lbnQuDQo8L0JPRFk+DQo8L0hUTUw+DQo="
+                                                },
+                                                "multipart": false,
+                                                "boundary": false,
+                                                "lineCount": 54,
+                                                "size": 2135
+                                            }
+                                        ],
+                                        "header": [
+                                            "Content-Type: multipart/alternative; boundary=\"=-dHujWM/Xizz57x/JOmDF\""
+                                        ],
+                                        "parsedHeader": {
+                                            "content-type": {
+                                                "value": "multipart/alternative",
+                                                "type": "multipart",
+                                                "subtype": "alternative",
+                                                "params": {
+                                                    "boundary": "=-dHujWM/Xizz57x/JOmDF"
+                                                },
+                                                "hasParams": true
+                                            }
+                                        },
+                                        "body": {
+                                            "$buffer": "DQo="
+                                        },
+                                        "epilogue": {
+                                            "$buffer": "DQo="
+                                        },
+                                        "multipart": "alternative",
+                                        "boundary": "=-dHujWM/Xizz57x/JOmDF",
+                                        "lineCount": 0,
+                                        "size": 2
+                                    },
+                                    {
+                                        "header": [
+                                            "Content-ID: <1066971953.4232.15.camel@localhost>",
+                                            "Content-Disposition: attachment; filename=smiley-3.png",
+                                            "Content-Type: image/png; name=smiley-3.png",
+                                            "Content-Transfer-Encoding: base64"
+                                        ],
+                                        "parsedHeader": {
+                                            "content-transfer-encoding": "base64",
+                                            "content-type": {
+                                                "value": "image/png",
+                                                "type": "image",
+                                                "subtype": "png",
+                                                "params": {
+                                                    "name": "smiley-3.png"
+                                                },
+                                                "hasParams": true
+                                            },
+                                            "content-disposition": {
+                                                "value": "attachment",
+                                                "type": "attachment",
+                                                "subtype": "",
+                                                "params": {
+                                                    "filename": "smiley-3.png"
+                                                },
+                                                "hasParams": true
+                                            },
+                                            "content-id": "<1066971953.4232.15.camel@localhost>"
+                                        },
+                                        "body": {
+                                            "$buffer": "aVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQUJBQUFBQVFDQVlBQUFBZjgvOWhBQUFDK2tsRVFWUjQybjJUYlVqVmR4VEhQLytINjlYZA0KYTJWV2xGZTY5cnp0aFpKVW94ZU5PV29GR3hFaFlSUkZtWlNWVzJ1OWFiMktlaldFMXFETkJrRVFoUzgyVm9pYVprVlBtb1dhS05NNQ0KbUErb3BiZDc3MS8vOTk3Ly9ULytlcEhCYXJFUEhBNkhjODRYRG53UC9KY3djQlM0QVZnemNSMDRPTk43QyttZCtwY1BDejQ0ZFBMQQ0KYXJacy9nZzFVQUJ1R2t2dnA3WDFJYWQraXRFL1l0VUFsZThUdUgyNnN1anpxcS9Ma0pRc25PUVFWbUlBU1ZKUU1oZWhaT1JpSndjNQ0KZDc2RkgycGYzZ1kyQWlnenk3K2VPYnFtdE9xYlhiakdHSFpxQ00rZVFwSjlBSGhXRkNjNUNBaldmMUtBa3BwYytxZzN2UkNvbDRGdw0KMGFxY2lzT1ZXM0hURTdobUJFbFNLRC81R0ZrTk1oSDFLRHZlZ1NUNzhDd05TZlp4ZU04OFZ1WXJoNEN3QXV4cXZ4TDZNblB1V2l5OQ0KSDFrTlVQSDlmWm9mREtQcEhuOC96K1o2WXc4Sks1c3RYNVZoUk82aCtPZmlWM1dhSHh0UFZLQXdtRitLcVhVRE1rZ3FaMCtVb0tjRQ0KUDU3L0dYT3FoNDZPRHFyUFhVUWZ1ZmI2WU9HeEpPUUQyQ2FIUW5ubEFKNHpEWGdnSEJZdks2YXA2UmF1K1JJejFrN2RqZCtZSHJxTQ0KcFhVQzRLUW5XVFJQQWRpdVJxTlJrRlFHL29tUk5KT3NLVlF3NDA4eHRTNFFEc0kxMEFhcUVZNk84RnpxNzBmSnkzWEk4Z3NBNUhUYQ0KckJkT2t2d0ZLajM5RVdyci9zSnpFbmoyOU92c3BoR3VnZkJzTGx3YlpuamNZTjM2THhpTHVBRHRNdENVZXRGQWNFNGVlOHMrcGJIVg0KWXRPZW13aEh4M01TYVBFWTNYOU9VbnFzazVhMk9NZVA3S0MzdDR1KzNnUkFMVUM0Y0VXMmVONjJRNHplM1NBaXo3NFREeHZPaUkrWA0KQmNUc29Db3lmSktZbjZPS21yTWJ4R1JubFhoeUpTU3F2ODBWcTBLU0FGYStjZUtsMHdjSzlsZnNXNDJUR3NFL3B4aGZjRG1LZno2ZQ0KRlVQZzRpUkg2T3Y2ZzlFSmgxdDM0MXh1c1d1QXluOWIrYzdCcmJrbEo4b0RaR1RPUXBMOWVQWTA4U21EcENFd2JjSHd1RTM3MHlrdQ0KTmxqM2dNL2U5MHlYbGl5VTkrOHNDVkpZbEVVZ1U4SXdCWnJ1TVRobTgzdXp4c0FZVjRIZC9BOWg0QmpRQnRoQUZPZ0RMZ0RGN3c2Lw0KQXJJNllKMGVUUWVHQUFBQUFFbEZUa1N1UW1DQw0K"
+                                        },
+                                        "multipart": false,
+                                        "boundary": false,
+                                        "lineCount": 15,
+                                        "size": 1122
+                                    }
+                                ],
+                                "header": [
+                                    "Content-Type: multipart/related; type=\"multipart/alternative\";\r\n    boundary=\"=-GpwozF9CQ7NdF+fd+vMG\""
+                                ],
+                                "parsedHeader": {
+                                    "content-type": {
+                                        "value": "multipart/related",
+                                        "type": "multipart",
+                                        "subtype": "related",
+                                        "params": {
+                                            "type": "multipart/alternative",
+                                            "boundary": "=-GpwozF9CQ7NdF+fd+vMG"
+                                        },
+                                        "hasParams": true
+                                    }
+                                },
+                                "body": {
+                                    "$buffer": "DQo="
+                                },
+                                "epilogue": {
+                                    "$buffer": "DQo="
+                                },
+                                "multipart": "related",
+                                "boundary": "=-GpwozF9CQ7NdF+fd+vMG",
+                                "lineCount": 0,
+                                "size": 2
+                            },
+                            {
+                                "header": [
+                                    "Content-Disposition: attachment; filename=dot.gif",
+                                    "Content-Type: image/gif; name=dot.gif",
+                                    "Content-Transfer-Encoding: base64"
+                                ],
+                                "parsedHeader": {
+                                    "content-transfer-encoding": "base64",
+                                    "content-type": {
+                                        "value": "image/gif",
+                                        "type": "image",
+                                        "subtype": "gif",
+                                        "params": {
+                                            "name": "dot.gif"
+                                        },
+                                        "hasParams": true
+                                    },
+                                    "content-disposition": {
+                                        "value": "attachment",
+                                        "type": "attachment",
+                                        "subtype": "",
+                                        "params": {
+                                            "filename": "dot.gif"
+                                        },
+                                        "hasParams": true
+                                    }
+                                },
+                                "body": {
+                                    "$buffer": "UjBsR09EZGhDZ0FLQUtFQUFBQUFBTlVBQVAvLy84UER3eXdBQUFBQUNnQUtBRUFDSFpTUE1zc0xLb0lNWUx5UjFJMnozc1pzRTJWQg0Kb3djQnFscXVybG9BQURzPQ0K"
+                                },
+                                "multipart": false,
+                                "boundary": false,
+                                "lineCount": 2,
+                                "size": 96
+                            }
+                        ],
+                        "header": [
+                            "Content-Type: multipart/mixed; boundary=\"=-CgV5jm9HAY9VbUlAuneA\""
+                        ],
+                        "parsedHeader": {
+                            "content-type": {
+                                "value": "multipart/mixed",
+                                "type": "multipart",
+                                "subtype": "mixed",
+                                "params": {
+                                    "boundary": "=-CgV5jm9HAY9VbUlAuneA"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "DQo="
+                        },
+                        "epilogue": {
+                            "$buffer": "DQo="
+                        },
+                        "multipart": "mixed",
+                        "boundary": "=-CgV5jm9HAY9VbUlAuneA",
+                        "lineCount": 0,
+                        "size": 2
+                    },
+                    {
+                        "header": [
+                            "Content-Type: application/pgp-signature; name=signature.asc",
+                            "Content-Description: This is a digitally signed message part"
+                        ],
+                        "parsedHeader": {
+                            "content-description": "This is a digitally signed message part",
+                            "content-type": {
+                                "value": "application/pgp-signature",
+                                "type": "application",
+                                "subtype": "pgp-signature",
+                                "params": {
+                                    "name": "signature.asc"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "LS0tLS1CRUdJTiBQR1AgU0lHTkFUVVJFLS0tLS0NClZlcnNpb246IEdudVBHIHYxLjIuMiAoR05VL0xpbnV4KQ0KDQppRDhEQlFBL21MZEVLWllRcVNBK3lpVVJBakFuQUo5MEcyMmpiWC9Ccm95MEY1NDFSMFVVYnNiNnpnQ2VKbjBkDQowMlZxOVN2NmFYRStZTTBsUm4zalpEYz0NCj11d0NNDQotLS0tLUVORCBQR1AgU0lHTkFUVVJFLS0tLS0NCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 7,
+                        "size": 196
+                    }
+                ],
+                "header": [
+                    "Subject: smiley!",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/signed; micalg=pgp-sha1; protocol=\"application/pgp-signature\"; boundary=\"=-vH3FQO9a8icUn1ROCoAi\"",
+                    "Message-Id: <1066972996.4264.39.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "Date: 23 Oct 2003 22:23:16 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 22:23:16 -0700",
+                    "mime-version": "1.0",
+                    "message-id": "<1066972996.4264.39.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/signed",
+                        "type": "multipart",
+                        "subtype": "signed",
+                        "params": {
+                            "micalg": "pgp-sha1",
+                            "protocol": "application/pgp-signature",
+                            "boundary": "=-vH3FQO9a8icUn1ROCoAi"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "smiley!"
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "signed",
+                "boundary": "=-vH3FQO9a8icUn1ROCoAi",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 176,
+            "size": 6648
+        },
+        {
+            "header": [
+                "Content-Disposition: inline",
+                "Content-Description: Kittens give Morbo gas. --Morbo",
+                "Content-Type: message/rfc822"
+            ],
+            "parsedHeader": {
+                "content-type": {
+                    "value": "message/rfc822",
+                    "type": "message",
+                    "subtype": "rfc822",
+                    "params": {}
+                },
+                "content-description": "Kittens give Morbo gas. --Morbo",
+                "content-disposition": {
+                    "value": "inline",
+                    "type": "inline",
+                    "subtype": "",
+                    "params": {}
+                }
+            },
+            "body": {
+                "$buffer": "U3ViamVjdDogdGhlIFBST1BFUiB3YXkgdG8gZG8gYWx0ZXJuYXRpdmUvcmVsYXRlZA0KRnJvbTogUnlhbiBGaW5uaWUgPHJmaW5uaWVAZG9tYWluLmRvbT4NClRvOiBib2JAZG9tYWluLmRvbQ0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvYWx0ZXJuYXRpdmU7IHR5cGU9Im11bHRpcGFydC9hbHRlcm5hdGl2ZSI7IGJvdW5kYXJ5PSI9LXR5R2xROUp2QjV1dlBXem96SSt5Ig0KTWVzc2FnZS1JZDogPDEwNjY5NzM1NTcuNDI2NS41MS5jYW1lbEBsb2NhbGhvc3Q+DQpNaW1lLVZlcnNpb246IDEuMA0KWC1NYWlsZXI6IE5vdCBFdm9sdXRpb24NCkRhdGU6IDIzIE9jdCAyMDAzIDIyOjMyOjM3IC0wNzAwDQoNCg0KLS09LXR5R2xROUp2QjV1dlBXem96SSt5DQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW47IENIQVJTRVQ9VVMtQVNDSUkNCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IDhiaXQNCg0KSWYgdGhpcyBzZW50ZW5jZSBpcyBncmVlbiwgeW91J3JlIHZpZXdpbmcgdGhlIEhUTUwgcGFydC4NCg0KTm93LCB0aGlzIGlzIHRoZSB3YXkgdGhhdCBhbGwgTVVBcyBTSE9VTEQgdHJlYXQgdGhpcyBraW5kIG9mIHNpdHVhdGlvbi4NClRoZSBsYXlvdXQgaXMgbGlrZSBzbzoNCg0KbXVsdGlwYXJ0L2FsdGVybmF0aXZlDQp8IHRleHQvcGxhaW4NCnwgbXVsdGlwYXJ0L3JlbGF0ZWQNCnwgfCB0ZXh0L2h0bWwNCnwgfCBpbWFnZS9naWYNCg0KU2VlPyAgVGhlIEdJRiAod2hpY2ggYnkgdGhlIHdheSBzaG91bGQgYmUgaW5saW5lIHRvd2FyZHMgdGhlIHRvcCBvZiB0aGlzDQptZXNzYWdlKSBpcyByZWxhdGVkIHRvIHRoZSBIVE1MLCBhbmQgdGhhdCB3aG9sZSBibG9jayBpcyBhbiBhbHRlcm5hdGl2ZQ0KdG8gYSB0ZXh0L3BsYWluIHBhcnQuICBUaGlzIGlzIHRoZSBvcHBvc2l0ZSBvZiB0aGUgd2F5IHNob3duIGluIHRoZQ0KcHJldmlvdXMgZW1haWwuDQoNCkFsc28sIHRoZSBlbWJlZGRlZCBpbWFnZSBoZXJlIGRvZXMgbm90IGhhdmUgYSBmaWxlbmFtZS4gIEFzIG1lbnRpb25lZA0KYWJvdmUsIHRoZSBNVUEgc2hvdWxkIHN1Z2dlc3Qgc29tZXRoaW5nIGFzIGEgZmlsZW5hbWUsIGV2ZW4gaGVyZSAodGhlDQp1c2VyIG1heSB3YW50IHRvIHNhdmUgdGhlIGVtYmVkZGVkIGltYWdlLCBzbyBhIGZpbGVuYW1lIHdvdWxkIGJlDQpoZWxwZnVsKS4gIEluIHRoaXMgY2FzZSwgSSB3b3VsZCByZWNvbW1lbmQgYXBwZW5kaW5nIHRoZSByYW5kb20gdGV4dA0KdG8gYmUgc3VnZ2VzdGVkIHRvIHRoZSB1c2VyIHdpdGggdGhlIHBhcnQncyBzdWJ0eXBlLCBpbiB0aGlzIGNhc2UNCnNvbWV0aGluZyBsaWtlIGMyMHZzaWRsa3ZtLmdpZi4NCg0KLS09LXR5R2xROUp2QjV1dlBXem96SSt5DQpDb250ZW50LVR5cGU6IG11bHRpcGFydC9yZWxhdGVkOyBib3VuZGFyeT0iPS1iRmt4SDFTM0hWR2N4aStvLzVqRyINCg0KDQotLT0tYkZreEgxUzNIVkdjeGkrby81akcNCkNvbnRlbnQtVHlwZTogdGV4dC9odG1sOyBDSEFSU0VUPXV0Zi04DQpDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA4Yml0DQoNCjwhRE9DVFlQRSBIVE1MIFBVQkxJQyAiLS8vVzNDLy9EVEQgSFRNTCA0LjAgVFJBTlNJVElPTkFMLy9FTiI+DQo8SFRNTD4NCjxIRUFEPg0KICA8TUVUQSBIVFRQLUVRVUlWPSJDb250ZW50LVR5cGUiIENPTlRFTlQ9InRleHQvaHRtbDsgQ0hBUlNFVD1VVEYtOCI+DQogIDxNRVRBIE5BTUU9IkdFTkVSQVRPUiIgQ09OVEVOVD0iR3RrSFRNTC8xLjEuMTAiPg0KPC9IRUFEPg0KPEJPRFk+DQo8Rk9OVCBDT0xPUj0iIzAwZmMwMCI+SWYgdGhpcyBzZW50ZW5jZSBpcyBncmVlbiwgeW91J3JlIHZpZXdpbmcgdGhlIEhUTUwgcGFydC48L0ZPTlQ+PEJSPg0KPElNRyBTUkM9ImNpZDoxMDY2OTczMzQwLjQyMzIuNDYuY2FtZWxAbG9jYWxob3N0IiBBTElHTj0idG9wIiBBTFQ9IiIgQk9SREVSPSIwIj48QlI+DQpOb3csIHRoaXMgaXMgdGhlIHdheSB0aGF0IGFsbCBNVUFzIDxCPlNIT1VMRDwvQj4gdHJlYXQgdGhpcyBraW5kIG9mIHNpdHVhdGlvbi7CoCBUaGUgbGF5b3V0IGlzIGxpa2Ugc286PEJSPg0KPEJSPg0KbXVsdGlwYXJ0L2FsdGVybmF0aXZlPEJSPg0KfCB0ZXh0L3BsYWluPEJSPg0KfCBtdWx0aXBhcnQvcmVsYXRlZDxCUj4NCnwgfCB0ZXh0L2h0bWw8QlI+DQp8IHwgaW1hZ2UvZ2lmPEJSPg0KPEJSPg0KU2VlP8KgIFRoZSBHSUYgKHdoaWNoIGJ5IHRoZSB3YXkgc2hvdWxkIGJlIGlubGluZSB0b3dhcmRzIHRoZSB0b3Agb2YgdGhpcyBtZXNzYWdlKSBpcyByZWxhdGVkIHRvIHRoZSBIVE1MLCBhbmQgdGhhdCB3aG9sZSBibG9jayBpcyBhbiBhbHRlcm5hdGl2ZSB0byBhIHRleHQvcGxhaW4gcGFydC7CoCBUaGlzIGlzIHRoZSBvcHBvc2l0ZSBvZiB0aGUgd2F5IHNob3duIGluIHRoZSBwcmV2aW91cyBlbWFpbC48QlI+DQo8QlI+DQpBbHNvLCB0aGUgZW1iZWRkZWQgaW1hZ2UgaGVyZSBkb2VzIG5vdCBoYXZlIGEgZmlsZW5hbWUuwqAgIEFzIG1lbnRpb25lZCBhYm92ZSwgdGhlIE1VQSBzaG91bGQgc3VnZ2VzdCBzb21ldGhpbmcgYXMgYSBmaWxlbmFtZSwgZXZlbiBoZXJlICh0aGUgdXNlciBtYXkgd2FudCB0byBzYXZlIHRoZSBlbWJlZGRlZCBpbWFnZSwgc28gYSBmaWxlbmFtZSB3b3VsZCBiZSBoZWxwZnVsKS7CoCAgSW4gdGhpcyBjYXNlLCBJIHdvdWxkIHJlY29tbWVuZCBhcHBlbmRpbmcgdGhlIHJhbmRvbSB0ZXh0IHRvIGJlIHN1Z2dlc3RlZCB0byB0aGUgdXNlciB3aXRoIHRoZSBwYXJ0J3Mgc3VidHlwZSwgaW4gdGhpcyBjYXNlIHNvbWV0aGluZyBsaWtlIGMyMHZzaWRsa3ZtLmdpZi4NCjwvQk9EWT4NCjwvSFRNTD4NCg0KLS09LWJGa3hIMVMzSFZHY3hpK28vNWpHDQpDb250ZW50LUlEOiA8MTA2Njk3MzM0MC40MjMyLjQ2LmNhbWVsQGxvY2FsaG9zdD4NCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IGJhc2U2NA0KQ29udGVudC1UeXBlOiBpbWFnZS9naWYNCg0KUjBsR09EbGhCUUFMQVBJQUFLSUEvNjRBLzhaTC8vLy8vOEJTLzJRREFOWi8vd0FBQUNINUJBRUFBQU1BTEFBQUFBQUZBQXNBQUFNWQ0KT0JJeXRzSVlFb2lFbDBscUZXZ0tNNHprVUp6aldRd0pBRHM9DQoNCi0tPS1iRmt4SDFTM0hWR2N4aStvLzVqRy0tDQoNCi0tPS10eUdsUTlKdkI1dXZQV3pvekkreS0tDQo="
+            },
+            "multipart": false,
+            "boundary": false,
+            "message": {
+                "childNodes": [
+                    {
+                        "header": [
+                            "Content-Type: text/plain; CHARSET=US-ASCII",
+                            "Content-Transfer-Encoding: 8bit"
+                        ],
+                        "parsedHeader": {
+                            "content-transfer-encoding": "8bit",
+                            "content-type": {
+                                "value": "text/plain",
+                                "type": "text",
+                                "subtype": "plain",
+                                "params": {
+                                    "charset": "US-ASCII"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "SWYgdGhpcyBzZW50ZW5jZSBpcyBncmVlbiwgeW91J3JlIHZpZXdpbmcgdGhlIEhUTUwgcGFydC4NCg0KTm93LCB0aGlzIGlzIHRoZSB3YXkgdGhhdCBhbGwgTVVBcyBTSE9VTEQgdHJlYXQgdGhpcyBraW5kIG9mIHNpdHVhdGlvbi4NClRoZSBsYXlvdXQgaXMgbGlrZSBzbzoNCg0KbXVsdGlwYXJ0L2FsdGVybmF0aXZlDQp8IHRleHQvcGxhaW4NCnwgbXVsdGlwYXJ0L3JlbGF0ZWQNCnwgfCB0ZXh0L2h0bWwNCnwgfCBpbWFnZS9naWYNCg0KU2VlPyAgVGhlIEdJRiAod2hpY2ggYnkgdGhlIHdheSBzaG91bGQgYmUgaW5saW5lIHRvd2FyZHMgdGhlIHRvcCBvZiB0aGlzDQptZXNzYWdlKSBpcyByZWxhdGVkIHRvIHRoZSBIVE1MLCBhbmQgdGhhdCB3aG9sZSBibG9jayBpcyBhbiBhbHRlcm5hdGl2ZQ0KdG8gYSB0ZXh0L3BsYWluIHBhcnQuICBUaGlzIGlzIHRoZSBvcHBvc2l0ZSBvZiB0aGUgd2F5IHNob3duIGluIHRoZQ0KcHJldmlvdXMgZW1haWwuDQoNCkFsc28sIHRoZSBlbWJlZGRlZCBpbWFnZSBoZXJlIGRvZXMgbm90IGhhdmUgYSBmaWxlbmFtZS4gIEFzIG1lbnRpb25lZA0KYWJvdmUsIHRoZSBNVUEgc2hvdWxkIHN1Z2dlc3Qgc29tZXRoaW5nIGFzIGEgZmlsZW5hbWUsIGV2ZW4gaGVyZSAodGhlDQp1c2VyIG1heSB3YW50IHRvIHNhdmUgdGhlIGVtYmVkZGVkIGltYWdlLCBzbyBhIGZpbGVuYW1lIHdvdWxkIGJlDQpoZWxwZnVsKS4gIEluIHRoaXMgY2FzZSwgSSB3b3VsZCByZWNvbW1lbmQgYXBwZW5kaW5nIHRoZSByYW5kb20gdGV4dA0KdG8gYmUgc3VnZ2VzdGVkIHRvIHRoZSB1c2VyIHdpdGggdGhlIHBhcnQncyBzdWJ0eXBlLCBpbiB0aGlzIGNhc2UNCnNvbWV0aGluZyBsaWtlIGMyMHZzaWRsa3ZtLmdpZi4NCg=="
+                        },
+                        "multipart": false,
+                        "boundary": false,
+                        "lineCount": 22,
+                        "size": 862
+                    },
+                    {
+                        "childNodes": [
+                            {
+                                "header": [
+                                    "Content-Type: text/html; CHARSET=utf-8",
+                                    "Content-Transfer-Encoding: 8bit"
+                                ],
+                                "parsedHeader": {
+                                    "content-transfer-encoding": "8bit",
+                                    "content-type": {
+                                        "value": "text/html",
+                                        "type": "text",
+                                        "subtype": "html",
+                                        "params": {
+                                            "charset": "utf-8"
+                                        },
+                                        "hasParams": true
+                                    }
+                                },
+                                "body": {
+                                    "$buffer": "PCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUUkFOU0lUSU9OQUwvL0VOIj4NCjxIVE1MPg0KPEhFQUQ+DQogIDxNRVRBIEhUVFAtRVFVSVY9IkNvbnRlbnQtVHlwZSIgQ09OVEVOVD0idGV4dC9odG1sOyBDSEFSU0VUPVVURi04Ij4NCiAgPE1FVEEgTkFNRT0iR0VORVJBVE9SIiBDT05URU5UPSJHdGtIVE1MLzEuMS4xMCI+DQo8L0hFQUQ+DQo8Qk9EWT4NCjxGT05UIENPTE9SPSIjMDBmYzAwIj5JZiB0aGlzIHNlbnRlbmNlIGlzIGdyZWVuLCB5b3UncmUgdmlld2luZyB0aGUgSFRNTCBwYXJ0LjwvRk9OVD48QlI+DQo8SU1HIFNSQz0iY2lkOjEwNjY5NzMzNDAuNDIzMi40Ni5jYW1lbEBsb2NhbGhvc3QiIEFMSUdOPSJ0b3AiIEFMVD0iIiBCT1JERVI9IjAiPjxCUj4NCk5vdywgdGhpcyBpcyB0aGUgd2F5IHRoYXQgYWxsIE1VQXMgPEI+U0hPVUxEPC9CPiB0cmVhdCB0aGlzIGtpbmQgb2Ygc2l0dWF0aW9uLsKgIFRoZSBsYXlvdXQgaXMgbGlrZSBzbzo8QlI+DQo8QlI+DQptdWx0aXBhcnQvYWx0ZXJuYXRpdmU8QlI+DQp8IHRleHQvcGxhaW48QlI+DQp8IG11bHRpcGFydC9yZWxhdGVkPEJSPg0KfCB8IHRleHQvaHRtbDxCUj4NCnwgfCBpbWFnZS9naWY8QlI+DQo8QlI+DQpTZWU/wqAgVGhlIEdJRiAod2hpY2ggYnkgdGhlIHdheSBzaG91bGQgYmUgaW5saW5lIHRvd2FyZHMgdGhlIHRvcCBvZiB0aGlzIG1lc3NhZ2UpIGlzIHJlbGF0ZWQgdG8gdGhlIEhUTUwsIGFuZCB0aGF0IHdob2xlIGJsb2NrIGlzIGFuIGFsdGVybmF0aXZlIHRvIGEgdGV4dC9wbGFpbiBwYXJ0LsKgIFRoaXMgaXMgdGhlIG9wcG9zaXRlIG9mIHRoZSB3YXkgc2hvd24gaW4gdGhlIHByZXZpb3VzIGVtYWlsLjxCUj4NCjxCUj4NCkFsc28sIHRoZSBlbWJlZGRlZCBpbWFnZSBoZXJlIGRvZXMgbm90IGhhdmUgYSBmaWxlbmFtZS7CoCAgQXMgbWVudGlvbmVkIGFib3ZlLCB0aGUgTVVBIHNob3VsZCBzdWdnZXN0IHNvbWV0aGluZyBhcyBhIGZpbGVuYW1lLCBldmVuIGhlcmUgKHRoZSB1c2VyIG1heSB3YW50IHRvIHNhdmUgdGhlIGVtYmVkZGVkIGltYWdlLCBzbyBhIGZpbGVuYW1lIHdvdWxkIGJlIGhlbHBmdWwpLsKgICBJbiB0aGlzIGNhc2UsIEkgd291bGQgcmVjb21tZW5kIGFwcGVuZGluZyB0aGUgcmFuZG9tIHRleHQgdG8gYmUgc3VnZ2VzdGVkIHRvIHRoZSB1c2VyIHdpdGggdGhlIHBhcnQncyBzdWJ0eXBlLCBpbiB0aGlzIGNhc2Ugc29tZXRoaW5nIGxpa2UgYzIwdnNpZGxrdm0uZ2lmLg0KPC9CT0RZPg0KPC9IVE1MPg0K"
+                                },
+                                "multipart": false,
+                                "boundary": false,
+                                "lineCount": 22,
+                                "size": 1263
+                            },
+                            {
+                                "header": [
+                                    "Content-ID: <1066973340.4232.46.camel@localhost>",
+                                    "Content-Transfer-Encoding: base64",
+                                    "Content-Type: image/gif"
+                                ],
+                                "parsedHeader": {
+                                    "content-type": {
+                                        "value": "image/gif",
+                                        "type": "image",
+                                        "subtype": "gif",
+                                        "params": {}
+                                    },
+                                    "content-transfer-encoding": "base64",
+                                    "content-id": "<1066973340.4232.46.camel@localhost>"
+                                },
+                                "body": {
+                                    "$buffer": "UjBsR09EbGhCUUFMQVBJQUFLSUEvNjRBLzhaTC8vLy8vOEJTLzJRREFOWi8vd0FBQUNINUJBRUFBQU1BTEFBQUFBQUZBQXNBQUFNWQ0KT0JJeXRzSVlFb2lFbDBscUZXZ0tNNHprVUp6aldRd0pBRHM9DQo="
+                                },
+                                "multipart": false,
+                                "boundary": false,
+                                "lineCount": 2,
+                                "size": 116
+                            }
+                        ],
+                        "header": [
+                            "Content-Type: multipart/related; boundary=\"=-bFkxH1S3HVGcxi+o/5jG\""
+                        ],
+                        "parsedHeader": {
+                            "content-type": {
+                                "value": "multipart/related",
+                                "type": "multipart",
+                                "subtype": "related",
+                                "params": {
+                                    "boundary": "=-bFkxH1S3HVGcxi+o/5jG"
+                                },
+                                "hasParams": true
+                            }
+                        },
+                        "body": {
+                            "$buffer": "DQo="
+                        },
+                        "epilogue": {
+                            "$buffer": "DQo="
+                        },
+                        "multipart": "related",
+                        "boundary": "=-bFkxH1S3HVGcxi+o/5jG",
+                        "lineCount": 0,
+                        "size": 2
+                    }
+                ],
+                "header": [
+                    "Subject: the PROPER way to do alternative/related",
+                    "From: Ryan Finnie <rfinnie@domain.dom>",
+                    "To: bob@domain.dom",
+                    "Content-Type: multipart/alternative; type=\"multipart/alternative\"; boundary=\"=-tyGlQ9JvB5uvPWzozI+y\"",
+                    "Message-Id: <1066973557.4265.51.camel@localhost>",
+                    "Mime-Version: 1.0",
+                    "X-Mailer: Not Evolution",
+                    "Date: 23 Oct 2003 22:32:37 -0700"
+                ],
+                "parsedHeader": {
+                    "date": "23 Oct 2003 22:32:37 -0700",
+                    "x-mailer": "Not Evolution",
+                    "mime-version": "1.0",
+                    "message-id": "<1066973557.4265.51.camel@localhost>",
+                    "content-type": {
+                        "value": "multipart/alternative",
+                        "type": "multipart",
+                        "subtype": "alternative",
+                        "params": {
+                            "type": "multipart/alternative",
+                            "boundary": "=-tyGlQ9JvB5uvPWzozI+y"
+                        },
+                        "hasParams": true
+                    },
+                    "to": [
+                        {
+                            "address": "bob@domain.dom",
+                            "name": ""
+                        }
+                    ],
+                    "from": [
+                        {
+                            "address": "rfinnie@domain.dom",
+                            "name": "Ryan Finnie"
+                        }
+                    ],
+                    "subject": "the PROPER way to do alternative/related"
+                },
+                "body": {
+                    "$buffer": "DQo="
+                },
+                "epilogue": {
+                    "$buffer": "DQo="
+                },
+                "multipart": "alternative",
+                "boundary": "=-tyGlQ9JvB5uvPWzozI+y",
+                "lineCount": 0,
+                "size": 2,
+                "v": 2
+            },
+            "lineCount": 79,
+            "size": 3092
+        }
+    ],
     "header": [
         "Subject: Ryan Finnie's MIME Torture Test v1.0",
         "From: Ryan Finnie <rfinnie@domain.dom>",
@@ -1393,19 +1631,29 @@
             },
             "hasParams": true
         },
-        "to": [{
-            "address": "bob@domain.dom",
-            "name": ""
-        }],
-        "from": [{
-            "address": "rfinnie@domain.dom",
-            "name": "Ryan Finnie"
-        }],
+        "to": [
+            {
+                "address": "bob@domain.dom",
+                "name": ""
+            }
+        ],
+        "from": [
+            {
+                "address": "rfinnie@domain.dom",
+                "name": "Ryan Finnie"
+            }
+        ],
         "subject": "Ryan Finnie's MIME Torture Test v1.0"
     },
-    "body": "\r\n",
+    "body": {
+        "$buffer": "DQo="
+    },
+    "epilogue": {
+        "$buffer": "DQo="
+    },
     "multipart": "mixed",
     "boundary": "=-qYxqvD9rbH0PNeExagh1",
-    "lineCount": 2,
-    "size": 2
+    "lineCount": 0,
+    "size": 2,
+    "v": 2
 }

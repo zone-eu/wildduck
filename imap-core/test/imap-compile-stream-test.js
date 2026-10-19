@@ -718,3 +718,52 @@ describe('IMAP Stream Literals', function () {
         ).to.equal('* CMD {4}\r\n0123 "tail"');
     });
 });
+
+describe('Literal length mismatches', function () {
+    this.timeout(10000); //eslint-disable-line no-invalid-this
+
+    // a literal stream that announces one length and delivers another
+    function literal(announced, delivered) {
+        let stream = new PassThrough();
+        setImmediate(() => {
+            stream.end(Buffer.from('X'.repeat(delivered)));
+        });
+        return { tag: '*', command: '1 FETCH', attributes: [{ type: 'LITERAL', value: stream, expectedLength: announced }] };
+    }
+
+    it('should report a padded literal', function (done) {
+        let output = imapHandler.compileStream(literal(100, 90));
+        let mismatches = [];
+        output.on('literalMismatch', info => mismatches.push(info));
+        resolveStream(output, (err, value) => {
+            expect(err).to.not.exist;
+            expect(value.toString()).to.equal('* 1 FETCH {100}\r\n' + 'X'.repeat(90) + ' '.repeat(10));
+            expect(mismatches).to.deep.equal([{ kind: 'padded', expected: 100, received: 90 }]);
+            done();
+        });
+    });
+
+    it('should report a truncated literal', function (done) {
+        let output = imapHandler.compileStream(literal(100, 130));
+        let mismatches = [];
+        output.on('literalMismatch', info => mismatches.push(info));
+        resolveStream(output, (err, value) => {
+            expect(err).to.not.exist;
+            expect(value.toString()).to.equal('* 1 FETCH {100}\r\n' + 'X'.repeat(100));
+            expect(mismatches).to.deep.equal([{ kind: 'truncated', expected: 100, received: 130 }]);
+            done();
+        });
+    });
+
+    it('should stay silent for an exact literal', function (done) {
+        let output = imapHandler.compileStream(literal(100, 100));
+        let mismatches = [];
+        output.on('literalMismatch', info => mismatches.push(info));
+        resolveStream(output, (err, value) => {
+            expect(err).to.not.exist;
+            expect(value.toString()).to.equal('* 1 FETCH {100}\r\n' + 'X'.repeat(100));
+            expect(mismatches).to.deep.equal([]);
+            done();
+        });
+    });
+});

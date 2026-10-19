@@ -9,3 +9,4 @@ zmta-milter
 zmta-milter.toml
 api-tests-overview.md
 docker-mcp-demo
+coverage

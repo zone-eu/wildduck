@@ -34,7 +34,7 @@ module.exports = function (options) {
                     flags: ['\\Seen'],
                     idate: new Date(),
                     modseq: 5000,
-                    mimeTree: parseMimeTree(fs.readFileSync(__dirname + '/fixtures/ryan_finnie_mime_torture.eml'))
+                    mimeTree: parseMimeTree(fs.readFileSync(__dirname + '/fixtures/mimetorture.eml'))
                 },
                 {
                     uid: 50,
