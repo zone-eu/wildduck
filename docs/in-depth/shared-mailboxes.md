@@ -107,7 +107,7 @@ nonexistent, without `a` it is `NOPERM`). An account owner always holds all righ
 so a regular user manages who may access their account through `Other Users/<their own username>`; a team
 account can not log in, so its account wide grants are managed over the HTTP API (`PUT /users/{team}/acl/account`)
 or over IMAP by a user that already holds the account level `a` right. With the account create right `k`, a
-grantee may create top level folders directly under the account.
+grantee may create top level folders directly under the account, or rename folders of the account to that level.
 
 ## Team mailboxes
 
@@ -192,10 +192,10 @@ which usernames exist on the server.
 -   **MOVE between mailboxes of the same owner keeps flags.** [RFC6851](https://tools.ietf.org/html/rfc6851)
     defines MOVE as flag preserving; the RFC 4314 flag dropping rules apply to COPY, APPEND and to moves that
     cross accounts (which are internally a copy).
--   **CREATE in a shared hierarchy requires the immediate parent** to exist with the `k` right, except at the
-    top level of an account namespace, where a folder is authorized instead by the account wide `k` right on
-    the owner. This is stricter than RFC 4314 for sub-folders, which only requires rights on the nearest
-    existing parent.
+-   **CREATE and RENAME in a shared hierarchy require the immediate parent** to exist with the `k` right,
+    except at the top level of an account namespace, where a folder is authorized instead by the account wide
+    `k` right on the owner. This is stricter than RFC 4314 for sub-folders, which only requires rights on the
+    nearest existing parent.
 -   **Personal folders literally named `Other Users/...` or `Shared/...`** become unreachable while ACL
     support is enabled, as the namespace prefixes take over. Rename such folders before enabling.
 -   **POP3 is unaffected.** POP3 only ever exposes the INBOX of the authenticated user.
