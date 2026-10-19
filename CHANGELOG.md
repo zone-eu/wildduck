@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.53.2](https://github.com/zone-eu/wildduck/compare/v1.53.1...v1.53.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* ZMS-108: Add MCP only authentication capability ([#1189](https://github.com/zone-eu/wildduck/issues/1189)) ([#1224](https://github.com/zone-eu/wildduck/issues/1224)) ([a55f3a8](https://github.com/zone-eu/wildduck/commit/a55f3a82a16210b5b92a6bec14a5205e52586208))
+
 ## [1.53.1](https://github.com/zone-eu/wildduck/compare/v1.53.0...v1.53.1) (2026-10-19)
 
 
