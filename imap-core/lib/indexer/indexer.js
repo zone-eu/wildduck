@@ -71,6 +71,8 @@ class Indexer {
      * @param  {Number} [options.startFrom] First byte of the message to emit
      * @param  {Number} [options.maxLength] Number of bytes to emit
      * @param  {Boolean} [options.skipExternal] If true, do not include the external nodes
+     * @param  {Boolean} [options.strict] If true, a missing or damaged attachment fails the stream instead of being
+     *                                    served as line breaks, for a rebuild that is stored or sent
      * @return {Object} `{ type: 'stream', value: Stream, expectedLength: Number }`
      */
     rebuild(mimeTree, textOnly, options) {
@@ -124,7 +126,7 @@ class Indexer {
                 if (pending.length) {
                     yield flush();
                 }
-                yield* this.attachmentChunks(id, lookup, from, to - from, () => output.destroyed);
+                yield* this.attachmentChunks(id, lookup, from, to - from, () => output.destroyed, options.strict);
             }
 
             if (pending.length) {
@@ -174,13 +176,20 @@ class Indexer {
      * a storage that delivers more or less than asked for is logged, cut and padded with line breaks, and
      * a missing attachment is served as line breaks
      */
-    async *attachmentChunks(id, lookup, relStart, length, isAborted) {
-        let missing = () =>
+    async *attachmentChunks(id, lookup, relStart, length, isAborted, strict) {
+        let missing = () => {
             this.loggelf({
                 short_message: 'Attachment missing',
                 _mail_action: 'attachment_missing',
                 _attachment_id: id
             });
+            if (strict) {
+                // the rebuilt message is stored or sent, a placeholder would replace the attachment for good
+                let err = new Error('Attachment ' + id.toString('hex') + ' is missing');
+                err.code = 'AttachmentMissing';
+                throw err;
+            }
+        };
 
         let attachmentData = await lookup;
         if (!attachmentData) {
@@ -191,15 +200,20 @@ class Indexer {
 
         let stream = this.attachmentStorage.createReadStream(id, attachmentData, { startFrom: relStart, maxLength: length });
         let limiter = new LengthLimiter(length, filler);
-        limiter.on('mismatch', info =>
+        limiter.on('mismatch', info => {
             this.loggelf({
                 short_message: 'Attachment length mismatch',
                 _mail_action: 'attachment_length_mismatch',
                 _attachment_id: id,
                 _expected: info.expected,
                 _received: info.received
-            })
-        );
+            });
+            if (strict) {
+                let err = new Error('Attachment ' + id.toString('hex') + ' is damaged');
+                err.code = 'AttachmentMissing';
+                limiter.destroy(err);
+            }
+        });
         stream.once('error', err => limiter.destroy(err));
 
         try {

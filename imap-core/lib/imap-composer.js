@@ -35,13 +35,47 @@ class IMAPComposer extends Transform {
                 );
             }
 
-            obj.pipe(this.connection[!this.connection.compression ? '_socket' : '_deflate'], {
+            let target = this.connection[!this.connection.compression ? '_socket' : '_deflate'];
+            // with COMPRESS the target is the deflate stream, the socket is what closes
+            let socket = this.connection._socket;
+            if (target.destroyed || socket.destroyed) {
+                obj.destroy();
+                return done();
+            }
+
+            let finished = false;
+            let onClose;
+            let finish = () => {
+                if (finished) {
+                    return false;
+                }
+                finished = true;
+                socket.removeListener('close', onClose);
+                return true;
+            };
+            // a closed connection does not end a pipe, it only stops it: tear the stream down, so its source
+            // (an attachment read from storage) is released, and move on
+            onClose = () => {
+                if (finish()) {
+                    obj.destroy();
+                    return done();
+                }
+            };
+            socket.once('close', onClose);
+
+            obj.pipe(target, {
                 end: false
             });
-            obj.once('error', err => this.emit('error', err));
+            obj.once('error', err => {
+                if (finish()) {
+                    this.emit('error', err);
+                }
+            });
             obj.once('end', () => {
-                this.push('\r\n');
-                done();
+                if (finish()) {
+                    this.push('\r\n');
+                    return done();
+                }
             });
             return;
         }
