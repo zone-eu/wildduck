@@ -2083,6 +2083,31 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should keep archiving owner messages a grantee copied to another account', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 COPY 1 INBOX', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
+
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 +FLAGS (\\Deleted)', 'T4 EXPUNGE', 'T5 LOGOUT'];
+                    testClient({ commands: cmds, secure: true, port }, function () {
+                        apiServer
+                            .get('/users/resolve/testuser')
+                            .expect(200)
+                            .then(response => apiServer.get(`/users/${response.body.id}/archived/messages`).expect(200))
+                            .then(response => {
+                                // the copy in the grantee's account does not replace the owner's archive
+                                expect(response.body.results.length).to.equal(1);
+                                done();
+                            })
+                            .catch(done);
+                    });
+                });
+            });
+        });
+
         it('should move messages between accounts as copy and expunge', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
 
@@ -2111,7 +2136,17 @@ describe('IMAP Protocol integration tests', function () {
                             expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
                             expect(/^\* 1 EXPUNGE/m.test(resp.toString())).to.be.true;
                             expect(/^\* STATUS "?INBOX"? \(MESSAGES 1\)/m.test(resp.toString())).to.be.true;
-                            done();
+
+                            // a moved message lives on in the target account, so the source is not archived
+                            apiServer
+                                .get('/users/resolve/testuser')
+                                .expect(200)
+                                .then(response => apiServer.get(`/users/${response.body.id}/archived/messages`).expect(200))
+                                .then(response => {
+                                    expect(response.body.results.length).to.equal(0);
+                                    done();
+                                })
+                                .catch(done);
                         }
                     );
                 }
