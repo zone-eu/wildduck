@@ -2678,6 +2678,33 @@ describe('IMAP Protocol integration tests', function () {
             });
         });
 
+        it('should apply SETACL modifiers to the account rights of a folder without a folder grant', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Projects',
+                'T3 SETACL "Other Users/testuser" seconduser lrs',
+                'T4 SETACL "Other Users/testuser/Projects" seconduser +i',
+                'T5 SETACL "Other Users/testuser/INBOX" seconduser -s',
+                'T6 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 MYRIGHTS "Other Users/testuser/Projects"',
+                    'T3 MYRIGHTS "Other Users/testuser/INBOX"',
+                    'T4 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // the modifiers extend and narrow the account rights instead of replacing them
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/Projects" "lrsi"') >= 0).to.be.true;
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/INBOX" "lr"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
         it('should create a top level folder with the account create right', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrswipkxtea', 'T3 LOGOUT'];
 
