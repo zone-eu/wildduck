@@ -6,8 +6,15 @@ const imapTools = require('../imap-tools');
 // Max IMAP number is an unsigned 32-bit value
 const MAX_IMAP_NUMBER = 0xffffffff;
 
+// search strings are always read as UTF-8, RFC 3501 6.4.4 requires US-ASCII and UTF-8 support
+const SUPPORTED_CHARSETS = ['US-ASCII', 'UTF-8'];
+
 module.exports = {
     state: 'Selected',
+
+    // RFC 3501 7.4.1: an EXPUNGE response MUST NOT be sent while responding to SEARCH, otherwise the
+    // sequence numbers in the * SEARCH reply no longer match the numbering the client ends up with
+    disableNotifications: true,
 
     schema: false, // recursive, can't predefine
 
@@ -39,6 +46,16 @@ module.exports = {
             parsed = parseQueryTerms(terms, this.selected.uidList);
         } catch (E) {
             return callback(E);
+        }
+
+        // RFC 3501 6.4.4: "If the server does not support the specified [CHARSET], it MUST return a
+        // tagged NO response (not a BAD). This response SHOULD contain the BADCHARSET response code"
+        if (parsed.charset && !SUPPORTED_CHARSETS.includes(parsed.charset.toString().toUpperCase())) {
+            return callback(null, {
+                response: 'NO',
+                code: `BADCHARSET (${SUPPORTED_CHARSETS.join(' ')})`,
+                message: 'Unsupported charset'
+            });
         }
 
         // mark CONDSTORE as enabled
@@ -218,6 +235,10 @@ function parseQueryTerms(terms, uidList) {
                     curTerm.push(terms[pos++]);
                 }
             }
+        }
+
+        if (curTerm[0] === 'charset') {
+            parsed.charset = curTerm[1] || '';
         }
 
         if (imapTools.searchMapping.hasOwnProperty(curTerm[0])) {

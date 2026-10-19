@@ -58,10 +58,11 @@ module.exports = {
                 logdata._code = err.code;
                 logdata._response = err.response;
                 this._server.loggelf(logdata);
-                // do not return actual error to user
+                // do not return actual error to user, but keep the response code the handler chose.
+                // RFC 5530: CANNOT is "can never succeed", TEMPFAIL would ask the client to retry
                 return callback(null, {
                     response: 'NO',
-                    code: 'TEMPFAIL'
+                    code: err.code || 'TEMPFAIL'
                 });
             }
 

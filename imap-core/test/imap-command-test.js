@@ -263,6 +263,104 @@ describe('IMAPCommand', function () {
         });
     });
 
+    it('should answer NO [SERVERBUG] when a command handler throws', function (done) {
+        const { connection, responses } = createConnection();
+        const records = [];
+        metrics.recordImapCommand = (command, result) => records.push({ command, result });
+
+        connection._server.onLsub = () => {
+            throw new TypeError('folders.forEach is not a function');
+        };
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 LSUB "" "*"' }, err => {
+            expect(err).to.not.exist;
+            expect(responses).to.deep.equal(['A1 NO [SERVERBUG] Internal server error']);
+            expect(records).to.deep.equal([{ command: 'LSUB', result: 'serverbug' }]);
+            done();
+        });
+    });
+
+    it('should answer NO [SERVERBUG] when writing the tagged response throws', function (done) {
+        const { connection, responses } = createConnection();
+
+        connection.writeStream.write = () => {
+            throw new Error('compiler failed');
+        };
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 NOOP' }, err => {
+            expect(err).to.not.exist;
+            expect(responses).to.deep.equal(['A1 NO [SERVERBUG] Internal server error']);
+            done();
+        });
+    });
+
+    it('should not flush queued notifications while responding to SEARCH', function (done) {
+        const { connection } = createConnection({ state: 'Selected' });
+        let notificationFlushes = 0;
+
+        connection.selected = { mailbox: 'INBOX', uidList: [1, 2, 3] };
+        connection.emitNotifications = () => notificationFlushes++;
+        connection._server.onSearch = (mailbox, options, session, cb) => cb(null, { uidList: [1] });
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 SEARCH ALL' }, err => {
+            expect(err).to.not.exist;
+            // RFC 3501 7.4.1: no EXPUNGE between the * SEARCH data and the tagged OK
+            expect(notificationFlushes).to.equal(0);
+
+            // a command that does not report sequence numbers still flushes them
+            const noop = new IMAPCommand(connection);
+            noop.end({ value: 'A2 NOOP' }, noopErr => {
+                expect(noopErr).to.not.exist;
+                expect(notificationFlushes).to.equal(1);
+                done();
+            });
+        });
+    });
+
+    it('should pass an authentication backend failure through with its response code', function (done) {
+        const { connection, writes } = createConnection({
+            state: 'Not Authenticated',
+            serverOptions: { ignoreSTARTTLS: true }
+        });
+
+        // RFC 5530: a backend outage is UNAVAILABLE, not AUTHENTICATIONFAILED
+        connection._server.onAuth = (login, session, cb) => {
+            let err = new Error('Temporary authentication failure');
+            err.response = 'NO';
+            err.code = 'UNAVAILABLE';
+            cb(err);
+        };
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 LOGIN testuser secret' }, err => {
+            expect(err).to.not.exist;
+            expect(writes).to.have.length(1);
+            expect(writes[0].tag).to.equal('A1');
+            expect(writes[0].command).to.equal('NO');
+            expect(writes[0].attributes[0].section[0].value).to.equal('UNAVAILABLE');
+            done();
+        });
+    });
+
+    it('should report GETQUOTAROOT as not implemented when the handler is missing', function (done) {
+        const { connection, writes } = createConnection();
+
+        // an embedder that only implements onGetQuota must not end up calling onGetQuotaRoot
+        connection._server.onGetQuota = (path, session, cb) => cb(null, {});
+
+        const command = new IMAPCommand(connection);
+        command.end({ value: 'A1 GETQUOTAROOT INBOX' }, err => {
+            expect(err).to.not.exist;
+            expect(writes).to.have.length(1);
+            expect(writes[0].command).to.equal('NO');
+            expect(writes[0].attributes[0].value).to.equal('GETQUOTAROOT not implemented');
+            done();
+        });
+    });
+
     it('should record the protocol error that disconnects the client', function (done) {
         const { connection, responses } = createConnection();
         const records = [];

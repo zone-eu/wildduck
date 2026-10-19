@@ -1,7 +1,7 @@
 'use strict';
 
 const imapHandler = require('../handler/imap-handler');
-const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing } = require('../imap-tools');
+const { normalizeMailbox, utf7encode, filterFolders, generateFolderListing, sendDelimiterResponse } = require('../imap-tools');
 
 // tag LIST (SPECIAL-USE) "" "%" RETURN (SPECIAL-USE)
 
@@ -46,7 +46,7 @@ module.exports = {
 
     handler(command, callback) {
         let filterSpecialUseFolders = false;
-        let filterSpecialUseFlags = false;
+        let returnSpecialUse = false;
         let reference;
         let path;
 
@@ -89,7 +89,7 @@ module.exports = {
                     command.attributes[arrPos][0].type === 'ATOM' &&
                     command.attributes[arrPos][0].value.toUpperCase() === 'SPECIAL-USE'
                 ) {
-                    filterSpecialUseFlags = true;
+                    returnSpecialUse = true;
                 } else {
                     return callback(new Error('Invalid argument provided for ' + commandName));
                 }
@@ -144,11 +144,8 @@ module.exports = {
                     attributes: []
                 };
 
-                let flags = [];
-
-                if (!filterSpecialUseFlags) {
-                    flags = flags.concat(folder.flags || []);
-                }
+                // return options never suppress the mailbox attributes (RFC 5258 3)
+                let flags = [].concat(folder.flags || []);
 
                 let specialUseFlag = folder.specialUse;
                 if (specialUseFlag) {
@@ -189,23 +186,9 @@ module.exports = {
             });
         };
 
-        if (!path && !filterSpecialUseFlags) {
+        if (!path && !returnSpecialUse) {
             // return delimiter only
-            let response = {
-                tag: '*',
-                command: commandName,
-                attributes: [
-                    [
-                        {
-                            type: 'atom',
-                            value: '\\Noselect'
-                        }
-                    ],
-                    '/',
-                    '/'
-                ]
-            };
-            this.send(imapHandler.compiler(response));
+            sendDelimiterResponse(this, commandName);
             return callback(null, {
                 response: 'OK'
             });

@@ -8,6 +8,15 @@ batchSize = 1000
 # delay between batches in milliseconds. Set to 0 to disable throttling
 throttleMs = 100
 
+[database.messagesSearchableBackfill]
+# adds messages that lost the searchable field while they were flagged \Deleted back to the
+# fulltext index. Off by default, it walks the whole messages collection
+enabled = false
+# documents updated per batch
+batchSize = 1000
+# delay between batches in milliseconds. Set to 0 to disable throttling
+throttleMs = 100
+
 [users]
 # global users db migrations settings
 

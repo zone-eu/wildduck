@@ -17,10 +17,10 @@ const { MAX_SUB_MAILBOXES, MAX_MAILBOX_NAME_LENGTH } = require('../../lib/consts
 
 describe('IMAP Protocol integration tests', function () {
     this.timeout(100000); // eslint-disable-line no-invalid-this
-    let port = 9993;
+    let port = config.imap.port;
 
     beforeEach(function (done) {
-        exec(__dirname + '/prepare.sh ' + config.dbs.dbname, { cwd: __dirname }, (err, stdout, stderr) => {
+        exec(__dirname + '/prepare.sh ' + config.dbs.dbname + ' ' + config.api.port, { cwd: __dirname }, (err, stdout, stderr) => {
             if (process.env.DEBUG_CONSOLE) {
                 console.log(stdout.toString());
                 console.log(stderr.toString());
@@ -67,6 +67,44 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('LOGIN', function () {
+        it('should not trim the password', function (done) {
+            // RFC 3501 6.2.3 puts no transformation on the password, and trimming would let a
+            // padded wrong password through
+            let cmds = ['T1 LOGIN testuser "pass "', 'T2 LOGIN testuser pass', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 NO \[AUTHENTICATIONFAILED\]/m.test(resp)).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not put the username into the success text', function (done) {
+            // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F) and a leading "[" would be read as a code
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 OK Logged in$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         /*
         let stlsServer;
         let stlsPort;
@@ -205,6 +243,82 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse an unsupported mechanism with NO', function (done) {
+            // RFC 3501 6.2.2: "If the requested authentication mechanism is not supported, the
+            // server SHOULD reject the AUTHENTICATE command by sending a tagged NO response."
+            let cmds = ['T1 AUTHENTICATE LOGIN', 'T2 FOOBAR', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 NO \[CANNOT\] Unsupported authentication mechanism$/m.test(resp)).to.be.true;
+                    // an unknown command is still a syntax error
+                    expect(/^T2 BAD Unknown command: FOOBAR$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not trim the password', function (done) {
+            // RFC 4616 2: "The authcid and passwd productions are form-free", SAFE includes SP
+            let cmds = ['T1 AUTHENTICATE PLAIN ' + Buffer.from('\x00testuser\x00pass ', 'utf-8').toString('base64'), 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 NO \[AUTHENTICATIONFAILED\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not put the username into the success text', function (done) {
+            // RFC 3501 9: text is 1*TEXT-CHAR (%x01-7F) and a leading "[" would be read as a code
+            let cmds = ['T1 AUTHENTICATE PLAIN ' + Buffer.from('\x00testuser\x00pass', 'utf-8').toString('base64'), 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 OK Logged in$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should send the continuation request with the mandatory space', function (done) {
+            // RFC 3501 9: continue-req = "+" SP (resp-text / base64) CRLF
+            let cmds = ['T1 AUTHENTICATE PLAIN', Buffer.from('\x00testuser\x00pass', 'utf-8').toString('base64'), 'T2 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n+ \r\n') >= 0).to.be.true;
+                    expect(/^T1 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should authenticate using SASL-IR', function (done) {
             let cmds = ['T1 AUTHENTICATE PLAIN ' + Buffer.from('\x00testuser\x00pass', 'utf-8').toString('base64'), 'T2 LOGOUT'];
 
@@ -330,6 +444,73 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse an invalid UTF-8 sequence in a quoted mailbox name', function (done) {
+            // RFC 6855 3: a UTF8=ACCEPT server "MUST reject, with a BAD response, any octet
+            // sequences with the high bit set that fail to comply with the formal syntax
+            // requirements of UTF-8"
+            let utf8Name = Buffer.from('Pröbe', 'utf8').toString('binary');
+            let latin1Name = Buffer.from('Pröbe', 'latin1').toString('binary');
+            let cmds = ['T1 LOGIN testuser pass', 'T2 ENABLE UTF8=ACCEPT', 'T3 CREATE "' + utf8Name + '"', 'T4 CREATE "' + latin1Name + '"', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString('binary');
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 BAD Invalid UTF-8 sequence/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should accept an unquoted pattern with a wildcard', function (done) {
+            // RFC 3501 9: list-mailbox = 1*list-char / string, and list-char includes "%" and "*".
+            // Python imaplib does not quote its arguments
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE INBOX/Sub', 'T3 LIST "" INBOX/*', 'T4 LSUB "" INBOX/%', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "INBOX/Sub"\r\n') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX/Sub"\r\n') >= 0).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should keep the mailbox attributes with RETURN (SPECIAL-USE)', function (done) {
+            // RFC 5258 3: a return option controls what extra information is returned, it does not
+            // suppress the mailbox attributes. RFC 3501 7.2.2 relies on \Noselect being present
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Parent/Child', 'T3 LIST "" "*" RETURN (SPECIAL-USE)', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n* LIST (\\Noselect \\HasChildren) "/" "Parent"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Parent/Child"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren \\Sent) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should list all mailboxes using XLIST', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 XLIST "" "*"', 'T3 LOGOUT'];
 
@@ -411,6 +592,27 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('LSUB', function () {
+        it('should list delimiter', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" ""', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(1);
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect) "/" "/"\r\n') >= 0).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    // the connection must still be alive for the next command
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should list all mailboxes', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" "*"', 'T3 LOGOUT'];
 
@@ -422,9 +624,10 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(5);
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(6);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect \\HasChildren) "/" "[Gmail]"\r\n') >= 0).to.be.true;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     done();
                 }
@@ -442,8 +645,10 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(4);
+                    // RFC 3501 6.3.9: the parent of a subscribed child is returned with \Noselect
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(5);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect \\HasChildren) "/" "[Gmail]"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.false;
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     done();
@@ -470,6 +675,27 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should return the unsubscribed parent of a subscribed child for %', function (done) {
+            // RFC 3501 6.3.9: "A "%" wildcard to LSUB must return foo, not foo/bar, in the LSUB
+            // response, and it MUST be flagged with the \Noselect attribute."
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Parent/Child', 'T3 LSUB "" "%"', 'T4 LSUB "" "*"', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(resp.indexOf('\r\n* LSUB (\\Noselect \\HasChildren) "/" "Parent"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "Parent/Child"\r\n') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should not crash on LSUB patterns containing braces', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 LSUB "" "%{2}"', 'T3 LOGOUT'];
 
@@ -490,6 +716,44 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     describe('CREATE', function () {
+        it('should create a mailbox declared with a trailing hierarchy delimiter', function (done) {
+            // RFC 3501 6.3.3: servers that do not require the declaration MUST ignore it,
+            // "In any case, the name created is without the trailing hierarchy delimiter."
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE "Foo/"', 'T3 SELECT Foo', 'T4 LIST "" "Foo*"', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK CREATE completed$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo"\r\n') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a mailbox name that is only a hierarchy delimiter', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE "/"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should create new mailbox', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE testfolder', 'T3 CREATE parent/child', 'T4 CREATE testfolder', 'T5 LIST "" "*"', 'T6 LOGOUT'];
 
@@ -623,6 +887,87 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should rename inferior mailboxes along with the mailbox', function (done) {
+            // RFC 3501 6.3.5: "If the name has inferior hierarchical names, then the inferior
+            // hierarchical names MUST also be renamed."
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Foo',
+                'T3 CREATE Foo/Bar',
+                'T4 CREATE Foo/Bar/Baz',
+                'T5 RENAME Foo Zap',
+                'T6 LIST "" "*"',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Zap"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Zap/Bar"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Zap/Bar/Baz"\r\n') >= 0).to.be.true;
+                    // the old subtree must be gone, not orphaned under a \Noselect parent
+                    expect(/"\/" "Foo/m.test(resp)).to.be.false;
+                    done();
+                }
+            );
+        });
+
+        it('should rename inferior mailboxes into a subpath of the renamed mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Foo', 'T3 CREATE Foo/Bar', 'T4 RENAME Foo Foo/Sub', 'T5 LIST "" "*"', 'T6 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Foo/Sub"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo/Sub/Bar"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo/Bar"\r\n') >= 0).to.be.false;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a rename that would overwrite an existing inferior mailbox', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Foo',
+                'T3 CREATE Foo/Bar',
+                'T4 CREATE Zap/Bar',
+                'T5 RENAME Foo Zap',
+                'T6 LIST "" "*"',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T5 NO \[ALREADYEXISTS\]/m.test(resp)).to.be.true;
+                    // nothing may be renamed when the subtree can not be moved as a whole
+                    expect(resp.indexOf('\r\n* LIST (\\HasChildren) "/" "Foo"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo/Bar"\r\n') >= 0).to.be.true;
+                    expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Zap/Bar"\r\n') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('cannot rename a mailbox to a mailbox path where subpath length is bigger than max allowed', function (done) {
             let cmds = [
                 'T1 LOGIN testuser pass',
@@ -695,6 +1040,25 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse to delete a special use mailbox with CANNOT', function (done) {
+            // RFC 5530: CANNOT is "can never succeed", TEMPFAIL would tell the client to retry
+            let cmds = ['T1 LOGIN testuser pass', 'T2 DELETE Trash', 'T3 DELETE INBOX', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    expect(/^T3 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should disconnect deleted mailbox clients', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE testfolder', 'T3 SELECT testfolder', 'T4 DELETE testfolder'];
 
@@ -750,6 +1114,65 @@ describe('IMAP Protocol integration tests', function () {
                     resp = resp.toString();
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.false;
+                    done();
+                }
+            );
+        });
+
+        it('should append a UTF8 wrapped message', function (done) {
+            // RFC 6855 4: utf8-literal = "UTF8" SP "(" literal8 ")", RFC 4466: literal8 = "~{" number "}" CRLF *OCTET
+            let message = Buffer.from(
+                'From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: Tere \xc3\xb5\xc3\xa4\r\n\r\nWORLD!',
+                'binary'
+            );
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 ENABLE UTF8=ACCEPT',
+                'T3 APPEND INBOX UTF8 (~{' + message.length + '}\r\n' + message.toString('binary') + ')',
+                'T4 APPEND INBOX UTF8 ({' + message.length + '}\r\n' + message.toString('binary') + ')',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[APPENDUID /m.test(resp)).to.be.true;
+                    // the plain literal form of the same wrapper is accepted too
+                    expect(/^T4 OK \[APPENDUID /m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should append to a mailbox with a non-ASCII name after ENABLE UTF8=ACCEPT', function (done) {
+            // RFC 6855 3: a UTF8=ACCEPT server accepts UTF8-quoted mailbox names
+            let message = Buffer.from('From: sender <sender@example.com>\r\nTo: receiver@example.com\r\nSubject: HELLO!\r\n\r\nWORLD!');
+            let mailbox = Buffer.from('Pröbe', 'utf8').toString('binary');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 ENABLE UTF8=ACCEPT',
+                'T3 CREATE "' + mailbox + '"',
+                'T4 APPEND "' + mailbox + '" {' + message.length + '}\r\n' + message.toString('binary'),
+                'T5 STATUS "' + mailbox + '" (MESSAGES)',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString('binary');
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 OK \[APPENDUID /m.test(resp)).to.be.true;
+                    expect(resp.indexOf('* STATUS "' + mailbox + '" (MESSAGES 1)') >= 0).to.be.true;
                     done();
                 }
             );
@@ -898,6 +1321,57 @@ describe('IMAP Protocol integration tests', function () {
         });
     });
 
+    describe('EXAMINE', function () {
+        it('should open a mailbox read-only', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 EXAMINE INBOX', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* 6 EXISTS$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK \[READ-ONLY\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse STORE, EXPUNGE and UID EXPUNGE on a read-only mailbox', function (done) {
+            // RFC 3501 6.3.2: "No changes to the permanent state of the mailbox ... are permitted",
+            // and 6.4.6 / 6.4.3 list NO as the failure result. An OK would claim the change was made
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 EXAMINE INBOX',
+                'T3 STORE 1 +FLAGS (\\Deleted)',
+                'T4 EXPUNGE',
+                'T5 UID EXPUNGE 101',
+                'T6 FETCH 1 (FLAGS)',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[CANNOT\] Mailbox is read-only$/m.test(resp)).to.be.true;
+                    expect(/^T4 NO \[CANNOT\] Mailbox is read-only$/m.test(resp)).to.be.true;
+                    expect(/^T5 NO \[CANNOT\] Mailbox is read-only$/m.test(resp)).to.be.true;
+                    // and nothing was changed
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
     describe('COPY', function () {
         it('should not copy to nonexistent mailbox', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 COPY 1:* zzz', 'T4 LOGOUT'];
@@ -928,6 +1402,147 @@ describe('IMAP Protocol integration tests', function () {
                 function (resp) {
                     resp = resp.toString();
                     expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report EXISTS for a copy into the selected mailbox', function (done) {
+            // RFC 3501 5.2: "A server MUST send mailbox size updates automatically if a mailbox size
+            // change is observed during the processing of a command."
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 COPY 1 INBOX', 'T4 FETCH 7 (UID)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    // the EXISTS must arrive with the COPY, not on a later command
+                    expect(resp.indexOf('\r\n* 7 EXISTS\r\nT3 OK [COPYUID') >= 0).to.be.true;
+                    // and the new message is addressable by its sequence number right away
+                    expect(/^\* 7 FETCH \(UID \d+\)$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report COPYUID for a UID COPY', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID COPY 101 Trash', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[COPYUID \d+ 101 1\] UID COPY completed$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not report an empty COPYUID when nothing matched', function (done) {
+            // RFC 4315 4: resp-code-copy takes two non-empty uid-sets
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID COPY 99999 Trash', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK UID COPY completed$/m.test(resp)).to.be.true;
+                    expect(/COPYUID/.test(resp)).to.be.false;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('MOVE', function () {
+        it('should move messages and report COPYUID', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 101 Trash', 'T4 STATUS Trash (MESSAGES)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[COPYUID \d+ 101 1\] UID MOVE completed$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 EXPUNGE$/m.test(resp)).to.be.true;
+                    expect(/^\* STATUS Trash \(MESSAGES 1\)$/m.test(resp)).to.be.true;
+                    // RFC 6851 4.4: the updated per-mailbox modification sequence of the source
+                    expect(/^\* OK \[HIGHESTMODSEQ 5001\] Highest$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report EXISTS for a move into the selected mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 101 INBOX', 'T4 FETCH 6 (UID)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* 1 EXPUNGE$/m.test(resp)).to.be.true;
+                    // exactly one EXISTS for the moved copy, before the tagged OK
+                    expect(resp.indexOf('\r\n* 1 EXPUNGE\r\n* 6 EXISTS\r\n') >= 0).to.be.true;
+                    let moveResponse = resp.slice(resp.indexOf('* 1 EXPUNGE'), resp.indexOf('T3 OK'));
+                    expect(moveResponse.match(/^\* 6 EXISTS$/gm).length).to.equal(1);
+                    expect(/^\* 6 FETCH \(UID \d+\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not report an empty COPYUID when nothing matched', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 99999 Trash', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK UID MOVE completed$/m.test(resp)).to.be.true;
+                    expect(/COPYUID/.test(resp)).to.be.false;
+                    // nothing moved, so only the SELECT reports a modification sequence
+                    expect(resp.match(/^\* OK \[HIGHESTMODSEQ \d+\]/gm).length).to.equal(1);
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a move to a nonexistent mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID MOVE 101 zzz', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[TRYCREATE\]/m.test(resp)).to.be.true;
                     done();
                 }
             );
@@ -1082,6 +1697,27 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should accept a literal after a zero length literal', function (done) {
+            // RFC 3501 4.3: {0} is a legal literal and must not break the next command that uses one
+            let cmds = ['T1 ID ("name" {0}\r\n)', 'T2 ID ("name" {4}\r\ntest)', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T1 OK/m.test(resp)).to.be.true;
+                    // without the fix the stale literal state answers T2 with BAD E24
+                    expect(/BAD/.test(resp)).to.be.false;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
     });
 
     describe('STORE', function () {
@@ -1140,6 +1776,25 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should refuse a keyword that is not a valid atom', function (done) {
+            // RFC 3501 9: flag-keyword = atom, such a value would go out quoted in FLAGS
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 +FLAGS (MyFlag)', 'T4 STORE 1 +FLAGS (a]b)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 BAD Invalid flag argument for STORE$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
         it('should set some flags with modifier', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1:* (UNCHANGEDSINCE 99) FLAGS (MyFlag1 MyFlag2)', 'T4 LOGOUT'];
 
@@ -1173,6 +1828,27 @@ describe('IMAP Protocol integration tests', function () {
                     expect(resp.match(/^\* \d+ FETCH \(FLAGS \(MyFlag1 MyFlag2\) MODSEQ \(\d+\)\)$/gm).length).to.equal(6);
                     expect(/MODIFIED/.test(resp)).to.be.false;
                     expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should fail a conditional store with UNCHANGEDSINCE 0', function (done) {
+            // RFC 7162 3.1.3: "Use of UNCHANGEDSINCE with a modification sequence of 0 always fails
+            // if the metadata item exists. A system flag MUST always be considered existent"
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 (UNCHANGEDSINCE 0) +FLAGS (\\Flagged)', 'T4 FETCH 1 (FLAGS)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[MODIFIED 1\] Conditional STORE failed$/m.test(resp)).to.be.true;
+                    // the flag must not have been applied
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
                     done();
                 }
             );
@@ -1302,7 +1978,31 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
-        it('should set some flags with modifier', function (done) {
+        it('should fail a conditional uid store with UNCHANGEDSINCE 0', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 UID STORE 101 (UNCHANGEDSINCE 0) +FLAGS (\\Flagged)',
+                'T4 UID FETCH 101 (FLAGS)',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK \[MODIFIED 101\] Conditional UID STORE failed$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(\) UID 101\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should set all flags with modifier', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 UID STORE 1:* (UNCHANGEDSINCE 10000) FLAGS (MyFlag1 MyFlag2)', 'T4 LOGOUT'];
 
             testClient(
@@ -1341,7 +2041,7 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(6);
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(7);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.true;
@@ -1371,7 +2071,7 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(resp.match(/^\* LSUB /gm).length).to.equal(5);
+                    expect(resp.match(/^\* LSUB /gm).length).to.equal(6);
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "INBOX"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "[Gmail]/Sent Mail"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LSUB (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.false;
@@ -1546,6 +2246,34 @@ describe('IMAP Protocol integration tests', function () {
                         ).to.be.true;
 
                         expect(/^T3 OK/m.test(resp)).to.be.true;
+                        done();
+                    }
+                );
+            });
+
+            it('should mark a message as seen for RFC822.TEXT but not for RFC822.HEADER', function (done) {
+                // RFC 3501 6.4.5: RFC822.TEXT is "functionally equivalent to BODY[TEXT]", which sets
+                // \Seen, while RFC822.HEADER is equivalent to BODY.PEEK[HEADER]
+                let cmds = [
+                    'T1 LOGIN testuser pass',
+                    'T2 SELECT INBOX',
+                    'T3 FETCH 1 RFC822.TEXT',
+                    'T4 FETCH 1 (FLAGS)',
+                    'T5 FETCH 4 RFC822.HEADER',
+                    'T6 FETCH 4 (FLAGS)',
+                    'T7 LOGOUT'
+                ];
+
+                testClient(
+                    {
+                        commands: cmds,
+                        secure: true,
+                        port
+                    },
+                    function (resp) {
+                        resp = resp.toString();
+                        expect(/^\* 1 FETCH \(FLAGS \(\\Seen\)\)$/m.test(resp)).to.be.true;
+                        expect(/^\* 4 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
                         done();
                     }
                 );
@@ -1951,7 +2679,9 @@ describe('IMAP Protocol integration tests', function () {
                     function (resp) {
                         resp = resp.toString();
 
-                        expect(resp.indexOf('\r\n* 4 FETCH (RFC822.TEXT {14}\r\nHello World!\r\n)\r\n') >= 0).to.be.true;
+                        // RFC 3501 6.4.5: RFC822.TEXT is equivalent to BODY[TEXT], so \Seen is set
+                        // implicitly and the new flags are reported back
+                        expect(resp.indexOf('\r\n* 4 FETCH (RFC822.TEXT {14}\r\nHello World!\r\n FLAGS (\\Seen))\r\n') >= 0).to.be.true;
                         expect(/^T3 OK/m.test(resp)).to.be.true;
                         done();
                     }
@@ -1977,6 +2707,233 @@ describe('IMAP Protocol integration tests', function () {
                     }
                 );
             });
+        });
+    });
+
+    describe('IDLE', function () {
+        it('should answer the continuation request and end on DONE', function (done) {
+            // RFC 2177: the server sends a continuation request, and the client ends the command
+            // with "DONE". The tagged response only arrives once idling stops
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 IDLE', 'DONE', 'T4 NOOP', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\+ idling$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK IDLE terminated$/m.test(resp)).to.be.true;
+                    // the connection is usable again afterwards
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a continuation that is not DONE', function (done) {
+            // RFC 2177: "DONE" is the only thing that terminates the command
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 IDLE', 'FOO', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\+ idling$/m.test(resp)).to.be.true;
+                    expect(/^T3 BAD /m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should idle without a selected mailbox', function (done) {
+            // RFC 2177 2: IDLE is valid in the authenticated state as well
+            let cmds = ['T1 LOGIN testuser pass', 'T2 IDLE', 'DONE', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\+ idling$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK IDLE terminated$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('QUOTA', function () {
+        it('should report the quota root and the storage quota', function (done) {
+            // RFC 2087 4.3: GETQUOTAROOT answers an untagged QUOTAROOT for the mailbox and an
+            // untagged QUOTA for each root it names
+            let cmds = ['T1 LOGIN testuser pass', 'T2 GETQUOTAROOT INBOX', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* QUOTAROOT "INBOX" ""$/m.test(resp)).to.be.true;
+                    expect(/^\* QUOTA "" \(STORAGE \d+ \d+\)$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report the quota of the root itself', function (done) {
+            // RFC 2087 4.2: GETQUOTA answers the untagged QUOTA of the named root
+            let cmds = ['T1 LOGIN testuser pass', 'T2 GETQUOTA ""', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* QUOTA "" \(STORAGE \d+ \d+\)$/m.test(resp)).to.be.true;
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse GETQUOTAROOT for a mailbox that does not exist', function (done) {
+            // RFC 5530: NONEXISTENT is the code for a mailbox name that does not exist
+            let cmds = ['T1 LOGIN testuser pass', 'T2 GETQUOTAROOT nosuchbox', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse SETQUOTA', function (done) {
+            // RFC 2087 4.1: a server that does not let the client set quota answers NO, and
+            // RFC 5530 CANNOT says the request can never succeed as it stands
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETQUOTA "" (STORAGE 100)', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('Argument validation', function () {
+        it('should accept a command literal up to the cap and refuse a larger one', function (done) {
+            // RFC 3501 sets no literal size limit and RFC 2683 3.2.1.5 asks servers to accept at
+            // least 8000 octets of command text
+            let text = 'x'.repeat(1030);
+            let tooBig = 'x'.repeat(17000);
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH TEXT {' + text.length + '}\r\n' + text,
+                'T4 SEARCH TEXT {' + tooBig.length + '}\r\n' + tooBig,
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 OK SEARCH completed$/m.test(resp)).to.be.true;
+                    // but there is still a cap
+                    expect(/^T4 NO Literal too large$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a partial with a zero octet count', function (done) {
+            // RFC 3501 9: section ["<" number "." nz-number ">"], a zero count was treated as
+            // "no limit" and returned the whole section
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 FETCH 1 (BODY[]<0.0>)', 'T4 FETCH 1 (BODY[]<0.10>)', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 BAD Invalid partial octet count in BODY\[\]<0\.0> for FETCH$/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(BODY\[\]<0> \{10\}$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse a zero sequence number', function (done) {
+            // RFC 3501 9: seq-number = nz-number / "*", and mapping 0 to the first message
+            // silently operated on a message the client did not ask for
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 FETCH 0 FLAGS',
+                'T4 FETCH 1:0 FLAGS',
+                'T5 UID FETCH 0 FLAGS',
+                'T6 STORE 0 +FLAGS (\\Seen)',
+                'T7 FETCH 1 FLAGS',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 BAD Invalid sequence set for FETCH$/m.test(resp)).to.be.true;
+                    expect(/^T4 BAD Invalid sequence set for FETCH$/m.test(resp)).to.be.true;
+                    expect(/^T5 BAD Invalid sequence set for UID FETCH$/m.test(resp)).to.be.true;
+                    expect(/^T6 BAD Invalid sequence set for STORE$/m.test(resp)).to.be.true;
+                    // a valid sequence set still works
+                    expect(/^T7 OK/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
         });
     });
 
@@ -2016,6 +2973,228 @@ describe('IMAP Protocol integration tests', function () {
                     expect(/^\* SEARCH 101 104 105 106$/m.test(resp)).to.be.true;
                     expect(/^T3 OK/m.test(resp)).to.be.true;
                     expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should match SENT keys on the calendar date of the Date header', function (done) {
+            // RFC 3501 6.4.4: "SENTON <date>: Messages whose [RFC-2822] Date: header (disregarding
+            // time and timezone) is within the specified date." The two messages below are the same
+            // instant seen from different zones, so the sender's own date decides
+            let east = Buffer.from('From: s@example.com\r\nTo: r@example.com\r\nSubject: east\r\nDate: Sun, 15 Sep 2013 01:30:00 +0300\r\n\r\nbody');
+            let west = Buffer.from('From: s@example.com\r\nTo: r@example.com\r\nSubject: west\r\nDate: Mon, 16 Sep 2013 23:30:00 -0500\r\n\r\nbody');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 APPEND INBOX {' + east.length + '}\r\n' + east.toString('binary'),
+                'T3 APPEND INBOX {' + west.length + '}\r\n' + west.toString('binary'),
+                'T4 SELECT INBOX',
+                'T5 SEARCH SENTON 15-Sep-2013',
+                'T6 SEARCH SENTON 16-Sep-2013',
+                'T7 SEARCH SENTON 17-Sep-2013',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    // the +0300 message was sent on the 15th, although it is the 14th in UTC
+                    expect(/^\* SEARCH 1 7$/m.test(resp)).to.be.true;
+                    // and the -0500 one on the 16th, although it is the 17th in UTC
+                    expect(/^\* SEARCH 8$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should match a header that is not in the indexed set', function (done) {
+            // RFC 3501 6.4.4: "HEADER <field-name> <string>: Messages that have a header with the
+            // specified field-name ... If the string to search is zero-length, this matches all
+            // messages that have a header line with the specified field-name"
+            let message = Buffer.from('From: sender@example.com\r\nTo: receiver@example.com\r\nSubject: custom\r\nX-Custom: findme\r\n\r\nbody');
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 APPEND INBOX {' + message.length + '}\r\n' + message.toString('binary'),
+                'T3 SELECT INBOX',
+                'T4 SEARCH HEADER X-Custom findme',
+                'T5 SEARCH HEADER X-Custom ""',
+                'T6 SEARCH NOT HEADER X-Custom findme',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 7$/gm.test(resp)).to.be.true;
+                    expect(resp.match(/^\* SEARCH 7$/gm).length).to.equal(2);
+                    expect(/^\* SEARCH 1 2 3 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should handle NOT and OR around a text search key', function (done) {
+            // RFC 3501 6.4.4: NOT and OR apply to every search key, BODY and TEXT included.
+            // MongoDB only allows $text in the root of a query, so those uids are resolved apart
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH BODY hello',
+                'T4 SEARCH NOT BODY hello',
+                'T5 SEARCH OR BODY zzzz SUBJECT test6',
+                'T6 SEARCH OR BODY hello BODY zzzz',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 3 4 5 6$/m.test(resp)).to.be.true;
+                    // the complement, which used to come back empty
+                    expect(/^\* SEARCH 1 2$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 6$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 3 4 5 6$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should still match a text search after the message is flagged \\Deleted', function (done) {
+            // RFC 3501 2.3.2: \Deleted only marks a message for removal, it stays in the mailbox
+            // until EXPUNGE, and 6.4.4 has BODY match any message that contains the string
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 STORE 3 +FLAGS (\\Deleted)',
+                'T4 SEARCH BODY hello',
+                'T5 SEARCH NOT BODY hello',
+                'T6 STORE 3 -FLAGS (\\Deleted)',
+                'T7 SEARCH BODY hello',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    // message 3 used to drop out of the fulltext index as soon as it was deleted
+                    expect(resp.match(/^\* SEARCH 3 4 5 6$/gm).length).to.equal(2);
+                    expect(/^\* SEARCH 1 2$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should match NOT on a header key as the complement of the key', function (done) {
+            // RFC 3501 6.4.4: "NOT <search-key>: Messages that do not match the specified search
+            // key", and a string key matches when the string is a substring of the field. Message 3
+            // has no Subject header at all and must therefore match NOT SUBJECT
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH SUBJECT test5',
+                'T4 SEARCH NOT SUBJECT test5',
+                'T5 SEARCH NOT SUBJECT zzzz',
+                'T6 SEARCH HEADER Subject ""',
+                'T7 SEARCH NOT HEADER Subject ""',
+                'T8 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 5$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 2 3 4 6$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 1 2 3 4 5 6$/m.test(resp)).to.be.true;
+                    // the zero length string is an existence test for the header
+                    expect(/^\* SEARCH 1 2 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 3$/m.test(resp)).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should refuse an unsupported CHARSET', function (done) {
+            // RFC 3501 6.4.4: "If the server does not support the specified [CHARSET], it MUST
+            // return a tagged NO response (not a BAD). This response SHOULD contain the BADCHARSET
+            // response code"
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH CHARSET KOI8-R SUBJECT hello',
+                'T4 SEARCH CHARSET UTF-8 ALL',
+                'T5 SEARCH CHARSET "US-ASCII" ALL',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[BADCHARSET \(US-ASCII UTF-8\)\] Unsupported charset$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    expect(resp.match(/^\* SEARCH 1 2 3 4 5 6$/gm).length).to.equal(2);
+                    done();
+                }
+            );
+        });
+
+        it('should find with a sequence set inside parentheses', function (done) {
+            // RFC 3501 9: sequence-set is a valid last element of a parenthesised search-key
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SELECT INBOX',
+                'T3 SEARCH OR (UID 101:103) FLAGGED',
+                'T4 SEARCH NOT (1:3)',
+                'T5 UID SEARCH OR (UID 101:102) (UID 104:105)',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    resp = resp.toString();
+                    expect(/^\* SEARCH 1 2 3$/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 4 5 6$/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(/^\* SEARCH 101 102 104 105$/m.test(resp)).to.be.true;
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
                     done();
                 }
             );

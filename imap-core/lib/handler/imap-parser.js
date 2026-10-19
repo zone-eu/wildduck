@@ -6,6 +6,8 @@ const imapFormalSyntax = require('./imap-formal-syntax');
 
 const STATE_ATOM = 0x001;
 const STATE_LITERAL = 0x002;
+// characters that may follow a lone "*" inside a sequence set, anything else makes it an atom
+const SEQUENCE_FOLLOWERS = [':', ',', ' ', ')', ']', '\r', '\n'];
 const STATE_NORMAL = 0x003;
 const STATE_PARTIAL = 0x004;
 const STATE_SEQUENCE = 0x005;
@@ -151,6 +153,33 @@ class TokenParser {
             }
         };
 
+        const startAtom = (chr, pos) => {
+            this.currentNode = this.createNode(this.currentNode, pos);
+            this.currentNode.type = 'ATOM';
+            this.currentNode.value = chr;
+            this.state = STATE_ATOM;
+        };
+
+        // a sequence set must not end with a separator, and a bare "*" is only allowed as a range end
+        const checkSequenceComplete = (chr, pos) => {
+            let value = this.currentNode.value;
+            let what = chr === ' ' ? 'whitespace' : JSON.stringify(chr);
+
+            if (!RE_SINGLE_DIGIT.test(value.at(-1)) && value.at(-1) !== '*') {
+                let error = new Error(`Unexpected ${what} at position ${pos} [E27]`);
+                error.code = 'ParserError27';
+                error.parserContext = { input: this.str, pos, chr };
+                throw error;
+            }
+
+            if (value !== '*' && value.at(-1) === '*' && value.at(-2) !== ':') {
+                let error = new Error(`Unexpected ${what} at position ${pos} [E28]`);
+                error.code = 'ParserError28';
+                error.parserContext = { input: this.str, pos, chr };
+                throw error;
+            }
+        };
+
         for (i = 0, len = this.str.length; i < len; i++) {
             chr = this.str.charAt(i);
 
@@ -191,10 +220,10 @@ class TokenParser {
                         // ] closes section group
                         case ']':
                             if (this.currentNode.type !== 'SECTION') {
-                                let error = new Error(`Unexpected section terminator ] at position ${this.pos + i} [E11]`);
-                                error.code = 'ParserError11';
-                                error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                                throw error;
+                                // RFC 3501 9: ASTRING-CHAR = ATOM-CHAR / resp-specials, and "]" is a
+                                // resp-special, so a mailbox named "]ab" is valid unquoted
+                                startAtom(chr, this.pos + i);
+                                break;
                             }
                             this.currentNode.isClosed = true;
                             this.currentNode.endPos = this.pos + i;
@@ -206,10 +235,7 @@ class TokenParser {
                         // < starts a new partial
                         case '<':
                             if (this.str.charAt(i - 1) !== ']') {
-                                this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                                this.currentNode.type = 'ATOM';
-                                this.currentNode.value = chr;
-                                this.state = STATE_ATOM;
+                                startAtom(chr, this.pos + i);
                             } else {
                                 this.currentNode = this.createNode(this.currentNode, this.pos + i);
                                 this.currentNode.type = 'PARTIAL';
@@ -220,21 +246,11 @@ class TokenParser {
 
                         // binary literal8
                         case '~': {
-                            let nextChr = this.str.charAt(i + 1);
-                            if (nextChr !== '{') {
-                                if (imapFormalSyntax['ATOM-CHAR']().indexOf(nextChr) >= 0) {
-                                    // treat as ATOM
-                                    this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                                    this.currentNode.type = 'ATOM';
-                                    this.currentNode.value = chr;
-                                    this.state = STATE_ATOM;
-                                    break;
-                                }
-
-                                let error = new Error(`Unexpected literal8 marker at position ${this.pos + i} [E12]`);
-                                error.code = 'ParserError12';
-                                error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                                throw error;
+                            if (this.str.charAt(i + 1) !== '{') {
+                                // RFC 3501 9: "~" is an ATOM-CHAR, it only marks a literal8 when a
+                                // "{" follows it (RFC 4466)
+                                startAtom(chr, this.pos + i);
+                                break;
                             }
                             this.expectedLiteralType = 'literal8';
                             break;
@@ -251,13 +267,19 @@ class TokenParser {
                             break;
 
                         // * starts a new sequence
-                        case '*':
+                        case '*': {
+                            // RFC 3501 9: list-mailbox may contain "*" anywhere, so a "*" only
+                            // starts a sequence set when nothing but a sequence can follow it
+                            let nextChr = this.str.charAt(i + 1);
+                            let startsSequence = nextChr === '' || SEQUENCE_FOLLOWERS.includes(nextChr);
+
                             this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                            this.currentNode.type = 'SEQUENCE';
+                            this.currentNode.type = startsSequence ? 'SEQUENCE' : 'ATOM';
                             this.currentNode.value = chr;
-                            this.currentNode.isClosed = false;
-                            this.state = STATE_SEQUENCE;
+                            this.currentNode.isClosed = !startsSequence;
+                            this.state = startsSequence ? STATE_SEQUENCE : STATE_ATOM;
                             break;
+                        }
 
                         // normally a space should never occur
                         case ' ':
@@ -323,10 +345,7 @@ class TokenParser {
                                 throw error;
                             }
 
-                            this.currentNode = this.createNode(this.currentNode, this.pos + i);
-                            this.currentNode.type = 'ATOM';
-                            this.currentNode.value = chr;
-                            this.state = STATE_ATOM;
+                            startAtom(chr, this.pos + i);
                             break;
                     }
                     break;
@@ -379,7 +398,10 @@ class TokenParser {
                         imapFormalSyntax['ATOM-CHAR']().indexOf(chr) < 0 &&
                         chr.charCodeAt(0) < 0x80 && // allow 8bit (presumably unicode) bytes
                         chr !== ']' &&
-                        !(chr === '*' && this.currentNode.value === '\\') &&
+                        // RFC 3501 9: list-char = ATOM-CHAR / list-wildcards / resp-specials, so an
+                        // unquoted list-mailbox such as INBOX/* is valid
+                        chr !== '%' &&
+                        chr !== '*' &&
                         (!this.parent || !this.parent.command || !['NO', 'BAD', 'OK'].includes(this.parent.command))
                     ) {
                         let error = new Error(`Unexpected char at position ${this.pos + i} [E16: ${JSON.stringify(chr)}]`);
@@ -399,6 +421,15 @@ class TokenParser {
                 case STATE_STRING:
                     // DQUOTE ends the string sequence
                     if (chr === '"') {
+                        // only client commands are held to this, the same parser also reads server
+                        // responses where a lone high bit byte is not ours to refuse
+                        if (this.options.validateUtf8 && !imapFormalSyntax.isValidUtf8(this.currentNode.value)) {
+                            let error = new Error(`Invalid UTF-8 sequence in a quoted string at position ${this.pos + i} [E36]`);
+                            error.code = 'ParserError36';
+                            error.parserContext = { input: this.str, pos: this.pos + i, chr };
+                            throw error;
+                        }
+
                         this.currentNode.endPos = this.pos + i;
                         this.currentNode.isClosed = true;
                         this.currentNode = this.currentNode.parentNode;
@@ -453,13 +484,7 @@ class TokenParser {
                         throw error;
                     }
 
-                    if (this.currentNode.value.match(/^0$|\.0$/) && chr !== '.') {
-                        let error = new Error(`Invalid partial at position ${this.pos + i} [E22: ${JSON.stringify(chr)}]`);
-                        error.code = 'ParserError22';
-                        error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                        throw error;
-                    }
-
+                    // RFC 3501 9: number = 1*DIGIT, so a leading zero is allowed here as well
                     this.currentNode.value += chr;
                     break;
 
@@ -523,6 +548,13 @@ class TokenParser {
                             this.state = STATE_NORMAL;
                             checkSP();
                         } else if (this.options.literals) {
+                            if (!this.options.literals.length) {
+                                let error = new Error(`Missing literal value at position ${this.pos + i} [E35]`);
+                                error.code = 'ParserError35';
+                                error.parserContext = { input: this.str, pos: this.pos + i, chr };
+                                throw error;
+                            }
+
                             // use the next precached literal values
                             this.currentNode.value = this.options.literals.shift();
 
@@ -553,38 +585,31 @@ class TokenParser {
                         error.parserContext = { input: this.str, pos: this.pos + i, chr };
                         throw error;
                     }
-                    if (this.currentNode.literalLength === '0') {
-                        let error = new Error(`Invalid literal at position ${this.pos + i} [E26]`);
-                        error.code = 'ParserError26';
-                        error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                        throw error;
-                    }
+                    // RFC 3501 9: number = 1*DIGIT, so a leading zero is allowed
                     this.currentNode.literalLength = (this.currentNode.literalLength || '') + chr;
                     break;
 
                 case STATE_SEQUENCE:
                     // space finishes the sequence set
                     if (chr === ' ') {
-                        if (!RE_SINGLE_DIGIT.test(this.currentNode.value.at(-1)) && this.currentNode.value.at(-1) !== '*') {
-                            let error = new Error(`Unexpected whitespace at position ${this.pos + i} [E27]`);
-                            error.code = 'ParserError27';
-                            error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                            throw error;
-                        }
-
-                        if (this.currentNode.value !== '*' && this.currentNode.value.at(-1) === '*' && this.currentNode.value.at(-2) !== ':') {
-                            let error = new Error(`Unexpected whitespace at position ${this.pos + i} [E28]`);
-                            error.code = 'ParserError28';
-                            error.parserContext = { input: this.str, pos: this.pos + i, chr };
-                            throw error;
-                        }
+                        checkSequenceComplete(chr, this.pos + i);
 
                         this.currentNode.isClosed = true;
                         this.currentNode.endPos = this.pos + i - 1;
                         this.currentNode = this.currentNode.parentNode;
                         this.state = STATE_NORMAL;
                         break;
-                    } else if (this.currentNode.parentNode && chr === ']' && this.currentNode.parentNode.type === 'SECTION') {
+                    } else if (
+                        this.currentNode.parentNode &&
+                        // RFC 3501 9: a sequence-set is a valid last element of a parenthesised search-key
+                        ((chr === ')' && this.currentNode.parentNode.type === 'LIST') || (chr === ']' && this.currentNode.parentNode.type === 'SECTION'))
+                    ) {
+                        if (chr === ')') {
+                            // the ] terminator stays unvalidated on purpose, it has always accepted
+                            // an incomplete set inside a section and clients may rely on that
+                            checkSequenceComplete(chr, this.pos + i);
+                        }
+
                         this.currentNode.endPos = this.pos + i - 1;
                         this.currentNode = this.currentNode.parentNode;
 

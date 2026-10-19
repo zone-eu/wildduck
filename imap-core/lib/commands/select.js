@@ -100,7 +100,9 @@ module.exports = {
             };
             this.state = 'Selected';
 
-            let flagList = imapTools.systemFlagsFormatted.concat(mailboxData.flags || []);
+            // a keyword registered before STORE validated keywords can hold a value that is not an
+            // atom, and RFC 3501 9 has no other form for a flag, so it is left out of the list
+            let flagList = imapTools.systemFlagsFormatted.concat((mailboxData.flags || []).filter(flag => imapTools.isEmittableFlag(flag)));
 
             // * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
             this.send(
@@ -183,31 +185,7 @@ module.exports = {
             this.send('* 0 RECENT');
 
             // * OK [HIGHESTMODSEQ 123]
-            this.send(
-                imapHandler.compiler({
-                    tag: '*',
-                    command: 'OK',
-                    attributes: [
-                        {
-                            type: 'section',
-                            section: [
-                                {
-                                    type: 'atom',
-                                    value: 'HIGHESTMODSEQ'
-                                },
-                                {
-                                    type: 'atom',
-                                    value: String(Number(mailboxData.modifyIndex) || 1)
-                                }
-                            ]
-                        },
-                        {
-                            type: 'text',
-                            value: 'Highest'
-                        }
-                    ]
-                })
-            );
+            imapTools.sendHighestModseq(this, Number(mailboxData.modifyIndex) || 1);
 
             // * OK [UIDNEXT 1] Predicted next UID
             this.send(

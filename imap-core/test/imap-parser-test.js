@@ -795,17 +795,23 @@ describe('IMAP Command Parser', function () {
             ]);
         });
 
+        it('should accept a leading zero', function () {
+            // RFC 3501 9: number = 1*DIGIT, leading zeros and all
+            expect(imapHandler.parser('TAG1 CMD BODY[]<01>').attributes[0].partial).to.deep.equal([1]);
+            expect(imapHandler.parser('TAG1 CMD BODY[]<0.01>').attributes[0].partial).to.deep.equal([0, 1]);
+        });
+
         it('should fail', function () {
             expect(function () {
-                imapHandler.parser('TAG1 CMD BODY[]<01>');
-            }).to.throw(Error);
-
-            expect(function () {
-                imapHandler.parser('TAG1 CMD BODY[]<0.01>');
-            }).to.throw(Error);
-
-            expect(function () {
                 imapHandler.parser('TAG1 CMD BODY[]<0.1.>');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 CMD BODY[]<0.1.2>');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 CMD BODY[]<a>');
             }).to.throw(Error);
         });
     });
@@ -846,9 +852,118 @@ describe('IMAP Command Parser', function () {
             ]);
         });
 
+        it('should read a wildcard that is not a sequence set as an atom', function () {
+            // RFC 3501 9: list-char = ATOM-CHAR / list-wildcards / resp-specials, so an unquoted
+            // list-mailbox may hold "*" and "%" anywhere. The command validates the value
+            expect(imapHandler.parser('TAG1 LIST "" INBOX/*').attributes).to.deep.equal([
+                {
+                    type: 'STRING',
+                    value: ''
+                },
+                {
+                    type: 'ATOM',
+                    value: 'INBOX/*'
+                }
+            ]);
+
+            expect(imapHandler.parser('TAG1 LIST "" INBOX/%').attributes[1]).to.deep.equal({
+                type: 'ATOM',
+                value: 'INBOX/%'
+            });
+
+            expect(imapHandler.parser('TAG1 LIST "" *INBOX').attributes[1]).to.deep.equal({
+                type: 'ATOM',
+                value: '*INBOX'
+            });
+
+            expect(imapHandler.parser('TAG1 CMD *4,5 TEST').attributes[0]).to.deep.equal({
+                type: 'ATOM',
+                value: '*4,5'
+            });
+
+            // a bare "*" is still a sequence set
+            expect(imapHandler.parser('TAG1 CMD * TEST').attributes[0]).to.deep.equal({
+                type: 'SEQUENCE',
+                value: '*'
+            });
+
+            expect(imapHandler.parser('TAG1 CMD *:4 TEST').attributes[0]).to.deep.equal({
+                type: 'SEQUENCE',
+                value: '*:4'
+            });
+        });
+
+        it('should close a sequence set with a list terminator', function () {
+            // RFC 3501 9: sequence-set is a valid last element of a parenthesised search-key
+            expect(imapHandler.parser('TAG1 SEARCH OR (UID 1:5) FLAGGED').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: 'OR'
+                },
+                [
+                    {
+                        type: 'ATOM',
+                        value: 'UID'
+                    },
+                    {
+                        type: 'SEQUENCE',
+                        value: '1:5'
+                    }
+                ],
+                {
+                    type: 'ATOM',
+                    value: 'FLAGGED'
+                }
+            ]);
+
+            expect(imapHandler.parser('TAG1 SEARCH NOT (1:3)').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: 'NOT'
+                },
+                [
+                    {
+                        type: 'SEQUENCE',
+                        value: '1:3'
+                    }
+                ]
+            ]);
+
+            expect(imapHandler.parser('TAG1 SEARCH (1,3)').attributes).to.deep.equal([
+                [
+                    {
+                        type: 'SEQUENCE',
+                        value: '1,3'
+                    }
+                ]
+            ]);
+
+            expect(imapHandler.parser('TAG1 SEARCH (1:*)').attributes).to.deep.equal([
+                [
+                    {
+                        type: 'SEQUENCE',
+                        value: '1:*'
+                    }
+                ]
+            ]);
+        });
+
         it('should fail', function () {
             expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5:');
+            }).to.throw(Error);
+
+            // an incomplete sequence set stays invalid in front of a list terminator
+            expect(function () {
+                imapHandler.parser('TAG1 SEARCH (1:)');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 SEARCH (1,)');
+            }).to.throw(Error);
+
+            expect(function () {
+                imapHandler.parser('TAG1 SEARCH (5,*)');
             }).to.throw(Error);
 
             expect(function () {
@@ -857,10 +972,6 @@ describe('IMAP Command Parser', function () {
 
             expect(function () {
                 imapHandler.parser('TAG1 CMD *:4,5: TEST');
-            }).to.throw(Error);
-
-            expect(function () {
-                imapHandler.parser('TAG1 CMD *4,5 TEST');
             }).to.throw(Error);
 
             expect(function () {
@@ -874,6 +985,75 @@ describe('IMAP Command Parser', function () {
             expect(function () {
                 imapHandler.parser('TAG1 CMD 5, TEST');
             }).to.throw(Error);
+        });
+    });
+
+    describe('Lax but valid syntax', function () {
+        it('should accept a resp-special as the first char of an astring', function () {
+            // RFC 3501 9: ASTRING-CHAR = ATOM-CHAR / resp-specials, and "]" is a resp-special
+            expect(imapHandler.parser('TAG1 SELECT ]ab').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: ']ab'
+                }
+            ]);
+        });
+
+        it('should accept a bare tilde as an atom', function () {
+            // RFC 3501 9: "~" is an ATOM-CHAR, it only marks a literal8 when a "{" follows
+            expect(imapHandler.parser('TAG1 CMD ~ A').attributes).to.deep.equal([
+                {
+                    type: 'ATOM',
+                    value: '~'
+                },
+                {
+                    type: 'ATOM',
+                    value: 'A'
+                }
+            ]);
+
+            expect(imapHandler.parser('TAG1 CMD (~)').attributes).to.deep.equal([[{ type: 'ATOM', value: '~' }]]);
+        });
+
+        it('should accept a leading zero in a literal octet count', function () {
+            expect(imapHandler.parser('TAG1 CMD {04}\r\nabcd').attributes).to.deep.equal([
+                {
+                    type: 'LITERAL',
+                    value: 'abcd'
+                }
+            ]);
+
+            // and a zero length literal still works
+            expect(imapHandler.parser('TAG1 CMD {0}\r\n').attributes).to.deep.equal([
+                {
+                    type: 'LITERAL',
+                    value: ''
+                }
+            ]);
+        });
+    });
+
+    describe('Literal values', function () {
+        it('should throw a parser error when a literal value is missing', function () {
+            // a TypeError here would escape the BAD path that every other parser error takes
+            let error;
+            try {
+                imapHandler.parser('TAG1 CMD {4}\r\n', { literals: [] });
+            } catch (err) {
+                error = err;
+            }
+
+            expect(error).to.exist;
+            expect(error.code).to.equal('ParserError35');
+        });
+
+        it('should use a precached literal value', function () {
+            expect(imapHandler.parser('TAG1 CMD {4}\r\n', { literals: [Buffer.from('test')] }).attributes).to.deep.equal([
+                {
+                    type: 'LITERAL',
+                    value: 'test'
+                }
+            ]);
         });
     });
 

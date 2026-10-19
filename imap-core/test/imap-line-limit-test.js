@@ -152,7 +152,8 @@ describe('IMAP line length limits', function () {
         }
 
         const mockSocket = new MockSocket();
-        const connection = new IMAPConnection(mockServer, mockSocket, {});
+        mockSocket.remotePort = 54321;
+        const connection = new IMAPConnection(mockServer, mockSocket, { remotePort: 12345 });
         mockServer.connections.add(connection);
 
         connection._parser.write(Buffer.from('A1 ' + 'X'.repeat(9000), 'binary'), err => {
@@ -169,9 +170,11 @@ describe('IMAP line length limits', function () {
                         _code: 'CommandLineTooLong',
                         _response: 'BAD',
                         _tag: 'A1',
-                        _max_line_length: 8000
+                        _max_line_length: 8000,
+                        _remotePort: 12345
                     });
                     expect(consoleLogs).to.have.length(1);
+                    expect(consoleLogs[0][0]).to.include({ remotePort: 12345 });
                     expect(consoleLogs[0][1]).to.equal('[%s] Command line too long, C: %s');
                     expect(consoleLogs[0][3]).to.equal('A1 ' + 'X'.repeat(9000));
                     expect(connection._closing || connection._closed).to.be.false;
@@ -222,6 +225,7 @@ describe('IMAP line length limits', function () {
         }
 
         const mockSocket = new MockSocket();
+        mockSocket.remotePort = 54321;
         const connection = new IMAPConnection(mockServer, mockSocket, {});
         const command = 'A1 NOOP ' + 'X'.repeat(64 * 1024);
 
@@ -235,7 +239,8 @@ describe('IMAP line length limits', function () {
                     _command: 'NOOP',
                     _tag: 'A1',
                     _payload: command,
-                    _command_length: command.length
+                    _command_length: command.length,
+                    _remotePort: 54321
                 });
                 expect(logs[0]).to.not.have.any.keys('_failure_msg', '_code', '_response');
                 done();
