@@ -47,7 +47,7 @@ Over IMAP with the standard commands:
 ```
 C: A1 SETACL INBOX kati lrs
 C: A2 GETACL INBOX
-S: * ACL "INBOX" "andris" "lrswipkxtea" "kati" "lrs"
+S: * ACL "INBOX" "andris" "lrswipkxteacd" "kati" "lrs"
 C: A3 DELETEACL INBOX kati
 ```
 
@@ -163,8 +163,8 @@ which usernames exist on the server.
     without `s` fetching message content does not set `\Seen`.
 -   **Quota follows the owner.** Messages appended, copied or moved into a shared mailbox are checked against and
     charged to the quota of the mailbox owner. Shared mailboxes report the quota root `Other Users/<username>`
-    (`Shared/<username>` for team mailboxes), which can be queried with GETQUOTA by any user holding at least
-    one grant from that owner.
+    (`Shared/<username>` for team mailboxes), which can be queried with GETQUOTA by any user holding a grant
+    with the `l` or `r` right from that owner.
 -   **Encryption follows the owner, and only ever uses public keys.** Messages stored into a shared mailbox of a
     user with `encryptMessages` enabled are encrypted with the owner's public key. Messages that are already
     encrypted (PGP or S/MIME, whether by WildDuck or by the original sender) are transferred byte for byte: the
@@ -199,7 +199,9 @@ which usernames exist on the server.
 -   **Personal folders literally named `Other Users/...` or `Shared/...`** become unreachable while ACL
     support is enabled, as the namespace prefixes take over. Rename such folders before enabling.
 -   **POP3 is unaffected.** POP3 only ever exposes the INBOX of the authenticated user.
--   Changes made through the HTTP API notify the sessions of the mailbox owner but not of other users sharing
-    the mailbox; changes made over IMAP notify everyone. Haraka and ZoneMTA hosts must run a WildDuck library version
-    with ACL support, otherwise delivery still works but users of shared mailboxes do not receive real time
-    notifications for incoming mail.
+-   **At most 100 grants per mailbox and per account.** A mailbox holds up to 100 folder grants and an account
+    up to 100 account wide grants (`MAX_ACL_ENTRIES`), which also caps how many members a team mailbox can have
+    through account wide grants.
+-   Haraka and ZoneMTA hosts must load a WildDuck library with ACL support, one whose `ImapNotifier` has
+    `fireForMailbox` (no upstream release has it yet). Otherwise delivery still works but users of shared
+    mailboxes do not receive real time notifications for incoming mail.
