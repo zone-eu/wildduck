@@ -1889,6 +1889,19 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should advertise the ACL capability', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CAPABILITY', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function (resp) {
+                let capabilities = resp
+                    .toString()
+                    .split('\r\n')
+                    .find(line => line.indexOf('* CAPABILITY ') === 0);
+                expect(capabilities.split(' ')).to.include.members(['ACL', 'RIGHTS=kxte']);
+                done();
+            });
+        });
+
         it('should list shared mailboxes under the shared namespace', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
 
@@ -1976,6 +1989,77 @@ describe('IMAP Protocol integration tests', function () {
                     );
                 }
             );
+        });
+
+        it('should filter STORE flags by rights and keep the classes a grantee may not change', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 +FLAGS (\\Flagged)', 'T4 SETACL INBOX seconduser lrs', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 SELECT "Other Users/testuser/INBOX"',
+                    'T3 STORE 1 FLAGS (\\Seen)',
+                    'T4 STORE 4 +FLAGS (\\Seen \\Flagged)',
+                    'T5 FETCH 1,4 (FLAGS)',
+                    'T6 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    let fetched = resp.slice(resp.indexOf('T4 OK'));
+                    let flags = seq => fetched.match(new RegExp(`^\\* ${seq} FETCH \\(FLAGS \\(([^)]*)\\)\\)`, 'm'))[1].split(' ');
+
+                    // only \Seen may change: replacing the list keeps \Flagged, adding both sets \Seen alone
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(flags(1)).to.have.members(['\\Flagged', '\\Seen']);
+                    expect(flags(4)).to.have.members(['\\Seen']);
+                    done();
+                });
+            });
+        });
+
+        it('should not set \\Seen when fetching message text without the seen right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrw', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 FETCH 1 BODY[]', 'T4 FETCH 1 (FLAGS)', 'T5 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // "w" selects the mailbox read-write, but without "s" reading must not mark the message seen
+                    expect(/^T2 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)/m.test(resp.slice(resp.indexOf('T3 OK')))).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should not expunge from a shared mailbox without the expunge right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrst', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 SELECT "Other Users/testuser/INBOX"',
+                    'T3 STORE 1 +FLAGS (\\Deleted)',
+                    'T4 UID EXPUNGE 101',
+                    'T5 CLOSE',
+                    'T6 STATUS "Other Users/testuser/INBOX" (MESSAGES)',
+                    'T7 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    let exists = resp.match(/^\* (\d+) EXISTS/m)[1];
+
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 NO \[NOPERM\]/m.test(resp)).to.be.true;
+                    // CLOSE only unselects, so the deleted message stays
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    expect(/^\* \d+ EXPUNGE/m.test(resp)).to.be.false;
+                    expect(resp.indexOf(`* STATUS "Other Users/testuser/INBOX" (MESSAGES ${exists})`) >= 0).to.be.true;
+                    done();
+                });
+            });
         });
 
         it('should append to shared mailboxes with the insert right and drop denied flags', function (done) {
@@ -2083,6 +2167,30 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should copy messages into a shared mailbox and drop flags the grantee may not set', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsi', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let message = Buffer.from('Subject: copied\r\n\r\nCopied body');
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 APPEND INBOX (\\Seen \\Flagged) {' + message.length + '}\r\n' + message.toString('binary'),
+                    'T3 SELECT INBOX',
+                    'T4 COPY 1 "Other Users/testuser/INBOX"',
+                    'T5 SELECT "Other Users/testuser/INBOX"',
+                    'T6 FETCH * (FLAGS)',
+                    'T7 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T4 OK \[COPYUID /m.test(resp)).to.be.true;
+                    // "s" covers \Seen, \Flagged would need "w"
+                    expect(/^\* \d+ FETCH \(FLAGS \(\\Seen\)\)/m.test(resp.slice(resp.indexOf('T5 OK')))).to.be.true;
+                    done();
+                });
+            });
+        });
+
         it('should keep archiving owner messages a grantee copied to another account', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
 
@@ -2153,6 +2261,57 @@ describe('IMAP Protocol integration tests', function () {
             );
         });
 
+        it('should not move messages out of a shared mailbox without the delete and expunge rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 MOVE 1 INBOX', 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[NOPERM\]/m.test(resp)).to.be.true;
+                    expect(/^\* STATUS "?INBOX"? \(MESSAGES 0\)/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should move the storage of messages moved between accounts', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
+
+            let readUsage = () =>
+                Promise.all(
+                    ['testuser', 'seconduser'].map(username =>
+                        apiServer
+                            .get(`/users/resolve/${username}`)
+                            .expect(200)
+                            .then(response => apiServer.get(`/users/${response.body.id}`).expect(200))
+                            .then(response => response.body.limits.quota.used)
+                    )
+                );
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                readUsage()
+                    .then(before => {
+                        let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 FETCH 1 (RFC822.SIZE)', 'T4 MOVE 1 INBOX', 'T5 LOGOUT'];
+                        testClient({ commands: cmds, secure: true, port }, function (resp) {
+                            resp = resp.toString();
+                            let size = Number(resp.match(/RFC822\.SIZE (\d+)/)[1]);
+                            expect(/^T4 OK/m.test(resp)).to.be.true;
+
+                            readUsage()
+                                .then(after => {
+                                    // the owner is relieved of the message and the grantee is charged for it
+                                    expect(after[0]).to.equal(before[0] - size);
+                                    expect(after[1]).to.equal(before[1] + size);
+                                    done();
+                                })
+                                .catch(done);
+                        });
+                    })
+                    .catch(done);
+            });
+        });
+
         it('should attribute cross-account moves to the target owner and find them with TEXT search', function (done) {
             let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
 
@@ -2182,13 +2341,16 @@ describe('IMAP Protocol integration tests', function () {
                             port
                         },
                         function (resp) {
+                            resp = resp.toString();
+                            let sharedSearch = resp.slice(resp.indexOf('T3 OK'), resp.indexOf('T4 OK'));
+                            let ownSearch = resp.slice(resp.indexOf('T6 OK'), resp.indexOf('T7 OK'));
                             // text search in the shared mailbox is scoped to the mailbox owner
-                            expect(/^\* SEARCH \d+$/m.test(resp.toString())).to.be.true;
-                            expect(/^T4 OK/m.test(resp.toString())).to.be.true;
-                            expect(/^T5 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^\* SEARCH \d+$/m.test(sharedSearch)).to.be.true;
+                            expect(/^T4 OK/m.test(resp)).to.be.true;
+                            expect(/^T5 OK/m.test(resp)).to.be.true;
                             // the moved message belongs to the new owner now, so their scoped search finds it
-                            expect(/^\* SEARCH 1$/m.test(resp.toString())).to.be.true;
-                            expect(/^T7 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^\* SEARCH 1$/m.test(ownSearch)).to.be.true;
+                            expect(/^T7 OK/m.test(resp)).to.be.true;
                             done();
                         }
                     );
@@ -2470,9 +2632,11 @@ describe('IMAP Protocol integration tests', function () {
                             port
                         },
                         function (resp) {
-                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            resp = resp.toString();
+                            expect(/^T3 OK/m.test(resp)).to.be.true;
                             // listed by the first LSUB, gone from the second one
-                            expect(resp.toString().split('"Other Users/testuser/INBOX"').length - 1).to.equal(1);
+                            expect(resp.slice(0, resp.indexOf('T3 OK')).indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                            expect(resp.slice(resp.indexOf('T3 OK')).indexOf('"Other Users/testuser/INBOX"') < 0).to.be.true;
                             done();
                         }
                     );
