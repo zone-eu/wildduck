@@ -16,6 +16,24 @@ const authRoutes = require('../../lib/api/auth');
 const webauthnRoutes = require('../../lib/api/2fa/webauthn');
 const totpRoutes = require('../../lib/api/2fa/totp');
 const UserHandler = require('../../lib/user-handler');
+const { compileRouteValidator } = require('../../lib/fastify/validation');
+require('../../lib/schemas/json-schemas'); // registers the shared wd:* schemas
+
+// captures native fastify route registrations: server.route({method, url, config, handler})
+function routeCollector(routes) {
+    return {
+        route(options) {
+            routes.push({
+                spec: {
+                    path: options.url,
+                    name: options.config && options.config.name,
+                    validationObjs: options.config && options.config.validationObjs
+                },
+                handler: options.handler
+            });
+        }
+    };
+}
 
 function getAuthenticateRoute(userHandler, mcpTokenHandler) {
     return getAuthRoute(userHandler, mcpTokenHandler, '/authenticate', 'authenticate');
@@ -23,52 +41,28 @@ function getAuthenticateRoute(userHandler, mcpTokenHandler) {
 
 function getAuthRoute(userHandler, mcpTokenHandler, path, name) {
     const routes = [];
-    const server = {
-        post(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        del(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        get() {}
-    };
-
-    authRoutes({}, server, userHandler, mcpTokenHandler);
+    authRoutes({}, routeCollector(routes), userHandler, mcpTokenHandler);
     return routes.find(route => route.spec.path === path && route.spec.name === name);
 }
 
 function getWebAuthnRoute(userHandler, path, name) {
     const routes = [];
-    const server = {
-        post(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        del(spec, handler) {
-            routes.push({ spec, handler });
-        },
-        get(spec, handler) {
-            routes.push({ spec, handler });
-        }
-    };
-
-    webauthnRoutes({}, server, userHandler);
+    webauthnRoutes({}, routeCollector(routes), userHandler);
     return routes.find(route => route.spec.path === path && route.spec.name === name);
 }
 
+// minimal fastify reply stand-in: handlers use reply.code().send()
 function getResponse() {
     return {
         statusCode: 200,
         body: false,
-        charSet() {
-            return this;
-        },
-        status(statusCode) {
+        code(statusCode) {
             this.statusCode = statusCode;
             return this;
         },
-        json(body) {
+        send(body) {
             this.body = body;
-            return body;
+            return this;
         }
     };
 }
@@ -468,47 +462,14 @@ describe('Master token MCP exchange', function () {
     });
 
     it('rejects an invalid sess or ip from the request body when minting', async () => {
-        const route = getAuthRoute(
-            {
-                getAuthTokenRequirements: async () => ({
-                    authVersion: 7,
-                    mfaRequired: true,
-                    disabled: false,
-                    suspended: false,
-                    disabledScopes: []
-                })
-            },
-            {
-                createSession: async () => {
-                    throw new Error('must not mint');
-                }
-            },
-            '/authenticate/:scope',
-            'createScopedAuthenticationToken'
-        );
+        const route = getAuthRoute({}, {}, '/authenticate/:scope', 'createScopedAuthenticationToken');
 
-        const res = getResponse();
-        await route.handler(
-            {
-                route: { spec: route.spec },
-                params: { scope: 'mcp', sess: 'x'.repeat(256), ip: 'not-an-ip' },
-                role: 'user',
-                user: user.toString(),
-                accessToken: {
-                    user: user.toString(),
-                    authVersion: 7,
-                    assuranceRecorded: true,
-                    mfaRequired: true,
-                    mfaVerified: true,
-                    passwordChangeRequired: false
-                },
-                validate: assertGranted
-            },
-            res
-        );
+        // request validation runs before the handler (lib/fastify/routes.js)
+        const result = compileRouteValidator(route.spec.validationObjs)({ scope: 'mcp', sess: 'x'.repeat(256), ip: 'not-an-ip' });
 
-        expect(res.statusCode).to.equal(400);
-        expect(res.body.code).to.equal('InputValidationError');
+        expect(result.error).to.exist;
+        expect(result.details).to.have.property('sess');
+        expect(result.details).to.have.property('ip');
     });
 
     it('refuses a master session whose required MFA is not verified', async () => {
@@ -587,7 +548,10 @@ describe('Master token MCP exchange', function () {
         expect(revoked).to.deep.equal([user.toString(), tokenId]);
     });
 
-    it('declares sess and ip on the request body, not the path, of the revoke route', async () => {
+    // a DELETE has no documented request body, so the fields are declared as
+    // query params; validation runs on the merged params and still takes them
+    // from a body (see the next test)
+    it('declares sess and ip as query params, not path params, of the revoke route', async () => {
         const route = getAuthRoute(
             {},
             {
@@ -601,8 +565,8 @@ describe('Master token MCP exchange', function () {
         expect(route.spec.validationObjs.pathParams).to.not.have.property('ip');
         expect(route.spec.validationObjs.pathParams).to.have.property('scope');
         expect(route.spec.validationObjs.pathParams).to.have.property('token');
-        expect(route.spec.validationObjs.requestBody).to.have.property('sess');
-        expect(route.spec.validationObjs.requestBody).to.have.property('ip');
+        expect(route.spec.validationObjs.queryParams).to.have.property('sess');
+        expect(route.spec.validationObjs.queryParams).to.have.property('ip');
     });
 
     it('accepts sess and ip from the request body when revoking', async () => {
@@ -1177,14 +1141,7 @@ describe('Temporary Password With Pending 2FA', function () {
         let tokenOptions;
 
         const routes = [];
-        const server = {
-            post(spec, handler) {
-                routes.push({ spec, handler });
-            },
-            del() {},
-            get() {}
-        };
-        totpRoutes({}, server, {
+        totpRoutes({}, routeCollector(routes), {
             checkTotp: async () => ({
                 pending2fa: {
                     tokenRequested: true,

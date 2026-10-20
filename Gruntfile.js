@@ -2,6 +2,8 @@
 
 process.env.NODE_ENV = 'test';
 
+const http = require('http');
+
 module.exports = function (grunt) {
     const mocha = 'npx mocha --reporter spec --color --exit';
     const mochaOutput = {
@@ -77,14 +79,6 @@ module.exports = function (grunt) {
             all: ['*.js', 'lib/**/*.js', 'imap-core/**/*.js', 'test/**/*.js', 'examples/**/*.js', 'bin/*']
         },
 
-        wait: {
-            server: {
-                options: {
-                    delay: 12 * 1000
-                }
-            }
-        },
-
         shell: {
             server: {
                 command: 'node server.js',
@@ -109,7 +103,8 @@ module.exports = function (grunt) {
                 options: mochaOutput
             },
             'mocha-api': {
-                command: `${mocha} "test/**/*-test.js"`,
+                // the POP3 and unit files match the glob too, they already ran in their own targets
+                command: `${mocha} ${['test/pop3-*-test.js', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
                 options: mochaOutput
             },
             options: {
@@ -123,7 +118,48 @@ module.exports = function (grunt) {
     // Load the plugin(s)
     grunt.loadNpmTasks('grunt-eslint');
     grunt.loadNpmTasks('grunt-shell-spawn');
-    grunt.loadNpmTasks('grunt-wait');
+
+    // waits until the test server answers /health, instead of a fixed delay
+    grunt.registerTask('wait:server', 'Wait for the API server', function () {
+        const done = this.async(); // eslint-disable-line no-invalid-this
+        const config = require('@zone-eu/wild-config'); // eslint-disable-line global-require
+        const deadline = Date.now() + 60 * 1000;
+
+        let check;
+
+        const retry = ready => {
+            if (ready) {
+                grunt.log.ok('API server is up');
+                return done();
+            }
+            if (Date.now() > deadline) {
+                grunt.log.error('API server did not come up in 60 seconds');
+                return done(false);
+            }
+            setTimeout(check, 250);
+        };
+
+        check = () => {
+            const req = http.get({ host: '127.0.0.1', port: config.api.port, path: '/health', timeout: 2000 }, res => {
+                let body = '';
+                res.on('data', chunk => (body += chunk));
+                res.on('end', () => {
+                    let ready = false;
+                    try {
+                        // another service may hold the port, only WildDuck answers this way
+                        ready = res.statusCode === 200 && JSON.parse(body).success === true;
+                    } catch {
+                        // not ready
+                    }
+                    retry(ready);
+                });
+            });
+            req.on('timeout', () => req.destroy());
+            req.on('error', () => retry(false));
+        };
+
+        check();
+    });
 
     // Tasks
     // mocha-imap globs every imap-core test, so the in-process ones must not be listed again here

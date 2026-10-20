@@ -2912,12 +2912,13 @@ describe('Messages tests', function () {
     });
 
     it('should DELETE /users/:user/mailboxes/:mailbox/messages expect failure / reject mailbox from another user', async () => {
+        const otherSuffix = Date.now().toString(36);
         const otherUserResponse = await server
             .post('/users')
             .send({
-                username: 'messagesotherusertests',
+                username: `messagesotherusertests${otherSuffix}`,
                 password: 'secretpassword',
-                address: 'messagesotherusertests@web.zone.test',
+                address: `messagesotherusertests${otherSuffix}@web.zone.test`,
                 name: 'other messages user'
             })
             .expect(200);
