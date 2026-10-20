@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.54.0](https://github.com/zone-eu/wildduck/compare/v1.53.2...v1.54.0) (2026-10-20)
+
+
+### Features
+
+* ZMS-100: Labels ([#1188](https://github.com/zone-eu/wildduck/issues/1188)) ([#1226](https://github.com/zone-eu/wildduck/issues/1226)) ([62cdf0f](https://github.com/zone-eu/wildduck/commit/62cdf0f00421f663ae530b1449920c07e58baad0))
+
 ## [1.53.2](https://github.com/zone-eu/wildduck/compare/v1.53.1...v1.53.2) (2026-10-19)
 
 
