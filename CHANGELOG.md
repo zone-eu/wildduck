@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.55.0](https://github.com/zone-eu/wildduck/compare/v1.54.0...v1.55.0) (2026-10-20)
+
+
+### Features
+
+* Release/1.55.0 (migration to fastify, dkim fix, attachments fix, other fixes) ([#1228](https://github.com/zone-eu/wildduck/issues/1228)) ([f3c28ff](https://github.com/zone-eu/wildduck/commit/f3c28ff67cf60726a4ccf0f7aadc5cf465fa81c8))
+
 ## [1.54.0](https://github.com/zone-eu/wildduck/compare/v1.53.2...v1.54.0) (2026-10-20)
 
 
