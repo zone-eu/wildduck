@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.55.1](https://github.com/zone-eu/wildduck/compare/v1.55.0...v1.55.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* AGENTS.MD update ([#1230](https://github.com/zone-eu/wildduck/issues/1230)) ([e66f05d](https://github.com/zone-eu/wildduck/commit/e66f05d5c5305655770ef0a1cafcc515a07fb6e2))
+
 ## [1.55.0](https://github.com/zone-eu/wildduck/compare/v1.54.0...v1.55.0) (2026-10-20)
 
 
