@@ -100,6 +100,14 @@ describe('HTMX Webmail Client (Tasks 8, 9 & 10)', () => {
                         attachments: [{ id: 'ATT001', filename: 'guide.pdf', contentType: 'application/pdf', size: 24576 }]
                     };
                 }
+                if (path === `/users/${USER_ID}/mailboxes/${INBOX_ID}/messages/101/attachments/ATT001`) {
+                    return {
+                        filename: 'guide.pdf',
+                        contentType: 'application/pdf',
+                        encoding: 'base64',
+                        content: Buffer.from('PDF-MOCK-DATA').toString('base64')
+                    };
+                }
                 if (path === `/users/${USER_ID}/autoreply`) {
                     return {
                         success: true,
@@ -246,6 +254,113 @@ describe('HTMX Webmail Client (Tasks 8, 9 & 10)', () => {
                 expect(sseRes.statusCode).to.equal(200);
                 expect(sseRes.headers['content-type']).to.include('text/event-stream');
                 expect(sseRes.body).to.include('event: connected');
+            } finally {
+                await app.close();
+            }
+        });
+    });
+
+    describe('Message List, Search, XSS-Safe Reader & Composer (Task 9)', () => {
+        it('lists and searches messages, strips malicious XSS in HTML emails, updates flags/folders, and submits outbound mail', async () => {
+            let mockApi = createWebmailMockApi();
+            let app = await createSuiteApp({
+                cookieSecret: 'webmail-msg-secret',
+                apiClient: mockApi
+            });
+
+            try {
+                let loginRes = await app.inject({
+                    method: 'POST',
+                    url: '/login',
+                    payload: { username: 'alice', password: 'correct-pass' }
+                });
+                let rawCookie = Array.isArray(loginRes.headers['set-cookie'])
+                    ? loginRes.headers['set-cookie'].find(c => c.startsWith(`${SESSION_COOKIE_NAME}=`))
+                    : loginRes.headers['set-cookie'];
+                let sessionCookie = rawCookie.split(';')[0];
+                let sessionObj = await app.suiteSessions.getSessionFromCookie(sessionCookie.split('=')[1]);
+                let headers = {
+                    cookie: sessionCookie,
+                    'x-csrf-token': sessionObj.csrfToken,
+                    'hx-request': 'true'
+                };
+
+                // 1. List messages in INBOX
+                let listRes = await app.inject({
+                    method: 'GET',
+                    url: `/webmail/mailboxes/${INBOX_ID}/messages`,
+                    headers
+                });
+                expect(listRes.statusCode).to.equal(200);
+                expect(listRes.body).to.include('Welcome to WildDuck HTMX Suite');
+
+                // 2. Full-text search across messages
+                let searchRes = await app.inject({
+                    method: 'GET',
+                    url: '/webmail/search?query=invoice',
+                    headers
+                });
+                expect(searchRes.statusCode).to.equal(200);
+                expect(searchRes.body).to.include('Search Match Subject');
+
+                // 3. Open message 101 and verify <script> and onerror= are stripped by webSafeHtml
+                let readRes = await app.inject({
+                    method: 'GET',
+                    url: `/webmail/mailboxes/${INBOX_ID}/messages/101`,
+                    headers
+                });
+                expect(readRes.statusCode).to.equal(200);
+                expect(readRes.body).to.include('<p>Hello <b>Alice</b>!</p>');
+                expect(readRes.body).to.not.include('<script>');
+                expect(readRes.body).to.not.include('onerror');
+                expect(readRes.body).to.include('guide.pdf');
+
+                // Download attachment
+                let attRes = await app.inject({
+                    method: 'GET',
+                    url: `/webmail/mailboxes/${INBOX_ID}/messages/101/attachments/ATT001`,
+                    headers: { cookie: sessionCookie }
+                });
+                expect(attRes.statusCode).to.equal(200);
+                expect(attRes.headers['content-disposition']).to.include('guide.pdf');
+                expect(attRes.body).to.equal('PDF-MOCK-DATA');
+
+                // 4. Toggle flag & move message
+                let flagRes = await app.inject({
+                    method: 'POST',
+                    url: `/webmail/mailboxes/${INBOX_ID}/messages/101/update`,
+                    headers,
+                    payload: { flagged: 'false', seen: 'true' }
+                });
+                expect(flagRes.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'PUT' && c.path === `/users/${USER_ID}/mailboxes/${INBOX_ID}/messages`)).to.equal(true);
+
+                // 5. Open composer with Reply prefill and submit message
+                let composeForm = await app.inject({
+                    method: 'GET',
+                    url: `/webmail/compose?replyMailbox=${INBOX_ID}&replyMessage=101`,
+                    headers
+                });
+                expect(composeForm.statusCode).to.equal(200);
+                expect(composeForm.body).to.include('Re: Welcome to WildDuck HTMX Suite');
+                expect(composeForm.body).to.include('team@wildduck.email');
+
+                let sendRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/send',
+                    headers,
+                    payload: {
+                        to: 'bob@example.com, carol@example.com',
+                        cc: 'manager@example.com',
+                        subject: 'Project Launch Update',
+                        text: 'Everything is ready for launch!'
+                    }
+                });
+                expect(sendRes.statusCode).to.equal(200);
+                let submitCall = mockApi.calls.find(c => c.method === 'POST' && c.path === `/users/${USER_ID}/submit`);
+                expect(submitCall).to.be.an('object');
+                expect(submitCall.body.subject).to.equal('Project Launch Update');
+                expect(submitCall.body.to).to.have.lengthOf(2);
             } finally {
                 await app.close();
             }

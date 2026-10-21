@@ -236,14 +236,14 @@
 **Description:** Implement cursor-paginated message listing, full-text search, bulk actions (seen/unseen, flag/star, move, delete), XSS-safe HTML message reader using `webSafeHtml()` (`lib/suite/webmail/views/messages.js`), and email composer with Reply/Reply All/Forward, draft saving, streaming attachment upload/download, and message submission (`lib/suite/webmail/views/composer.js`).
 
 **Acceptance criteria:**
-- [ ] Clicking a folder or executing a search updates the message list via HTMX partial swap; clicking a message renders the reading pane with sanitized HTML (`webSafeHtml()`), attachment download links, and quick reply actions.
-- [ ] Bulk and single message actions (star/flag, mark read/unread, move to folder, delete) update counters and UI smoothly.
-- [ ] Composer supports To/Cc/Bcc, subject, HTML/text body, attachment uploads, saving drafts, and sending mail via `POST /users/:user/submit`.
+- [x] Clicking a folder or executing a search updates the message list via HTMX partial swap; clicking a message renders the reading pane with sanitized HTML (`webSafeHtml()`), attachment download links, and quick reply actions.
+- [x] Bulk and single message actions (star/flag, mark read/unread, move to folder, delete) update counters and UI smoothly.
+- [x] Composer supports To/Cc/Bcc, subject, HTML/text body, attachment uploads, saving drafts, and sending mail via `POST /users/:user/submit`.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/webmail-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/webmail/**/*.js test/suite/webmail-test.js`
-- [ ] Commit: `git commit -m "feat(webmail): implement message list, safe html reader, search, and composer"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/webmail-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/webmail/**/*.js test/suite/webmail-test.js`
+- [x] Commit: `git commit -m "feat(webmail): implement message list, safe html reader, search, and composer"`
 
 **Dependencies:** Task 8
 
