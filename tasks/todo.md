@@ -117,15 +117,15 @@
 **Description:** Build the zero-config service provisioner (`lib/suite/installer/provisioner.js`), safe version upgrade runner (`lib/suite/installer/upgrader.js`), 5-step HTMX Web Setup Wizard (`lib/suite/installer/routes.js`, `lib/suite/installer/views.js`), and multi-language CLI bootstrap (`setup/install-suite.sh`).
 
 **Acceptance criteria:**
-- [ ] Web Setup Wizard (`/setup`) guides the admin through: (1) Language selection, (2) Pre-flight hardware/port check, (3) Domain & Admin account zero-config provisioning, (4) Live DNS/DKIM/SSL verification, and (5) Finalize & lock wizard.
-- [ ] `upgrader.js` snapshots config, checks current WildDuck version (`1.55.1`), runs migrations, triggers graceful reload, and supports rollback on failure.
-- [ ] `setup/install-suite.sh` prompts for installation language (`en`/`vi`), runs pre-checks, configures services, and outputs the Web Setup Wizard URL with a one-time setup token.
+- [x] Web Setup Wizard (`/setup`) guides the admin through: (1) Language selection, (2) Pre-flight hardware/port check, (3) Domain & Admin account zero-config provisioning, (4) Live DNS/DKIM/SSL verification, and (5) Finalize & lock wizard.
+- [x] `upgrader.js` snapshots config, checks current WildDuck version (`1.55.1`), runs migrations, triggers graceful reload, and supports rollback on failure.
+- [x] `setup/install-suite.sh` prompts for installation language (`en`/`vi`), runs pre-checks, configures services, and outputs the Web Setup Wizard URL with a one-time setup token.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/installer/*.js test/suite/smart-installer-test.js`
-- [ ] Bash syntax check passes: `bash -n setup/install-suite.sh`
-- [ ] Commit: `git commit -m "feat(installer): implement web setup wizard, zero-config provisioner, and cli installer"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/installer/*.js test/suite/smart-installer-test.js`
+- [x] Bash syntax check passes: `bash -n setup/install-suite.sh`
+- [x] Commit: `git commit -m "feat(installer): implement web setup wizard, zero-config provisioner, and cli installer"`
 
 **Dependencies:** Task 4
 
@@ -142,8 +142,8 @@
 ---
 
 ## Checkpoint: After Tasks 4-5 (`smart-installer`)
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js` passes 100%.
-- [ ] `bash -n setup/install-suite.sh` and ESLint pass with zero errors.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js` passes 100%.
+- [x] `bash -n setup/install-suite.sh` and ESLint pass with zero errors.
 
 ---
 
