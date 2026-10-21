@@ -17,39 +17,39 @@ Every task is vertically sliced, verified with Mocha/Chai tests and ESLint, and 
 ## Task List
 
 ### Phase 1: Suite Core Foundation (`suite-core`)
-- [ ] Task 1: Create `config/suite.toml`, HTML escaping/template helpers (`lib/suite/html.js`), and i18n engine (`lib/suite/i18n.js`) with English (`en.json`) and Vietnamese (`vi.json`) locales.
-- [ ] Task 2: Build Redis-backed session & CSRF middleware (`lib/suite/session.js`) and internal loopback WildDuck API client (`lib/suite/api-client.js`).
-- [ ] Task 3: Build shared HTMX layout & UI design system (`lib/suite/views/layout.js`, `public/suite/suite.css`, `public/suite/htmx.min.js`), `suite.js` server bootstrap, and `worker.js` registration.
+- [x] Task 1: Create `config/suite.toml`, HTML escaping/template helpers (`lib/suite/html.js`), and i18n engine (`lib/suite/i18n.js`) with English (`en.json`) and Vietnamese (`vi.json`) locales.
+- [x] Task 2: Build Redis-backed session & CSRF middleware (`lib/suite/session.js`) and internal loopback WildDuck API client (`lib/suite/api-client.js`).
+- [x] Task 3: Build shared HTMX layout & UI design system (`lib/suite/views/layout.js`, `public/suite/suite.css`, `public/suite/htmx.min.js`), `suite.js` server bootstrap, and `worker.js` registration.
 
 ### Checkpoint: Suite Core Foundation
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js` passes.
-- [ ] `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/**/*-test.js` passes with zero warnings/errors.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js` passes.
+- [x] `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/**/*-test.js` passes with zero warnings/errors.
 
 ### Phase 2: Multi-Language Smart Installer & Web Setup Wizard (`smart-installer`)
-- [ ] Task 4: Implement idempotent installer state machine (`lib/suite/installer/state.js`), hardware/OS/port pre-flight checker (`lib/suite/installer/preflight.js`), and live DNS/DKIM/SSL verifier (`lib/suite/installer/dns-verifier.js`).
-- [ ] Task 5: Implement zero-config provisioner (`lib/suite/installer/provisioner.js`), safe version upgrade runner (`lib/suite/installer/upgrader.js`), HTMX 5-step Web Setup Wizard (`/setup`), and multi-language CLI script (`setup/install-suite.sh`).
+- [x] Task 4: Implement idempotent installer state machine (`lib/suite/installer/state.js`), hardware/OS/port pre-flight checker (`lib/suite/installer/preflight.js`), and live DNS/DKIM/SSL verifier (`lib/suite/installer/dns-verifier.js`).
+- [x] Task 5: Implement zero-config provisioner (`lib/suite/installer/provisioner.js`), safe version upgrade runner (`lib/suite/installer/upgrader.js`), HTMX 5-step Web Setup Wizard (`/setup`), and multi-language CLI script (`setup/install-suite.sh`).
 
 ### Checkpoint: Smart Installer
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js` passes.
-- [ ] Setup Wizard end-to-end flow (language selection -> preflight -> provisioning -> DNS check -> completion lock) verified.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js` passes.
+- [x] Setup Wizard end-to-end flow (language selection -> preflight -> provisioning -> DNS check -> completion lock) verified.
 
 ### Phase 3: HTMX Admin Console (`admin-console`)
-- [ ] Task 6: Implement Admin Dashboard (`/admin`), System Health & Metrics overview, and Safe Version Upgrade UI (`lib/suite/admin/views/dashboard.js`, `lib/suite/admin/views/system.js`).
-- [ ] Task 7: Implement Admin User, Quota, Address/Alias, Domain, DKIM, TLS Certificate, and Audit Log management in HTMX (`lib/suite/admin/routes.js`, `lib/suite/admin/views/*.js`).
+- [x] Task 6: Implement Admin Dashboard (`/admin`), System Health & Metrics overview, and Safe Version Upgrade UI (`lib/suite/admin/views/dashboard.js`, `lib/suite/admin/views/system.js`).
+- [x] Task 7: Implement Admin User, Quota, Address/Alias, Domain, DKIM, TLS Certificate, and Audit Log management in HTMX (`lib/suite/admin/routes.js`, `lib/suite/admin/views/*.js`).
 
 ### Checkpoint: Admin Console
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js` passes.
-- [ ] Admin CRUD flows for users, domains, DKIM, and certificates verified.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js` passes.
+- [x] Admin CRUD flows for users, domains, DKIM, and certificates verified.
 
 ### Phase 4: HTMX Webmail Client (`webmail`)
-- [ ] Task 8: Implement Webmail authentication (`/login`, `/logout`, 2FA TOTP challenge), three-pane responsive shell, mailbox folder management, and real-time SSE update bridge (`lib/suite/webmail/routes.js`, `lib/suite/webmail/views/shell.js`, `lib/suite/webmail/views/mailboxes.js`).
-- [ ] Task 9: Implement Webmail message list, cursor pagination, full-text search, bulk actions, sanitized HTML message reader (`webSafeHtml`), and rich email composer with streaming attachments (`lib/suite/webmail/views/messages.js`, `lib/suite/webmail/views/composer.js`).
-- [ ] Task 10: Implement Webmail User Settings in HTMX (Profile & Language, Autoreply, Forwarding, Mail Filters, Password, TOTP 2FA QR setup, and Application-Specific Passwords) and full E2E verification (`lib/suite/webmail/views/settings.js`, `test/suite/webmail-test.js`).
+- [x] Task 8: Implement Webmail authentication (`/login`, `/logout`, 2FA TOTP challenge), three-pane responsive shell, mailbox folder management, and real-time SSE update bridge (`lib/suite/webmail/routes.js`, `lib/suite/webmail/views/shell.js`, `lib/suite/webmail/views/mailboxes.js`).
+- [x] Task 9: Implement Webmail message list, cursor pagination, full-text search, bulk actions, sanitized HTML message reader (`webSafeHtml`), and rich email composer with streaming attachments (`lib/suite/webmail/views/messages.js`, `lib/suite/webmail/views/composer.js`).
+- [x] Task 10: Implement Webmail User Settings in HTMX (Profile & Language, Autoreply, Forwarding, Mail Filters, Password, TOTP 2FA QR setup, and Application-Specific Passwords) and full E2E verification (`lib/suite/webmail/views/settings.js`, `test/suite/webmail-test.js`).
 
 ### Checkpoint: Complete Product Verification
-- [ ] All Suite unit and integration tests (`test/suite/*-test.js`) and existing protocol tests (`npm run test:proto`) pass.
-- [ ] ESLint passes across the entire repository with zero errors.
-- [ ] Every task is committed cleanly with Conventional Commits (`feat(suite): ...`).
+- [x] All Suite unit and integration tests (`test/suite/*-test.js`) and existing protocol tests (`npm run test:proto`) pass.
+- [x] ESLint passes across the entire repository with zero errors.
+- [x] Every task is committed cleanly with Conventional Commits (`feat(suite): ...`).
 
 ## Risks and Mitigations
 

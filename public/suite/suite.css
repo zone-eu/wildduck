@@ -9,15 +9,23 @@
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-muted: #64748b;
+    --border: #e2e8f0;
     --border-default: #e2e8f0;
     --border-strong: #cbd5e1;
+    --brand: #0284c7;
     --brand-primary: #0284c7;
     --brand-hover: #0369a1;
     --brand-soft: #e0f2fe;
+    --success-bg: #dcfce7;
+    --success: #166534;
     --status-pass-bg: #dcfce7;
     --status-pass-fg: #166534;
+    --warning-bg: #fef3c7;
+    --warning: #92400e;
     --status-warn-bg: #fef3c7;
     --status-warn-fg: #92400e;
+    --danger-bg: #fee2e2;
+    --danger: #991b1b;
     --status-fail-bg: #fee2e2;
     --status-fail-fg: #991b1b;
     --radius-sm: 4px;
@@ -38,15 +46,23 @@
     --text-primary: #f8fafc;
     --text-secondary: #cbd5e1;
     --text-muted: #94a3b8;
+    --border: #1e293b;
     --border-default: #1e293b;
     --border-strong: #334155;
+    --brand: #38bdf8;
     --brand-primary: #38bdf8;
     --brand-hover: #0ea5e9;
     --brand-soft: #082f49;
+    --success-bg: #064e3b;
+    --success: #6ee7b7;
     --status-pass-bg: #064e3b;
     --status-pass-fg: #6ee7b7;
+    --warning-bg: #78350f;
+    --warning: #fcd34d;
     --status-warn-bg: #78350f;
     --status-warn-fg: #fcd34d;
+    --danger-bg: #7f1d1d;
+    --danger: #fca5a5;
     --status-fail-bg: #7f1d1d;
     --status-fail-fg: #fca5a5;
 }
@@ -280,12 +296,15 @@ a:hover {
     overflow-x: auto;
 }
 
+.table-wrap table,
 .data-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
 }
 
+.table-wrap th,
+.table-wrap td,
 .data-table th,
 .data-table td {
     padding: 0.625rem 0.75rem;
@@ -294,24 +313,64 @@ a:hover {
     vertical-align: middle;
 }
 
+.table-wrap th,
 .data-table th {
     font-weight: 600;
     color: var(--text-secondary);
     background: var(--bg-subtle);
 }
 
+.table-wrap tr:hover td,
 .data-table tr:hover td {
     background: var(--bg-hover);
 }
 
+.mono,
 .code-inline {
     font-family: var(--font-mono);
     font-size: 12px;
+}
+
+.code-inline {
     padding: 0.125rem 0.375rem;
     background: var(--bg-subtle);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
     word-break: break-all;
+}
+
+/* Grid & Progress Utilities */
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.grid-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.progress-track {
+    width: 100%;
+    height: 8px;
+    background: var(--border-default);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--brand-primary);
+    border-radius: 999px;
+    transition: width 0.25s ease;
 }
 
 /* Setup Wizard Layout */

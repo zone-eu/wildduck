@@ -366,4 +366,141 @@ describe('HTMX Webmail Client (Tasks 8, 9 & 10)', () => {
             }
         });
     });
+
+    describe('User Settings: Autoreply, Forwarding, Filters, 2FA QR & App Passwords (Task 10)', () => {
+        it('manages profile/language, autoreply, forwarding, mail filters, TOTP 2FA QR setup, and ASPs via HTMX', async () => {
+            let mockApi = createWebmailMockApi();
+            let app = await createSuiteApp({
+                cookieSecret: 'webmail-settings-secret',
+                apiClient: mockApi
+            });
+
+            try {
+                let loginRes = await app.inject({
+                    method: 'POST',
+                    url: '/login',
+                    payload: { username: 'alice', password: 'correct-pass' }
+                });
+                let rawCookie = Array.isArray(loginRes.headers['set-cookie'])
+                    ? loginRes.headers['set-cookie'].find(c => c.startsWith(`${SESSION_COOKIE_NAME}=`))
+                    : loginRes.headers['set-cookie'];
+                let sessionCookie = rawCookie.split(';')[0];
+                let sessionObj = await app.suiteSessions.getSessionFromCookie(sessionCookie.split('=')[1]);
+                let headers = {
+                    cookie: sessionCookie,
+                    'x-csrf-token': sessionObj.csrfToken,
+                    'hx-request': 'true'
+                };
+
+                // 1. Load Settings pane
+                let settingsView = await app.inject({
+                    method: 'GET',
+                    url: '/webmail/settings',
+                    headers
+                });
+                expect(settingsView.statusCode).to.equal(200);
+                expect(settingsView.body).to.include('Alice Nguyen');
+                expect(settingsView.body).to.include('Out of office');
+                expect(settingsView.body).to.include('Thunderbird Laptop');
+
+                // 2. Update Profile & Language
+                let profRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/profile',
+                    headers,
+                    payload: { name: 'Alice Tran', language: 'vi' }
+                });
+                expect(profRes.statusCode).to.equal(200);
+                expect(String(profRes.headers['set-cookie'])).to.include('wd_locale=vi');
+
+                // 3. Update Forwarding
+                let fwdRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/forwarding',
+                    headers,
+                    payload: { targets: 'archive@example.com\nbackup@example.com' }
+                });
+                expect(fwdRes.statusCode).to.equal(200);
+                let fwdCall = mockApi.calls.find(
+                    c => c.method === 'PUT' && c.path === `/users/${USER_ID}` && Array.isArray(c.body.targets)
+                );
+                expect(fwdCall.body.targets).to.deep.equal(['archive@example.com', 'backup@example.com']);
+
+                // 4. Update Vacation Autoreply
+                let arRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/autoreply',
+                    headers,
+                    payload: {
+                        status: 'true',
+                        subject: 'On Holiday',
+                        text: 'Back next Monday'
+                    }
+                });
+                expect(arRes.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'PUT' && c.path === `/users/${USER_ID}/autoreply`)).to.equal(true);
+
+                // 5. Create and delete Mail Filter
+                let createFilter = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/filters',
+                    headers,
+                    payload: {
+                        name: 'Receipts',
+                        queryFrom: 'billing@stripe.com',
+                        mailbox: INBOX_ID
+                    }
+                });
+                expect(createFilter.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'POST' && c.path === `/users/${USER_ID}/filters`)).to.equal(true);
+
+                let delFilter = await app.inject({
+                    method: 'DELETE',
+                    url: `/webmail/settings/filters/flt1?_csrf=${encodeURIComponent(sessionObj.csrfToken)}`,
+                    headers
+                });
+                expect(delFilter.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'DELETE' && c.path === `/users/${USER_ID}/filters/flt1`)).to.equal(true);
+
+                // 6. TOTP 2FA Setup with QR code DataURL & Enable
+                let totpSetupRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/2fa/totp/setup',
+                    headers
+                });
+                expect(totpSetupRes.statusCode).to.equal(200);
+                expect(totpSetupRes.body).to.include('JBSWY3DPEHPK3PXP');
+                expect(totpSetupRes.body).to.include('data:image/png;base64,');
+
+                let totpEnableRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/2fa/totp/enable',
+                    headers,
+                    payload: { code: '654321' }
+                });
+                expect(totpEnableRes.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'PUT' && c.path === `/users/${USER_ID}/2fa/totp`)).to.equal(true);
+
+                // 7. Create & delete Application-Specific Password (ASP)
+                let aspCreateRes = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/settings/asps',
+                    headers,
+                    payload: { description: 'iPhone Mail' }
+                });
+                expect(aspCreateRes.statusCode).to.equal(200);
+                expect(aspCreateRes.body).to.include('wdasp_generated_secret_123');
+
+                let aspDelRes = await app.inject({
+                    method: 'DELETE',
+                    url: `/webmail/settings/asps/asp1?_csrf=${encodeURIComponent(sessionObj.csrfToken)}`,
+                    headers
+                });
+                expect(aspDelRes.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'DELETE' && c.path === `/users/${USER_ID}/asps/asp1`)).to.equal(true);
+            } finally {
+                await app.close();
+            }
+        });
+    });
 });

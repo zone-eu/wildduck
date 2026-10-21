@@ -262,14 +262,14 @@
 **Description:** Implement the Webmail Settings modal/views (`lib/suite/webmail/views/settings.js`) for Profile & Language, Autoreply, Forwarding targets, Mail Filters, Password change, TOTP 2FA QR code enrollment (using `qrcode`), and Application-Specific Passwords (ASPs), plus final end-to-end verification and documentation update in `AGENTS.md` / `docs/suite/README.md`.
 
 **Acceptance criteria:**
-- [ ] Users can configure Autoreply, Forwarding addresses, Mail Filter rules, TOTP 2FA (with rendered SVG/DataURL QR code), and Application-Specific Passwords via HTMX forms.
-- [ ] Complete E2E test suite (`test/suite/*-test.js`) and existing WildDuck protocol tests (`npm run test:proto`) pass 100%.
-- [ ] `docs/suite/README.md` documents architecture, installation, i18n contribution guide, and safe upgrade workflow in English.
+- [x] Users can configure Autoreply, Forwarding addresses, Mail Filter rules, TOTP 2FA (with rendered SVG/DataURL QR code), and Application-Specific Passwords via HTMX forms.
+- [x] Complete E2E test suite (`test/suite/*-test.js`) and existing WildDuck protocol tests (`npm run test:proto`) pass 100%.
+- [x] `docs/suite/README.md` documents architecture, installation, i18n contribution guide, and safe upgrade workflow in English.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/*-test.js && npm run test:proto`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/**/*-test.js`
-- [ ] Commit: `git commit -m "feat(webmail): add user settings, 2fa qr, filters, and suite documentation"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/*-test.js && npm run test:proto`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/**/*-test.js`
+- [x] Commit: `git commit -m "feat(webmail): add user settings, 2fa qr, filters, and suite documentation"`
 
 **Dependencies:** Task 9
 
@@ -284,7 +284,7 @@
 ---
 
 ## Final Checkpoint: Release Readiness (`v1.55.1` Suite)
-- [ ] All 10 tasks in `tasks/todo.md` are checked off and committed with clean Conventional Commits.
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/*-test.js` passes 100%.
-- [ ] `npm run test:proto` passes.
-- [ ] `git status` is clean.
+- [x] All 10 tasks in `tasks/todo.md` are checked off and committed with clean Conventional Commits.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/*-test.js` passes 100%.
+- [x] `npm run test:proto` passes.
+- [x] `git status` is clean.
