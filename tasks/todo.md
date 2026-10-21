@@ -152,13 +152,13 @@
 **Description:** Build the Admin Console router (`lib/suite/admin/routes.js`), role guard, System Health & Metrics Dashboard (`lib/suite/admin/views/dashboard.js`), and System Settings / 1-Click Safe Upgrade screen (`lib/suite/admin/views/system.js`).
 
 **Acceptance criteria:**
-- [ ] `/admin` enforces admin authentication and renders service health cards (IMAP, POP3, LMTP, API, MongoDB, Redis), active counters, and current WildDuck version (`1.55.1`).
-- [ ] `/admin/system` allows changing default suite language, inspecting system pre-flight status, and triggering/reviewing safe version upgrades.
+- [x] `/admin` enforces admin authentication and renders service health cards (IMAP, POP3, LMTP, API, MongoDB, Redis), active counters, and current WildDuck version (`1.55.1`).
+- [x] `/admin/system` allows changing default suite language, inspecting system pre-flight status, and triggering/reviewing safe version upgrades.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/admin/**/*.js test/suite/admin-console-test.js`
-- [ ] Commit: `git commit -m "feat(admin): add htmx admin dashboard, health monitor, and upgrade ui"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/admin/**/*.js test/suite/admin-console-test.js`
+- [x] Commit: `git commit -m "feat(admin): add htmx admin dashboard, health monitor, and upgrade ui"`
 
 **Dependencies:** Task 5
 
