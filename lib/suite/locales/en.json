@@ -89,6 +89,12 @@
     "installer.currentVersion": "Current WildDuck Version",
     "installer.runUpgrade": "Run Safe Upgrade Check & Migrate",
     "installer.rollbackSuccess": "Configuration rolled back to snapshot safely",
+    "installer.preflightCallout": "Automated Hardware & Network Scan: Server resources and mail ports have been inspected automatically. Click Next to configure your primary domain and admin account.",
+    "installer.publicIpLabel": "Server Public IPv4 Address",
+    "installer.publicIpHint": "Auto-detected public IPv4 used to generate DNS A and SPF records",
+    "installer.dnsCallout": "DNS Setup Guide: Copy the auto-generated records (including 2048-bit RSA DKIM) into your domain registrar and click Verify DNS Records Now, or click Skip DNS Check & Finish (Test Mode) if testing on an IP without a live domain.",
+    "installer.skipDnsFinish": "Skip DNS Check & Finish (Test Mode)",
+    "installer.verifiedCount": "Verified: {{passed}}/{{total}} records",
 
     "admin.title": "System Administration Console",
     "admin.navDashboard": "Dashboard",

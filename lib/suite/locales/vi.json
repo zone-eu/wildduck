@@ -89,6 +89,12 @@
     "installer.currentVersion": "Phiên bản WildDuck hiện tại",
     "installer.runUpgrade": "Kiểm tra & Chạy nâng cấp an toàn",
     "installer.rollbackSuccess": "Đã khôi phục cấu hình về bản sao lưu an toàn",
+    "installer.preflightCallout": "Tự động kiểm tra phần cứng & cổng mạng: Hệ thống đã tự động quét cấu hình máy chủ. Hãy bấm Tiếp tục để sang Bước 3 khai báo Tên miền và tài khoản Admin.",
+    "installer.publicIpLabel": "Địa chỉ IP Public của Máy chủ (IPv4)",
+    "installer.publicIpHint": "Đã tự động phát hiện IP máy chủ hiện tại để sinh bản ghi A và SPF",
+    "installer.dnsCallout": "Hướng dẫn cấu hình DNS: Hãy sao chép 6 bản ghi bên dưới (bao gồm khóa chữ ký số DKIM 2048-bit) vào trang quản trị tên miền rồi bấm Kiểm tra DNS ngay, hoặc bấm Bỏ qua kiểm tra DNS & Hoàn tất (Chế độ thử nghiệm) nếu bạn chưa trỏ tên miền thật.",
+    "installer.skipDnsFinish": "Bỏ qua kiểm tra DNS & Hoàn tất (Chạy thử nghiệm)",
+    "installer.verifiedCount": "Đã xác thực: {{passed}}/{{total}} bản ghi",
 
     "admin.title": "Trung Tâm Quản Trị Hệ Thống",
     "admin.navDashboard": "Tổng quan",
