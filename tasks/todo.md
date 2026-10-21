@@ -33,13 +33,13 @@
 **Description:** Implement Redis-backed session and CSRF token management (`lib/suite/session.js`) with in-memory fallback for unit tests, and build the keep-alive Undici loopback client (`lib/suite/api-client.js`) wrapping WildDuck REST API calls for authentication, users, mailboxes, messages, DKIM, certs, filters, autoreply, and audit.
 
 **Acceptance criteria:**
-- [ ] `lib/suite/session.js` creates HTTP-only session cookies, stores session state in Redis (`wdsuite:sess:<id>`), and validates CSRF tokens on state-changing requests (`POST`, `PUT`, `DELETE`).
-- [ ] `lib/suite/api-client.js` derives the default WildDuck API URL from `config.api`, forwards user access tokens or admin master tokens, and supports JSON and streaming requests.
+- [x] `lib/suite/session.js` creates HTTP-only session cookies, stores session state in Redis (`wdsuite:sess:<id>`), and validates CSRF tokens on state-changing requests (`POST`, `PUT`, `DELETE`).
+- [x] `lib/suite/api-client.js` derives the default WildDuck API URL from `config.api`, forwards user access tokens or admin master tokens, and supports JSON and streaming requests.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/session.js lib/suite/api-client.js test/suite/suite-core-test.js`
-- [ ] Commit: `git commit -m "feat(suite): add session csrf guard and loopback api client"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/session.js lib/suite/api-client.js test/suite/suite-core-test.js`
+- [x] Commit: `git commit -m "feat(suite): add session csrf guard and loopback api client"`
 
 **Dependencies:** Task 1
 

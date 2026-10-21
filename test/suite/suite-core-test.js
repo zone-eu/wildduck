@@ -5,6 +5,8 @@
 const chai = require('chai');
 const { escapeHtml, rawHtml, html, formatBytes } = require('../../lib/suite/html');
 const { createI18n, defaultI18n } = require('../../lib/suite/i18n');
+const { createSessionManager, parseCookies, serializeCookie } = require('../../lib/suite/session');
+const SuiteApiClient = require('../../lib/suite/api-client');
 
 const expect = chai.expect;
 
@@ -107,6 +109,120 @@ describe('Suite Core - HTML & i18n (Task 1)', () => {
                     headers: { 'accept-language': 'de-DE,de;q=0.9' }
                 })
             ).to.equal('en');
+        });
+    });
+
+    describe('Session & CSRF Manager (Task 2)', () => {
+        it('parses and serializes HTTP cookies with security flags', () => {
+            let parsed = parseCookies('wd_locale=vi; wd_session=abc.123; theme=dark');
+            expect(parsed).to.deep.equal({
+                wd_locale: 'vi',
+                wd_session: 'abc.123',
+                theme: 'dark'
+            });
+
+            let header = serializeCookie('wd_session', 'token123', {
+                httpOnly: true,
+                sameSite: 'Lax',
+                path: '/',
+                maxAge: 3600
+            });
+            expect(header).to.include('wd_session=token123');
+            expect(header).to.include('HttpOnly');
+            expect(header).to.include('SameSite=Lax');
+            expect(header).to.include('Max-Age=3600');
+        });
+
+        it('creates signed sessions, persists data, and enforces CSRF tokens on mutations', async () => {
+            let manager = createSessionManager({ secret: 'test-secret-key', ttlSeconds: 600 });
+            let created = await manager.createSession({
+                userId: '507f191e810c19729de860ea',
+                username: 'alice',
+                role: 'user',
+                accessToken: 'tok_alice'
+            });
+
+            expect(created.cookieValue).to.be.a('string').and.include('.');
+            expect(created.session.csrfToken).to.be.a('string').with.length.greaterThan(16);
+
+            let loaded = await manager.getSessionFromCookie(created.cookieValue);
+            expect(loaded.username).to.equal('alice');
+            expect(loaded.accessToken).to.equal('tok_alice');
+
+            // Tampered cookie signature must be rejected
+            let tampered = `${created.cookieValue}tamper`;
+            expect(await manager.getSessionFromCookie(tampered)).to.equal(null);
+
+            // CSRF validation passes with matching header or body token and fails otherwise
+            expect(manager.verifyCsrf(loaded, { headers: { 'x-csrf-token': loaded.csrfToken } })).to.equal(true);
+            expect(manager.verifyCsrf(loaded, { body: { _csrf: loaded.csrfToken } })).to.equal(true);
+            expect(manager.verifyCsrf(loaded, { headers: { 'x-csrf-token': 'wrong-token' } })).to.equal(false);
+
+            await manager.destroySession(created.session.id);
+            expect(await manager.getSessionFromCookie(created.cookieValue)).to.equal(null);
+        });
+    });
+
+    describe('Loopback WildDuck API Client (Task 2)', () => {
+        it('forwards access tokens, serializes query parameters, and parses JSON responses', async () => {
+            let calls = [];
+            let client = new SuiteApiClient({
+                apiUrl: 'http://127.0.0.1:8080',
+                fetch: async (url, options) => {
+                    calls.push({ url: url.toString(), options });
+                    return {
+                        ok: true,
+                        status: 200,
+                        headers: new Map([['content-type', 'application/json']]),
+                        json: async () => ({ success: true, results: [{ id: 'u1', username: 'admin' }] })
+                    };
+                }
+            });
+
+            let res = await client.get('/users', { query: { limit: 10, query: 'admin', empty: undefined }, token: 'secret_token' });
+            expect(res.success).to.equal(true);
+            expect(res.results).to.have.lengthOf(1);
+            expect(calls[0].url).to.equal('http://127.0.0.1:8080/users?limit=10&query=admin');
+            expect(calls[0].options.headers['X-Access-Token']).to.equal('secret_token');
+        });
+
+        it('preserves API error codes and masks raw loopback connection failures', async () => {
+            let errorClient = new SuiteApiClient({
+                apiUrl: 'http://127.0.0.1:8080',
+                fetch: async () => ({
+                    ok: false,
+                    status: 403,
+                    headers: new Map([['content-type', 'application/json']]),
+                    json: async () => ({ error: 'Auth failed', code: 'AuthFailed' })
+                })
+            });
+
+            let caught;
+            try {
+                await errorClient.post('/authenticate', { body: { username: 'bob', password: 'wrong' } });
+            } catch (err) {
+                caught = err;
+            }
+            expect(caught).to.be.instanceOf(Error);
+            expect(caught.code).to.equal('AuthFailed');
+            expect(caught.responseCode).to.equal(403);
+
+            let offlineClient = new SuiteApiClient({
+                apiUrl: 'http://127.0.0.1:8080',
+                fetch: async () => {
+                    throw new Error('connect ECONNREFUSED 127.0.0.1:8080');
+                }
+            });
+
+            let netErr;
+            try {
+                await offlineClient.get('/health');
+            } catch (err) {
+                netErr = err;
+            }
+            expect(netErr.code).to.equal('ApiUnavailable');
+            expect(netErr.responseCode).to.equal(503);
+            expect(netErr.message).to.not.include('127.0.0.1');
         });
     });
 });
