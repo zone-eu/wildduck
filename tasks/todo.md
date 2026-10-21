@@ -5,14 +5,14 @@
 **Description:** Create `config/suite.toml`, safe HTML template/escaping utilities (`lib/suite/html.js`), and the internationalization module (`lib/suite/i18n.js`) with complete English (`lib/suite/locales/en.json`) and Vietnamese (`lib/suite/locales/vi.json`) translation catalogs covering Installer, Admin Console, and Webmail.
 
 **Acceptance criteria:**
-- [ ] `config/suite.toml` defines `enabled`, `port`, `host`, `defaultLocale`, `sessionTTL`, and `apiUrl` settings.
-- [ ] `lib/suite/html.js` escapes dynamic values using `he.encode()` and supports marking pre-sanitized fragments safely.
-- [ ] `lib/suite/i18n.js` loads `en.json` and `vi.json`, interpolates named placeholders, negotiates locale from cookie/query/header, and falls back to `en`.
+- [x] `config/suite.toml` defines `enabled`, `port`, `host`, `defaultLocale`, `sessionTTL`, and `apiUrl` settings.
+- [x] `lib/suite/html.js` escapes dynamic values using `he.encode()` and supports marking pre-sanitized fragments safely.
+- [x] `lib/suite/i18n.js` loads `en.json` and `vi.json`, interpolates named placeholders, negotiates locale from cookie/query/header, and falls back to `en`.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/html.js lib/suite/i18n.js test/suite/suite-core-test.js`
-- [ ] Commit: `git commit -m "feat(suite): add suite config, html escaping, and i18n engine"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/html.js lib/suite/i18n.js test/suite/suite-core-test.js`
+- [x] Commit: `git commit -m "feat(suite): add suite config, html escaping, and i18n engine"`
 
 **Dependencies:** None
 
