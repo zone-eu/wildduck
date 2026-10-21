@@ -248,6 +248,8 @@ describe('Smart Installer (Tasks 4 & 5)', () => {
                     }
                 });
                 expect(provisionRes.statusCode).to.equal(200);
+                expect(provisionRes.headers['hx-trigger']).to.match(/^[\x20-\x7e]+$/);
+                expect(JSON.parse(provisionRes.headers['hx-trigger']).showToast).to.include('Đã khởi tạo cấu hình dịch vụ');
                 expect(stateStore.load().config.mailDomain).to.equal('example.vn');
                 expect(stateStore.load().steps.provision.status).to.equal('completed');
 

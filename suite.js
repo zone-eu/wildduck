@@ -86,7 +86,11 @@ async function createSuiteApp(options = {}) {
 
     app.decorateReply('toast', function (message) {
         if (message) {
-            this.header('HX-Trigger', JSON.stringify({ showToast: message }));
+            let safeAsciiJson = JSON.stringify({ showToast: String(message) }).replace(
+                /[\u007f-\uffff]/g,
+                ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`
+            );
+            this.header('HX-Trigger', safeAsciiJson);
         }
         return this;
     });
