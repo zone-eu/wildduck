@@ -9,6 +9,7 @@ const prometheus = require('./prometheus');
 const mcp = require('./mcp');
 const api = require('./api');
 const acme = require('./acme');
+const suite = require('./suite');
 const tasks = require('./tasks');
 const webhooks = require('./webhooks');
 const indexer = require('./indexer');
@@ -33,7 +34,8 @@ const SERVICES = [
     ['LMTP server', util.promisify(lmtp)],
     ['API server', api],
     ['MCP server', util.promisify(mcp)],
-    ['ACME server', acme]
+    ['ACME server', acme],
+    ['Suite UI server', suite]
 ];
 
 /**

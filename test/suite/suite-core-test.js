@@ -7,6 +7,8 @@ const { escapeHtml, rawHtml, html, formatBytes } = require('../../lib/suite/html
 const { createI18n, defaultI18n } = require('../../lib/suite/i18n');
 const { createSessionManager, parseCookies, serializeCookie } = require('../../lib/suite/session');
 const SuiteApiClient = require('../../lib/suite/api-client');
+const { renderDocument, isHtmxRequest } = require('../../lib/suite/views/layout');
+const { createSuiteApp } = require('../../suite');
 
 const expect = chai.expect;
 
@@ -223,6 +225,79 @@ describe('Suite Core - HTML & i18n (Task 1)', () => {
             expect(netErr.code).to.equal('ApiUnavailable');
             expect(netErr.responseCode).to.equal(503);
             expect(netErr.message).to.not.include('127.0.0.1');
+        });
+    });
+
+    describe('Suite Fastify Server & Shared HTMX Layout (Task 3)', () => {
+        it('detects HTMX requests and renders full shell vs partial fragment appropriately', () => {
+            expect(isHtmxRequest({ headers: { 'hx-request': 'true' } })).to.equal(true);
+            expect(isHtmxRequest({ headers: { 'hx-request': 'true', 'hx-boosted': 'true' } })).to.equal(false);
+            expect(isHtmxRequest({ headers: {} })).to.equal(false);
+
+            let tEn = defaultI18n.createTranslator('en');
+            let fullHtml = renderDocument({
+                req: { headers: {} },
+                t: tEn,
+                locale: 'en',
+                title: 'Test Page',
+                csrfToken: 'csrf_123',
+                body: '<main id="test-main">Hello HTMX</main>'
+            });
+            expect(fullHtml).to.include('<!DOCTYPE html>');
+            expect(fullHtml).to.include('meta name="csrf-token" content="csrf_123"');
+            expect(fullHtml).to.include('<main id="test-main">Hello HTMX</main>');
+
+            let partialHtml = renderDocument({
+                req: { headers: { 'hx-request': 'true' } },
+                t: tEn,
+                locale: 'en',
+                title: 'Test Page',
+                csrfToken: 'csrf_123',
+                body: '<main id="test-main">Hello HTMX</main>'
+            });
+            expect(partialHtml).to.equal('<main id="test-main">Hello HTMX</main>');
+        });
+
+        it('serves static assets, negotiates language switching, and enforces CSRF on state-changing routes', async () => {
+            let app = await createSuiteApp({
+                cookieSecret: 'suite-test-secret'
+            });
+
+            try {
+                let cssRes = await app.inject({
+                    method: 'GET',
+                    url: '/suite-assets/suite.css'
+                });
+                expect(cssRes.statusCode).to.equal(200);
+                expect(cssRes.headers['content-type']).to.include('text/css');
+
+                let localeRes = await app.inject({
+                    method: 'POST',
+                    url: '/locale',
+                    headers: { 'hx-request': 'true' },
+                    payload: { lang: 'vi', redirectTo: '/login' }
+                });
+                expect(localeRes.statusCode).to.equal(200);
+                expect(localeRes.headers['set-cookie']).to.include('wd_locale=vi');
+                expect(localeRes.headers['hx-redirect']).to.equal('/login');
+
+                let stdLocaleRes = await app.inject({
+                    method: 'POST',
+                    url: '/locale',
+                    payload: { lang: 'en', redirectTo: '/login' }
+                });
+                expect(stdLocaleRes.statusCode).to.equal(302);
+                expect(stdLocaleRes.headers.location).to.equal('/login');
+
+                let healthRes = await app.inject({
+                    method: 'GET',
+                    url: '/suite-health'
+                });
+                expect(healthRes.statusCode).to.equal(200);
+                expect(JSON.parse(healthRes.body)).to.include({ success: true });
+            } finally {
+                await app.close();
+            }
         });
     });
 });

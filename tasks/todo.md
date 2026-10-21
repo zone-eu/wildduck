@@ -57,14 +57,14 @@
 **Description:** Build the shared HTMX layout (`lib/suite/views/layout.js`), responsive CSS design system (`public/suite/suite.css`), vendored HTMX script (`public/suite/htmx.min.js`), Fastify server factory (`suite.js`), and register the service in `worker.js`.
 
 **Acceptance criteria:**
-- [ ] `suite.js` exports `createSuiteApp(options)` and starts listening when `config.suite.enabled` is true.
-- [ ] `lib/suite/views/layout.js` renders full HTML documents for standard requests and partial fragments when `HX-Request: true` is present, including language switcher (`en`/`vi`) and toast triggers.
-- [ ] `worker.js` registers `['Suite UI server', suite]` without altering any existing service behavior.
+- [x] `suite.js` exports `createSuiteApp(options)` and starts listening when `config.suite.enabled` is true.
+- [x] `lib/suite/views/layout.js` renders full HTML documents for standard requests and partial fragments when `HX-Request: true` is present, including language switcher (`en`/`vi`) and toast triggers.
+- [x] `worker.js` registers `['Suite UI server', suite]` without altering any existing service behavior.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/suite-core-test.js`
-- [ ] Commit: `git commit -m "feat(suite): bootstrap fastify htmx server and shared layout"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/suite-core-test.js`
+- [x] Commit: `git commit -m "feat(suite): bootstrap fastify htmx server and shared layout"`
 
 **Dependencies:** Task 1, Task 2
 
@@ -81,8 +81,8 @@
 ---
 
 ## Checkpoint: After Tasks 1-3 (`suite-core`)
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js` passes 100%.
-- [ ] `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/**/*-test.js` passes cleanly.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/suite-core-test.js` passes 100%.
+- [x] `NODE_ENV=test ./node_modules/.bin/eslint suite.js worker.js lib/suite/**/*.js test/suite/**/*-test.js` passes cleanly.
 
 ---
 
