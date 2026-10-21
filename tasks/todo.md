@@ -91,14 +91,14 @@
 **Description:** Implement the idempotent installation state tracker (`lib/suite/installer/state.js`), system hardware/OS/port pre-flight diagnostics (`lib/suite/installer/preflight.js`), and real-time DNS/DKIM/SPF/DMARC/PTR record generator and verifier (`lib/suite/installer/dns-verifier.js`).
 
 **Acceptance criteria:**
-- [ ] `state.js` persists step statuses (`pending`, `running`, `completed`, `failed`), supports resuming from failed steps, and locks the wizard once `completed`.
-- [ ] `preflight.js` inspects CPU cores, total RAM, disk space, OS release, and port binding availability (`25`, `80`, `443`, `143`, `993`, `465`, `587`).
-- [ ] `dns-verifier.js` generates required DNS records (MX, A, SPF, DKIM, DMARC, PTR) and verifies live DNS resolution with pass/warn/fail statuses.
+- [x] `state.js` persists step statuses (`pending`, `running`, `completed`, `failed`), supports resuming from failed steps, and locks the wizard once `completed`.
+- [x] `preflight.js` inspects CPU cores, total RAM, disk space, OS release, and port binding availability (`25`, `80`, `443`, `143`, `993`, `465`, `587`).
+- [x] `dns-verifier.js` generates required DNS records (MX, A, SPF, DKIM, DMARC, PTR) and verifies live DNS resolution with pass/warn/fail statuses.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/installer/*.js test/suite/smart-installer-test.js`
-- [ ] Commit: `git commit -m "feat(installer): add state machine, preflight checks, and dns verifier"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/smart-installer-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/installer/*.js test/suite/smart-installer-test.js`
+- [x] Commit: `git commit -m "feat(installer): add state machine, preflight checks, and dns verifier"`
 
 **Dependencies:** Task 3
 
