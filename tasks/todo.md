@@ -177,13 +177,13 @@
 **Description:** Implement complete HTMX CRUD views and endpoints in Admin Console for managing Users & Quotas/Addresses (`lib/suite/admin/views/users.js`), Domains/Aliases/DKIM/DNS helper (`lib/suite/admin/views/domains.js`), TLS Certificates (`lib/suite/admin/views/certs.js`), and Audit/Auth Logs (`lib/suite/admin/views/audit.js`).
 
 **Acceptance criteria:**
-- [ ] Admin can list, search, create (with localized default mailbox folders via `language`), edit quotas/limits, manage alias addresses, and delete users via HTMX partial updates.
-- [ ] Admin can manage domains, domain aliases, domain access lists, generate/rotate DKIM keys with instant DNS TXT preview, manage TLS certificates, and inspect user authentication logs.
+- [x] Admin can list, search, create (with localized default mailbox folders via `language`), edit quotas/limits, manage alias addresses, and delete users via HTMX partial updates.
+- [x] Admin can manage domains, domain aliases, domain access lists, generate/rotate DKIM keys with instant DNS TXT preview, manage TLS certificates, and inspect user authentication logs.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/admin/**/*.js test/suite/admin-console-test.js`
-- [ ] Commit: `git commit -m "feat(admin): implement user, domain, dkim, cert, and audit management"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/admin/**/*.js test/suite/admin-console-test.js`
+- [x] Commit: `git commit -m "feat(admin): implement user, domain, dkim, cert, and audit management"`
 
 **Dependencies:** Task 6
 
@@ -200,8 +200,8 @@
 ---
 
 ## Checkpoint: After Tasks 6-7 (`admin-console`)
-- [ ] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js` passes 100%.
-- [ ] ESLint passes cleanly.
+- [x] `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/admin-console-test.js` passes 100%.
+- [x] ESLint passes cleanly.
 
 ---
 
