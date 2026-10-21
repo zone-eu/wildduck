@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # WildDuck Mail Suite v1.55.1 - All-in-One One-Command Installer & Launcher
-# Supports English (en) and Vietnamese (vi) interactive CLI, automatic MongoDB/Redis
-# container provisioning, background daemon startup, and Web Setup Wizard bootstrap.
+# Supports fresh Ubuntu/Debian VPS auto-provisioning (Node.js 22, Docker, Redis,
+# MongoDB, npm dependencies, systemd service) and interactive English/Vietnamese CLI.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -93,6 +93,7 @@ msg() {
     local key="$1"
     if [[ "${INSTALL_LANG}" == "vi" ]]; then
         case "${key}" in
+            runtime)   echo "[0/4] Đang kiểm tra và cài đặt môi trường Node.js 22 LTS, Docker & npm packages..." ;;
             preflight) echo "[1/4] Đang kiểm tra cấu hình phần cứng, hệ điều hành và các cổng mạng (Pre-flight check)..." ;;
             services)  echo "[2/4] Đang kiểm tra và tự động khởi chạy dịch vụ nền MongoDB & Redis..." ;;
             deps)      echo "[3/4] Đang khởi tạo khóa bảo mật Zero-Config..." ;;
@@ -102,6 +103,7 @@ msg() {
         esac
     else
         case "${key}" in
+            runtime)   echo "[0/4] Checking and installing Node.js 22 LTS, Docker & npm packages..." ;;
             preflight) echo "[1/4] Running hardware, OS, and mail port pre-flight diagnostics..." ;;
             services)  echo "[2/4] Checking and starting background MongoDB & Redis services..." ;;
             deps)      echo "[3/4] Initializing Zero-Config security credentials..." ;;
@@ -109,6 +111,28 @@ msg() {
             ready)     echo "Bootstrap ready! Open your browser at the URLs below:" ;;
             *)         echo "${key}" ;;
         esac
+    fi
+}
+
+ensure_node_and_packages() {
+    if ! command -v node >/dev/null 2>&1; then
+        if command -v apt-get >/dev/null 2>&1 && [[ "$(id -u)" -eq 0 ]]; then
+            echo "  -> Installing Node.js 22 LTS and system prerequisites..."
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq curl ca-certificates gnupg build-essential git docker.io redis-server
+            mkdir -p /etc/apt/keyrings
+            curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+            apt-get update -qq
+            apt-get install -y -qq nodejs
+            systemctl enable --now docker redis-server >/dev/null 2>&1 || true
+        fi
+    fi
+
+    if [[ ! -d "${REPO_ROOT}/node_modules" ]]; then
+        echo "  -> Installing production npm dependencies..."
+        (cd "${REPO_ROOT}" && npm install --omit=dev --no-audit --no-fund)
     fi
 }
 
@@ -125,6 +149,11 @@ port_is_open() {
 
 ensure_backing_services() {
     if ! port_is_open 6379; then
+        if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q redis; then
+            systemctl start redis-server >/dev/null 2>&1 || systemctl start redis >/dev/null 2>&1 || true
+        fi
+    fi
+    if ! port_is_open 6379; then
         if command -v docker >/dev/null 2>&1; then
             echo "  -> Starting Redis container (127.0.0.1:6379)..."
             docker start wildduck-redis >/dev/null 2>&1 || \
@@ -135,11 +164,16 @@ ensure_backing_services() {
     fi
 
     if ! port_is_open 27017; then
+        if ! command -v docker >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1 && [[ "$(id -u)" -eq 0 ]]; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq && apt-get install -y -qq docker.io
+            systemctl enable --now docker >/dev/null 2>&1 || true
+        fi
         if command -v docker >/dev/null 2>&1; then
             echo "  -> Starting MongoDB container (127.0.0.1:27017)..."
             docker start wildduck-mongo >/dev/null 2>&1 || \
                 docker run -d --name wildduck-mongo --restart unless-stopped -p 127.0.0.1:27017:27017 mongo:7 >/dev/null
-            for _ in {1..15}; do
+            for _ in {1..20}; do
                 if port_is_open 27017; then
                     break
                 fi
@@ -153,6 +187,10 @@ ensure_backing_services() {
 
 print_banner
 select_language
+
+echo ""
+msg "runtime"
+ensure_node_and_packages
 
 echo ""
 msg "preflight"
@@ -209,12 +247,15 @@ if [[ "${AUTO_START}" == "true" ]]; then
     echo "  -> [OK] WildDuck Mail Suite is running (PID ${SERVER_PID}, Log: ${LOG_FILE})"
 fi
 
+PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+DISPLAY_HOST="${PUBLIC_IP:-127.0.0.1}"
+
 echo ""
 msg "ready"
 echo "----------------------------------------------------------------------"
-echo "  Web Setup Wizard URL : http://127.0.0.1:${SUITE_PORT}/setup?lang=${INSTALL_LANG}&token=${SETUP_TOKEN}"
-echo "  Webmail Client URL   : http://127.0.0.1:${SUITE_PORT}/webmail"
-echo "  Admin Console URL    : http://127.0.0.1:${SUITE_PORT}/admin"
+echo "  Web Setup Wizard URL : http://${DISPLAY_HOST}:${SUITE_PORT}/setup?lang=${INSTALL_LANG}&token=${SETUP_TOKEN}"
+echo "  Webmail Client URL   : http://${DISPLAY_HOST}:${SUITE_PORT}/webmail"
+echo "  Admin Console URL    : http://${DISPLAY_HOST}:${SUITE_PORT}/admin"
 echo "  Default Language     : ${INSTALL_LANG}"
 echo "  Stop Command         : bash setup/install-suite.sh --stop"
 echo "----------------------------------------------------------------------"
