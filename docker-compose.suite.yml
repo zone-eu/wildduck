@@ -1,0 +1,46 @@
+services:
+    wildduck-suite:
+        build: .
+        container_name: wildduck-suite
+        restart: unless-stopped
+        ports:
+            - "8088:8088"
+            - "8080:8080"
+            - "143:143"
+            - "993:993"
+            - "110:110"
+            - "995:995"
+            - "24:24"
+        depends_on:
+            - mongo
+            - redis
+        environment:
+            APPCONF_dbs_mongo: mongodb://mongo:27017/wildduck
+            APPCONF_dbs_redis: redis://redis:6379/3
+            APPCONF_api_host: 0.0.0.0
+            APPCONF_suite_enabled: "true"
+            APPCONF_suite_host: 0.0.0.0
+            APPCONF_suite_port: "8088"
+            APPCONF_suite_defaultLocale: vi
+            APPCONF_suite_stateFile: /data/suite-install-state.json
+        volumes:
+            - suite_data:/data
+
+    redis:
+        image: redis:7-alpine
+        container_name: wildduck-redis
+        restart: unless-stopped
+        volumes:
+            - redis_data:/data
+
+    mongo:
+        image: mongo:7
+        container_name: wildduck-mongo
+        restart: unless-stopped
+        volumes:
+            - mongo_data:/data/db
+
+volumes:
+    suite_data:
+    redis_data:
+    mongo_data:
