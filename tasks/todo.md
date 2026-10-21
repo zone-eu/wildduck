@@ -210,14 +210,14 @@
 **Description:** Build Webmail login/logout with 2FA TOTP challenge support, the responsive three-pane workspace (`lib/suite/webmail/views/shell.js`), mailbox folder tree with unread counters and folder CRUD (`lib/suite/webmail/views/mailboxes.js`), and the Server-Sent Events real-time update bridge (`lib/suite/webmail/routes.js`).
 
 **Acceptance criteria:**
-- [ ] Users can log in at `/login` (with optional TOTP 2FA verification) and switch UI language (`en`/`vi`) from the login screen or workspace header.
-- [ ] Three-pane Webmail workspace renders mailbox folders with live unread badges, quota usage indicator, custom folder creation/rename/delete, and empty Trash/Junk actions.
-- [ ] `/webmail/events` streams real-time SSE notifications so HTMX refreshes mailbox counters and message lists automatically when new mail arrives.
+- [x] Users can log in at `/login` (with optional TOTP 2FA verification) and switch UI language (`en`/`vi`) from the login screen or workspace header.
+- [x] Three-pane Webmail workspace renders mailbox folders with live unread badges, quota usage indicator, custom folder creation/rename/delete, and empty Trash/Junk actions.
+- [x] `/webmail/events` streams real-time SSE notifications so HTMX refreshes mailbox counters and message lists automatically when new mail arrives.
 
 **Verification:**
-- [ ] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/webmail-test.js`
-- [ ] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/webmail/**/*.js test/suite/webmail-test.js`
-- [ ] Commit: `git commit -m "feat(webmail): add auth, three-pane shell, mailbox tree, and sse updates"`
+- [x] Tests pass: `NODE_ENV=test ./node_modules/.bin/mocha --exit test/suite/webmail-test.js`
+- [x] Lint passes: `NODE_ENV=test ./node_modules/.bin/eslint lib/suite/webmail/**/*.js test/suite/webmail-test.js`
+- [x] Commit: `git commit -m "feat(webmail): add auth, three-pane shell, mailbox tree, and sse updates"`
 
 **Dependencies:** Task 3
 

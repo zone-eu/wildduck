@@ -1,0 +1,254 @@
+/* eslint no-invalid-this: 0, no-unused-expressions: 0 */
+
+'use strict';
+
+const chai = require('chai');
+const { createSuiteApp } = require('../../suite');
+const { SESSION_COOKIE_NAME } = require('../../lib/suite/session');
+
+const expect = chai.expect;
+
+describe('HTMX Webmail Client (Tasks 8, 9 & 10)', () => {
+    const USER_ID = '507f191e810c19729de860ea';
+    const INBOX_ID = '507f1f77bcf86cd799439011';
+    const TRASH_ID = '507f1f77bcf86cd799439012';
+
+    function createWebmailMockApi() {
+        let calls = [];
+        let client = {
+            calls,
+            get: async (path, opts) => {
+                calls.push({ method: 'GET', path, query: opts && opts.query, token: opts && opts.token });
+                if (path === `/users/${USER_ID}`) {
+                    return {
+                        success: true,
+                        id: USER_ID,
+                        username: 'alice',
+                        name: 'Alice Nguyen',
+                        address: 'alice@example.com',
+                        language: 'vi',
+                        tags: [],
+                        limits: {
+                            quota: { used: 52428800, allowed: 1073741824 }
+                        },
+                        targets: ['backup@example.com']
+                    };
+                }
+                if (path === `/users/${USER_ID}/mailboxes`) {
+                    return {
+                        success: true,
+                        results: [
+                            { id: INBOX_ID, name: 'Inbox', path: 'INBOX', specialUse: null, total: 12, unseen: 3 },
+                            { id: TRASH_ID, name: 'Trash', path: 'Trash', specialUse: '\\Trash', total: 2, unseen: 0 },
+                            { id: 'mb_custom', name: 'Projects', path: 'Projects', specialUse: null, total: 5, unseen: 1 }
+                        ]
+                    };
+                }
+                if (path === `/users/${USER_ID}/mailboxes/${INBOX_ID}/messages`) {
+                    return {
+                        success: true,
+                        total: 1,
+                        nextCursor: null,
+                        results: [
+                            {
+                                id: 101,
+                                mailbox: INBOX_ID,
+                                subject: 'Welcome to WildDuck HTMX Suite',
+                                from: { name: 'Team WildDuck', address: 'team@wildduck.email' },
+                                to: [{ address: 'alice@example.com' }],
+                                date: '2026-10-21T09:30:00Z',
+                                intro: 'Fast, secure open-source mail server',
+                                seen: false,
+                                flagged: true,
+                                attachments: true
+                            }
+                        ]
+                    };
+                }
+                if (path === `/users/${USER_ID}/messages`) {
+                    return {
+                        success: true,
+                        total: 1,
+                        results: [
+                            {
+                                id: 101,
+                                mailbox: INBOX_ID,
+                                subject: 'Search Match Subject',
+                                from: { name: 'Team WildDuck', address: 'team@wildduck.email' },
+                                date: '2026-10-21T09:30:00Z',
+                                intro: 'Matched search query',
+                                seen: true,
+                                flagged: false
+                            }
+                        ]
+                    };
+                }
+                if (path === `/users/${USER_ID}/mailboxes/${INBOX_ID}/messages/101`) {
+                    return {
+                        success: true,
+                        id: 101,
+                        mailbox: INBOX_ID,
+                        subject: 'Welcome to WildDuck HTMX Suite',
+                        from: { name: 'Team WildDuck', address: 'team@wildduck.email' },
+                        to: [{ name: 'Alice', address: 'alice@example.com' }],
+                        cc: [],
+                        date: '2026-10-21T09:30:00Z',
+                        seen: true,
+                        flagged: true,
+                        html: ['<p>Hello <b>Alice</b>!</p><script>window.pwned=true</script><img src="x" onerror="alert(1)">'],
+                        text: 'Hello Alice!',
+                        attachments: [{ id: 'ATT001', filename: 'guide.pdf', contentType: 'application/pdf', size: 24576 }]
+                    };
+                }
+                if (path === `/users/${USER_ID}/autoreply`) {
+                    return {
+                        success: true,
+                        status: true,
+                        subject: 'Out of office',
+                        text: 'I am away on vacation.'
+                    };
+                }
+                if (path === `/users/${USER_ID}/filters`) {
+                    return {
+                        success: true,
+                        results: [{ id: 'flt1', name: 'Invoices', query: { from: 'billing' }, action: { mailbox: INBOX_ID } }]
+                    };
+                }
+                if (path === `/users/${USER_ID}/asps`) {
+                    return {
+                        success: true,
+                        results: [{ id: 'asp1', description: 'Thunderbird Laptop', created: '2026-10-20T00:00:00Z' }]
+                    };
+                }
+                return { success: true, results: [] };
+            },
+            post: async (path, opts) => {
+                calls.push({ method: 'POST', path, body: opts && opts.body, token: opts && opts.token });
+                if (path === '/authenticate') {
+                    if (opts.body.password !== 'correct-pass') {
+                        let err = new Error('Invalid credentials');
+                        err.code = 'AuthFailed';
+                        err.responseCode = 403;
+                        throw err;
+                    }
+                    return {
+                        success: true,
+                        id: USER_ID,
+                        username: opts.body.username,
+                        token: 'user_access_tok_999'
+                    };
+                }
+                if (path === `/users/${USER_ID}/2fa/totp/setup`) {
+                    return {
+                        success: true,
+                        seed: 'JBSWY3DPEHPK3PXP',
+                         otpauth: 'otpauth://totp/WildDuck:alice?secret=JBSWY3DPEHPK3PXP'
+                    };
+                }
+                if (path === `/users/${USER_ID}/asps`) {
+                    return {
+                        success: true,
+                        id: 'asp_new',
+                        password: 'wdasp_generated_secret_123'
+                    };
+                }
+                return { success: true, id: 'new_id_1' };
+            },
+            put: async (path, opts) => {
+                calls.push({ method: 'PUT', path, body: opts && opts.body, token: opts && opts.token });
+                return { success: true };
+            },
+            del: async (path, opts) => {
+                calls.push({ method: 'DELETE', path, query: opts && opts.query, token: opts && opts.token });
+                return { success: true };
+            }
+        };
+        return client;
+    }
+
+    describe('Authentication, Three-Pane Shell, Folders & SSE Updates (Task 8)', () => {
+        it('authenticates users with 2FA support, renders the 3-pane workspace, manages folders, and streams SSE events', async () => {
+            let mockApi = createWebmailMockApi();
+            let app = await createSuiteApp({
+                cookieSecret: 'webmail-test-secret',
+                apiClient: mockApi
+            });
+
+            try {
+                // 1. Login page renders
+                let loginPage = await app.inject({ method: 'GET', url: '/login?lang=vi' });
+                expect(loginPage.statusCode).to.equal(200);
+                expect(loginPage.body).to.include('Đăng nhập WildDuck Mail');
+
+                // 2. Failed login returns 401 with localized message
+                let badLogin = await app.inject({
+                    method: 'POST',
+                    url: '/login',
+                    payload: { username: 'alice', password: 'wrong-password' }
+                });
+                expect(badLogin.statusCode).to.equal(401);
+
+                // 3. Valid login creates session cookie and redirects to /webmail
+                let okLogin = await app.inject({
+                    method: 'POST',
+                    url: '/login',
+                    payload: { username: 'alice', password: 'correct-pass', totpCode: '123456' }
+                });
+                expect(okLogin.statusCode).to.equal(302);
+                expect(okLogin.headers.location).to.equal('/webmail');
+
+                let rawSetCookie = Array.isArray(okLogin.headers['set-cookie'])
+                    ? okLogin.headers['set-cookie'].find(c => c.startsWith(`${SESSION_COOKIE_NAME}=`))
+                    : okLogin.headers['set-cookie'];
+                let sessionCookie = rawSetCookie.split(';')[0];
+                let sessionObj = await app.suiteSessions.getSessionFromCookie(sessionCookie.split('=')[1]);
+
+                let headers = {
+                    cookie: sessionCookie,
+                    'x-csrf-token': sessionObj.csrfToken,
+                    'hx-request': 'true'
+                };
+
+                // 4. Load 3-pane Webmail workspace
+                let workspace = await app.inject({
+                    method: 'GET',
+                    url: '/webmail',
+                    headers: { cookie: sessionCookie }
+                });
+                expect(workspace.statusCode).to.equal(200);
+                expect(workspace.body).to.include('Welcome to WildDuck HTMX Suite');
+                expect(workspace.body).to.include('Projects');
+
+                // 5. Create custom folder & empty Trash
+                let createFolder = await app.inject({
+                    method: 'POST',
+                    url: '/webmail/mailboxes',
+                    headers,
+                    payload: { path: 'Invoices' }
+                });
+                expect(createFolder.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'POST' && c.path === `/users/${USER_ID}/mailboxes`)).to.equal(true);
+
+                let emptyTrash = await app.inject({
+                    method: 'POST',
+                    url: `/webmail/mailboxes/${TRASH_ID}/empty`,
+                    headers
+                });
+                expect(emptyTrash.statusCode).to.equal(200);
+                expect(mockApi.calls.some(c => c.method === 'DELETE' && c.path === `/users/${USER_ID}/mailboxes/${TRASH_ID}/messages`)).to.equal(true);
+
+                // 6. SSE real-time notification endpoint
+                let sseRes = await app.inject({
+                    method: 'GET',
+                    url: '/webmail/events',
+                    headers: { cookie: sessionCookie }
+                });
+                expect(sseRes.statusCode).to.equal(200);
+                expect(sseRes.headers['content-type']).to.include('text/event-stream');
+                expect(sseRes.body).to.include('event: connected');
+            } finally {
+                await app.close();
+            }
+        });
+    });
+});
