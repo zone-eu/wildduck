@@ -46,6 +46,7 @@ const {
 } = require('./lib/fastify/bootstrap');
 require('./lib/schemas/json-schemas'); // populates sharedSchemas
 const apiDocsConfig = require('./config/apigeneration.json');
+const packageData = require('./package.json');
 
 const acmeRoutes = require('./lib/api/acme');
 const usersRoutes = require('./lib/api/users');
@@ -155,7 +156,7 @@ function buildServer() {
     app.register(fastifySwagger, {
         openapi: {
             openapi: apiDocsConfig.openapiVersion || '3.0.0',
-            info: apiDocsConfig.info,
+            info: { ...apiDocsConfig.info, version: packageData.version },
             servers: apiDocsConfig.servers,
             tags: apiDocsConfig.tags,
             components: apiDocsConfig.components,
