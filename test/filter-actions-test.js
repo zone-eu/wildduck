@@ -107,6 +107,12 @@ describe('Filter actions runtime behavior', function () {
         return mailboxData;
     };
 
+    const createLabel = async (userId, name) => {
+        const response = await server.post(`/users/${userId}/labels`).send({ name }).expect(200);
+        expect(response.body.success).to.be.true;
+        return response.body.id;
+    };
+
     /**
      * @param {string} userId
      * @param {string} mailboxId
@@ -231,7 +237,10 @@ describe('Filter actions runtime behavior', function () {
         },
         {
             caseName: 'labels action',
-            actionBuilder: async () => ({ labels: ['runtime-label'] }),
+            actionBuilder: async context => {
+                context.runtimeLabelId = await createLabel(context.mainUser.userId, 'runtime-label');
+                return { labels: [context.runtimeLabelId] };
+            },
             verify: async context => {
                 const inboxMessage = await waitForMessageBySubject({
                     userId: context.mainUser.userId,
@@ -335,10 +344,11 @@ describe('Filter actions runtime behavior', function () {
             caseName: 'combined action in one filter',
             actionBuilder: async context => {
                 context.forwardTargetAddress = `queued-combined-${Date.now()}${crypto.randomBytes(4).toString('hex')}@example.net`;
+                const labelIds = await Promise.all(['combined-a', 'combined-b'].map(name => createLabel(context.mainUser.userId, name)));
                 return {
                     seen: true,
                     flag: true,
-                    labels: ['combined-a', 'combined-b'],
+                    labels: labelIds,
                     targets: [context.forwardTargetAddress]
                 };
             },
@@ -421,13 +431,14 @@ describe('Filter actions runtime behavior', function () {
             context.subjectToken = `multiple-filters-${Date.now()}${crypto.randomBytes(2).toString('hex')}`;
             context.forwardTargetAddressOne = `queued-multi-one-${Date.now()}${crypto.randomBytes(4).toString('hex')}@example.net`;
             context.forwardTargetAddressTwo = `queued-multi-two-${Date.now()}${crypto.randomBytes(4).toString('hex')}@example.net`;
+            const labelIds = await Promise.all(['multi-one', 'multi-two'].map(name => createLabel(context.mainUser.userId, name)));
 
             await createFilter({
                 userId: context.mainUser.userId,
                 queryFrom: context.senderTag,
                 action: {
                     seen: true,
-                    labels: ['multi-one'],
+                    labels: [labelIds[0]],
                     targets: [context.forwardTargetAddressOne]
                 }
             });
@@ -437,7 +448,7 @@ describe('Filter actions runtime behavior', function () {
                 queryFrom: context.senderTag,
                 action: {
                     flag: true,
-                    labels: ['multi-two'],
+                    labels: [labelIds[1]],
                     targets: [context.forwardTargetAddressTwo]
                 }
             });
