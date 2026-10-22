@@ -11,7 +11,7 @@ const { MAX_LABELS } = require('../../lib/consts');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
-describe('Label limit API errors', function () {
+describe('Label limit API behavior', function () {
     this.timeout(20000); // eslint-disable-line no-invalid-this
 
     let client;
@@ -19,6 +19,7 @@ describe('Label limit API errors', function () {
     let user;
     let inbox;
     let filter;
+    let label;
 
     before(async () => {
         const response = await server
@@ -44,9 +45,10 @@ describe('Label limit API errors', function () {
         client = await MongoClient.connect(config.dbs.mongo);
         database = client.db(config.dbs.dbname);
         const userId = new ObjectId(user);
-        await database
+        const labelResult = await database
             .collection('labels')
             .insertMany(Array.from({ length: MAX_LABELS }, (_, slot) => ({ user: userId, slot, name: `limit-${slot}` })));
+        label = labelResult.insertedIds[0].toString();
     });
 
     after(async () => {
@@ -61,22 +63,28 @@ describe('Label limit API errors', function () {
         }
     });
 
-    it('returns LabelLimitExceeded when creating a filter', async () => {
+    it('can create a filter referencing an existing label at the label limit', async () => {
         const response = await server
             .post(`/users/${user}/filters`)
-            .send({ name: 'Overflow filter', query: { from: 'overflow@example.com' }, action: { labels: ['overflow-create'] } })
-            .expect(400);
+            .send({ name: 'Label filter', query: { from: 'sender@example.com' }, action: { labels: [label] } })
+            .expect(200);
 
-        expect(response.body.code).to.equal('LabelLimitExceeded');
+        expect(response.body.success).to.be.true;
+        const storedFilter = await server.get(`/users/${user}/filters/${response.body.id}`).expect(200);
+        expect(storedFilter.body.action.labels).to.deep.equal([label]);
+        expect(await database.collection('labels').countDocuments({ user: new ObjectId(user) })).to.equal(MAX_LABELS);
     });
 
-    it('returns LabelLimitExceeded when updating a filter', async () => {
+    it('can update a filter to reference an existing label at the label limit', async () => {
         const response = await server
             .put(`/users/${user}/filters/${filter}`)
-            .send({ action: { labels: ['overflow-update'] } })
-            .expect(400);
+            .send({ action: { labels: [label] } })
+            .expect(200);
 
-        expect(response.body.code).to.equal('LabelLimitExceeded');
+        expect(response.body.success).to.be.true;
+        const storedFilter = await server.get(`/users/${user}/filters/${filter}`).expect(200);
+        expect(storedFilter.body.action.labels).to.deep.equal([label]);
+        expect(await database.collection('labels').countDocuments({ user: new ObjectId(user) })).to.equal(MAX_LABELS);
     });
 
     it('returns LabelLimitExceeded when uploading a message', async () => {
