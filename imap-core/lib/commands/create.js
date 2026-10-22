@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeMailbox, utf7decode } = require('../imap-tools');
+const { normalizeMailbox, sanitizeMailbox, utf7decode } = require('../imap-tools');
 
 // tag CREATE "mailbox"
 
@@ -21,6 +21,7 @@ module.exports = {
             // decode before normalizing to uncover stuff like ending / etc.
             path = utf7decode(path);
         }
+        path = sanitizeMailbox(path);
 
         // Check if CREATE method is set
         if (typeof this._server.onCreate !== 'function') {
