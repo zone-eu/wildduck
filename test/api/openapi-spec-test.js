@@ -12,6 +12,7 @@ const chai = require('chai');
 const fastify = require('fastify');
 const { buildApp } = require('./_inprocess');
 const { attachNativeRoutes } = require('../../lib/fastify/routes');
+const packageData = require('../../package.json');
 
 const expect = chai.expect;
 
@@ -37,6 +38,10 @@ describe('API OpenAPI specification', function () {
         if (app) {
             await app.close();
         }
+    });
+
+    it('documents the current application version', () => {
+        expect(spec.info.version).to.equal(packageData.version);
     });
 
     it('documents every operation with a summary, a description and a declared tag', () => {
