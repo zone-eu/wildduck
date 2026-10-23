@@ -199,6 +199,114 @@ describe('Search query parser tests', function () {
         });
     });
 
+    const labelsDb = records => ({
+        database: {
+            collection(name) {
+                expect(name).to.equal('labels');
+                return {
+                    async findOne(query) {
+                        let record;
+                        if (query._id) {
+                            record = records.find(entry => entry._id.toString() === query._id.toString());
+                        } else if (query.name) {
+                            record = records.find(entry => entry.name === query.name);
+                        }
+                        return record ? { _id: record._id } : null;
+                    }
+                };
+            }
+        }
+    });
+
+    it('should resolve the label keyword by label id in MongoDB query', async () => {
+        const labelId = new ObjectId();
+        const user = new ObjectId();
+
+        const query = await getMongoDBQuery(labelsDb([{ _id: labelId, name: 'Project Alpha' }]), user, `label:${labelId.toString()}`);
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ labels: labelId }]
+        });
+    });
+
+    it('should resolve the label keyword by label name in MongoDB query', async () => {
+        const labelId = new ObjectId();
+        const user = new ObjectId();
+
+        const query = await getMongoDBQuery(labelsDb([{ _id: labelId, name: 'Project' }]), user, 'label:Project');
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ labels: labelId }]
+        });
+    });
+
+    it('should resolve a quoted multi-word label keyword by label name in MongoDB query', async () => {
+        const labelId = new ObjectId();
+        const user = new ObjectId();
+
+        const query = await getMongoDBQuery(labelsDb([{ _id: labelId, name: 'Project Alpha' }]), user, 'label:"Project Alpha"');
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ labels: labelId }]
+        });
+    });
+
+    it('should prefer the label id over a label named with that id in q search', async () => {
+        const labelId = new ObjectId();
+        const user = new ObjectId();
+        const records = [
+            { _id: labelId, name: 'Real Label' },
+            { _id: new ObjectId(), name: labelId.toString() }
+        ];
+
+        const query = await getMongoDBQuery(labelsDb(records), user, `label:${labelId.toString()}`);
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ labels: labelId }]
+        });
+    });
+
+    it('should fall back to the label name when the id does not exist in q search', async () => {
+        const labelId = new ObjectId();
+        const user = new ObjectId();
+        const hexName = new ObjectId().toString();
+
+        const query = await getMongoDBQuery(labelsDb([{ _id: labelId, name: hexName }]), user, `label:${hexName}`);
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ labels: labelId }]
+        });
+    });
+
+    it('should negate the label keyword in MongoDB query', async () => {
+        const labelId = new ObjectId();
+        const user = new ObjectId();
+
+        const query = await getMongoDBQuery(labelsDb([{ _id: labelId, name: 'Project' }]), user, '-label:Project');
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ $nor: [{ labels: labelId }] }]
+        });
+    });
+
+    it('should keep the no-results sentinel for an unresolvable label keyword', async () => {
+        const user = new ObjectId();
+        const db = labelsDb([]);
+
+        const query = await getMongoDBQuery(db, user, 'label:NoSuchLabel');
+
+        expect(query).to.deep.equal({
+            user,
+            $and: [{ labels: new ObjectId('0'.repeat(24)) }]
+        });
+    });
+
     it('should build searchable mailbox filter for q searchable option', async () => {
         const mailboxIds = [new ObjectId(), new ObjectId()];
         const user = new ObjectId();
@@ -1746,6 +1854,153 @@ describe('Messages tests', function () {
         expect(getSubjects(search)).to.include(queryFixture.subjectTrash);
         expect(getSubjects(search)).to.not.include(queryFixture.subjectKeyword);
         expect(search.results.every(entry => entry.mailbox === trashId)).to.be.true;
+    });
+
+    it('should GET /users/:user/search expect success / label filter and label keyword resolve label id and name', async () => {
+        const labelName = 'API Label Search';
+        const labelResponse = await server
+            .post(`/users/${user}/labels`)
+            .send({ name: labelName })
+            .expect(200);
+        const labelId = labelResponse.body.id;
+
+        const labelledMessage = await postQueryMessage({
+            from: { address: queryFixture.fromAddress },
+            to: [{ address: queryFixture.toAddress }],
+            subject: 'Label filter and keyword id',
+            text: 'label id and name search body',
+            labels: [labelName]
+        });
+        const labelledMessageId = labelledMessage.body.message.id;
+
+        await postQueryMessage({
+            from: { address: queryFixture.fromAddress },
+            to: [{ address: queryFixture.toAddress }],
+            subject: 'Label filter control message',
+            text: 'label control message body'
+        });
+
+        // the structured label filter resolves both the label id and the label name
+        for (const labelValue of [labelId, labelName]) {
+            const search = await server
+                .get(`/users/${user}/search?limit=50&label=${encodeURIComponent(labelValue)}`)
+                .send({})
+                .expect(200);
+
+            expect(search.body.success).to.be.true;
+            expect(search.body.total).to.equal(1);
+            expect(getIds(search.body)).to.deep.equal([labelledMessageId]);
+        }
+
+        // a value that is neither a live label id nor a label name keeps the
+        // no-results behaviour in flat and collapsed-thread modes
+        for (const params of ['limit=50', 'limit=50&collapseThreads=1']) {
+            const missingLabel = await server
+                .get(`/users/${user}/search?${params}&label=${new ObjectId()}`)
+                .send({})
+                .expect(200);
+
+            expect(missingLabel.body.success).to.be.true;
+            expect(missingLabel.body.total).to.equal(0);
+            expect(missingLabel.body.results).to.deep.equal([]);
+        }
+
+        // the label: q-keyword resolves the same values
+        for (const q of [`label:${labelId}`, `label:"${labelName}"`]) {
+            const search = await searchQ(q);
+            expect(getIds(search)).to.deep.equal([labelledMessageId]);
+        }
+
+        const negatedSearch = await searchQ(`-label:"${labelName}"`);
+        expect(getIds(negatedSearch)).to.not.include(labelledMessageId);
+
+        const unresolvableSearch = await searchQ('label:NoSuchLabel');
+        expect(unresolvableSearch.total).to.equal(0);
+        expect(unresolvableSearch.results).to.deep.equal([]);
+    });
+
+    it('should POST /users/:user/search expect success / apply-to-all honours label id and label keyword', async function () {
+        this.timeout(120000); // eslint-disable-line no-invalid-this
+
+        const labelName = 'API Label Apply';
+        const labelResponse = await server
+            .post(`/users/${user}/labels`)
+            .send({ name: labelName })
+            .expect(200);
+        const labelId = labelResponse.body.id;
+
+        // a dedicated mailbox keeps this test from polluting the shared
+        // search-query fixture state (flagged/seen assertions elsewhere)
+        const applyMailboxResponse = await server
+            .post(`/users/${user}/mailboxes`)
+            .send({ path: `/apply-to-all-${Date.now().toString(36)}` })
+            .expect(200);
+        const applyMailbox = applyMailboxResponse.body.id;
+        const postApplyMessage = message => server.post(`/users/${user}/mailboxes/${applyMailbox}/messages`).send(message).expect(200);
+
+        // explicitly start both messages unseen so the seen action's effect
+        // is observable (uploads default to seen otherwise)
+        const labelledMessage = await postApplyMessage({
+            from: { address: queryFixture.fromAddress },
+            to: [{ address: queryFixture.toAddress }],
+            subject: 'Label apply-to-all by id',
+            text: 'label apply-to-all by id body',
+            labels: [labelName],
+            unseen: true
+        });
+        const labelledMessageId = labelledMessage.body.message.id;
+
+        const unlabelledMessage = await postApplyMessage({
+            from: { address: queryFixture.fromAddress },
+            to: [{ address: queryFixture.toAddress }],
+            subject: 'Label apply-to-all control',
+            text: 'label apply-to-all control body',
+            unseen: true
+        });
+        const unlabelledMessageId = unlabelledMessage.body.message.id;
+
+        const getMessageState = async messageId => {
+            const search = await searchQ(`mailbox:${applyMailbox} id:${messageId}`);
+            const entry = search.results.find(item => item.id === messageId);
+            return entry ? { flagged: entry.flagged, seen: entry.seen } : null;
+        };
+
+        // the background task runner polls at its own pace; wait for the effects
+        const waitForMessageState = async (messageId, expected) => {
+            const deadline = Date.now() + 100 * 1000;
+            for (;;) {
+                const state = await getMessageState(messageId);
+                if (state && Object.entries(expected).every(([key, value]) => state[key] === value)) {
+                    return;
+                }
+                if (Date.now() > deadline) {
+                    throw new Error(`Message ${messageId} did not reach ${JSON.stringify(expected)}, state: ${JSON.stringify(state)}`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        };
+
+        // structured label filter addressed by the label id
+        const structuredApply = await server
+            .post(`/users/${user}/search`)
+            .send({ label: labelId, action: { flagged: true } })
+            .expect(200);
+        expect(structuredApply.body.success).to.be.true;
+        expect(structuredApply.body.scheduled).to.exist;
+
+        await waitForMessageState(labelledMessageId, { flagged: true });
+        expect((await getMessageState(unlabelledMessageId)).flagged).to.be.false;
+
+        // the label: q-keyword addressed by the label name
+        const qApply = await server
+            .post(`/users/${user}/search`)
+            .send({ q: `label:"${labelName}"`, action: { seen: true } })
+            .expect(200);
+        expect(qApply.body.success).to.be.true;
+        expect(qApply.body.scheduled).to.exist;
+
+        await waitForMessageState(labelledMessageId, { seen: true });
+        expect((await getMessageState(unlabelledMessageId)).seen).to.be.false;
     });
 
     it('should GET /users/:user/search expect success / q supports OR groups', async () => {
