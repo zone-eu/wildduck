@@ -2,7 +2,7 @@
 
 ## Upgrading
 
-WildDuck stores every message as a parsed MIME tree and rebuilds the RFC 822 bytes on every fetch. Since version 1.52 the parser writes a versioned tree (`mimeTree.v = 2`, message documents get `v: "2.0"`) that records the multipart epilogue, parts without a body section and transport padding, so a rebuilt message is byte for byte what was delivered. Trees written by earlier versions have no `v` and are rendered the way they were stored; nothing has to be migrated.
+WildDuck stores every message as a parsed MIME tree and rebuilds the RFC 822 bytes on every fetch. Since version 1.53.0 the parser writes a versioned tree (`mimeTree.v = 2`, message documents get `v: "2.0"`) that records the multipart epilogue, parts without a body section and transport padding, so a rebuilt message is byte for byte what was delivered. Trees written by earlier versions have no `v` and are rendered the way they were stored; nothing has to be migrated.
 
 Every process that stores messages writes trees with the parser of its own `@zone-eu/wildduck` dependency, and every process that serves them has to understand that format. Upgrade in this order:
 

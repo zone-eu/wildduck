@@ -54,6 +54,39 @@ describe('Attachment codec', function () {
             }
         });
 
+        it('rejects padding before the end without decoding the body', function () {
+            expect(inspectBase64(Buffer.from('YQ==\r\nYg==\r\nYw=='))).to.be.false;
+            expect(inspectBase64(Buffer.from('YWI=YWJj'))).to.be.false;
+
+            // a body that pads every line used to be decoded segment by segment before being rejected
+            let decode = libbase64.decode;
+            let decodeCalls = 0;
+            libbase64.decode = str => {
+                decodeCalls++;
+                return decode(str);
+            };
+            try {
+                expect(inspectBase64(Buffer.from('AA==\r\n'.repeat(1000)))).to.be.false;
+                expect(inspectBase64(Buffer.from('AAAA\r\nAA==\r\nAAAA'))).to.be.false;
+            } finally {
+                libbase64.decode = decode;
+            }
+            expect(decodeCalls).to.equal(0);
+        });
+
+        it('accepts padding split by a line break', function () {
+            // with a line length that is not a multiple of 4 the wrap can fall between the two padding characters
+            for (let lineLen of [3, 5, 6, 7, 10, 998]) {
+                for (let n = 1; n <= 60; n++) {
+                    let data = crypto.randomBytes(n);
+                    let result = inspectBase64(wrapped(data, lineLen));
+                    expect(result, `length ${n} line ${lineLen}`).to.not.be.false;
+                    expect(result.data.equals(data)).to.be.true;
+                }
+            }
+            expect(inspectBase64(Buffer.from('YQ=\r\n='))).to.deep.equal({ data: Buffer.from('a'), lineLen: 3 });
+        });
+
         it('rejects lines longer than RFC 5322 allows', function () {
             expect(inspectBase64(wrapped(crypto.randomBytes(2000), 999))).to.be.false;
         });
@@ -167,7 +200,9 @@ describe('Attachment codec', function () {
             // stored decoded by the old rule although it lacked the base64 padding: esize is shorter
             let data = crypto.randomBytes(4);
             let unpadded = libbase64.encode(data).replace(/[=]+$/, '');
-            let got = await collect(createReadWindow(reader(data, 2), { length: data.length, metadata: { decoded: true, lineLen: 76, esize: unpadded.length } }));
+            let got = await collect(
+                createReadWindow(reader(data, 2), { length: data.length, metadata: { decoded: true, lineLen: 76, esize: unpadded.length } })
+            );
             expect(got.toString()).to.equal(unpadded);
         });
 
