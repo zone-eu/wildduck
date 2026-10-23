@@ -140,7 +140,7 @@ module.exports = {
                 idateExist = true;
             }
 
-            if (!this.selected.readOnly) {
+            if (!this.selected.readOnly && imapTools.checkAclRights(this.selected, imapTools.ACL_RIGHTS.SEEN)) {
                 if (param.value.toUpperCase() === 'BODY' && param.section) {
                     // BODY[...]
                     markAsSeen = true;

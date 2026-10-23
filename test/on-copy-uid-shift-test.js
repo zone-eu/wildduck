@@ -165,7 +165,8 @@ describe('on-copy UID arrays', function () {
             loggelf() {},
             notifier: {
                 async addEntriesAsync() {},
-                fire() {}
+                fire() {},
+                fireForMailbox() {}
             }
         };
 
@@ -300,7 +301,8 @@ describe('on-copy UID arrays', function () {
                 async addEntriesAsync(target, entry) {
                     calls.notifications.push(entry);
                 },
-                fire() {}
+                fire() {},
+                fireForMailbox() {}
             }
         };
 
@@ -618,7 +620,8 @@ describe('on-copy UID arrays', function () {
             loggelf() {},
             notifier: {
                 async addEntriesAsync() {},
-                fire() {}
+                fire() {},
+                fireForMailbox() {}
             }
         };
 

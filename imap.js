@@ -39,6 +39,11 @@ const onSearch = require('./lib/handlers/on-search');
 const onGetQuotaRoot = require('./lib/handlers/on-get-quota-root');
 const onGetQuota = require('./lib/handlers/on-get-quota');
 const onXAPPLEPUSHSERVICE = require('./lib/handlers/on-xapplepushservice');
+const onSetACL = require('./lib/handlers/on-setacl');
+const onDeleteACL = require('./lib/handlers/on-deleteacl');
+const onGetACL = require('./lib/handlers/on-getacl');
+const onListRights = require('./lib/handlers/on-listrights');
+const onMyRights = require('./lib/handlers/on-myrights');
 
 let logger = {
     info(...args) {
@@ -98,6 +103,8 @@ let createInterface = (ifaceOptions, callback) => {
         settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,
+
+        acl: !!(config.imap.acl && config.imap.acl.enabled),
 
         skipFetchLog: config.log.skipFetchLog,
 
@@ -191,6 +198,14 @@ let createInterface = (ifaceOptions, callback) => {
     server.onGetQuotaRoot = onGetQuotaRoot(server);
     server.onGetQuota = onGetQuota(server);
     server.onXAPPLEPUSHSERVICE = onXAPPLEPUSHSERVICE(server);
+
+    if (config.imap.acl && config.imap.acl.enabled) {
+        server.onSetACL = onSetACL(server);
+        server.onDeleteACL = onDeleteACL(server);
+        server.onGetACL = onGetACL(server);
+        server.onListRights = onListRights(server);
+        server.onMyRights = onMyRights(server);
+    }
 
     if (loggelf) {
         server.loggelf = loggelf;

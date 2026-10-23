@@ -73,6 +73,8 @@ const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
+const aclRoutes = require('./lib/api/acl');
+const domaingroupsRoutes = require('./lib/api/domaingroups');
 const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
@@ -629,14 +631,14 @@ function createApp(options = {}) {
                             {
                                 _id: new ObjectId(request.user)
                             },
-                            { projection: { authVersion: true, disabled: true, suspended: true } }
+                            { projection: { authVersion: true, disabled: true, suspended: true, shared: true } }
                         );
                         let userAuthVersion = Number(userData && userData.authVersion) || 0;
                         if (!userData || tokenAuthVersion < userAuthVersion) {
                             // unknown user or expired session
                             return fail();
                         }
-                        if (userData.disabled || userData.suspended) {
+                        if (userData.disabled || userData.suspended || userData.shared) {
                             // locked out account, existing tokens must not keep working
                             return fail();
                         }
@@ -878,6 +880,12 @@ function createApp(options = {}) {
         settingsRoutes(db, app, settingsHandler);
         healthRoutes(db, app, loggelf);
         mcpTokensRoutes(app, mcpTokenHandler);
+
+        // a docs build registers them regardless, so the spec does not depend on the config it runs with
+        if ((config.imap.acl && config.imap.acl.enabled) || process.env.GENERATE_API_DOCS === 'true') {
+            aclRoutes(db, app, notifier, loggelf);
+            domaingroupsRoutes(db, app);
+        }
     });
 
     if (process.env.NODE_ENV === 'test') {

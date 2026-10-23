@@ -8,7 +8,10 @@ WildDuck IMAP server supports the following IMAP standards:
 -   **CONDSTORE** ([RFC4551](https://tools.ietf.org/html/rfc4551)) and **ENABLE** ([RFC5161](https://tools.ietf.org/html/rfc5161)) – supports most of the spec,
     except metadata stuff which is ignored. See [CONDSTORE Extension](condstore-extension.md) for detailed implementation guide.
 -   **STARTTLS** ([RFC2595](https://tools.ietf.org/html/rfc2595))
--   **NAMESPACE** ([RFC2342](https://tools.ietf.org/html/rfc2342)) – minimal support, just lists the single user namespace with hierarchy separator
+-   **NAMESPACE** ([RFC2342](https://tools.ietf.org/html/rfc2342)) – lists the personal namespace with hierarchy separator, and the shared namespace for
+    mailboxes of other users when ACL support is enabled
+-   **ACL** ([RFC4314](https://tools.ietf.org/html/rfc4314)) – mailbox sharing between users of the same server, disabled by default. See
+    [Shared Mailboxes](shared-mailboxes.md) for rights, semantics and limitations
 -   **UNSELECT** ([RFC3691](https://tools.ietf.org/html/rfc3691))
 -   **UIDPLUS** ([RFC4315](https://tools.ietf.org/html/rfc4315))
 -   **SPECIAL-USE** ([RFC6154](https://tools.ietf.org/html/rfc6154))

@@ -67,6 +67,13 @@
             "delete:any": ["*"]
         },
 
+        "acl": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "autoreplies": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -103,6 +110,13 @@
         },
 
         "domainaliases": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "domaingroups": {
             "create:any": ["*"],
             "read:any": ["*"],
             "update:any": ["*"],
@@ -215,6 +229,20 @@
             "delete:any": ["*"]
         },
 
+        "domaingroups": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "acl": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "webhooks": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -284,6 +312,13 @@
         },
 
         "mailboxes": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "acl": {
             "create:any": ["*"],
             "read:any": ["*"],
             "update:any": ["*"],
@@ -402,6 +437,13 @@
         },
 
         "mailboxes": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "acl": {
             "create:own": ["*"],
             "read:own": ["*"],
             "update:own": ["*"],

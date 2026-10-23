@@ -573,4 +573,121 @@ describe('API Users', function () {
             await db.redis.del(`tn:token:${tokenHash}`);
         }
     });
+
+    describe('shared accounts', function () {
+        let sharedUser;
+
+        it('should POST /users expect success / shared account', async () => {
+            const response = await server
+                .post('/users')
+                .send({
+                    username: 'sharedteam',
+                    name: 'Support Team',
+                    address: 'support@example.com',
+                    password: false,
+                    shared: true
+                })
+                .expect(200);
+
+            expect(response.body.success).to.be.true;
+            expect(/^[0-9a-f]{24}$/.test(response.body.id)).to.be.true;
+
+            sharedUser = response.body.id;
+
+            const getResponse = await server.get(`/users/${sharedUser}`).expect(200);
+            expect(getResponse.body.success).to.be.true;
+            expect(getResponse.body.shared).to.be.true;
+            expect(getResponse.body.activated).to.be.true;
+            expect(getResponse.body.disabled).to.be.false;
+        });
+
+        it('should GET /users expect success / filter by shared', async () => {
+            const sharedResponse = await server.get('/users?shared=true').expect(200);
+            expect(sharedResponse.body.success).to.be.true;
+            expect(sharedResponse.body.results.find(entry => entry.id === sharedUser)).to.exist;
+            expect(sharedResponse.body.results.every(entry => entry.shared)).to.be.true;
+
+            const regularResponse = await server.get('/users?shared=false').expect(200);
+            expect(regularResponse.body.success).to.be.true;
+            expect(regularResponse.body.results.find(entry => entry.id === sharedUser)).to.not.exist;
+        });
+
+        it('should POST /users expect failure / shared account with a password', async () => {
+            const response = await server
+                .post('/users')
+                .send({
+                    username: 'sharedteam2',
+                    address: 'sales@example.com',
+                    password: 'secretvalue',
+                    shared: true
+                })
+                .expect(400);
+
+            expect(response.body.code).to.equal('InputValidationError');
+        });
+
+        it('should POST /users expect failure / shared account without an address', async () => {
+            const response = await server
+                .post('/users')
+                .send({
+                    username: 'sharedteam3',
+                    password: false,
+                    emptyAddress: true,
+                    shared: true
+                })
+                .expect(400);
+
+            expect(response.body.code).to.equal('InputValidationError');
+        });
+
+        it('should PUT /users/{user} expect failure / shared flag is immutable', async () => {
+            const response = await server
+                .put(`/users/${sharedUser}`)
+                .send({
+                    shared: false
+                })
+                .expect(400);
+
+            expect(response.body.code).to.equal('InputValidationError');
+        });
+
+        it('should POST /authenticate expect failure / shared accounts can not log in', async () => {
+            // even an administratively set password must not enable logins for a shared account
+            const passwordResponse = await server
+                .put(`/users/${sharedUser}`)
+                .send({
+                    password: 'secretvalue'
+                })
+                .expect(200);
+            expect(passwordResponse.body.success).to.be.true;
+
+            await server
+                .post('/authenticate')
+                .send({
+                    username: 'sharedteam',
+                    password: 'secretvalue'
+                })
+                .expect(403);
+        });
+
+        it('should GET /users/{user} expect failure / tokens of a shared account', async () => {
+            // tokens an administrator mints for a shared account must not work either
+            const { accessToken, tokenHash } = await createRoleToken('user', sharedUser);
+            try {
+                const response = await server.get(`/users/${sharedUser}?accessToken=${accessToken}`).expect(403);
+                expect(response.body.code).to.equal('InvalidToken');
+            } finally {
+                await db.redis.del(`tn:token:${tokenHash}`);
+            }
+
+            const mcpToken = await server.post(`/users/${sharedUser}/mcp-tokens`).send({ description: 'agent' }).expect(200);
+            const mcpResponse = await server.get(`/users/${sharedUser}`).set('Authorization', `Bearer ${mcpToken.body.token}`).expect(403);
+            expect(mcpResponse.body.code).to.equal('InvalidToken');
+        });
+
+        it('should DELETE /users/{user} expect success / shared account', async () => {
+            const response = await server.delete(`/users/${sharedUser}`).expect(200);
+            expect(response.body.success).to.be.true;
+        });
+    });
 });
