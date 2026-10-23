@@ -54,6 +54,9 @@ function mockRedis() {
     return {
         on() {},
         defineCommand() {},
+        set() {
+            return Promise.resolve('OK');
+        },
         cachedcounter() {
             return Promise.resolve(1);
         },
