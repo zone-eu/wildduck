@@ -70,4 +70,42 @@ describe('ImapNotifier account counters', () => {
             )
         ).to.be.true;
     });
+
+    it('invalidates account counters for mailbox membership and message flag updates', async () => {
+        const user = new ObjectId();
+
+        for (const entry of [
+            { command: 'EXISTS', user },
+            { command: 'EXPUNGE', user },
+            { command: 'DELETE', user },
+            { command: 'FETCH', user, flags: [] }
+        ]) {
+            const versions = [];
+            const testNotifier = Object.create(ImapNotifier.prototype);
+            testNotifier.redis = {
+                async set(key, value, mode, ttl) {
+                    versions.push({ key, mode, ttl });
+                },
+                multi() {
+                    return {
+                        sadd() {
+                            return this;
+                        },
+                        expire() {
+                            return this;
+                        },
+                        async exec() {
+                            return [];
+                        }
+                    };
+                }
+            };
+
+            await testNotifier.updateAccountCounters([entry]);
+            expect(versions).to.have.length(1);
+            expect(versions[0].key).to.equal(`account-counters:{${user}}:version`);
+            expect(versions[0].mode).to.equal('EX');
+            expect(versions[0].ttl).to.be.greaterThan(0);
+        }
+    });
 });

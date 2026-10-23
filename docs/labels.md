@@ -19,12 +19,65 @@ a label name register it automatically.
 
 `GET /users/:user/labels` lists `id`, `name`, and optional `metaData` for each
 label, including labels without messages. `?counters=true` adds `total` and
-`unseen`. `GET /users/:user/labels/:label` fetches one label by its ID, allowing
+`unseen`, counted over searchable mailboxes (Junk, Trash and non-searchable
+messages excluded) by default; the `searchable` query param defaults to `true`
+and `searchable=false` counts over the whole account. Counter cache keys are
+scope-aware, so the two scopes never serve each other's cached values.
+`GET /users/:user/label-counters/:label` returns the same `total` and `unseen`
+counters for one label, with the same `searchable` param.
+`GET /users/:user/labels/:label` fetches one label by its ID, allowing
 an IMAP client to resolve an ID seen in a flag. `PUT /users/:user/labels/:label`
 updates the name or metadata without changing the ID. `DELETE` on that route
 schedules removal of that label alone and its message and filter assignments.
 Deletion sends per-message flag updates to connected clients. Label names are
 matched exactly by REST search, including leading and trailing whitespace.
+
+Updates streams emit searchable `LABEL_COUNTERS` with `label`, `labelId`,
+`total`, and `unseen`. Active labels retain their ID when renamed; deleting
+labels are excluded from ID resolution. System counter events use
+`FLAG_COUNTERS` with `flag`, `total`, and `unseen` for `flagged` and `unread`.
+Unread has equal total
+and unseen counts. The REST flag-counter endpoint supports all six system
+flags (`seen`, `answered`, `flagged`, `deleted`, `draft`, and `unread`), with
+`unseen: 0` for `seen`.
+REST message search accepts labels through both the structured `label` filter
+(a label name or ID) and the `q` parameter's `label:` term. For either form,
+an exact 24-hex value first resolves as an ID, but only when it identifies an
+active label owned by the searched user. If that ID is missing, belongs to
+another user, or is being deleted, search falls back to an exact label-name
+lookup, again restricted to active labels owned by the searched user. This
+allows a label whose name is 24 hexadecimal characters to match
+when no active owned ID takes precedence. If neither lookup matches, the filter
+matches no messages. Names preserve exact case and whitespace; they are not
+trimmed or case-folded.
+
+`label:` terms follow the boolean rules of other search terms: terms combine
+with `AND` by default, `OR` expresses alternatives, and a leading `-` negates
+the term.
+
+```text
+label:Work OR label:Personal
+label:Work AND label:Urgent
+label:507f1f77bcf86cd799439011 OR label:Personal
+label:507f1f77bcf86cd799439011 AND label:Urgent
+```
+
+Quote names that contain spaces. Quoted label names preserve exact whitespace
+and case, including leading and trailing spaces.
+
+```text
+label:"Projects"
+label:" Projects "
+```
+
+Prefix a label filter with `-` to exclude messages assigned that label:
+
+```text
+-label:Work
+```
+
+An unknown label name or ID, another user's label ID, or a label being deleted matches no messages. Its
+negated form therefore excludes nothing.
 
 IMAP `FETCH FLAGS` represents an assigned label as `$wdlabel$` followed by its
 24-character lowercase ObjectId. For example, `$wdlabel$507f1f77bcf86cd799439011`.
