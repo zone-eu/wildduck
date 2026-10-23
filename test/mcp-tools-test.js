@@ -18,6 +18,9 @@ function createReader(overrides = {}) {
         async listMailboxes() {
             return [{ id: MAILBOX_ID, path: 'INBOX', name: 'INBOX', subscribed: true, hidden: false }];
         },
+        async listLabels() {
+            return [];
+        },
         async resolveMailbox() {
             return { id: MAILBOX_ID, path: 'INBOX' };
         },
@@ -110,6 +113,36 @@ describe('MCP tools', () => {
         }
     });
 
+    it('lists labels with counters only when requested and returns the declared fields', async () => {
+        let calls = [];
+        let { tools } = register(
+            createReader({
+                async listLabels(options) {
+                    calls.push(options);
+                    return [{ id: 'label-1', name: 'Work', total: 8, unseen: 3, metadata: 'private' }];
+                }
+            })
+        );
+        let tool = tools.get('list_labels');
+        let input = tool.config.inputSchema;
+
+        expect(input.parse({})).to.deep.equal({ include_counters: false });
+        expect(input.safeParse({ include_counters: 'true' }).success).to.equal(false);
+        expect(input.safeParse({ unexpected: true }).success).to.equal(false);
+        expect(tool.config.outputSchema.safeParse({ labels: [{ id: 'label-1', name: 'Work', total: 8, unseen: 3 }] }).success).to.equal(true);
+
+        let withoutCounters = await tool.handler(input.parse({}));
+        expect(calls[0]).to.deep.equal({ counters: false });
+        expect(withoutCounters.structuredContent).to.deep.equal({ labels: [{ id: 'label-1', name: 'Work' }] });
+
+        let withCounters = await tool.handler(input.parse({ include_counters: true }));
+        expect(calls[1]).to.deep.equal({ counters: true });
+        expect(withCounters.structuredContent).to.deep.equal({ labels: [{ id: 'label-1', name: 'Work', total: 8, unseen: 3 }] });
+
+        let emptyReader = register(createReader()).tools.get('list_labels');
+        expect((await emptyReader.handler(emptyReader.config.inputSchema.parse({}))).structuredContent).to.deep.equal({ labels: [] });
+    });
+
     it('declares the search state filters as flags, since the API has no negative form', async () => {
         let queries = [];
         let { tools } = register(
@@ -138,6 +171,26 @@ describe('MCP tools', () => {
         expect(queries.pop()).to.include({ unseen: undefined, seen: true });
         await search({ query: 'invoice' });
         expect(queries.pop()).to.include({ unseen: undefined, seen: undefined });
+    });
+
+    it('accepts and forwards a label filter without changing its whitespace', async () => {
+        let queries = [];
+        let { tools } = register(
+            createReader({
+                async searchMessages(query) {
+                    queries.push(query);
+                    return { total: 0, nextCursor: null, messages: [] };
+                }
+            })
+        );
+        let schema = tools.get('search_messages').config.inputSchema;
+        let search = args => tools.get('search_messages').handler(schema.parse(args));
+
+        expect(schema.safeParse({ label: ' Work ' }).success).to.equal(true);
+        expect(schema.safeParse({ label: '' }).success).to.equal(false);
+        expect(schema.safeParse({ label: 'x'.repeat(257) }).success).to.equal(false);
+        await search({ label: ' Work ' });
+        expect(queries[0].label).to.equal(' Work ');
     });
 
     it('spends the rate limit budget before doing any work', async () => {

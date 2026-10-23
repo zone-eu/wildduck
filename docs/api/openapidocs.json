@@ -4468,7 +4468,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Lists persistent labels, including empty labels, with optional message counters",
+                "description": "Lists persistent labels, including empty labels, with optional message counters. Requested counters are over searchable mailboxes (Junk, Trash and non-searchable messages excluded) by default; searchable=false counts all mailboxes.",
                 "parameters": [
                     {
                         "schema": {
@@ -4479,6 +4479,16 @@
                         "name": "counters",
                         "required": false,
                         "description": "Should the response include counters (total + unseen). Counters come with some overhead."
+                    },
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "searchable",
+                        "required": false,
+                        "description": "When counters are requested, whether to exclude Junk, Trash and non-searchable messages"
                     },
                     {
                         "schema": {
@@ -4963,8 +4973,18 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for a custom label",
+                "description": "Returns total and unseen counters for a custom label. By default, excludes Junk, Trash and non-searchable messages.",
                 "parameters": [
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "searchable",
+                        "required": false,
+                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                    },
                     {
                         "schema": {
                             "type": "string",
@@ -5049,6 +5069,115 @@
                 }
             }
         },
+        "/users/{user}/flag-counters/{flag}": {
+            "get": {
+                "operationId": "getFlagCounters",
+                "summary": "Get system flag counters",
+                "tags": [
+                    "Messages"
+                ],
+                "description": "Returns total and unseen counters for a system flag. Supported flags: seen, answered, flagged, deleted, draft and unread. By default, excludes Junk, Trash and non-searchable messages. The unseen count for seen is always zero.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "searchable",
+                        "required": false,
+                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "seen",
+                                "answered",
+                                "flagged",
+                                "deleted",
+                                "draft",
+                                "unread"
+                            ]
+                        },
+                        "in": "path",
+                        "name": "flag",
+                        "required": true,
+                        "description": "System flag to count"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "FlagCounterResponse",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "flag": {
+                                            "type": "string",
+                                            "description": "System flag name"
+                                        },
+                                        "total": {
+                                            "type": "number",
+                                            "description": "Total number of messages with this flag"
+                                        },
+                                        "unseen": {
+                                            "type": "number",
+                                            "description": "Unseen number of messages with this flag"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "flag",
+                                        "total",
+                                        "unseen"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user}/flagged-counter": {
             "get": {
                 "operationId": "getFlaggedCounter",
@@ -5056,8 +5185,18 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for flagged messages",
+                "description": "Returns total and unseen counters for flagged messages. Alias for flag-counters/flagged; by default excludes Junk, Trash and non-searchable messages.",
                 "parameters": [
+                    {
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "searchable",
+                        "required": false,
+                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                    },
                     {
                         "schema": {
                             "type": "string",
@@ -5107,11 +5246,11 @@
                                         },
                                         "total": {
                                             "type": "number",
-                                            "description": "Total number of flagged messages"
+                                            "description": "Total number of messages with this flag"
                                         },
                                         "unseen": {
                                             "type": "number",
-                                            "description": "Unseen number of flagged messages"
+                                            "description": "Unseen number of messages with this flag"
                                         }
                                     },
                                     "required": [
@@ -6554,7 +6693,7 @@
                         "in": "query",
                         "name": "label",
                         "required": false,
-                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
+                        "description": "If set, then matches only messages that have this custom label set. Accepts either the label ID (a 24 character hex string) or the label name, which is matched exactly, including whitespace"
                     },
                     {
                         "schema": {
@@ -7130,7 +7269,7 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "maxLength": 256,
-                                        "description": "If set, then matches only messages that have this custom label set. The label name is matched exactly, including whitespace"
+                                        "description": "If set, then matches only messages that have this custom label set. Accepts either the label ID (a 24 character hex string) or the label name, which is matched exactly, including whitespace"
                                     },
                                     "useAndSearch": {
                                         "type": "boolean",
@@ -10381,11 +10520,13 @@
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string",
-                                                    "minLength": 1,
-                                                    "maxLength": 256
+                                                    "pattern": "^[0-9a-f]{24}$",
+                                                    "minLength": 24,
+                                                    "maxLength": 24,
+                                                    "description": "ID of an existing label owned by the user"
                                                 },
                                                 "uniqueItems": true,
-                                                "description": "An array of labels to apply to matching messages"
+                                                "description": "An array of existing label IDs to apply to matching messages"
                                             }
                                         }
                                     },
@@ -10807,11 +10948,13 @@
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string",
-                                                    "minLength": 1,
-                                                    "maxLength": 256
+                                                    "pattern": "^[0-9a-f]{24}$",
+                                                    "minLength": 24,
+                                                    "maxLength": 24,
+                                                    "description": "ID of an existing label owned by the user"
                                                 },
                                                 "uniqueItems": true,
-                                                "description": "An array of labels to apply to matching messages"
+                                                "description": "An array of existing label IDs to apply to matching messages"
                                             }
                                         }
                                     },

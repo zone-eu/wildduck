@@ -12,7 +12,9 @@ chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
-const { listAll } = require('./_helpers');
+const { listAll, connect } = require('./_helpers');
+const db = require('../../lib/db');
+const { ObjectId } = require('mongodb');
 
 describe('API Filters', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -384,6 +386,17 @@ describe('API Filters', function () {
 
     describe('Filter labels action', function () {
         let labelFilterId;
+        let importantLabel;
+        let projectLabel;
+        let priorityLabel;
+        let customerLabel;
+
+        before(async () => {
+            importantLabel = (await server.post(`/users/${user}/labels`).send({ name: 'important' }).expect(200)).body.id;
+            projectLabel = (await server.post(`/users/${user}/labels`).send({ name: 'project-x' }).expect(200)).body.id;
+            priorityLabel = (await server.post(`/users/${user}/labels`).send({ name: 'priority' }).expect(200)).body.id;
+            customerLabel = (await server.post(`/users/${user}/labels`).send({ name: 'customer' }).expect(200)).body.id;
+        });
 
         it('should POST /users/{user}/filters expect success / with labels action', async () => {
             const response = await server
@@ -394,7 +407,7 @@ describe('API Filters', function () {
                         from: 'labels-create'
                     },
                     action: {
-                        labels: ['important', 'project-x']
+                        labels: [importantLabel, projectLabel]
                     }
                 })
                 .expect(200);
@@ -403,7 +416,14 @@ describe('API Filters', function () {
 
             const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
             expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action.labels).to.deep.equal(['important', 'project-x']);
+            expect(filterDataResponse.body.action.labels).to.deep.equal([importantLabel, projectLabel]);
+
+            const listed = await server.get(`/users/${user}/filters`).expect(200);
+            const listedFilter = listed.body.results.find(entry => entry.id === labelFilterId);
+            expect(listedFilter.originalAction.labels).to.deep.equal([importantLabel, projectLabel]);
+            const globalFilter = (await listAll(server, '/filters')).find(entry => entry.id === labelFilterId);
+            expect(globalFilter.originalAction.labels).to.deep.equal([importantLabel, projectLabel]);
+            expect(listedFilter.action).to.deep.equal([['apply labels', 'important, project-x']]);
         });
 
         it('should PUT /users/{user}/filters/{filter} expect success / update labels action', async () => {
@@ -411,7 +431,7 @@ describe('API Filters', function () {
                 .put(`/users/${user}/filters/${labelFilterId}`)
                 .send({
                     action: {
-                        labels: ['priority', 'customer']
+                        labels: [priorityLabel, customerLabel]
                     }
                 })
                 .expect(200);
@@ -419,7 +439,18 @@ describe('API Filters', function () {
 
             const filterDataResponse = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
             expect(filterDataResponse.body.success).to.be.true;
-            expect(filterDataResponse.body.action.labels).to.deep.equal(['priority', 'customer']);
+            expect(filterDataResponse.body.action.labels).to.deep.equal([priorityLabel, customerLabel]);
+        });
+
+        it('keeps label IDs after rename and supports listing round-trips', async () => {
+            await server.put(`/users/${user}/labels/${priorityLabel}`).send({ name: 'renamed-priority' }).expect(200);
+            const listed = await server.get(`/users/${user}/filters`).expect(200);
+            const listedFilter = listed.body.results.find(entry => entry.id === labelFilterId);
+            expect(listedFilter.originalAction.labels).to.deep.equal([priorityLabel, customerLabel]);
+            expect(listedFilter.action).to.deep.equal([['apply labels', 'renamed-priority, customer']]);
+            await server.put(`/users/${user}/filters/${labelFilterId}`).send({ action: listedFilter.originalAction }).expect(200);
+            const response = await server.get(`/users/${user}/filters/${labelFilterId}`).expect(200);
+            expect(response.body.action.labels).to.deep.equal([priorityLabel, customerLabel]);
         });
 
         it('should PUT /users/{user}/filters/{filter} expect success / clear labels action with empty array', async () => {
@@ -454,6 +485,61 @@ describe('API Filters', function () {
 
             expect(response.body.success).to.not.exist;
             expect(response.body.code).to.equal('InputValidationError');
+            expect(response.body.details).to.have.property('action,labels,0');
+        });
+
+        it('rejects label names on POST and PUT', async () => {
+            const createResponse = await server.post(`/users/${user}/filters`).send({
+                name: 'labels action raw name',
+                query: { from: 'labels-raw-name' },
+                action: { labels: ['important'] }
+            }).expect(400);
+            expect(createResponse.body.code).to.equal('InputValidationError');
+            expect(createResponse.body.details).to.have.property('action,labels,0');
+
+            const updateResponse = await server.put(`/users/${user}/filters/${labelFilterId}`).send({
+                action: { labels: ['priority'] }
+            }).expect(400);
+            expect(updateResponse.body.code).to.equal('InputValidationError');
+            expect(updateResponse.body.details).to.have.property('action,labels,0');
+        });
+
+        it('rejects labels being deleted on POST and PUT', async () => {
+            await connect();
+            const labelId = (await server.post(`/users/${user}/labels`).send({ name: 'deleting-label' }).expect(200)).body.id;
+            const labelQuery = { _id: new ObjectId(labelId), user: new ObjectId(user) };
+            await db.database.collection('labels').updateOne(labelQuery, { $set: { deleting: true } });
+            try {
+                const createResponse = await server
+                    .post(`/users/${user}/filters`)
+                    .send({ query: { from: 'deleting-label' }, action: { labels: [labelId] } })
+                    .expect(409);
+                expect(createResponse.body.code).to.equal('LabelDeleting');
+                const updateResponse = await server
+                    .put(`/users/${user}/filters/${labelFilterId}`)
+                    .send({ action: { labels: [labelId] } })
+                    .expect(409);
+                expect(updateResponse.body.code).to.equal('LabelDeleting');
+            } finally {
+                await db.database.collection('labels').updateOne(labelQuery, { $unset: { deleting: true } });
+            }
+        });
+
+        it('rejects missing and foreign label IDs', async () => {
+            const foreignLabel = (await server.post(`/users/${user2}/labels`).send({ name: 'foreign label' }).expect(200)).body.id;
+            for (const id of ['000000000000000000000001', foreignLabel]) {
+                const response = await server.post(`/users/${user}/filters`).send({
+                    name: `invalid label id ${id}`,
+                    query: { from: `invalid-label-id-${id}` },
+                    action: { labels: [id] }
+                }).expect(404);
+                expect(response.body.code).to.equal('LabelNotFound');
+                const updateResponse = await server
+                    .put(`/users/${user}/filters/${labelFilterId}`)
+                    .send({ action: { labels: [id] } })
+                    .expect(404);
+                expect(updateResponse.body.code).to.equal('LabelNotFound');
+            }
         });
     });
 

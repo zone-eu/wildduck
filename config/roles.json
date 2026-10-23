@@ -507,6 +507,10 @@
             "read:own": ["id", "name", "path", "specialUse", "subscribed", "hidden", "total", "unseen", "size"]
         },
 
+        "labels": {
+            "read:own": ["id", "name", "total", "unseen"]
+        },
+
         "messages": {
             "read:own": [
                 "id",

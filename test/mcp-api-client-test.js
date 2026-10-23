@@ -45,6 +45,24 @@ describe('MCP API client', () => {
         expect(calls[0].url).to.include(`/users/${USER_ID}/mailboxes`);
     });
 
+    it('lists labels for the bound user with counters off by default', async () => {
+        let { reader, calls } = createClient(async () => ({ body: { success: true, labels: [{ id: 'label-1', name: 'Work' }] } }));
+
+        expect(await reader.listLabels()).to.deep.equal([{ id: 'label-1', name: 'Work' }]);
+        expect(calls[0].url).to.include(`/users/${USER_ID}/labels`);
+        expect(calls[0].url).to.not.include('user=');
+        expect(new URL(calls[0].url).searchParams.get('counters')).to.equal('false');
+
+        await reader.listLabels({ counters: true });
+        expect(new URL(calls[1].url).searchParams.get('counters')).to.equal('true');
+    });
+
+    it('returns an empty label list when the response omits labels', async () => {
+        let { reader } = createClient(async () => ({ body: { success: true } }));
+
+        expect(await reader.listLabels()).to.deep.equal([]);
+    });
+
     it('reads messages from the mailbox scoped route and never marks them seen', async () => {
         let { reader, calls } = createClient(async () => ({ body: { success: true, id: 7, mailbox: MAILBOX_ID, thread: 't', subject: 'hi' } }));
 
