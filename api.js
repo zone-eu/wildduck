@@ -85,6 +85,7 @@ const MCP_ROUTES = new Map([
     ['getuseraddresses', { method: 'GET', resource: 'addresses' }],
     ['getmailboxes', { method: 'GET', resource: 'mailboxes' }],
     ['getmailbox', { method: 'GET', resource: 'mailboxes' }],
+    ['getuserlabels', { method: 'GET', resource: 'labels', listKey: 'labels' }],
     ['getmessages', { method: 'GET', resource: 'messages' }],
     ['getmessage', { method: 'GET', resource: 'messages' }],
     ['searchmessages', { method: 'GET', resource: 'messages' }],
@@ -348,9 +349,10 @@ function createApp(options = {}) {
     // resource fields (an error body does not) is decided by roles.filterResponseBody. Registered
     // ahead of the payload stash so the Gelf line logs what was actually sent.
     app.decorateRequest('wdResponseFieldFilter', null);
-    app.addHook('preSerialization', async (request, reply, payload) =>
-        request.wdResponseFieldFilter ? roles.filterResponseBody(request.wdResponseFieldFilter, payload) : payload
-    );
+    app.addHook('preSerialization', async (request, reply, payload) => {
+        let filter = request.wdResponseFieldFilter;
+        return filter ? roles.filterResponseBody(filter.permission, payload, filter.listKey) : payload;
+    });
 
     attachPayloadStash(app);
     attachResponseHeaders(app, 'WildDuck API');
@@ -489,7 +491,7 @@ function createApp(options = {}) {
                 if (!permission.granted) {
                     return fail();
                 }
-                request.wdResponseFieldFilter = permission;
+                request.wdResponseFieldFilter = { permission, listKey: mcpRoute.listKey };
             } else {
                 request.accessToken = {
                     revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
