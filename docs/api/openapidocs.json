@@ -10520,11 +10520,13 @@
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string",
-                                                    "minLength": 1,
-                                                    "maxLength": 256
+                                                    "pattern": "^[0-9a-f]{24}$",
+                                                    "minLength": 24,
+                                                    "maxLength": 24,
+                                                    "description": "ID of an existing label owned by the user"
                                                 },
                                                 "uniqueItems": true,
-                                                "description": "An array of labels to apply to matching messages"
+                                                "description": "An array of existing label IDs to apply to matching messages"
                                             }
                                         }
                                     },
@@ -10946,11 +10948,13 @@
                                                 "type": "array",
                                                 "items": {
                                                     "type": "string",
-                                                    "minLength": 1,
-                                                    "maxLength": 256
+                                                    "pattern": "^[0-9a-f]{24}$",
+                                                    "minLength": 24,
+                                                    "maxLength": 24,
+                                                    "description": "ID of an existing label owned by the user"
                                                 },
                                                 "uniqueItems": true,
-                                                "description": "An array of labels to apply to matching messages"
+                                                "description": "An array of existing label IDs to apply to matching messages"
                                             }
                                         }
                                     },
