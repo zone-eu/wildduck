@@ -113,7 +113,7 @@
         "punycode.js": "2.3.1",
         "qrcode": "1.5.4",
         "qs": "^6.16.0",
-        "sanitize-html": "2.18.0",
+        "sanitize-html": "2.18.1",
         "search-string": "4.1.0",
         "smtp-server": "3.19.21",
         "speakeasy": "2.0.0",
