@@ -40,6 +40,7 @@ WildDuck is a Node.js IMAP/POP3 mail server and REST API backed by MongoDB and R
 | `test/`, `test/api/`, `test/fixtures/` | Application units, API/integration tests, and deliberate fixtures |
 | `config/`, `indexes.yaml`, `migrations/` | TOML configuration, MongoDB indexes, database/user migrations |
 | `scripts/migrate-attachments-to-s3.js`, `scripts/migrate-attachments-to-gridfs.js` | Attachment migration in either direction, verification, and separate S3 cleanup operations |
+| `scripts/relocate-rados-attachments.js` | Moves RADOS payloads between clusters and pools |
 | `bin/access-tokens`, `bin/mcp-tokens` | Token administration CLIs |
 | `test/api/_helpers.js`, `test/api/_fixtures.js`, `test/api/_inprocess.js`, `test/api/_route-requests.js` | Shared API setup, disposable fixtures, in-process application, and request/fuzz builders |
 | `docs/`, `plugins/`, `assets/`, `graphics/`, `public/` | Documentation, plugins, and static/public assets |

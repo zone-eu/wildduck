@@ -90,6 +90,43 @@ Deletion removes the head first, so the payload stops being readable at once, th
 
 Orphaned attachments are collected as for S3: a tombstone in `attachments.trash` describes the payload (including its fsid and pool) before the record goes, so the payload is deleted even if the process stops in between. Failures are tracked per cluster: an outage of one cluster makes the rest of the pass leave that cluster alone, while records and tombstones on other clusters are still collected. Records and tombstones on clusters a process does not have are left to a process that has them.
 
+## Moving payloads between clusters
+
+`AttachmentStorage.relocate(id, target)` moves one payload:
+
+1. Under the attachment lock, it reads the payload from its current pool, checking every stripe against the manifest and the whole payload against the record's `fileContentHash`.
+2. It writes a new copy (new generation, so a new key) to `target` (`"<cluster>/<pool>"`), or to where the placement puts it, never to the pool it is in.
+3. It points the record at the copy only if the record still points at the original (`fsid`, `pool`, `namespace` and `key` all match). If the record changed in the meantime, for example because the collector removed it, the copy is deleted again.
+4. It writes a tombstone for the original. The collector deletes the original once the tombstone is older than 10 minutes, so readers that already hold the old locator can finish.
+
+`scripts/relocate-rados-attachments.js` runs this over a whole cluster or pool:
+
+```sh
+# retire ams1: give it weight 0 in the placement on every process first, so no new payloads go there
+node scripts/relocate-rados-attachments.js --dry-run --from=ams1
+node scripts/relocate-rados-attachments.js --relocate --from=ams1 --concurrency=4
+# or to one explicit target
+node scripts/relocate-rados-attachments.js --relocate --from=ams1/wildduck.attachments --to=ams2/wildduck.attachments
+```
+
+Run it again until it finds nothing, wait for the collector to delete the originals (its tombstones become stale after 10 minutes), check that `rados -p <pool> -N wildduck ls` is empty, and only then remove the cluster from `rados.clusters`.
+
+### Moving payloads by hand
+
+Copying objects outside WildDuck works too, as long as the same order is kept:
+
+1. Copy the head and every tail **with their xattrs** to the new pool or cluster. The key can stay the same.
+2. Update the record **conditionally**, so a record that was collected or moved in the meantime is not touched:
+   ```js
+   db.getCollection('attachments.files').updateOne(
+     { _id: id, 'metadata.storage.fsid': OLD_FSID, 'metadata.storage.pool': OLD_POOL, 'metadata.storage.key': KEY },
+     { $set: { 'metadata.storage.fsid': NEW_FSID, 'metadata.storage.pool': NEW_POOL } }
+   )
+   ```
+3. If it matched, delete the original after every process can have finished reading it, or insert a tombstone (`{ attachment: id, backend: 'rados', fsid, pool, namespace, key, length, stripeSize, stripes }` of the original) into `attachments.trash` and let the collector do it. If it did not match, delete the copy.
+
+The collector compares fsid, pool, namespace and key, so a tombstone for the original never deletes a copy that kept the same key on another cluster.
+
 ## Integrity
 
 RADOS has no equivalent of the S3 checksum header. The SHA-256 of the payload is checked against the attachment hash before writing, and every stripe's SHA-256 is stored in the manifest. A read checks every stripe it reads in full. Partial reads of a stripe (an IMAP partial FETCH) are not checked by default, because that would mean reading the whole stripe. `verifyPartialStripes = true` reads and checks whole stripes for those too. A mismatch fails the read with `EBADMSG`. A missing head answers `ENOENT`, which the indexer serves as a placeholder, like a missing GridFS file or S3 object.
@@ -114,4 +151,4 @@ The client's librados has to understand the cluster's keys. Ceph 21 (Umbrella) c
 
 - **Binding.** `node-librados` 1.0.3 runs every call as a blocking librados call on the libuv threadpool, has no `rados_aio_*` and no compound write operations, and ships prebuilt binaries without provenance. Set `UV_THREADPOOL_SIZE` well above the expected number of concurrent RADOS operations. A purpose-built addon would do `rados_aio_write_op_operate` (exclusive create + write_full + setxattrs), `rados_aio_read`, `rados_aio_getxattr`, `rados_aio_remove` and paged `rados_nobjects_list`.
 - **No orphan tail sweep**, and no script that moves existing payloads from GridFS or S3 to RADOS, or from RADOS back to GridFS: `scripts/migrate-attachments-to-gridfs.js` handles S3 records only. New payloads go to RADOS once `type="rados"` is set, and existing ones stay readable where they are.
-- **Whole payload in memory** while writing, as with the other backends (attachments are at most 64 MiB).
+- **Whole payload in memory** while writing or relocating, as with the other backends (attachments are at most 64 MiB).

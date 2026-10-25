@@ -802,6 +802,67 @@ describe('RADOS attachments through AttachmentStorage', function () {
         expect(rados.objects.size).to.equal(1);
     });
 
+    describe('relocation', function () {
+        async function makeStale() {
+            const old = require('mongodb').ObjectId.createFromTime(0);
+            for (const tombstone of await trash.find({}).toArray()) {
+                await trash.deleteOne({ _id: tombstone._id });
+                await trash.insertOne({ ...tombstone, _id: old });
+            }
+        }
+
+        it('moves a payload to another cluster and deletes the original once its tombstone is stale', async function () {
+            const body = crypto.randomBytes(2 * STRIPE + 3);
+            const id = await create(body, 5);
+            const before = (await files.findOne({ _id: id })).metadata.storage;
+
+            const moved = await storage.relocate(id, 'b/mail');
+            expect(moved).to.include({ fsid: FSID_B, pool: 'mail', stripes: 3 });
+            const record = await files.findOne({ _id: id });
+            expect(record.metadata.storage).to.deep.include({ fsid: FSID_B, key: moved.key });
+            expect(record.metadata.c).to.equal(1);
+            expect((await readBack(id)).equals(body)).to.be.true;
+
+            // the original stays for readers that already hold its locator
+            expect(rados.objects.size).to.equal(3);
+            expect(await trash.findOne({})).to.deep.include({ fsid: FSID_A, key: before.key });
+            await storage.deleteOrphanedAsync();
+            expect(rados.objects.size).to.equal(3);
+
+            await makeStale();
+            await storage.deleteOrphanedAsync();
+            expect(rados.objects.size).to.equal(0);
+            expect(clusterB.size()).to.equal(3);
+            expect(await trash.countDocuments()).to.equal(0);
+            expect((await readBack(id)).equals(body)).to.be.true;
+        });
+
+        it('moves a payload where the placement puts it, never to where it is', async function () {
+            const id = await create('drain me', 5);
+            const draining = newStorage({}, { placement: ['a/mail:0', 'b/mail:1'] });
+            expect(await draining.relocate(id)).to.include({ fsid: FSID_B });
+            expect(await draining.relocate(id)).to.be.false;
+        });
+
+        it('leaves the record alone when a stripe of the original fails its checksum', async function () {
+            const id = await create(crypto.randomBytes(STRIPE + 10), 5);
+            const before = (await files.findOne({ _id: id })).metadata.storage;
+            rados.objects.get(`${before.key}.1`).data[0] ^= 0xff;
+            expect((await storage.relocate(id, 'b/mail').catch(err => err)).code).to.equal('EBADMSG');
+            expect((await files.findOne({ _id: id })).metadata.storage).to.deep.equal(before);
+            expect(clusterB.size()).to.equal(0);
+        });
+
+        it('deletes its copy when the record changed in the meantime', async function () {
+            const id = await create('raced', 5);
+            storage.catalog.moveLocation = async () => false;
+            expect(await storage.relocate(id, 'b/mail')).to.be.false;
+            expect(clusterB.size()).to.equal(0);
+            expect(rados.objects.size).to.equal(1);
+            expect(await trash.countDocuments()).to.equal(0);
+        });
+    });
+
     it('does not collect a record that was moved to another cluster under the same key', async function () {
         const file = await orphan('moved under the same key');
         const location = file.metadata.storage;
