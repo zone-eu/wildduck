@@ -109,9 +109,9 @@ describe('S3 migration without S3 settings', function () {
         );
     });
 
-    async function run(args, expectedCode = 0) {
+    async function run(args, expectedCode = 0, env = {}) {
         const operation = execFileAsync(process.execPath, [script, `--gridfs-bucket=${collectionName}`, `--config=${fixture.configPath}`, ...args], {
-            env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1' },
+            env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1', ...env },
             timeout: 20000
         });
         const result = expectedCode ? await failure(operation, expectedCode) : await operation;
@@ -142,6 +142,14 @@ describe('S3 migration without S3 settings', function () {
             (await environment.client.send(new HeadObjectCommand({ Bucket: environment.bucket, Key: storage.s3.key(excluded, '0123456789abcdef') })))
                 .ContentLength
         ).to.equal(6);
+    });
+
+    it('leaves payloads below attachments.minObjectSize in GridFS', async () => {
+        const before = await files.findOne({ _id: id });
+        const result = await run(['--migrate'], 0, { APPCONF_attachments_minObjectSize: String(before.length + 1) });
+        expect(result.stats).to.include({ scanned: 0, migrated: 0 });
+        expect(await files.findOne({ _id: id })).to.deep.equal(before);
+        expect((await run(['--migrate'], 0, { APPCONF_attachments_minObjectSize: String(before.length) })).stats.migrated).to.equal(1);
     });
 
     it('changes nothing in a dry run', async () => {
