@@ -105,7 +105,7 @@
         "msgpack5": "6.1.0",
         "node-forge": "1.4.0",
         "node-html-parser": "9.0.4",
-        "nodemailer": "10.1.1",
+        "nodemailer": "10.1.4",
         "npmlog": "7.0.1",
         "openpgp": "6.1.1",
         "pem-jwk": "2.0.0",
