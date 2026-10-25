@@ -1,18 +1,21 @@
 /* eslint no-unused-expressions: 0, prefer-arrow-callback: 0, no-invalid-this: 0, global-require: 0, no-bitwise: 0 */
-/* globals BigInt: false */
+/* globals before: false, BigInt: false */
 'use strict';
 
 // RADOS attachment storage: striping into a head and tails, integrity checks and cleanup against an
-// in-memory cluster. No Ceph cluster is needed.
+// in-memory cluster, and reference counting and garbage collection through AttachmentStorage against a
+// real MongoDB. No Ceph cluster is needed.
 
 const crypto = require('crypto');
 const { expect } = require('chai');
 const RadosStorage = require('../lib/attachments/rados-storage');
 const { normalizeError, LibradosIoctx, LibradosCluster } = require('../lib/attachments/rados-client');
+const AttachmentStorage = require('../lib/attachment-storage');
 const { FakeRados, FakeCluster, fakeConnect } = require('./attachment-rados-helpers');
-const { collect } = require('./attachment-s3-helpers');
+const { collect, ageChunks, createAttachmentIndexes } = require('./attachment-s3-helpers');
 
 const STRIPE = 64 * 1024;
+const DAY = 24 * 3600 * 1000;
 
 const FSID_A = '5f8e2c1a-7b3d-4e9f-a6c0-d1b2e3f4a5b6';
 const FSID_B = '9c1f2d3e-0a1b-4c2d-8e3f-112233445566';
@@ -555,5 +558,255 @@ describe('RADOS attachment storage', function () {
             await client.create('o', Buffer.from('0123456789'), {});
             expect((await client.read('o', 2, 3)).toString()).to.equal('234');
         });
+    });
+});
+
+describe('RADOS attachments through AttachmentStorage', function () {
+    this.timeout(30000);
+
+    let db;
+    let clusterA;
+    let clusterB;
+    let rados;
+    let storage;
+    let bucket;
+    let files;
+    let trash;
+
+    before(async function () {
+        db = require('../lib/db');
+        await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
+    });
+
+    function newStorage(options = {}, rados = {}) {
+        return new AttachmentStorage({
+            gridfs: db.gridfs,
+            redis: db.redis,
+            radosConnect: fakeConnect(clusterA, clusterB),
+            options: {
+                type: 'rados',
+                bucket,
+                rados: { prefix: bucket, stripeSize: STRIPE, clusters: { a: { fsid: FSID_A }, b: { fsid: FSID_B } }, placement: ['a/mail'], ...rados },
+                ...options
+            }
+        });
+    }
+
+    beforeEach(async function () {
+        bucket = `attrados${crypto.randomBytes(4).toString('hex')}`;
+        files = db.gridfs.collection(`${bucket}.files`);
+        trash = db.gridfs.collection(`${bucket}.trash`);
+        await createAttachmentIndexes(db.gridfs, bucket);
+        clusterA = new FakeCluster(FSID_A);
+        clusterB = new FakeCluster(FSID_B);
+        rados = clusterA.pool('mail');
+        storage = newStorage();
+    });
+
+    afterEach(async function () {
+        for (const suffix of ['files', 'chunks', 'trash']) {
+            await db.gridfs
+                .collection(`${bucket}.${suffix}`)
+                .drop()
+                .catch(() => false);
+        }
+    });
+
+    function create(body, magic, target = storage) {
+        const attachment = { body: Buffer.from(body), contentType: 'application/octet-stream', transferEncoding: '7bit', magic };
+        return new Promise((resolve, reject) => target.create(attachment, (err, id) => (err ? reject(err) : resolve(id))));
+    }
+
+    async function readBack(id, target = storage) {
+        return await collect(target.createReadStream(id, await target.get(id)));
+    }
+
+    async function orphan(body) {
+        const id = await create(body, 3);
+        await storage.deleteAsync(id, 3);
+        await files.updateOne({ _id: id }, { $set: { 'metadata.cu': new Date(Date.now() - DAY - 1000) } });
+        return await files.findOne({ _id: id });
+    }
+
+    it('stores a new attachment in RADOS and records the locator', async function () {
+        const body = crypto.randomBytes(2 * STRIPE + 9);
+        const id = await create(body, 5);
+        const file = await files.findOne({ _id: id });
+        expect(file.metadata.storage).to.deep.include({
+            version: 1,
+            backend: 'rados',
+            fsid: FSID_A,
+            pool: 'mail',
+            namespace: 'wildduck',
+            length: body.length,
+            stripes: 3
+        });
+        expect((await readBack(id)).equals(body)).to.be.true;
+        expect(rados.objects.size).to.equal(3);
+    });
+
+    it('only adds a reference for an attachment it already has', async function () {
+        const id = await create('same body', 5);
+        await create('same body', 5);
+        expect((await files.findOne({ _id: id })).metadata.c).to.equal(2);
+        expect(rados.objects.size).to.equal(1);
+    });
+
+    it('keeps reading GridFS attachments after switching to RADOS', async function () {
+        const gridfsOnly = new AttachmentStorage({ gridfs: db.gridfs, redis: db.redis, options: { type: 'gridstore', bucket } });
+        const id = await create('stored before the switch', 5, gridfsOnly);
+        expect((await readBack(id)).toString()).to.equal('stored before the switch');
+        expect(rados.objects.size).to.equal(0);
+    });
+
+    it('refuses a RADOS record in a process without RADOS settings', async function () {
+        const id = await create('in rados', 5);
+        const gridfsOnly = new AttachmentStorage({ gridfs: db.gridfs, redis: db.redis, options: { type: 'gridstore', bucket } });
+        expect((await gridfsOnly.get(id).catch(err => err)).message).to.equal('RADOS attachment exists but RADOS access is not configured');
+    });
+
+    it('refuses a RADOS record on a cluster it does not have', async function () {
+        const id = await create('in rados', 5);
+        const other = newStorage({}, { clusters: { b: { fsid: FSID_B } }, placement: ['b/mail'] });
+        expect((await other.get(id).catch(err => err)).message).to.match(/does not use/);
+    });
+
+    it('refuses to start as the RADOS writer without a placement', function () {
+        expect(() => newStorage({}, { placement: ['a/mail:0'] })).to.throw(/rados.placement/);
+    });
+
+    describe('minObjectSize', function () {
+        function base64Attachment(binary) {
+            const encoded = binary
+                .toString('base64')
+                .match(/.{1,76}/g)
+                .join('\r\n');
+            return { body: Buffer.from(encoded), contentType: 'application/octet-stream', transferEncoding: 'base64', magic: 5 };
+        }
+
+        function createAttachment(attachment, target) {
+            return new Promise((resolve, reject) => target.create(attachment, (err, id) => (err ? reject(err) : resolve(id))));
+        }
+
+        it('keeps payloads below the threshold in GridFS and stores the rest in RADOS', async function () {
+            const sized = newStorage({ minObjectSize: 1000 });
+            const small = crypto.randomBytes(999);
+            const large = crypto.randomBytes(1000);
+            const smallId = await create(small, 5, sized);
+            const largeId = await create(large, 5, sized);
+
+            expect((await files.findOne({ _id: smallId })).metadata.storage).to.be.undefined;
+            expect(await db.gridfs.collection(`${bucket}.chunks`).countDocuments({ files_id: smallId })).to.equal(1);
+            expect((await files.findOne({ _id: largeId })).metadata.storage).to.deep.include({ backend: 'rados', length: 1000 });
+            expect(rados.objects.size).to.equal(1);
+            expect((await readBack(smallId, sized)).equals(small)).to.be.true;
+            expect((await readBack(largeId, sized)).equals(large)).to.be.true;
+        });
+
+        it('measures the decoded payload of a base64 body', async function () {
+            const sized = newStorage({ minObjectSize: 1000, decodeBase64: true });
+            // 1350 encoded bytes that decode to 999, and a body that decodes to exactly the threshold
+            const below = base64Attachment(crypto.randomBytes(999));
+            const at = base64Attachment(crypto.randomBytes(1000));
+            expect(below.body.length).to.be.above(1000);
+            const belowId = await createAttachment(below, sized);
+            const atId = await createAttachment(at, sized);
+
+            const belowFile = await files.findOne({ _id: belowId });
+            expect(belowFile.metadata.storage).to.be.undefined;
+            expect(belowFile.length).to.equal(999);
+            expect((await files.findOne({ _id: atId })).metadata.storage).to.deep.include({ backend: 'rados', length: 1000 });
+            expect((await readBack(belowId, sized)).equals(below.body)).to.be.true;
+            expect((await readBack(atId, sized)).equals(at.body)).to.be.true;
+        });
+
+        it('adds a reference to a copy stored on the other side of the threshold', async function () {
+            const body = crypto.randomBytes(500);
+            const id = await create(body, 5);
+            const sized = newStorage({ minObjectSize: 1000 });
+            await create(body, 5, sized);
+
+            const file = await files.findOne({ _id: id });
+            expect(file.metadata.c).to.equal(2);
+            expect(file.metadata.storage.backend).to.equal('rados');
+            expect(await db.gridfs.collection(`${bucket}.chunks`).countDocuments({ files_id: id })).to.equal(0);
+            expect(rados.objects.size).to.equal(1);
+        });
+
+        it('accepts the threshold as a string and refuses anything but a byte count', function () {
+            expect(newStorage({ minObjectSize: '262144' }).minObjectSize).to.equal(262144);
+            expect(newStorage({}).minObjectSize).to.equal(0);
+            expect(() => newStorage({ minObjectSize: '256k' })).to.throw(/minObjectSize/);
+            expect(() => newStorage({ minObjectSize: -1 })).to.throw(/minObjectSize/);
+        });
+    });
+
+    it('collects an old orphan with its head and tails', async function () {
+        const file = await orphan(crypto.randomBytes(3 * STRIPE));
+        expect(rados.objects.size).to.equal(3);
+        expect(await storage.deleteOrphanedAsync()).to.equal(1);
+        expect(await files.countDocuments({ _id: file._id })).to.equal(0);
+        expect(rados.objects.size).to.equal(0);
+        expect(await trash.countDocuments()).to.equal(0);
+    });
+
+    it('finishes a collection after a RADOS outage through its tombstone', async function () {
+        const file = await orphan(crypto.randomBytes(2 * STRIPE + 1));
+        rados.fail(op => op === 'remove', 'ETIMEDOUT', 1);
+        // the record is gone, the payload waits in its tombstone, so the collection is not finished yet
+        expect(await storage.deleteOrphanedAsync()).to.equal(0);
+        expect(await files.countDocuments({ _id: file._id })).to.equal(0);
+        const tombstone = await trash.findOne({});
+        expect(tombstone).to.deep.include({ backend: 'rados', fsid: FSID_A, pool: 'mail', key: file.metadata.storage.key, stripes: 3 });
+
+        // stale tombstones are swept by the next pass
+        await trash.deleteOne({ _id: tombstone._id });
+        await trash.insertOne({ ...tombstone, _id: require('mongodb').ObjectId.createFromTime(0) });
+        await storage.deleteOrphanedAsync();
+        expect(rados.objects.size).to.equal(0);
+        expect(await trash.countDocuments()).to.equal(0);
+    });
+
+    it('leaves RADOS orphans alone in a process without RADOS settings and still collects GridFS ones', async function () {
+        const radosOrphan = await orphan('rados orphan');
+        const gridfsOnly = new AttachmentStorage({ gridfs: db.gridfs, redis: db.redis, options: { type: 'gridstore', bucket } });
+        const id = await create('gridfs orphan', 3, gridfsOnly);
+        await gridfsOnly.deleteAsync(id, 3);
+        await files.updateOne({ _id: id }, { $set: { 'metadata.cu': new Date(Date.now() - DAY - 1000) } });
+        await ageChunks(db.gridfs.collection(`${bucket}.chunks`), id, new Date(Date.now() - DAY));
+        expect(await gridfsOnly.deleteOrphanedAsync()).to.equal(1);
+        expect(await files.countDocuments({ _id: radosOrphan._id })).to.equal(1);
+        expect(rados.objects.size).to.equal(1);
+    });
+
+    it('keeps collecting on one cluster while another has an outage', async function () {
+        const onA = await orphan(crypto.randomBytes(10));
+        const toB = newStorage({}, { placement: ['b/mail'] });
+        const idB = await create(crypto.randomBytes(10), 3, toB);
+        await toB.deleteAsync(idB, 3);
+        await files.updateOne({ _id: idB }, { $set: { 'metadata.cu': new Date(Date.now() - DAY - 1000) } });
+        rados.fail(op => op === 'remove', 'ETIMEDOUT');
+        // the record on a goes, its payload deletion waits in a tombstone; b is not held up
+        expect(await storage.deleteOrphanedAsync()).to.equal(1);
+        expect(clusterB.size()).to.equal(0);
+        expect(rados.objects.size).to.equal(1);
+        expect(await trash.countDocuments({ fsid: FSID_A })).to.equal(1);
+        expect(await files.countDocuments({ _id: { $in: [onA._id, idB] } })).to.equal(0);
+    });
+
+    it('leaves the orphans of a cluster it does not have alone', async function () {
+        const onA = await orphan('on a');
+        const onlyB = newStorage({}, { clusters: { b: { fsid: FSID_B } }, placement: ['b/mail'] });
+        expect(await onlyB.deleteOrphanedAsync()).to.equal(0);
+        expect(await files.countDocuments({ _id: onA._id })).to.equal(1);
+        expect(rados.objects.size).to.equal(1);
+    });
+
+    it('does not collect a record that was moved to another cluster under the same key', async function () {
+        const file = await orphan('moved under the same key');
+        const location = file.metadata.storage;
+        await files.updateOne({ _id: file._id }, { $set: { 'metadata.storage.fsid': FSID_B } });
+        expect(await storage.catalog.removeOrphan(file._id, location)).to.be.false;
+        expect(await storage.catalog.removeOrphan(file._id, { ...location, fsid: FSID_B })).to.be.true;
     });
 });

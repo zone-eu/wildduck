@@ -8,9 +8,9 @@ bucket="attachments"
 # If true then decodes base64 encoded attachments to binary before storing to DB.
 # Decoding base64 attachments expects consistent line length and default base64 alphabet
 decodeBase64=true
-# With type="s3", new payloads smaller than this many bytes (as stored, so after base64 decoding) stay in
-# GridFS. Object stores handle masses of tiny objects poorly. 0 sends every payload to the object store.
-# Records keep their backend, so changing this only affects attachments stored afterwards
+# With type="s3" or type="rados", new payloads smaller than this many bytes (as stored, so after base64
+# decoding) stay in GridFS. Object stores handle masses of tiny objects poorly. 0 sends every payload to the
+# object store. Records keep their backend, so changing this only affects attachments stored afterwards
 minObjectSize=262144
 
 # Required when type="s3", and on all readers if S3-backed attachments exist.
@@ -31,3 +31,25 @@ minObjectSize=262144
 # readTimeout=30000 # ms a read waits for S3 to send more data (0 disables)
 # slowReaderTimeout=300000 # ms a read waits for a reader that stopped taking data before it gives up its connection
 # maxSockets=50 # per process, the SDK default is 50
+
+# Store attachment payloads directly in Ceph RADOS pools, on one or more clusters (type="rados"). Every
+# process that reads messages needs every cluster that holds payloads. Needs the node-librados package and a
+# librados that understands the cluster's keys. See docs/in-depth/rados-attachment-storage.md
+# [rados]
+# prefix="production"
+# namespace="wildduck"
+# placement=["ams1/wildduck.attachments:2", "ams2/wildduck.attachments:1"] # where new payloads go, weight 0 = read only
+# stripeSize=4194304 # bytes per object, keep it well below osd_max_object_size
+# opTimeout=30 # seconds, bounds every RADOS and monitor operation
+# writeAttempts=2 # placement targets tried for one write when the first has an outage
+# downTime=30000 # ms a target that had an outage goes to the back of the line
+# reconnectDelay=10000 # ms a cluster that could not be connected to fails at once
+# writeConcurrency=4 # tails written in parallel per payload
+# verifyPartialStripes=false # true reads whole stripes to check them on partial reads
+#
+# [rados.clusters.ams1] # label used in placement, no underscores
+# fsid="5f8e2c1a-7b3d-4e9f-a6c0-d1b2e3f4a5b6" # checked against the cluster on connect
+# conf="/etc/ceph/ams1.conf" # or monHost="..." without a conf file
+# user="client.wildduck"
+# keyring="/etc/ceph/ams1.client.wildduck.keyring"
+# pools=["wildduck.attachments"] # optional, pools this process may read
