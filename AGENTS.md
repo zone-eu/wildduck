@@ -95,6 +95,7 @@ Follow `lib/api/messages.js` and `docs/in-depth/api-validation.md`:
 
 ### IMAP and MIME
 
+- Sanitize mailbox names with `imapTools.sanitizeMailbox()` before persistence: remove C0/C1 controls, DEL, U+2028, and U+2029. IMAP normalization decodes modified UTF-7 before sanitizing; reject names that become empty and preserve collision checks against sanitized paths.
 - `imap-core/lib/commands/` modules declare state, schema, and a handler bound to the connection. `imap.js` wires callbacks to factories in `lib/handlers/`. Preserve selected mailbox state, UID/sequence semantics, flags, notifications, and callback contracts.
 - Parser/compiler behavior lives under `imap-core/lib/handler/`; connections, input, and output are managed by `imap-connection.js`, `imap-stream.js`, and `imap-composer.js`.
 - MIME parsing/rebuilding lives under `imap-core/lib/indexer/`, including `parse-mime-tree.js`, `tree-walker.js`, `indexer.js`, `body-structure.js`, and `create-envelope.js`. New trees use v2; persisted trees without `v` are v1 and retain legacy rendering behavior.

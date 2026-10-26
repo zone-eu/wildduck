@@ -72,6 +72,32 @@ describe('Persistent labels', () => {
         }
     });
 
+    it('sanitizes control characters before deduplication and label creation', async () => {
+        const user = new ObjectId();
+        const db = createDatabase();
+        const result = await ensureLabels(db, user, ['Pro\u0000jects/😀', 'Projects/😀', 'Pro\u0000jects/😀']);
+        expect(result.created).to.deep.equal(['Projects/😀']);
+        expect(db.records.map(record => record.name)).to.deep.equal(['Projects/😀']);
+        const reused = await ensureLabels(db, user, ['Pro\u0000jects/😀', 'Projects/😀']);
+        expect(reused.created).to.deep.equal([]);
+        expect(reused.labels.map(record => record.name)).to.deep.equal(['Projects/😀']);
+    });
+
+    it('rejects names that sanitize to empty or expose internal prefixes', async () => {
+        const user = new ObjectId();
+        const db = createDatabase();
+        for (const name of ['\u0000\u0085\u2028\u2029\u007f', '\u0000$wdlabel$123', '\u0000\\Seen']) {
+            let error;
+            try {
+                await ensureLabels(db, user, [name]);
+            } catch (err) {
+                error = err;
+            }
+            expect(error.code).to.equal('InvalidLabel');
+        }
+        expect(db.records).to.have.length(0);
+    });
+
     it('creates one label idempotently without overwriting existing metadata', async () => {
         const user = new ObjectId();
         const db = createDatabase();
