@@ -255,6 +255,23 @@ async function collect(stream) {
             expect((await readBack(sized, atId)).equals(at.body)).to.be.true;
         });
 
+        it('measures base64 followed by blank lines or wrapped at any width by what it decodes to', async () => {
+            const sized = sizedStorage({ minObjectSize: 100 });
+            // 400 bytes that decode to 1 byte, and 1 byte wrapped one character per line
+            const blankLines = { ...base64Attachment(crypto.randomBytes(1)), magic: 5 };
+            blankLines.body = Buffer.concat([blankLines.body, Buffer.from('\r\n'.repeat(198))]);
+            const narrow = base64Attachment(crypto.randomBytes(1));
+            narrow.body = Buffer.from(narrow.body.toString().split('').join('\r\n'));
+            expect(blankLines.body.length).to.equal(400);
+            for (const attachment of [blankLines, narrow]) {
+                const { id } = await create(sized, attachment);
+                const file = await files().findOne({ _id: id });
+                expect(file.metadata.storage).to.be.undefined;
+                expect(file.length).to.equal(1);
+                expect((await readBack(sized, id)).equals(attachment.body)).to.be.true;
+            }
+        });
+
         it('adds a reference to a copy stored on the other side of the threshold', async () => {
             const body = crypto.randomBytes(500);
             const { id } = await create(storage, binaryAttachment(body));

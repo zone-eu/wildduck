@@ -10,7 +10,7 @@
 const { expect } = require('chai');
 const { Readable } = require('stream');
 const libbase64 = require('libbase64');
-const { prepareStoredBody, createReadWindow } = require('../lib/attachments/base64-codec');
+const { prepareStoredBody, storedLength, createReadWindow } = require('../lib/attachments/base64-codec');
 const { prng, seedFrom, collect } = require('./attachment-s3-helpers');
 
 const CASES = Number(process.env.ATTACHMENT_FUZZ_CASES) || 1500;
@@ -82,9 +82,13 @@ describe(`Attachment codec fuzzing (seed ${SEED})`, function () {
             let { body, transferEncoding, description } = makeBody(r);
             let label = `case ${i} (${description}), replay with ATTACHMENT_FUZZ_SEED=${SEED}`;
             let { data, metadata } = prepareStoredBody({ body, transferEncoding }, { decodeBase64: true });
+            // the size minObjectSize routes on, worked out without decoding: exact, or less for a body stored as it is
+            let length = storedLength({ body, transferEncoding }, { decodeBase64: true });
+            expect(length, label).to.be.at.most(data.length);
 
             if (metadata.decoded) {
                 decodedCount++;
+                expect(length, label).to.equal(data.length);
                 // a body is only stored decoded when the encoder reproduces it, apart from blank lines after it
                 let text = body.toString('latin1').replace(/(\r\n)+$/, '');
                 expect(libbase64.wrap(data.toString('base64'), metadata.lineLen), label).to.equal(text);
