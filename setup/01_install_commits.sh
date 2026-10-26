@@ -9,7 +9,7 @@ NODE_MAJOR="22"
 MONGODB="8.0"
 CODENAME=`lsb_release -c -s`
 
-HARAKA_VERSION="3.0.5"
+HARAKA_VERSION="3.3.5"
 
 ARCHITECTURE=$(dpkg --print-architecture)
 if [ "$ARCHITECTURE" != "amd64" ] && [ "$ARCHITECTURE" != "arm64" ] && [ "$ARCHITECTURE" != "armhf" ]; then

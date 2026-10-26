@@ -48,9 +48,12 @@ npm install --omit=dev --omit=optional --no-package-lock --no-audit --ignore-scr
 cd /opt/haraka
 mv config/plugins config/plugins.bak
 
-echo "26214400" > config/databytes
+# config/databytes is ignored since Haraka 3.3; the 25 MB message size limit
+# comes from [max] bytes in connection.ini, which already defaults to 26214400
 echo "$HOSTNAME" > config/me
-echo "WildDuck MX" > config/smtpgreeting
+# Haraka >= 3.3 no longer reads config/smtpgreeting; the SMTP greeting is
+# taken from [message] in connection.ini, so enable it there
+sed -i 's/^; greeting\[\]=My Custom$/greeting[]=WildDuck MX/' config/connection.ini
 
 echo "#spf
 #dkim_verify
@@ -120,8 +123,10 @@ SyslogIdentifier=haraka
 [Install]
 WantedBy=multi-user.target' > /etc/systemd/system/haraka.service
 
-echo 'user=wildduck
-group=wildduck' >> config/smtp.ini
+# user/group are read as cfg.main.user/cfg.main.group, so they must be
+# top-level keys; use the template placeholders instead of appending after
+# the last [section], which would capture them
+sed -i -e 's|^;user=smtp$|user=wildduck|' -e 's|^;group=smtp$|group=wildduck|' config/smtp.ini
 
 chown -R deploy:deploy /opt/haraka
 chown -R deploy:deploy /var/opt/haraka-plugin-wildduck.git
