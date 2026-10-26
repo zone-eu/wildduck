@@ -109,17 +109,11 @@ describe('GridFS verification without S3 settings', function () {
     });
 
     async function run(args, expectedCode = 0, configPath = fixture.configPath, includeS3Options = true) {
-        const s3Options = includeS3Options
-            ? [`--s3-bucket=${environment.bucket}`, `--s3-prefix=${fixture.databaseName}`, `--s3-endpoint=${endpoint}`]
-            : [];
-        const operation = execFileAsync(
-            process.execPath,
-            [script, `--gridfs-bucket=${collectionName}`, ...s3Options, `--config=${configPath}`, ...args],
-            {
-                env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1' },
-                timeout: 20000
-            }
-        );
+        const s3Options = includeS3Options ? [`--s3-bucket=${environment.bucket}`, `--s3-prefix=${fixture.databaseName}`, `--s3-endpoint=${endpoint}`] : [];
+        const operation = execFileAsync(process.execPath, [script, `--gridfs-bucket=${collectionName}`, ...s3Options, `--config=${configPath}`, ...args], {
+            env: { ...process.env, NODE_ENV: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_REGION: 'us-east-1' },
+            timeout: 20000
+        });
         const result = expectedCode ? await failure(operation, expectedCode) : await operation;
         return { ...result, stats: JSON.parse(result.stdout.trim().split('\n').pop()) };
     }
@@ -134,9 +128,8 @@ describe('GridFS verification without S3 settings', function () {
 
     function createAttachment(body, transferEncoding = '7bit', magic = 43) {
         return new Promise((resolve, reject) =>
-            storage.create(
-                { body, transferEncoding, contentType: 'application/octet-stream', magic },
-                (err, createdId) => (err ? reject(err) : resolve(createdId))
+            storage.create({ body, transferEncoding, contentType: 'application/octet-stream', magic }, (err, createdId) =>
+                err ? reject(err) : resolve(createdId)
             )
         );
     }
@@ -190,10 +183,22 @@ describe('GridFS verification without S3 settings', function () {
     });
 
     it('copies multi-chunk payloads exactly and replaces garbage chunks from an interrupted prior copy', async () => {
-        encoded = Buffer.from(crypto.randomBytes(600 * 1024).toString('base64').match(/.{1,76}/g).join('\r\n'));
+        encoded = Buffer.from(
+            crypto
+                .randomBytes(600 * 1024)
+                .toString('base64')
+                .match(/.{1,76}/g)
+                .join('\r\n')
+        );
         id = await new Promise((resolve, reject) =>
             storage.create(
-                { body: encoded, transferEncoding: 'base64', lineCount: encoded.toString('binary').split('\r\n').length, contentType: 'application/octet-stream', magic: 42 },
+                {
+                    body: encoded,
+                    transferEncoding: 'base64',
+                    lineCount: encoded.toString('binary').split('\r\n').length,
+                    contentType: 'application/octet-stream',
+                    magic: 42
+                },
                 (err, createdId) => (err ? reject(err) : resolve(createdId))
             )
         );
@@ -251,6 +256,24 @@ describe('GridFS verification without S3 settings', function () {
             expect(result.stderr).to.match(/mismatch/i);
             expect(result.stats.failed).to.equal(1);
             expect(result.stats.verified).to.equal(0);
+        } finally {
+            await fs.unlink(noS3ConfigPath);
+        }
+    });
+
+    it('verifies a GridFS record stored without a checksum by its length', async () => {
+        await run(['--migrate']);
+        const legacy = await createAttachment(Buffer.from('stored before checksums were recorded'), '7bit', 44);
+        await run(['--migrate']);
+        await files.updateOne({ _id: legacy }, { $unset: { 'metadata.fileContentHash': '' } });
+        const noS3ConfigPath = await writeGridfsOnlyConfig();
+        try {
+            const verified = await run(['--verify-only'], 0, noS3ConfigPath, false);
+            expect(verified.stats).to.include({ verified: 2, failed: 0 });
+
+            await chunks.deleteMany({ files_id: legacy });
+            const result = await run(['--verify-only'], 1, noS3ConfigPath, false);
+            expect(result.stats).to.include({ verified: 1, failed: 1 });
         } finally {
             await fs.unlink(noS3ConfigPath);
         }

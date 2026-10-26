@@ -8,18 +8,7 @@ const db = require('../lib/db');
 const AttachmentStorage = require('../lib/attachment-storage');
 
 const flagNames = new Set(['migrate', 'dry-run', 'verify-only']);
-const valueNames = new Set([
-    'prefix',
-    'limit',
-    'batch',
-    'concurrency',
-    'throttle-ms',
-    'gridfs-bucket',
-    's3-bucket',
-    's3-prefix',
-    's3-endpoint',
-    'config'
-]);
+const valueNames = new Set(['prefix', 'limit', 'batch', 'concurrency', 'throttle-ms', 'gridfs-bucket', 's3-bucket', 's3-prefix', 's3-endpoint', 'config']);
 const flags = new Set();
 const values = {};
 let argumentError;
@@ -151,7 +140,12 @@ async function main() {
             storage.backend(current.metadata, current.length);
             let checksum = current.metadata.fileContentHash;
             if (verifyOnly) {
-                await check(bucket.openDownloadStream(id), current.length, checksum, 'GridFS');
+                if (checksum) {
+                    await check(bucket.openDownloadStream(id), current.length, checksum, 'GridFS');
+                } else if ((await hashStream(bucket.openDownloadStream(id))).length !== current.length) {
+                    // records stored before writers recorded fileContentHash can only be checked by length
+                    throw new Error('GridFS payload length mismatch');
+                }
                 stats.verified++;
                 return;
             }
