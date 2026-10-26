@@ -36,6 +36,44 @@ describe('#filterFolders', function () {
     });
 });
 
+describe('#normalizeMailbox', function () {
+    it('should remove all C0, DEL, C1, and Unicode line separator controls', function () {
+        let controls = '';
+        for (let code = 0; code <= 0x1f; code++) {
+            controls += String.fromCharCode(code);
+        }
+        controls += String.fromCharCode(0x7f);
+        for (let code = 0x80; code <= 0x9f; code++) {
+            controls += String.fromCharCode(code);
+        }
+        controls += '\u2028\u2029';
+
+        expect(imapTools.normalizeMailbox(`a${controls}b`)).to.equal('ab');
+    });
+
+    it('should remove controls decoded from modified UTF-7', function () {
+        let controls = '';
+        for (let code = 0x80; code <= 0x9f; code++) {
+            controls += String.fromCharCode(code);
+        }
+        controls += '\u2028\u2029';
+
+        expect(imapTools.normalizeMailbox(`a${imapTools.utf7encode(controls)}b`, true)).to.equal('ab');
+    });
+
+    it('should preserve Unicode, spaces, wildcard characters, and hierarchy separators', function () {
+        expect(imapTools.normalizeMailbox('Pröbe folder/*/%/child')).to.equal('Pröbe folder/*/%/child');
+    });
+
+    it('should normalize INBOX case after removing controls', function () {
+        expect(imapTools.normalizeMailbox('i\u0000Nb\u0080Ox')).to.equal('INBOX');
+    });
+
+    it('should return an empty string when the mailbox contains only controls', function () {
+        expect(imapTools.normalizeMailbox('\u0000\u0080\u2028')).to.equal('');
+    });
+});
+
 describe('#sendCapabilityResponse', function () {
     function getCapabilities(connection) {
         let responses = [];

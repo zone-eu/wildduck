@@ -232,22 +232,28 @@ module.exports.validateSequence = function (range) {
     return !!(range.length && SEQ_RANGE.test(range));
 };
 
+// Mailbox names must not contain controls or Unicode line/paragraph separators.
+module.exports.sanitizeMailbox = function (mailbox) {
+    return mailbox.replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029]/g, ''); // eslint-disable-line no-control-regex
+};
+
 module.exports.normalizeMailbox = function (mailbox, utf7Encoded) {
     if (!mailbox) {
         return '';
     }
 
+    if (utf7Encoded) {
+        mailbox = utf7decode(mailbox);
+    }
+    mailbox = module.exports.sanitizeMailbox(mailbox);
+
     // trim slashes
     mailbox = mailbox.replace(/^\/|\/$/g, () => '');
 
     // Normalize case insensitive INBOX to always use uppercase
-    let parts = mailbox.split('/');
+    const parts = mailbox.split('/');
     if (parts[0].toUpperCase() === 'INBOX') {
         parts[0] = 'INBOX';
-    }
-
-    if (utf7Encoded) {
-        parts = parts.map(value => utf7decode(value));
     }
 
     mailbox = parts.join('/');

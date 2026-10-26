@@ -30,6 +30,9 @@ module.exports = {
             });
         }
 
+        path = imapTools.normalizeMailbox(path, !this.acceptUTF8Enabled);
+        newname = imapTools.normalizeMailbox(newname, !this.acceptUTF8Enabled);
+
         if (!path || !newname) {
             // nothing to check for if mailbox is not defined
             return callback(null, {
@@ -38,9 +41,6 @@ module.exports = {
                 message: 'No folder name given'
             });
         }
-
-        path = imapTools.normalizeMailbox(path, !this.acceptUTF8Enabled);
-        newname = imapTools.normalizeMailbox(newname, !this.acceptUTF8Enabled);
 
         // ignore commands with adjacent separators
         if (/\/{2,}/.test(newname)) {

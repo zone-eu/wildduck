@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { partsOf } = require('../../lib/indexer/body-structure');
+const { MAX_NESTING_DEPTH } = require('../../lib/indexer/parse-mime-tree');
 
 // a line break is LF with an optional CR before it, stored as CRLF. Anything else is content
 const normalize = source => Buffer.from(Buffer.from(source).toString('binary').replace(/\r?\n/g, '\r\n'), 'binary');
@@ -18,6 +19,28 @@ const normalize = source => Buffer.from(Buffer.from(source).toString('binary').r
 const ensureFinalCrlf = buf => (buf.length && buf.subarray(-2).toString('binary') !== '\r\n' ? Buffer.concat([buf, Buffer.from('\r\n')]) : buf);
 
 const expectedFor = source => ensureFinalCrlf(normalize(source));
+
+// multiparts nested `levels` deep around an entity, the outermost one followed by a sibling part. The
+// default attachment carries every list a leaf can have, so its BODYSTRUCTURE nests as deep as a leaf can
+const nestedMultiparts = (levels, entity) => {
+    entity =
+        entity ||
+        'Content-Type: application/octet-stream; name="a.bin"\r\nContent-Disposition: attachment; filename="a.bin"\r\nContent-Language: en, et\r\n\r\ninnermost\r\n';
+    for (let i = levels - 1; i > 0; i--) {
+        entity = `Content-Type: multipart/mixed; boundary="b${i}"\r\n\r\n--b${i}\r\n${entity}--b${i}--\r\n`;
+    }
+    return `Content-Type: multipart/mixed; boundary="b0"\r\n\r\n--b0\r\n${entity}--b0\r\nContent-Type: text/plain\r\n\r\nsibling\r\n--b0--\r\n`;
+};
+
+// message/rfc822 parts nested `levels` deep around a message, by default a text message with its address
+// fields filled
+const nestedMessages = (levels, message) => {
+    message = message || 'From: "A" <a@b.c>\r\nTo: "D" <d@e.f>, g@h.i\r\nSubject: innermost\r\n\r\ninnermost\r\n';
+    for (let i = 0; i < levels; i++) {
+        message = `Subject: level ${i}\r\nContent-Type: message/rfc822\r\n\r\n${message}`;
+    }
+    return message;
+};
 
 const synthetic = {
     // RFC 2046 5.1.1: text after the close delimiter is the epilogue and must stay after it
@@ -81,7 +104,12 @@ const synthetic = {
     // LF only input is normalised to CRLF
     lf_only: 'Content-Type: multipart/mixed; boundary="b"\n\n--b\nContent-Type: text/plain\n\np1\n--b--\n',
     // part bodies may legitimately end with a blank line, which stays part of the body
-    part_trailing_blank: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\np1\r\n\r\n--b--\r\n'
+    part_trailing_blank: 'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\np1\r\n\r\n--b--\r\n',
+    // containers nested up to and past the nesting limit, the ones past it kept as plain bodies
+    nested_at_limit: nestedMultiparts(MAX_NESTING_DEPTH),
+    nested_past_limit: nestedMultiparts(MAX_NESTING_DEPTH + 2),
+    rfc822_at_limit: nestedMessages(MAX_NESTING_DEPTH),
+    rfc822_past_limit: nestedMessages(MAX_NESTING_DEPTH + 2)
 };
 
 const cases = {};
@@ -187,4 +215,18 @@ const sha256 = buf => crypto.createHash('sha256').update(buf).digest('hex');
 const treeReplacer = (key, value) => (value && value.type === 'Buffer' && Array.isArray(value.data) ? { $buffer: Buffer.from(value.data).toString('base64') } : value);
 const treeReviver = (key, value) => (value && typeof value === 'object' && typeof value.$buffer === 'string' ? Buffer.from(value.$buffer, 'base64') : value);
 
-module.exports = { cases, normalize, ensureFinalCrlf, listSelectors, runSelector, collect, materialize, wireLiteral, sha256, treeReplacer, treeReviver };
+module.exports = {
+    cases,
+    nestedMultiparts,
+    nestedMessages,
+    normalize,
+    ensureFinalCrlf,
+    listSelectors,
+    runSelector,
+    collect,
+    materialize,
+    wireLiteral,
+    sha256,
+    treeReplacer,
+    treeReviver
+};

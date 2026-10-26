@@ -121,8 +121,14 @@ Conversion semantics worth knowing:
 - **binary** fields reach the handler as a `Buffer`
 
 Named validators available through `wdValidator`: `mongoCursor`, `metaData`,
-`mailboxPath`, `ip`, `email`, `emailFailoverEmpty`, `hostname`, `domain`,
+`mailboxPath`, `label`, `ip`, `email`, `emailFailoverEmpty`, `hostname`, `domain`,
 `uri`, `smtpUrl`, `webhookUrl`.
+
+The `label` validator strips C0/C1 controls, DEL, and Unicode line/paragraph
+separators (U+2028/U+2029), using the same sanitizer as mailbox names. Validation
+and name lookups use the sanitized value, including for label creation, renaming,
+message updates, and filter actions. Names that become empty or use a reserved
+flag prefix are rejected. Special characters and emojis are allowed.
 
 `minLength` and `maxLength` count UTF-16 code units, the same unit
 `String.length` reports. A character outside the Basic Multilingual Plane, an
