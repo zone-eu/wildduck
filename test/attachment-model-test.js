@@ -216,7 +216,8 @@ describe('Attachment store model', function () {
                 if (random.chance(0.1)) {
                     // an upload of the first one stopped ten minutes ago and left a chunk behind
                     leftover = picked[0];
-                    if (!(await files.findOne({ _id: leftover.id }))) {
+                    // an earlier leftover may still be there (stranded, or its collection stopped), a second one would hit the unique index
+                    if (!(await files.findOne({ _id: leftover.id })) && !(await chunks.findOne({ files_id: leftover.id, n: 1 }))) {
                         await chunks.insertOne({
                             _id: objectIdAt(new Date(Date.now() - 10 * 60 * 1000)),
                             files_id: leftover.id,
