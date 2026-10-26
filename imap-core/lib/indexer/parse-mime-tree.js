@@ -10,6 +10,13 @@ const TREE_VERSION = 2;
 // produce). Every other byte is content, a bare CR included. Lines are stored with CRLF
 const LINE_BREAKS = /\r?\n/g;
 
+// Containers (multiparts and message/rfc822 parts) are opened up to this many levels deep, like Postfix's
+// mime_nesting_limit. A deeper container is kept as a plain body, so its bytes rebuild unchanged. Every
+// walk over the tree recurses once per level, MongoDB refuses documents nested deeper than 100 levels
+// (about 48 levels of a stored tree), and every level adds a list to BODYSTRUCTURE, which IMAP parsers
+// limit (ours at MAX_NODE_DEPTH, 25 lists, in handler/imap-parser.js, which 22 levels reach)
+const MAX_NESTING_DEPTH = 20;
+
 /**
  * Splits a structured header value (RFC 2045 5.1 Content-Type and friends) at a separator character,
  * leaving quoted strings intact and dropping RFC 822 comments outside of them. With no separator the
@@ -75,6 +82,7 @@ function splitStructuredValue(value, separator) {
  * @param {String|Buffer} rfc822 Raw body of the message
  * @param {Object} [options]
  * @param {Boolean} [options.embedded] The input is the body of a message/rfc822 part, not a whole message
+ * @param {Number} [options.depth=0] Nesting depth of the root node, the depth of the embedding part plus one
  */
 class MIMEParser {
     constructor(rfc822, options) {
@@ -97,8 +105,10 @@ class MIMEParser {
         // whether any line ended with a bare LF, which is stored as CRLF
         this._bareLf = false;
 
+        // the root node is one level below this wrapper
         this.tree = {
-            childNodes: []
+            childNodes: [],
+            depth: (options.depth || 0) - 1
         };
         this._node = this.createNode(this.tree);
     }
@@ -293,6 +303,10 @@ class MIMEParser {
      * insensitive
      */
     parseEmbeddedMessage(node) {
+        if (node.depth >= MAX_NESTING_DEPTH) {
+            // too deep to open, the body stays as it is
+            return;
+        }
         let contentType = node.parsedHeader['content-type'];
         if (!contentType || (contentType.value || '').toLowerCase() !== 'message/rfc822') {
             return;
@@ -301,7 +315,7 @@ class MIMEParser {
         if (encoding && !['7bit', '8bit', 'binary'].includes(encoding)) {
             return;
         }
-        node.message = parse(node.body, { embedded: true });
+        node.message = parse(node.body, { embedded: true, depth: node.depth + 1 });
     }
 
     /**
@@ -338,6 +352,7 @@ class MIMEParser {
             // remove unneeded properties
             delete node.parentNode;
             delete node.state;
+            delete node.depth;
             if (!node.childNodes.length) {
                 delete node.childNodes;
             }
@@ -364,6 +379,7 @@ class MIMEParser {
             body: [],
             multipart: false,
             boundary: false,
+            depth: parentNode.depth + 1,
             parentNode
         };
         parentNode.childNodes.push(node);
@@ -560,7 +576,8 @@ class MIMEParser {
         // processNodeHeader() always sets a Content-Type
         let contentType = node.parsedHeader['content-type'];
 
-        if (contentType.type === 'multipart' && contentType.params.boundary) {
+        // past the nesting limit a multipart is a plain body, like one without a boundary
+        if (contentType.type === 'multipart' && contentType.params.boundary && node.depth < MAX_NESTING_DEPTH) {
             node.multipart = contentType.subtype;
             node.boundary = contentType.params.boundary;
             // until the close delimiter is seen
@@ -582,5 +599,6 @@ function parse(rfc822, options) {
 
 parse.MIMEParser = MIMEParser;
 parse.TREE_VERSION = TREE_VERSION;
+parse.MAX_NESTING_DEPTH = MAX_NESTING_DEPTH;
 
 module.exports = parse;

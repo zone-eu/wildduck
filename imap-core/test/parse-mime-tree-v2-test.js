@@ -8,7 +8,8 @@
 const chai = require('chai');
 const expect = chai.expect;
 const parseMimeTree = require('../lib/indexer/parse-mime-tree');
-const { cases } = require('./fixtures/indexer-cases');
+const Indexer = require('../lib/indexer/indexer');
+const { cases, collect, nestedMultiparts, nestedMessages } = require('./fixtures/indexer-cases');
 
 chai.config.includeStack = true;
 
@@ -252,4 +253,106 @@ describe('MIME tree v2 structure', function () {
         expect(tree.message).to.exist;
         expect(tree.message.childNodes.length).to.equal(2);
     });
+});
+
+describe('MIME nesting limit', function () {
+    const { MAX_NESTING_DEPTH } = parseMimeTree;
+
+    const indexer = new Indexer();
+
+    const LEAF = 'Content-Type: text/plain\r\n\r\nleaf\r\n';
+    const LEAF_MESSAGE = 'Subject: leaf\r\n\r\nleaf\r\n';
+    const nested = levels => Buffer.from(nestedMultiparts(levels, LEAF), 'binary');
+    const forwarded = levels => Buffer.from(nestedMessages(levels, LEAF_MESSAGE), 'binary');
+
+    // walks down the first part of every container, returns the nodes on the way
+    const spine = tree => {
+        let nodes = [];
+        for (let node = tree; node; node = node.message || (node.childNodes && node.childNodes[0])) {
+            nodes.push(node);
+        }
+        return nodes;
+    };
+
+    it('opens every multipart up to the limit', function () {
+        let nodes = spine(parseMimeTree(nested(MAX_NESTING_DEPTH)));
+        // the containers and the text part inside the deepest one
+        expect(nodes.length).to.equal(MAX_NESTING_DEPTH + 1);
+        expect(nodes.slice(0, -1).every(node => node.boundary)).to.be.true;
+        expect(nodes[MAX_NESTING_DEPTH].body.toString('binary')).to.equal('leaf');
+    });
+
+    it('keeps a multipart past the limit as a plain body', function () {
+        let nodes = spine(parseMimeTree(nested(MAX_NESTING_DEPTH + 1)));
+        expect(nodes.length).to.equal(MAX_NESTING_DEPTH + 1);
+
+        let kept = nodes[MAX_NESTING_DEPTH];
+        expect(kept.parsedHeader['content-type'].value).to.equal('multipart/mixed');
+        expect(kept.boundary).to.equal(false);
+        expect(kept.multipart).to.equal(false);
+        expect(kept.childNodes).to.be.undefined;
+        let inner = `b${MAX_NESTING_DEPTH}`;
+        expect(kept.body.toString('binary')).to.equal(`--${inner}\r\n${LEAF}--${inner}--`);
+    });
+
+    it('ends a part kept as a plain body at the delimiter of an enclosing multipart', function () {
+        let tree = parseMimeTree(nested(MAX_NESTING_DEPTH + 5));
+        // the outermost multipart still finds its delimiters from inside the part kept plain
+        expect(tree.childNodes.length).to.equal(2);
+        expect(tree.childNodes[1].body.toString('binary')).to.equal('sibling');
+        let kept = spine(tree)[MAX_NESTING_DEPTH];
+        expect(kept.boundary).to.equal(false);
+        expect(kept.body.toString('binary')).to.not.include('--b0');
+    });
+
+    it('does not parse a message/rfc822 part past the limit', function () {
+        let nodes = spine(parseMimeTree(forwarded(MAX_NESTING_DEPTH + 1)));
+        expect(nodes.length).to.equal(MAX_NESTING_DEPTH + 1);
+
+        let kept = nodes[MAX_NESTING_DEPTH];
+        expect(kept.parsedHeader['content-type'].value).to.equal('message/rfc822');
+        expect(kept.message).to.be.undefined;
+        expect(kept.body.toString('binary')).to.equal(LEAF_MESSAGE);
+        // embedded messages up to the limit carry the tree version
+        expect(kept.v).to.equal(parseMimeTree.TREE_VERSION);
+    });
+
+    it('counts multiparts and embedded messages towards the same limit', function () {
+        // embedded messages that each hold a multipart, two levels per message
+        let source = LEAF;
+        for (let i = 0; i < MAX_NESTING_DEPTH; i++) {
+            source = `Content-Type: multipart/mixed; boundary="m${i}"\r\n\r\n--m${i}\r\nContent-Type: message/rfc822\r\n\r\n${source}--m${i}--\r\n`;
+        }
+        let nodes = spine(parseMimeTree(Buffer.from(source, 'binary')));
+        expect(nodes.length).to.equal(MAX_NESTING_DEPTH + 1);
+        expect(nodes[MAX_NESTING_DEPTH].childNodes).to.be.undefined;
+        expect(nodes[MAX_NESTING_DEPTH].message).to.be.undefined;
+    });
+
+    it('does not leave the nesting depth in the tree', function () {
+        expect(JSON.stringify(parseMimeTree(nested(3)))).to.not.include('"depth"');
+        expect(JSON.stringify(parseMimeTree(forwarded(3)))).to.not.include('"depth"');
+    });
+
+    for (let [name, generate] of [
+        ['multiparts', nested],
+        ['embedded messages', forwarded]
+    ]) {
+        it(`stores and rebuilds ${name} nested far past the limit`, async function () {
+            // deep enough to overflow the stack in any step that recurses once per level
+            let source = generate(10000);
+            let tree = indexer.parseMimeTree(source);
+            expect(spine(tree).length).to.equal(MAX_NESTING_DEPTH + 1);
+
+            // whatever was not opened is in a body, so the message rebuilds byte for byte
+            let rebuilt = await collect(indexer.rebuild(tree).value);
+            expect(rebuilt.equals(source)).to.be.true;
+            expect(indexer.getSize(tree)).to.equal(source.length);
+
+            indexer.getBodyStructure(tree);
+            indexer.getEnvelope(tree);
+            // last, as it moves attachment bodies out of the tree
+            indexer.getMaildata(tree);
+        });
+    }
 });
