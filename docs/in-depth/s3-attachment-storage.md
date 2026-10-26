@@ -17,19 +17,19 @@ prefix="your-stable-installation-name"
 region="us-east-1"
 # endpoint="https://s3.example.com"
 # forcePathStyle=true
-# accessKeyId="..."      # MinIO, Ceph, Garage; otherwise the AWS default credential chain
+# accessKeyId="..."      # MinIO, Ceph, Garage, otherwise the AWS default credential chain
 # secretAccessKey="..."
 # maxAttempts=3
 # connectionTimeout=5000 # ms
-# requestTimeout=30000   # ms until the response headers; an upload also gets 2 s per MB of its size
+# requestTimeout=30000   # ms until the response headers. An upload also gets 2 s per MB of its size
 # readTimeout=30000      # ms a read waits for S3 to send more data
 # slowReaderTimeout=300000 # ms a read waits for a reader that stopped taking data
 # maxSockets=50
 ```
 
-`prefix` must be unique for installations sharing a bucket and must not change after objects have been written. WildDuck stores the bucket and key in each `attachments.files` record, but a stable prefix makes retries and maintenance predictable. Credentials come from `accessKeyId` and `secretAccessKey` (and optionally `sessionToken`) when set, otherwise from the AWS SDK's default credential provider chain. Every request has a connection and a request timeout, an upload gets 2 seconds per megabyte on top of the request timeout (a minimum rate of 512 KB/s), and a read fails when S3 sends nothing for `readTimeout` while the reader is waiting for data (a slow IMAP client is not mistaken for a stalled S3). So a stalled S3 connection fails the request instead of hanging a delivery or a FETCH. Give the process `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the configured prefix, plus `s3:ListBucket` for the migration script's cleanup mode. A missing object is served as a placeholder and logged as `attachment_missing`, as a missing GridFS file is; without `s3:ListBucket` AWS answers 403 instead of 404 for a missing object, and the fetch fails instead. Keep the bucket private.
+`prefix` must be unique for installations sharing a bucket and must not change after objects have been written. WildDuck stores the bucket and key in each `attachments.files` record, but a stable prefix makes retries and maintenance predictable. Credentials come from `accessKeyId` and `secretAccessKey` (and optionally `sessionToken`) when set, otherwise from the AWS SDK's default credential provider chain. Every request has a connection and a request timeout, an upload gets 2 seconds per megabyte on top of the request timeout (a minimum rate of 512 KB/s), and a read fails when S3 sends nothing for `readTimeout` while the reader is waiting for data (a slow IMAP client is not mistaken for a stalled S3). So a stalled S3 connection fails the request instead of hanging a delivery or a FETCH. Give the process `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the configured prefix, plus `s3:ListBucket` for the migration script's cleanup mode. A missing object is served as a placeholder and logged as `attachment_missing`, as a missing GridFS file is. Without `s3:ListBucket` AWS answers 403 instead of 404 for a missing object, and the fetch fails instead. Keep the bucket private.
 
-A new payload is uploaded with a single `PutObject` request that carries the SHA-256 of the stored bytes in `x-amz-checksum-sha256`. S3 rejects the upload with `BadDigest` when the received bytes do not match, so the object is never read back for verification. The provider must verify that header; AWS S3 and MinIO do. Moto, used by the test suite, accepts it without checking.
+A new payload is uploaded with a single `PutObject` request that carries the SHA-256 of the stored bytes in `x-amz-checksum-sha256`. S3 rejects the upload with `BadDigest` when the received bytes do not match, so the object is never read back for verification. The provider must verify that header. AWS S3 and MinIO do. Moto, used by the test suite, accepts it without checking.
 
 If the upload fails, the message is not stored and the delivery (or APPEND, or API call) fails with a temporary error, so it is retried later. With `type="s3"` new attachments go to S3 only.
 
@@ -51,13 +51,33 @@ Run every prefix from `00` through `ff`, or omit `--prefix` to scan all attachme
 
 `--cleanup-unreferenced-s3 --yes` removes old objects that have no matching S3 locator in `attachments.files`, such as an upload whose catalog insert failed with an unknown outcome. Every upload writes a new key, so an object older than the grace period that no record points to can not become referenced any more. Use a grace period comfortably longer than the longest expected upload.
 
-The CLI also accepts `--gridfs-bucket`, `--s3-bucket`, `--s3-prefix`, and `--s3-endpoint` for a specifically targeted run. Review those overrides carefully before using `--cleanup-chunks`. Progress and failures are printed to stdout and stderr; a failed entry makes the process exit nonzero. Re-run after resolving failures. An incomplete migration is supported: WildDuck continues to read both backends.
+The CLI also accepts `--gridfs-bucket`, `--s3-bucket`, `--s3-prefix`, and `--s3-endpoint` for a specifically targeted run. Review those overrides carefully before using `--cleanup-chunks`. Progress and failures are printed to stdout and stderr. A failed entry makes the process exit nonzero. Re-run after resolving failures. An incomplete migration is supported: WildDuck continues to read both backends.
 
 The script lists attachment ids in pages of `--batch` (default 1000) rather than holding one cursor open for the whole run, which a server would time out on a large store, and it always waits for uploads and cutovers in progress before it exits, also after a failure. Value options accept both `--prefix=00` and `--prefix 00`. Unknown, duplicate or missing arguments are rejected before connecting to storage. Verification checks the S3 locator using the same rules as message readers, and requires a recorded payload checksum or retained GridFS chunks. If neither exists, the entry fails verification. When cleanup verifies against GridFS without a recorded checksum, it saves the established checksum before deleting the chunks so future verification remains possible.
 
+## Returning completely to GridFS
+
+Use `scripts/migrate-attachments-to-gridfs.js` before removing S3 access. First set `attachments.type="gridstore"` in every writer, including Haraka and ZoneMTA library consumers, while keeping the S3 settings available to readers. Stop forward migration and chunk-cleanup jobs. Drain readers that may still hold GridFS metadata from an earlier forward migration before restoring those attachments, because the restore replaces retained GridFS chunks.
+
+```sh
+NODE_ENV=production node scripts/migrate-attachments-to-gridfs.js --dry-run --prefix=00 --limit=100
+NODE_ENV=production node scripts/migrate-attachments-to-gridfs.js --migrate --concurrency=2 --throttle-ms=50
+NODE_ENV=production node scripts/migrate-attachments-to-gridfs.js --verify-only
+```
+
+The reverse script uses the same database configuration and targeting options (`--config`, `--gridfs-bucket`, `--s3-bucket`, `--s3-prefix`, `--s3-endpoint`, `--prefix`, `--limit`, `--batch`, `--concurrency`, and `--throttle-ms`) as the forward script. Both space-separated and `--name=value` arguments work. S3 access must remain available during migration. If application S3 settings were already removed, supply them to this process using a separate configuration file and/or CLI overrides, with credentials from the AWS provider chain. Migration cannot recover payloads from an inaccessible S3 service when no usable copy exists elsewhere.
+
+Each attachment is locked, streamed into a separate `<bucket>.restore` GridFS staging bucket, and checked against its stored SHA-256 checksum. A legacy record without a checksum requires intact retained GridFS chunks to establish one. Only after staging verifies does the script replace live chunks, verify the restored GridFS bytes, and atomically remove `metadata.storage`, including the S3 bucket/key. IDs, lengths, encoding metadata and reference counters remain unchanged. It copies stored bytes, including decoded base64 payloads, without encoding them again. Ordinary GridFS readers can then reconstruct the original attachment without any S3 configuration. Allow disk space for restored attachments plus staging for the concurrent copies.
+
+Failed entries keep their S3 locator and cause a nonzero exit status. Retry after fixing the failure. Interrupted chunk copies are replaced on retry. Normal completion removes each temporary copy. A forcibly terminated process can leave staging files/chunks. After all restore processes have stopped, the `<bucket>.restore.files` and `<bucket>.restore.chunks` collections may be dropped. They contain no live attachment records.
+
+Run the final `--verify-only` pass **without a prefix or limit**, once all writers prefer GridFS. This mode scans every catalog record using a GridFS-only reader, requires matching length/checksum, and fails if any record still needs S3. It does not construct an S3 client, even when S3 settings are present. Resolve all failures before removing S3 settings from every WildDuck service and library consumer. Run verification again with the final configuration if desired.
+
+S3 objects are deliberately retained so reads already using an old locator can finish. Let those reads drain (or restart the reader processes) before disabling S3 access. Objects can remain as backups without creating a runtime S3 dependency. If they should also be deleted, run the forward script's separate `--cleanup-unreferenced-s3 --yes` operation with a suitable reader grace period **before** removing the credentials/configuration. Existing orphan-collection tombstones may also refer to S3 objects. Let normal orphan cleanup finish while S3 access is still configured if those objects must be collected. The reverse script does not delete remote objects or edit application configuration.
+
 ## Verification
 
-`npm run test:attachments` runs every attachment test; `npm run test:attachments-coverage` adds a coverage report for `lib/attachment-storage.js`, `lib/attachments/` and the migration script. The S3 parts need `S3_TEST_ENDPOINT` pointing to an S3-compatible service and `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` set to `test`; without it they are skipped. MongoDB and Redis must be running as for the rest of the test suite.
+`npm run test:attachments` runs every attachment test. `npm run test:attachments-coverage` adds a coverage report for `lib/attachment-storage.js`, `lib/attachments/` and both migration scripts. The S3 parts need `S3_TEST_ENDPOINT` pointing to an S3-compatible service and `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` set to `test`. Without it they are skipped. MongoDB and Redis must be running as for the rest of the test suite.
 
 ```bash
 docker run -d -p 19000:5000 motoserver/moto
@@ -71,7 +91,7 @@ The tests come in layers:
 - `attachment-s3-test.js`, `attachment-s3-http-test.js`, `attachment-storage-test.js`, `attachment-failure-paths-test.js`: units and failure paths, with stubbed clients, a local HTTP server that behaves like S3 (checksums, stalled responses), and fault injection (locks that can not be taken or are lost, uploads that keep failing, database errors).
 - `attachment-lifecycle-test.js`: reference counting and garbage collection against real MongoDB and S3, including the races between storing and collecting, collections that stop halfway and S3 failing. `attachment-storage-contract-test.js` runs the indexer's scenario matrix against real GridFS.
 - `attachment-stream-teardown-test.js`, `on-copy-uid-shift-test.js`: releasing storage reads when a client goes away, and IMAP COPY keeping attachment references right when an insert fails.
-- `attachment-s3-moto-test.js`, `attachment-s3-migration-test.js`: the S3 store and the migration script end to end.
+- `attachment-s3-moto-test.js`, `attachment-s3-migration-test.js`, `attachment-gridfs-migration-test.js`: the S3 store and the migration script end to end.
 - `attachment-s3-protocol-test.js`: two complete WildDuck servers, one storing in GridFS and one in S3, compared byte for byte over IMAP and the API, plus disconnects mid-download and damaged payloads.
 - `attachment-model-test.js`: model-based randomized testing. Seeded random sequences of operations (storing messages, copying, deleting, expiring, collecting with time passing, reading) run against the real store while faults are injected, and an in-memory model checks after every step that each referenced attachment reads back byte for byte with the right reference counts, and at the end that nothing is left behind. Collections run at the same time as stores, copies, deletions and a second collector, and stop between any two of their steps. `ATTACHMENT_MODEL_RUNS` and `ATTACHMENT_MODEL_STEPS` make a run longer, a failure prints `ATTACHMENT_MODEL_SEED` to replay it.
 - `attachment-codec-fuzz-test.js`: property-based fuzzing of the base64 codec with random and damaged bodies: the whole body and random byte windows of it are served through a store that returns random chunk sizes and compared with the original. `ATTACHMENT_FUZZ_CASES` and `ATTACHMENT_FUZZ_SEED` control it.
