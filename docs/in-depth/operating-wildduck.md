@@ -30,6 +30,8 @@ db.messages.createIndex(
 
 Verify the completed index definition before resuming text searches. If the build fails, recreate the previous index definition using the recorded options before returning to service.
 
+Searches that exclude Junk and Trash enumerate eligible mailbox IDs for a positive filter at every folder count. This can use memory proportional to the number of mailboxes and, at extreme sizes, exceed MongoDB's BSON command size limit and fail. The mailbox list is a snapshot and can change while a search runs. Compared with the former exclusion list at 200 or more eligible mailboxes, the positive filter also excludes messages whose mailbox record is missing. Performance at large folder counts depends on the deployment and has not been established by this change.
+
 ## Logging
 
 WildDuck sends gelf-formatted log messages to a Graylog server. Set `log.gelf.enabled=true` in [config](https://github.com/zone-eu/wildduck/blob/2019fd9db6bce1c3167f08e363ab4225b8c8a296/config/default.toml#L59-L66) to use it. Also make sure that the same Gelf settings are set for _zonemta-wildduck_ and _haraka-plugin-wildduck_ in order to get consistent logs about messages throughout the system.

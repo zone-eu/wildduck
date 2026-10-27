@@ -11,14 +11,23 @@ const { setPageToMongopagingCursor } = require('../lib/mongopaging-find-wrapper'
 const snapshot = value => JSON.parse(JSON.stringify(value));
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const timeoutError = () => Object.assign(new Error('mock database deadline exceeded'), { code: 50, codeName: 'MaxTimeMSExpired' });
+const hasEmptyMailboxScope = value => {
+    if (!value || typeof value !== 'object') return false;
+    if (value.mailbox && Array.isArray(value.mailbox.$in) && !value.mailbox.$in.length) return true;
+    return Object.values(value).some(hasEmptyMailboxScope);
+};
 
 // Adapted from the explicit-mailbox-search regression. Runs the real route, query builders and paging wrapper. Only database operations
 // are mocked; deadlines expire asynchronously when the fake clock advances.
-function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure, collapseFailure } = {}) {
+function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure, collapseFailure, directoryFailure } = {}) {
     const user = new ObjectId('507f1f77bcf86cd799439010');
     const inbox = new ObjectId('507f1f77bcf86cd799439011');
     const read = new ObjectId('507f1f77bcf86cd799439012');
     const junk = new ObjectId('507f1f77bcf86cd799439013');
+    const trash = new ObjectId('507f1f77bcf86cd799439014');
+    const eligible = [inbox, read, ...Array.from({ length: Math.max(0, mailboxCount - 2) }, (_, index) => new ObjectId((index + 1000).toString(16).padStart(24, '0')))].slice(0, mailboxCount);
+    const directoryQueries = [];
+    let directoryCounts = 0;
     const calls = [];
     const counts = [];
     const logs = [];
@@ -28,6 +37,7 @@ function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure
             if (name === 'mailboxes') {
                 return {
                     async countDocuments() {
+                        directoryCounts++;
                         return mailboxCount;
                     },
                     async findOne(query) {
@@ -35,10 +45,12 @@ function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure
                         return { _id: path === 'INBOX' ? inbox : read };
                     },
                     find(query) {
-                        const ids = query.specialUse.$nin
-                            ? [inbox, read, ...Array.from({ length: Math.max(0, mailboxCount - 2) }, (_, index) => new ObjectId((index + 1000).toString(16).padStart(24, '0')))]
-                            : [junk];
-                        return { project: () => ({ toArray: async () => ids.map(_id => ({ _id })) }) };
+                        directoryQueries.push(snapshot(query));
+                        const ids = query.specialUse.$nin ? eligible : [junk, trash];
+                        return { project: () => ({ toArray: async () => {
+                            if (directoryFailure) throw directoryFailure;
+                            return ids.map(_id => ({ _id }));
+                        } }) };
                     }
                 };
             }
@@ -65,7 +77,7 @@ function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure
                     if (countFailure) {
                         throw countFailure;
                     }
-                    return 17;
+                    return hasEmptyMailboxScope(query) ? 0 : 17;
                 },
                 find(query, options) {
                     const cursor = {
@@ -120,6 +132,10 @@ function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure
         inbox,
         read,
         junk,
+        trash,
+        eligible,
+        directoryQueries,
+        get directoryCounts() { return directoryCounts; },
         calls,
         counts,
         logs,
@@ -184,7 +200,7 @@ describe('Message search database deadlines', () => {
         expect(search.calls).to.have.length(1);
     });
 
-    for (const mailboxCount of [2, 200]) {
+    for (const mailboxCount of [0, 1, 2, 199, 200, 201]) {
         it(`uses the q mailbox with generated searchable scope at mailbox count ${mailboxCount}`, async () => {
             const search = createSearch({ mailboxCount });
             await complete(search.run({ q: 'in:READ', mailbox: search.inbox.toString(), searchable: true }));
@@ -194,7 +210,7 @@ describe('Message search database deadlines', () => {
             const filter = search.calls[0].query.$and[1];
             expect(filter).to.deep.equal(search.counts[0]);
             expect(filter.$and[0]).to.deep.equal({ mailbox: search.read.toString() });
-            expect(filter.$and[1].mailbox).to.have.property(mailboxCount < 200 ? '$in' : '$nin');
+            expect(filter.$and[1].mailbox.$in).to.deep.equal(search.eligible.map(id => id.toString()));
         });
 
         for (const params of [{ searchable: true }, { q: 'subject:report', searchable: true }]) {
@@ -207,14 +223,53 @@ describe('Message search database deadlines', () => {
                 const filter = search.calls[0].query.$and[1];
                 expect(filter).to.deep.equal(search.counts[0]);
                 const mailboxFilter = params.q ? filter.$and[1].mailbox : filter.mailbox;
-                if (mailboxCount < 200) {
-                    expect(mailboxFilter.$in).to.deep.equal([search.inbox.toString(), search.read.toString()]);
-                } else {
-                    expect(mailboxFilter.$nin).to.deep.equal([search.junk.toString()]);
-                }
-                expect(search.reply.body.total).to.equal(17);
+                expect(mailboxFilter.$in).to.deep.equal(search.eligible.map(id => id.toString()));
+                expect(search.directoryQueries).to.have.length(1);
+                expect(search.directoryQueries[0].specialUse).to.deep.equal({ $nin: ['\\Junk', '\\Trash'] });
+                expect(search.directoryCounts).to.equal(0);
+                expect(search.reply.body.total).to.equal(mailboxCount ? 17 : 0);
             });
         }
+    }
+
+    it('shares one mailbox snapshot across searchable terms and the global option', async () => {
+        const search = createSearch({ mailboxCount: 201 });
+        await complete(search.run({ q: 'searchable:true OR -searchable:true', searchable: true }));
+        expect(search.directoryQueries).to.have.length(1);
+        expect(search.calls).to.have.length(1);
+        const filter = search.calls[0].query.$and[1];
+        const scopes = [];
+        const collect = value => {
+            if (!value || typeof value !== 'object') return;
+            if (value.mailbox) scopes.push(value.mailbox);
+            Object.values(value).forEach(collect);
+        };
+        collect(filter);
+        const ids = search.eligible.map(id => id.toString());
+        expect(scopes).to.have.deep.members([{ $in: ids }, { $not: { $in: ids } }, { $in: ids }]);
+        expect(filter).to.deep.equal(search.counts[0]);
+    });
+
+    it('preserves explicit q negation of the searchable scope', async () => {
+        const search = createSearch({ mailboxCount: 201 });
+        await complete(search.run({ q: '-searchable:true' }));
+        expect(search.calls).to.have.length(1);
+        expect(search.calls[0].query.$and[1].$and[0].mailbox).to.deep.equal({
+            $not: { $in: search.eligible.map(id => id.toString()) }
+        });
+        expect(search.counts[0]).to.deep.equal(search.calls[0].query.$and[1]);
+    });
+
+    for (const params of [{ searchable: true }, { q: 'subject:report', searchable: true }]) {
+        it(`propagates mailbox enumeration errors (${params.q || 'structured'})`, async () => {
+            const failure = new Error('mailbox directory unavailable');
+            const search = createSearch({ directoryFailure: failure });
+            const error = await search.run(params).catch(err => err);
+            expect(error).to.equal(failure);
+            expect(error.code).to.equal('InternalDatabaseError');
+            expect(search.calls).to.have.length(0);
+            expect(search.counts).to.have.length(0);
+        });
     }
 
     it('preserves an explicit multi-mailbox filter in one search', async () => {
