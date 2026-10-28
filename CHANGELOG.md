@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.55.2](https://github.com/zone-eu/wildduck/compare/v1.55.1...v1.55.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* bump deps ([#1248](https://github.com/zone-eu/wildduck/issues/1248)) ([111ae4f](https://github.com/zone-eu/wildduck/commit/111ae4ff596a19a2874793e9f45e06c80a48dcd3))
+* fix docs ([a7b0b1b](https://github.com/zone-eu/wildduck/commit/a7b0b1b7198bdd22146922edaffa049f58b11585))
+* fix openapi generation ([#1233](https://github.com/zone-eu/wildduck/issues/1233)) ([b912097](https://github.com/zone-eu/wildduck/commit/b9120972358a83b95d8cbc4d442ccab2d8e021e9))
+* install mongosh without apt-key in CI ([#1239](https://github.com/zone-eu/wildduck/issues/1239)) ([f885067](https://github.com/zone-eu/wildduck/commit/f8850670db81e00e93796570682933c87cdf4253))
+* limit MIME nesting depth in the parser ([#1238](https://github.com/zone-eu/wildduck/issues/1238)) ([43a6a17](https://github.com/zone-eu/wildduck/commit/43a6a171defac0a267bc3a3d8d2023b7121dd08d))
+* **setup-script:** Align Haraka install with 3.3 config layout ([#1245](https://github.com/zone-eu/wildduck/issues/1245)) ([1554fc5](https://github.com/zone-eu/wildduck/commit/1554fc57c4ec93d270af5ce4a7ca220123f17ff1))
+* ZMS-116: Add flagged and unread flag counter endpoints ([#1205](https://github.com/zone-eu/wildduck/issues/1205)) ([b819325](https://github.com/zone-eu/wildduck/commit/b81932541cf963607f5f217a59fb47c013639be0))
+* ZMS-117: Add support for labels OR and AND query search (q param only) ([#1204](https://github.com/zone-eu/wildduck/issues/1204)) ([9e20241](https://github.com/zone-eu/wildduck/commit/9e202413dcdf5127d12522c18b19e6acc87342b3))
+* ZMS-119: MCP: Add list_labels tool, allow to search for labels too ([#1207](https://github.com/zone-eu/wildduck/issues/1207)) ([a3a2398](https://github.com/zone-eu/wildduck/commit/a3a23984f4ee25ad2992f39174d748a2ef2b5a28))
+* ZMS-120: Filters: Accept label ids instead of label names ([#1235](https://github.com/zone-eu/wildduck/issues/1235)) ([3b65400](https://github.com/zone-eu/wildduck/commit/3b654006e43db8871dcbcd356b966dd9d55e0dac))
+* ZMS-122: Sanitize mailbox and labels names ([#1236](https://github.com/zone-eu/wildduck/issues/1236)) ([0199d01](https://github.com/zone-eu/wildduck/commit/0199d01d6fe6b91bcf1435bc2ccf1253a2990e98))
+
 ## [1.55.1](https://github.com/zone-eu/wildduck/compare/v1.55.0...v1.55.1) (2026-10-20)
 
 
