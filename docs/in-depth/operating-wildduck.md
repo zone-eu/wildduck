@@ -11,6 +11,27 @@ Every process that stores messages writes trees with the parser of its own `@zon
 
 A WildDuck node that is still on an older version renders a v2 tree with the old layout, so the announced message size and the bytes served disagree for messages with an epilogue or an empty part until that node is upgraded. The reverse order is safe.
 
+### Rebuilding the message fulltext index
+
+The message `fulltext` index now includes a trailing `mailbox` key. Existing installations must explicitly rebuild it to obtain the new index; WildDuck does not automatically drop or replace an index whose definition conflicts with the manifest. The old index remains usable until it is dropped, but scoped searches may still be slow or time out without the new index.
+
+Plan a maintenance window: MongoDB allows only one text index per collection, so text searches are unavailable after dropping the old index and until the replacement build completes. Prevent tasks processes with the old index manifest from starting or restarting during the rebuild, since they create indexes on startup. Ensure every node has the matching new manifest before restarting its tasks process.
+
+Record the old source-level key specification and index options for rollback, and preserve any installation-specific options when recreating it. `getIndexes()` reports text keys in normalized `_fts`/`_ftsx` form; its output alone is not a source-level key specification ready to replay with `createIndex()`. For the standard definition in `indexes.yaml`, run these commands against the WildDuck message database:
+
+```javascript
+db.messages.getIndexes();
+db.messages.dropIndex('fulltext');
+db.messages.createIndex(
+    { user: 1, 'headers.value': 'text', text: 'text', mailbox: 1 },
+    { name: 'fulltext', partialFilterExpression: { searchable: true } }
+);
+```
+
+Verify the completed index definition before resuming text searches. If the build fails, recreate the previous index definition using the recorded options before returning to service.
+
+Searches that exclude Junk and Trash enumerate eligible mailbox IDs for a positive filter at every folder count. This can use memory proportional to the number of mailboxes and, at extreme sizes, exceed MongoDB's BSON command size limit and fail. The mailbox list is a snapshot and can change while a search runs. Compared with the former exclusion list at 200 or more eligible mailboxes, the positive filter also excludes messages whose mailbox record is missing. Performance at large folder counts depends on the deployment and has not been established by this change.
+
 ## Logging
 
 WildDuck sends gelf-formatted log messages to a Graylog server. Set `log.gelf.enabled=true` in [config](https://github.com/zone-eu/wildduck/blob/2019fd9db6bce1c3167f08e363ab4225b8c8a296/config/default.toml#L59-L66) to use it. Also make sure that the same Gelf settings are set for _zonemta-wildduck_ and _haraka-plugin-wildduck_ in order to get consistent logs about messages throughout the system.
