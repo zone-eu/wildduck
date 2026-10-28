@@ -6,7 +6,7 @@
         "contact": {
             "url": "https://github.com/zone-eu/wildduck"
         },
-        "version": "1.55.1"
+        "version": "1.55.2"
     },
     "components": {
         "securitySchemes": {
