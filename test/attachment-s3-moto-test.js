@@ -196,4 +196,99 @@ async function collect(stream) {
     function storePrefix() {
         return storage.s3.prefix;
     }
+
+    describe('minObjectSize', () => {
+        const files = () => db.gridfs.collection(`${collectionName}.files`);
+        const chunks = () => db.gridfs.collection(`${collectionName}.chunks`);
+
+        function sizedStorage(options) {
+            return new AttachmentStorage({ ...storage.options, options: { ...storage.options.options, ...options } });
+        }
+
+        function binaryAttachment(body, magic = 5) {
+            return { body, transferEncoding: 'binary', lineCount: 1, contentType: 'application/octet-stream', magic };
+        }
+
+        function base64Attachment(binary) {
+            const encoded = binary
+                .toString('base64')
+                .match(/.{1,76}/g)
+                .join('\r\n');
+            return { body: Buffer.from(encoded), transferEncoding: 'base64', contentType: 'application/octet-stream', magic: 5 };
+        }
+
+        async function readBack(target, id) {
+            return await collect(target.createReadStream(id, await target.get(id)));
+        }
+
+        it('keeps payloads below the threshold in GridFS and stores the rest in S3', async () => {
+            const sized = sizedStorage({ minObjectSize: 1000 });
+            const small = crypto.randomBytes(999);
+            const large = crypto.randomBytes(1000);
+            const smallId = (await create(sized, binaryAttachment(small))).id;
+            const largeId = (await create(sized, binaryAttachment(large))).id;
+
+            expect((await files().findOne({ _id: smallId })).metadata.storage).to.be.undefined;
+            expect(await chunks().countDocuments({ files_id: smallId })).to.equal(1);
+            const file = await files().findOne({ _id: largeId });
+            expect(file.metadata.storage).to.deep.include({ backend: 's3', length: 1000 });
+            expect(await chunks().countDocuments({ files_id: largeId })).to.equal(0);
+            await client.send(new HeadObjectCommand({ Bucket: bucketName, Key: file.metadata.storage.key }));
+            expect((await readBack(sized, smallId)).equals(small)).to.be.true;
+            expect((await readBack(sized, largeId)).equals(large)).to.be.true;
+        });
+
+        it('measures the decoded payload of a base64 body', async () => {
+            const sized = sizedStorage({ minObjectSize: 1000 });
+            // 1350 encoded bytes that decode to 999, and a body that decodes to exactly the threshold
+            const below = base64Attachment(crypto.randomBytes(999));
+            const at = base64Attachment(crypto.randomBytes(1000));
+            expect(below.body.length).to.be.above(1000);
+            const belowId = (await create(sized, below)).id;
+            const atId = (await create(sized, at)).id;
+
+            const belowFile = await files().findOne({ _id: belowId });
+            expect(belowFile.metadata.storage).to.be.undefined;
+            expect(belowFile.length).to.equal(999);
+            expect((await files().findOne({ _id: atId })).metadata.storage).to.deep.include({ backend: 's3', length: 1000 });
+            expect((await readBack(sized, belowId)).equals(below.body)).to.be.true;
+            expect((await readBack(sized, atId)).equals(at.body)).to.be.true;
+        });
+
+        it('measures base64 followed by blank lines or wrapped at any width by what it decodes to', async () => {
+            const sized = sizedStorage({ minObjectSize: 100 });
+            // 400 bytes that decode to 1 byte, and 1 byte wrapped one character per line
+            const blankLines = { ...base64Attachment(crypto.randomBytes(1)), magic: 5 };
+            blankLines.body = Buffer.concat([blankLines.body, Buffer.from('\r\n'.repeat(198))]);
+            const narrow = base64Attachment(crypto.randomBytes(1));
+            narrow.body = Buffer.from(narrow.body.toString().split('').join('\r\n'));
+            expect(blankLines.body.length).to.equal(400);
+            for (const attachment of [blankLines, narrow]) {
+                const { id } = await create(sized, attachment);
+                const file = await files().findOne({ _id: id });
+                expect(file.metadata.storage).to.be.undefined;
+                expect(file.length).to.equal(1);
+                expect((await readBack(sized, id)).equals(attachment.body)).to.be.true;
+            }
+        });
+
+        it('adds a reference to a copy stored on the other side of the threshold', async () => {
+            const body = crypto.randomBytes(500);
+            const { id } = await create(storage, binaryAttachment(body));
+            await create(sizedStorage({ minObjectSize: 1000 }), binaryAttachment(body, 7));
+
+            const file = await files().findOne({ _id: id });
+            expect(file.metadata.c).to.equal(2);
+            expect(file.metadata.m).to.equal(12);
+            expect(file.metadata.storage.backend).to.equal('s3');
+            expect(await chunks().countDocuments({ files_id: id })).to.equal(0);
+        });
+
+        it('accepts the threshold as a string and refuses anything but a byte count', () => {
+            expect(sizedStorage({ minObjectSize: '262144' }).minObjectSize).to.equal(262144);
+            expect(sizedStorage({}).minObjectSize).to.equal(0);
+            expect(() => sizedStorage({ minObjectSize: '256k' })).to.throw(/minObjectSize/);
+            expect(() => sizedStorage({ minObjectSize: -1 })).to.throw(/minObjectSize/);
+        });
+    });
 });

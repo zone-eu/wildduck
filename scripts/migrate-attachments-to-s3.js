@@ -165,6 +165,10 @@ async function main() {
     }
     if (flags.has('--migrate') || flags.has('--dry-run')) {
         query['metadata.storage.backend'] = { $ne: 's3' };
+        if (storage.minObjectSize) {
+            // what a new attachment of that size would not get either: it stays in GridFS
+            query.length = { $gte: storage.minObjectSize };
+        }
     } else {
         query['metadata.storage.backend'] = 's3';
     }

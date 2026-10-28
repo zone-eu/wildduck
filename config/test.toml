@@ -33,3 +33,7 @@ port = 2424
 [pwned]
 enabled = true
 type = "softfail"
+
+[attachments]
+# the attachment tests use small payloads and expect them in the configured object store
+minObjectSize = 0
