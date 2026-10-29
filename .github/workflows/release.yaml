@@ -2,6 +2,7 @@ on:
     push:
         branches:
             - master
+            - 'release-*' # maintenance branches (release-1.2, ...) get their own release PR
 
 # Default to read-only permissions
 permissions: read-all
@@ -28,6 +29,50 @@ jobs:
         steps:
             - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
               id: release
+              with:
+                  # one release PR per branch: master and each release-* branch are independent
+                  target-branch: ${{ github.ref_name }}
+
+    # When a "hotfix:" commit lands on master, cherry-pick it onto the maintenance
+    # branch of the latest release and open a separate patch-only release PR there.
+    # Requires squash or rebase merges (one commit per PR).
+    hotfix_backport:
+        timeout-minutes: 30
+        if: ${{ github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'hotfix') }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  fetch-depth: 0
+
+            - name: Cherry-pick onto the maintenance branch
+              id: pick
+              run: |
+                  set -euo pipefail
+                  TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+                  BRANCH="release-$(echo "${TAG#v}" | cut -d. -f1,2)"
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+                      git checkout -B "$BRANCH" "origin/$BRANCH"
+                  else
+                      git checkout -B "$BRANCH" "$TAG"
+                      # old tags may predate the hotfix changelog section, so sync the config
+                      git checkout origin/master -- release-please-config.json
+                      git commit -m "chore: sync release-please config" || true
+                  fi
+                  git cherry-pick -x "${{ github.sha }}"
+                  git push origin "$BRANCH"
+                  echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+            # Pushes made with GITHUB_TOKEN don't trigger workflows, so open the PR directly
+            - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+              with:
+                  target-branch: ${{ steps.pick.outputs.branch }}
 
     publish_npm:
         timeout-minutes: 30
@@ -44,7 +89,8 @@ jobs:
                   node-version: 24
                   registry-url: 'https://registry.npmjs.org'
             - run: npm ci
-            - run: npm publish --provenance --access public
+            # releases from release-* branches must not take over the "latest" dist-tag
+            - run: npm publish --provenance --access public ${{ github.ref_name != 'master' && format('--tag {0}', github.ref_name) || '' }}
 
     publish_docker:
         timeout-minutes: 30
@@ -87,11 +133,11 @@ jobs:
               with:
                   images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                   flavor: |
-                      latest=auto
+                      latest=${{ github.ref_name == 'master' && 'auto' || 'false' }}
                   tags: |
                       type=semver,pattern={{version}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
                       type=semver,pattern={{major}}.{{minor}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
-                      type=semver,pattern={{major}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
+                      type=semver,pattern={{major}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}},enable=${{ github.ref_name == 'master' }}
 
             - name: Build and push Docker image
               id: push
