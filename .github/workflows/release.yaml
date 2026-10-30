@@ -2,7 +2,7 @@ on:
     push:
         branches:
             - master
-            - 'release-*' # maintenance branches (release-1.2, ...) get their own release PR
+            - 'release-[0-9]+.[0-9]+' # maintenance branches only, excluding release-please branches
 
 # Default to read-only permissions
 permissions: read-all
@@ -61,9 +61,11 @@ jobs:
                       git checkout -B "$BRANCH" "origin/$BRANCH"
                   else
                       git checkout -B "$BRANCH" "$TAG"
-                      # old tags may predate the hotfix changelog section, so sync the config
-                      git checkout origin/master -- release-please-config.json
-                      git commit -m "chore: sync release-please config" || true
+                      # Old tags may predate both the hotfix config and maintenance trigger.
+                      git checkout origin/master -- release-please-config.json .github/workflows/release.yaml
+                      if ! git diff --cached --quiet; then
+                          git commit -m "chore: sync release configuration and workflow"
+                      fi
                   fi
                   git cherry-pick -x "${{ github.sha }}"
                   git push origin "$BRANCH"
@@ -73,6 +75,52 @@ jobs:
             - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
               with:
                   target-branch: ${{ steps.pick.outputs.branch }}
+
+    sync_master_version:
+        timeout-minutes: 30
+        needs: release_please
+        if: ${{ github.ref_name != 'master' && needs.release_please.outputs.release_created }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
+        steps:
+            - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  ref: master
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+              with:
+                  node-version: 24
+            - name: Advance master's release baseline
+              env:
+                  RELEASE_VERSION: ${{ needs.release_please.outputs.major }}.${{ needs.release_please.outputs.minor }}.${{ needs.release_please.outputs.patch }}
+              run: |
+                  set -euo pipefail
+                  node <<'NODE'
+                  const fs = require('node:fs');
+                  const path = '.release-please-manifest.json';
+                  const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+                  const released = process.env.RELEASE_VERSION.split('.').map(Number);
+                  const current = manifest['.'].split('.').map(Number);
+                  const difference = released.findIndex((value, index) => value !== current[index]);
+                  // Maintenance releases on older lines must never lower master's baseline.
+                  if (difference !== -1 && released[difference] > current[difference]) {
+                      manifest['.'] = process.env.RELEASE_VERSION;
+                      fs.writeFileSync(path, JSON.stringify(manifest, null, 4) + '\n');
+                  }
+                  NODE
+                  if ! git diff --quiet -- .release-please-manifest.json; then
+                      git config user.name "github-actions[bot]"
+                      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                      git add .release-please-manifest.json
+                      git commit -m "chore: advance release baseline to $RELEASE_VERSION"
+                      git push origin HEAD:master
+                  fi
+            # GITHUB_TOKEN pushes do not trigger workflows; refresh any existing release PR now.
+            - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+              with:
+                  target-branch: master
+                  skip-github-release: true
 
     publish_npm:
         timeout-minutes: 30
