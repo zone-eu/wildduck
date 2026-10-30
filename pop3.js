@@ -334,7 +334,8 @@ async function markAsSeen(session, messages) {
             }
         },
         {
-            returnDocument: 'after'
+            returnDocument: 'after',
+            includeResultMetadata: true
         }
     );
 

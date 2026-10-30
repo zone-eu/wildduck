@@ -50,7 +50,7 @@ describe('Push subscriptions API', function () {
     };
 
     before(async () => {
-        mongoClient = await MongoClient.connect(config.dbs.mongo, { useNewUrlParser: true, useUnifiedTopology: true });
+        mongoClient = await MongoClient.connect(config.dbs.mongo);
         database = mongoClient.db();
 
         const response = await server

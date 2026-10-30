@@ -67,6 +67,7 @@ function createSearch({ mailboxCount = 2, duration = 4000, failure, countFailure
                 },
                 find(query, options) {
                     const cursor = {
+                        project: () => cursor,
                         sort: () => cursor,
                         limit: () => cursor,
                         toArray: () => execute(query, options.maxTimeMS, failure)
@@ -156,7 +157,7 @@ describe('Message search database deadlines', () => {
         it(`uses one long attempt and preserves explicit scope for ${q || 'structured mailbox'}`, async () => {
             const search = createSearch();
             await complete(search.run(q ? { q } : { mailbox: search.inbox.toString() }));
-            expect(search.reply.statusCode).to.equal(200);
+            expect(search.reply.statusCode, JSON.stringify(search.reply.body)).to.equal(200);
             expect(search.calls).to.have.length(1);
             expect(search.calls[0].maxTimeMS).to.equal(DB_MAX_TIME_MESSAGES);
             expect(search.calls[0].query.$and[1]).to.deep.equal(search.counts[0]);
