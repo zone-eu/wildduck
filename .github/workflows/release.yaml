@@ -2,6 +2,7 @@ on:
     push:
         branches:
             - master
+            - 'release-[0-9]+.[0-9]+' # maintenance branches only, excluding release-please branches
 
 # Default to read-only permissions
 permissions: read-all
@@ -28,6 +29,98 @@ jobs:
         steps:
             - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
               id: release
+              with:
+                  # one release PR per branch: master and each release-* branch are independent
+                  target-branch: ${{ github.ref_name }}
+
+    # When a "hotfix:" commit lands on master, cherry-pick it onto the maintenance
+    # branch of the latest release and open a separate patch-only release PR there.
+    # Requires squash or rebase merges (one commit per PR).
+    hotfix_backport:
+        timeout-minutes: 30
+        if: ${{ github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'hotfix') }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  fetch-depth: 0
+
+            - name: Cherry-pick onto the maintenance branch
+              id: pick
+              run: |
+                  set -euo pipefail
+                  TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+                  BRANCH="release-$(echo "${TAG#v}" | cut -d. -f1,2)"
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+                      git checkout -B "$BRANCH" "origin/$BRANCH"
+                  else
+                      git checkout -B "$BRANCH" "$TAG"
+                      # Old tags may predate both the hotfix config and maintenance trigger.
+                      git checkout origin/master -- release-please-config.json .github/workflows/release.yaml
+                      if ! git diff --cached --quiet; then
+                          git commit -m "chore: sync release configuration and workflow"
+                      fi
+                  fi
+                  git cherry-pick -x "${{ github.sha }}"
+                  git push origin "$BRANCH"
+                  echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+            # Pushes made with GITHUB_TOKEN don't trigger workflows, so open the PR directly
+            - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+              with:
+                  target-branch: ${{ steps.pick.outputs.branch }}
+
+    sync_master_version:
+        timeout-minutes: 30
+        needs: release_please
+        if: ${{ github.ref_name != 'master' && needs.release_please.outputs.release_created }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
+        steps:
+            - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  ref: master
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+              with:
+                  node-version: 24
+            - name: Advance master's release baseline
+              env:
+                  RELEASE_VERSION: ${{ needs.release_please.outputs.major }}.${{ needs.release_please.outputs.minor }}.${{ needs.release_please.outputs.patch }}
+              run: |
+                  set -euo pipefail
+                  node <<'NODE'
+                  const fs = require('node:fs');
+                  const path = '.release-please-manifest.json';
+                  const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+                  const released = process.env.RELEASE_VERSION.split('.').map(Number);
+                  const current = manifest['.'].split('.').map(Number);
+                  const difference = released.findIndex((value, index) => value !== current[index]);
+                  // Maintenance releases on older lines must never lower master's baseline.
+                  if (difference !== -1 && released[difference] > current[difference]) {
+                      manifest['.'] = process.env.RELEASE_VERSION;
+                      fs.writeFileSync(path, JSON.stringify(manifest, null, 4) + '\n');
+                  }
+                  NODE
+                  if ! git diff --quiet -- .release-please-manifest.json; then
+                      git config user.name "github-actions[bot]"
+                      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                      git add .release-please-manifest.json
+                      git commit -m "chore: advance release baseline to $RELEASE_VERSION"
+                      git push origin HEAD:master
+                  fi
+            # GITHUB_TOKEN pushes do not trigger workflows; refresh any existing release PR now.
+            - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+              with:
+                  target-branch: master
+                  skip-github-release: true
 
     publish_npm:
         timeout-minutes: 30
@@ -44,7 +137,8 @@ jobs:
                   node-version: 24
                   registry-url: 'https://registry.npmjs.org'
             - run: npm ci
-            - run: npm publish --provenance --access public
+            # releases from release-* branches must not take over the "latest" dist-tag
+            - run: npm publish --provenance --access public ${{ github.ref_name != 'master' && format('--tag {0}', github.ref_name) || '' }}
 
     publish_docker:
         timeout-minutes: 30
@@ -87,11 +181,11 @@ jobs:
               with:
                   images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                   flavor: |
-                      latest=auto
+                      latest=${{ github.ref_name == 'master' && 'auto' || 'false' }}
                   tags: |
                       type=semver,pattern={{version}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
                       type=semver,pattern={{major}}.{{minor}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
-                      type=semver,pattern={{major}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}}
+                      type=semver,pattern={{major}},value=v${{needs.release_please.outputs.major}}.${{needs.release_please.outputs.minor}}.${{needs.release_please.outputs.patch}},enable=${{ github.ref_name == 'master' }}
 
             - name: Build and push Docker image
               id: push

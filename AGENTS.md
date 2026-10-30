@@ -137,6 +137,8 @@ Configuration uses TOML through `@zone-eu/wild-config`: `config/default.toml`, `
 
 ## Commands and Verification
 
+Release automation in `.github/workflows/release.yaml` targets `master` and numeric `release-<major>.<minor>` maintenance branches. New maintenance branches copy both the release configuration and workflow from master. After a maintenance release, the workflow advances master's release manifest without lowering a newer baseline and directly refreshes its release PR (bot pushes do not trigger workflows).
+
 Use focused checks while iterating, then the relevant broader suite. Do not run expensive corpus, coverage, or mutation checks repeatedly unless the change or a failure warrants them.
 
 | Command | Purpose / requirements |
