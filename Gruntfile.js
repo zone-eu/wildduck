@@ -60,6 +60,7 @@ module.exports = function (grunt) {
         'test/maildropper-test.js',
         'test/message-handler-update-test.js',
         'test/message-search-label-test.js',
+        'test/message-search-timeout-test.js',
         'test/mcp-api-client-test.js',
         'test/mcp-cli-test.js',
         'test/mcp-html-test.js',
