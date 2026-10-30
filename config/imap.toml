@@ -77,6 +77,16 @@ ignoredHosts = []
 #secure=false
 #ignoreSTARTTLS=true
 
+# RFC 4314 ACL support. If enabled then the ACL extension is advertised and
+# mailboxes can be shared with other users of this server
+[acl]
+enabled = false
+
+# Tenant scope for sharing. "domaingroup" (default) limits sharing to users whose
+# primary address domains match or belong to the same domain group (managed via
+# the /domaingroups API). "server" allows sharing between all users of this server
+#scope = "domaingroup"
+
 # Apple Push Notification Service (XAPPLEPUSHSERVICE)
 # Requires a valid APNs certificate obtained from Apple
 [aps]

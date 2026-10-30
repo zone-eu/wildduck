@@ -6,6 +6,7 @@
 let config = require('@zone-eu/wild-config');
 //let testServer = require('./test-server.js');
 let testClient = require('./test-client.js');
+let supertest = require('supertest');
 let exec = require('child_process').exec;
 
 let chai = require('chai');
@@ -224,6 +225,40 @@ describe('IMAP Protocol integration tests', function () {
                 }
             );
         });
+
+        it('should fail authentication for a shared account', function (done) {
+            let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'sharedaccount',
+                    password: false,
+                    address: 'sharedaccount@example.com',
+                    name: 'Shared Account',
+                    shared: true
+                })
+                .expect(200)
+                .then(response => {
+                    expect(response.body.success).to.be.true;
+                    // even an administratively set password must not allow shared accounts to log in
+                    return apiServer.put(`/users/${response.body.id}`).send({ password: 'sharedpass' }).expect(200);
+                })
+                .then(() => {
+                    let cmds = ['T1 LOGIN sharedaccount sharedpass', 'T2 LOGOUT'];
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T1 NO/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                })
+                .catch(done);
+        });
     });
 
     describe('AUTHENTICATE PLAIN', function () {
@@ -395,7 +430,8 @@ describe('IMAP Protocol integration tests', function () {
                     port
                 },
                 function (resp) {
-                    expect(/^\* NAMESPACE \(\("" "\/"\)\) NIL NIL$/m.test(resp.toString())).to.be.true;
+                    // the second and third entries are the grant based namespaces when ACL support is enabled
+                    expect(/^\* NAMESPACE \(\("" "\/"\)\) (\(\("[^"]+\/" "\/"\)\)|NIL) (\(\("[^"]+\/" "\/"\)\)|NIL)$/m.test(resp.toString())).to.be.true;
                     expect(/^T2 OK/m.test(resp.toString())).to.be.true;
                     done();
                 }
@@ -767,7 +803,7 @@ describe('IMAP Protocol integration tests', function () {
                     resp = resp.toString();
                     expect(/^T2 OK/m.test(resp)).to.be.true;
                     expect(/^T3 OK/m.test(resp)).to.be.true;
-                    expect(/^T4 NO \[ALREADYEXISTS\]/m.test(resp)).to.be.true;
+                    expect(/^T4 NO \[ALREADYEXISTS\] Mailbox already exists\r$/m.test(resp)).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "testfolder"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\Noselect \\HasChildren) "/" "parent"\r\n') >= 0).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "parent/child"\r\n') >= 0).to.be.true;
@@ -1583,6 +1619,1440 @@ describe('IMAP Protocol integration tests', function () {
                     done();
                 }
             );
+        });
+    });
+
+    describe('ACL', function () {
+        let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+        beforeEach(async function () {
+            // create a second user in the same tenant scope to use as an ACL grantee
+            let response = await apiServer
+                .post('/users')
+                .send({
+                    username: 'seconduser',
+                    password: 'secondpass',
+                    address: 'seconduser@example.com',
+                    name: 'Second User'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+        });
+
+        it('should list own rights with MYRIGHTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 MYRIGHTS INBOX', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^\* MYRIGHTS "?INBOX"? "?lrswipkxteacd"?/m.test(resp.toString())).to.be.true;
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should update and list ACL entries', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL INBOX seconduser lr',
+                'T3 SETACL INBOX seconduser +sw',
+                'T4 SETACL INBOX seconduser -r',
+                'T5 GETACL INBOX',
+                'T6 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^\* ACL "?INBOX"?/m.test(resp.toString())).to.be.true;
+                    expect(resp.toString().indexOf('"testuser" "lrswipkxteacd"') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('"seconduser" "lsw"') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should remove ACL entries with DELETEACL', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 DELETEACL INBOX seconduser', 'T4 GETACL INBOX', 'T5 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                    expect(resp.toString().indexOf('"seconduser"') < 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should list grantable rights with LISTRIGHTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LISTRIGHTS INBOX seconduser', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^\* LISTRIGHTS "?INBOX"? "?seconduser"? ""/m.test(resp.toString())).to.be.true;
+                    expect(resp.toString().indexOf('"" l r s w i p k x t e a c d') >= 0).to.be.true;
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should select shared mailboxes read-only without write rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 SELECT "Other Users/testuser/INBOX"',
+                        'T3 STORE 1 +FLAGS (\\Seen)',
+                        'T4 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            // none of "i", "e" or the shared flag rights is granted
+                            expect(/^T2 OK \[READ-ONLY\]/m.test(resp.toString())).to.be.true;
+                            expect(resp.toString().indexOf('[PERMANENTFLAGS ()]') >= 0).to.be.true;
+                            // STORE is refused in a read-only mailbox
+                            expect(/^T3 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should reject uppercase rights and reserved identifiers', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL INBOX seconduser lrS',
+                'T3 SETACL INBOX anyone lr',
+                'T4 SETACL INBOX -seconduser lr',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 BAD/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    expect(/^T4 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should inherit grants when the owner creates a mailbox in a shared hierarchy', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 CREATE INBOX/ownersub', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+
+                    let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/ownersub"') >= 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not modify the rights of the mailbox owner', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX testuser lr', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should fail SETACL for an unknown identifier', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX nosuchuserhere lr', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should fail SETACL for invalid rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrq', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 BAD/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should hide missing mailboxes from MYRIGHTS', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 MYRIGHTS nosuchbox', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should announce the shared namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 NAMESPACE', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('* NAMESPACE (("" "/")) (("Other Users/" "/")) (("Shared/" "/"))') >= 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should advertise the ACL capability', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CAPABILITY', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function (resp) {
+                let capabilities = resp
+                    .toString()
+                    .split('\r\n')
+                    .find(line => line.indexOf('* CAPABILITY ') === 0);
+                expect(capabilities.split(' ')).to.include.members(['ACL', 'RIGHTS=kxte']);
+                done();
+            });
+        });
+
+        it('should list shared mailboxes under the shared namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                            expect(/^\* LIST \([^)]*\\Noselect[^)]*\) "\/" "Other Users"/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not list shared mailboxes without rights', function (done) {
+            let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 SELECT "Other Users/testuser/INBOX"', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('Other Users/testuser') < 0).to.be.true;
+                    expect(/^T3 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should open shared mailboxes with the granted rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 MYRIGHTS "Other Users/testuser/INBOX"',
+                        'T3 SELECT "Other Users/testuser/INBOX"',
+                        'T4 FETCH 1 (FLAGS)',
+                        'T5 STORE 1 +FLAGS (\\Seen)',
+                        'T6 STORE 1 +FLAGS (\\Flagged)',
+                        'T7 EXPUNGE',
+                        'T8 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^\* MYRIGHTS "?Other Users\/testuser\/INBOX"? "?lrs"?/m.test(resp.toString())).to.be.true;
+                            // "s" is a shared flag right, so the mailbox is selected read-write
+                            expect(/^T3 OK \[READ-WRITE\]/m.test(resp.toString())).to.be.true;
+                            // PERMANENTFLAGS reflects the rights: only \Seen, no keywords
+                            expect(resp.toString().indexOf('[PERMANENTFLAGS (\\Seen)]') >= 0).to.be.true;
+                            expect(/^T4 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T5 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T6 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                            expect(/^T7 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should filter STORE flags by rights and keep the classes a grantee may not change', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 +FLAGS (\\Flagged)', 'T4 SETACL INBOX seconduser lrs', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 SELECT "Other Users/testuser/INBOX"',
+                    'T3 STORE 1 FLAGS (\\Seen)',
+                    'T4 STORE 4 +FLAGS (\\Seen \\Flagged)',
+                    'T5 FETCH 1,4 (FLAGS)',
+                    'T6 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    let fetched = resp.slice(resp.indexOf('T4 OK'));
+                    let flags = seq => fetched.match(new RegExp(`^\\* ${seq} FETCH \\(FLAGS \\(([^)]*)\\)\\)`, 'm'))[1].split(' ');
+
+                    // only \Seen may change: replacing the list keeps \Flagged, adding both sets \Seen alone
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 OK/m.test(resp)).to.be.true;
+                    expect(flags(1)).to.have.members(['\\Flagged', '\\Seen']);
+                    expect(flags(4)).to.have.members(['\\Seen']);
+                    done();
+                });
+            });
+        });
+
+        it('should not set \\Seen when fetching message text without the seen right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrw', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 FETCH 1 BODY[]', 'T4 FETCH 1 (FLAGS)', 'T5 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // "w" selects the mailbox read-write, but without "s" reading must not mark the message seen
+                    expect(/^T2 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^\* 1 FETCH \(FLAGS \(\)\)/m.test(resp.slice(resp.indexOf('T3 OK')))).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should not expunge from a shared mailbox without the expunge right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrst', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 SELECT "Other Users/testuser/INBOX"',
+                    'T3 STORE 1 +FLAGS (\\Deleted)',
+                    'T4 UID EXPUNGE 101',
+                    'T5 CLOSE',
+                    'T6 STATUS "Other Users/testuser/INBOX" (MESSAGES)',
+                    'T7 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    let exists = resp.match(/^\* (\d+) EXISTS/m)[1];
+
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    expect(/^T4 NO \[NOPERM\]/m.test(resp)).to.be.true;
+                    // CLOSE only unselects, so the deleted message stays
+                    expect(/^T5 OK/m.test(resp)).to.be.true;
+                    expect(/^\* \d+ EXPUNGE/m.test(resp)).to.be.false;
+                    expect(resp.indexOf(`* STATUS "Other Users/testuser/INBOX" (MESSAGES ${exists})`) >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should append to shared mailboxes with the insert right and drop denied flags', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsi', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let message = Buffer.from('Subject: HELLO!\r\n\r\nWORLD!');
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 APPEND "Other Users/testuser/INBOX" (\\Seen \\Flagged) {' + message.length + '}\r\n' + message.toString('binary'),
+                        'T3 SELECT "Other Users/testuser/INBOX"',
+                        'T4 FETCH * (FLAGS)',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK \[APPENDUID /m.test(resp.toString())).to.be.true;
+                            // the "w" right is missing, so \Flagged was dropped and \Seen was kept
+                            let flagsLine = resp.toString().match(/^\* \d+ FETCH \(FLAGS \(([^)]*)\)\)/m);
+                            expect(flagsLine).to.exist;
+                            expect(flagsLine[1].indexOf('\\Seen') >= 0).to.be.true;
+                            expect(flagsLine[1].indexOf('\\Flagged') < 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not append to shared mailboxes without the insert right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let message = Buffer.from('Subject: HELLO!\r\n\r\nWORLD!');
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 APPEND "Other Users/testuser/INBOX" {' + message.length + '}\r\n' + message.toString('binary'),
+                        'T3 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should copy messages out of a shared mailbox', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 SELECT "Other Users/testuser/INBOX"',
+                        'T3 COPY 1 INBOX',
+                        'T4 STATUS INBOX (MESSAGES)',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
+                            expect(/^\* STATUS "?INBOX"? \(MESSAGES 1\)/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should copy messages into a shared mailbox and drop flags the grantee may not set', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsi', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let message = Buffer.from('Subject: copied\r\n\r\nCopied body');
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 APPEND INBOX (\\Seen \\Flagged) {' + message.length + '}\r\n' + message.toString('binary'),
+                    'T3 SELECT INBOX',
+                    'T4 COPY 1 "Other Users/testuser/INBOX"',
+                    'T5 SELECT "Other Users/testuser/INBOX"',
+                    'T6 FETCH * (FLAGS)',
+                    'T7 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T4 OK \[COPYUID /m.test(resp)).to.be.true;
+                    // "s" covers \Seen, \Flagged would need "w"
+                    expect(/^\* \d+ FETCH \(FLAGS \(\\Seen\)\)/m.test(resp.slice(resp.indexOf('T5 OK')))).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should keep archiving owner messages a grantee copied to another account', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 COPY 1 INBOX', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
+
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT INBOX', 'T3 STORE 1 +FLAGS (\\Deleted)', 'T4 EXPUNGE', 'T5 LOGOUT'];
+                    testClient({ commands: cmds, secure: true, port }, function () {
+                        apiServer
+                            .get('/users/resolve/testuser')
+                            .expect(200)
+                            .then(response => apiServer.get(`/users/${response.body.id}/archived/messages`).expect(200))
+                            .then(response => {
+                                // the copy in the grantee's account does not replace the owner's archive
+                                expect(response.body.results.length).to.equal(1);
+                                done();
+                            })
+                            .catch(done);
+                    });
+                });
+            });
+        });
+
+        it('should move messages between accounts as copy and expunge', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 SELECT "Other Users/testuser/INBOX"',
+                        'T3 MOVE 1 INBOX',
+                        'T4 STATUS INBOX (MESSAGES)',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T3 OK \[COPYUID /m.test(resp.toString())).to.be.true;
+                            expect(/^\* 1 EXPUNGE/m.test(resp.toString())).to.be.true;
+                            expect(/^\* STATUS "?INBOX"? \(MESSAGES 1\)/m.test(resp.toString())).to.be.true;
+
+                            // a moved message lives on in the target account, so the source is not archived
+                            apiServer
+                                .get('/users/resolve/testuser')
+                                .expect(200)
+                                .then(response => apiServer.get(`/users/${response.body.id}/archived/messages`).expect(200))
+                                .then(response => {
+                                    expect(response.body.results.length).to.equal(0);
+                                    done();
+                                })
+                                .catch(done);
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not move messages out of a shared mailbox without the delete and expunge rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 MOVE 1 INBOX', 'T4 STATUS INBOX (MESSAGES)', 'T5 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T3 NO \[NOPERM\]/m.test(resp)).to.be.true;
+                    expect(/^\* STATUS "?INBOX"? \(MESSAGES 0\)/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should move the storage of messages moved between accounts', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
+
+            let readUsage = () =>
+                Promise.all(
+                    ['testuser', 'seconduser'].map(username =>
+                        apiServer
+                            .get(`/users/resolve/${username}`)
+                            .expect(200)
+                            .then(response => apiServer.get(`/users/${response.body.id}`).expect(200))
+                            .then(response => response.body.limits.quota.used)
+                    )
+                );
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                readUsage()
+                    .then(before => {
+                        let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 FETCH 1 (RFC822.SIZE)', 'T4 MOVE 1 INBOX', 'T5 LOGOUT'];
+                        testClient({ commands: cmds, secure: true, port }, function (resp) {
+                            resp = resp.toString();
+                            let size = Number(resp.match(/RFC822\.SIZE (\d+)/)[1]);
+                            expect(/^T4 OK/m.test(resp)).to.be.true;
+
+                            readUsage()
+                                .then(after => {
+                                    // the owner is relieved of the message and the grantee is charged for it
+                                    expect(after[0]).to.equal(before[0] - size);
+                                    expect(after[1]).to.equal(before[1] + size);
+                                    done();
+                                })
+                                .catch(done);
+                        });
+                    })
+                    .catch(done);
+            });
+        });
+
+        it('should attribute cross-account moves to the target owner and find them with TEXT search', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrswite', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let message = Buffer.from('Subject: marker\r\n\r\nXBODYMARKERX');
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 APPEND "Other Users/testuser/INBOX" {' + message.length + '}\r\n' + message.toString('binary'),
+                        'T3 SELECT "Other Users/testuser/INBOX"',
+                        'T4 SEARCH TEXT XBODYMARKERX',
+                        'T5 MOVE * INBOX',
+                        'T6 SELECT INBOX',
+                        'T7 SEARCH TEXT XBODYMARKERX',
+                        'T8 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            resp = resp.toString();
+                            let sharedSearch = resp.slice(resp.indexOf('T3 OK'), resp.indexOf('T4 OK'));
+                            let ownSearch = resp.slice(resp.indexOf('T6 OK'), resp.indexOf('T7 OK'));
+                            // text search in the shared mailbox is scoped to the mailbox owner
+                            expect(/^\* SEARCH \d+$/m.test(sharedSearch)).to.be.true;
+                            expect(/^T4 OK/m.test(resp)).to.be.true;
+                            expect(/^T5 OK/m.test(resp)).to.be.true;
+                            // the moved message belongs to the new owner now, so their scoped search finds it
+                            expect(/^\* SEARCH 1$/m.test(ownSearch)).to.be.true;
+                            expect(/^T7 OK/m.test(resp)).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should create inherited mailboxes in a shared hierarchy', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrsk', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 CREATE "Other Users/testuser/INBOX/reports"',
+                        'T3 LIST "" "*"',
+                        'T4 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/reports"') >= 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should delete and rename shared mailboxes with the required rights', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE INBOX/old',
+                'T3 CREATE INBOX/temp',
+                'T4 SETACL INBOX seconduser lrk',
+                'T5 SETACL INBOX/old seconduser lrx',
+                'T6 SETACL INBOX/temp seconduser lrx',
+                'T7 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 RENAME "Other Users/testuser/INBOX/old" "Other Users/testuser/INBOX/new"',
+                        'T3 DELETE "Other Users/testuser/INBOX/temp"',
+                        'T4 LIST "" "*"',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/new"') >= 0).to.be.true;
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX/temp"') < 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not grant rights across tenant boundaries', function (done) {
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'outsider',
+                    password: 'outsiderpass',
+                    address: 'outsider@other-tenant.com',
+                    name: 'Outsider'
+                })
+                .expect(200)
+                .then(() => {
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX outsider lrs', 'T3 SETACL INBOX nosuchuserhere lrs', 'T4 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            // an out of scope user is answered exactly like an unknown one
+                            expect(/^T2 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 NO \[CANNOT\]/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                })
+                .catch(done);
+        });
+
+        it('should grant rights within a domain group', function (done) {
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'outsider',
+                    password: 'outsiderpass',
+                    address: 'outsider@other-tenant.com',
+                    name: 'Outsider'
+                })
+                .expect(200)
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'example.com' }).expect(200))
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'other-tenant.com' }).expect(200))
+                .then(() => {
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX outsider lrs', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+
+                            let cmds = ['T1 LOGIN outsider outsiderpass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+                            testClient(
+                                {
+                                    commands: cmds,
+                                    secure: true,
+                                    port
+                                },
+                                function (resp) {
+                                    expect(resp.toString().indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                                    done();
+                                }
+                            );
+                        }
+                    );
+                })
+                .catch(done);
+        });
+
+        it('should hide grants when the domain group is removed', function (done) {
+            apiServer
+                .post('/users')
+                .send({
+                    username: 'outsider',
+                    password: 'outsiderpass',
+                    address: 'outsider@other-tenant.com',
+                    name: 'Outsider'
+                })
+                .expect(200)
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'example.com' }).expect(200))
+                .then(() => apiServer.post('/domaingroups').send({ group: 'tenant1', domain: 'other-tenant.com' }).expect(200))
+                .then(() => {
+                    let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX outsider lrs', 'T3 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+
+                            apiServer
+                                .delete('/domaingroups/other-tenant.com')
+                                .expect(200)
+                                .then(() => {
+                                    let cmds = ['T1 LOGIN outsider outsiderpass', 'T2 LIST "" "*"', 'T3 SELECT "Other Users/testuser/INBOX"', 'T4 LOGOUT'];
+
+                                    testClient(
+                                        {
+                                            commands: cmds,
+                                            secure: true,
+                                            port
+                                        },
+                                        function (resp) {
+                                            // the stale grant behaves as if it does not exist
+                                            expect(resp.toString().indexOf('Other Users/testuser') < 0).to.be.true;
+                                            expect(/^T3 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                                            done();
+                                        }
+                                    );
+                                })
+                                .catch(done);
+                        }
+                    );
+                })
+                .catch(done);
+        });
+
+        it('should report the quota root of the mailbox owner', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 GETQUOTAROOT "Other Users/testuser/INBOX"',
+                        'T3 GETQUOTA "Other Users/testuser"',
+                        'T4 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('* QUOTAROOT "Other Users/testuser/INBOX" "Other Users/testuser"') >= 0).to.be.true;
+                            expect(/^\* QUOTA "Other Users\/testuser" \(STORAGE \d+ \d+\)/m.test(resp.toString())).to.be.true;
+                            expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should report the quota root of an owner when any grant holds the lookup or read right', function (done) {
+            // the insert-only grant is stored first, so a single row lookup would find it before the other one
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 SETACL INBOX seconduser i', 'T4 SETACL Projects seconduser lr', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 GETQUOTA "Other Users/testuser"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^\* QUOTA "Other Users\/testuser" \(STORAGE \d+ \d+\)/m.test(resp.toString())).to.be.true;
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should manage subscriptions of shared mailboxes', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = [
+                        'T1 LOGIN seconduser secondpass',
+                        'T2 LSUB "" "*"',
+                        'T3 UNSUBSCRIBE "Other Users/testuser/INBOX"',
+                        'T4 LSUB "" "*"',
+                        'T5 LOGOUT'
+                    ];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            resp = resp.toString();
+                            expect(/^T3 OK/m.test(resp)).to.be.true;
+                            // listed by the first LSUB, gone from the second one
+                            expect(resp.slice(0, resp.indexOf('T3 OK')).indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                            expect(resp.slice(resp.indexOf('T3 OK')).indexOf('"Other Users/testuser/INBOX"') < 0).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+
+        it('should not expose mailboxes of regular users under the shared namespace prefix', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lrs', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function () {
+                    let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 SELECT "Shared/testuser/INBOX"', 'T4 LOGOUT'];
+
+                    testClient(
+                        {
+                            commands: cmds,
+                            secure: true,
+                            port
+                        },
+                        function (resp) {
+                            expect(resp.toString().indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                            expect(resp.toString().indexOf('Shared/testuser') < 0).to.be.true;
+                            expect(/^T3 NO/m.test(resp.toString())).to.be.true;
+                            done();
+                        }
+                    );
+                }
+            );
+        });
+    });
+
+    describe('Shared namespace', function () {
+        let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+        beforeEach(async function () {
+            // create a shared account (team mailbox) in the same tenant scope and grant
+            // testuser full rights on its INBOX over the REST API, as shared accounts
+            // can not log in to manage grants themselves
+            let response = await apiServer
+                .post('/users')
+                .send({
+                    username: 'supportteam',
+                    password: false,
+                    address: 'supportteam@example.com',
+                    name: 'Support Team',
+                    shared: true
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+            let team = response.body.id;
+
+            response = await apiServer.get(`/users/${team}/mailboxes`).expect(200);
+            expect(response.body.success).to.be.true;
+            let inbox = response.body.results.find(mailboxData => mailboxData.path === 'INBOX').id;
+
+            response = await apiServer
+                .put(`/users/${team}/mailboxes/${inbox}/acl`)
+                .send({
+                    identifier: 'testuser',
+                    rights: 'lrswipkxtea'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+        });
+
+        it('should list team mailboxes under the shared namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 LIST "" "*"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('"Shared/supportteam/INBOX"') >= 0).to.be.true;
+                    expect(resp.toString().indexOf('Other Users/supportteam') < 0).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should select team mailboxes with the granted rights', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT "Shared/supportteam/INBOX"', 'T3 MYRIGHTS "Shared/supportteam/INBOX"', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 OK/m.test(resp.toString())).to.be.true;
+                    expect(/^\* MYRIGHTS "?Shared\/supportteam\/INBOX"? "?lrswipkxteacd"?/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should not resolve team mailboxes under the other users namespace', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SELECT "Other Users/supportteam/INBOX"', 'T3 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should report the quota root of a team mailbox in the shared namespace', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 GETQUOTAROOT "Shared/supportteam/INBOX"',
+                'T3 GETQUOTA "Shared/supportteam"',
+                'T4 GETQUOTA "Other Users/supportteam"',
+                'T5 LOGOUT'
+            ];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(resp.toString().indexOf('* QUOTAROOT "Shared/supportteam/INBOX" "Shared/supportteam"') >= 0).to.be.true;
+                    expect(/^\* QUOTA "Shared\/supportteam" \(STORAGE \d+ \d+\)/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 OK/m.test(resp.toString())).to.be.true;
+                    // the quota root of a team mailbox does not exist in the other users namespace
+                    expect(/^T4 NO/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+
+        it('should reject shared accounts as ACL grantees', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX supportteam lr', 'T3 LISTRIGHTS INBOX supportteam', 'T4 LOGOUT'];
+
+            testClient(
+                {
+                    commands: cmds,
+                    secure: true,
+                    port
+                },
+                function (resp) {
+                    expect(/^T2 NO/m.test(resp.toString())).to.be.true;
+                    expect(/^T3 NO/m.test(resp.toString())).to.be.true;
+                    done();
+                }
+            );
+        });
+    });
+
+    describe('Account wide ACL', function () {
+        let apiServer = supertest.agent(`http://127.0.0.1:${config.api.port}`);
+
+        beforeEach(async function () {
+            // a second user in the same tenant scope, used as the account grantee. The
+            // account owner bootstraps grants through its own "Other Users/<self>" node
+            let response = await apiServer
+                .post('/users')
+                .send({
+                    username: 'seconduser',
+                    password: 'secondpass',
+                    address: 'seconduser@example.com',
+                    name: 'Second User'
+                })
+                .expect(200);
+            expect(response.body.success).to.be.true;
+        });
+
+        it('should manage account wide grants on the account node', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL "Other Users/testuser" seconduser lrswipkxtea',
+                'T3 GETACL "Other Users/testuser"',
+                'T4 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function (resp) {
+                resp = resp.toString();
+                expect(/^T2 OK/m.test(resp)).to.be.true;
+                expect(resp.indexOf('"Other Users/testuser" "testuser" "lrswipkxteacd"') >= 0).to.be.true;
+                expect(resp.indexOf('"seconduser" "lrswipkxteacd"') >= 0).to.be.true;
+                done();
+            });
+        });
+
+        it('should report account wide rights with MYRIGHTS on the account node', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrs', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 MYRIGHTS "Other Users/testuser"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(resp.toString().indexOf('* MYRIGHTS "Other Users/testuser" "lrs"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should make every owner mailbox visible through an account grant', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 SETACL "Other Users/testuser" seconduser lrs', 'T4 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 LIST "" "*"', 'T3 SELECT "Other Users/testuser/Projects"', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // both the INBOX and the created folder are visible without a folder grant
+                    expect(resp.indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                    expect(resp.indexOf('"Other Users/testuser/Projects"') >= 0).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should let a folder grant override the account grant', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Projects',
+                'T3 SETACL "Other Users/testuser" seconduser lrswipkxtea',
+                'T4 SETACL "Other Users/testuser/Projects" seconduser lr',
+                'T5 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 MYRIGHTS "Other Users/testuser/Projects"',
+                    'T3 MYRIGHTS "Other Users/testuser/INBOX"',
+                    'T4 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // the folder grant narrows Projects while INBOX keeps the account rights
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/Projects" "lr"') >= 0).to.be.true;
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/INBOX" "lrswipkxteacd"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should apply SETACL modifiers to the account rights of a folder without a folder grant', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 CREATE Projects',
+                'T3 SETACL "Other Users/testuser" seconduser lrs',
+                'T4 SETACL "Other Users/testuser/Projects" seconduser +i',
+                'T5 SETACL "Other Users/testuser/INBOX" seconduser -s',
+                'T6 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 MYRIGHTS "Other Users/testuser/Projects"',
+                    'T3 MYRIGHTS "Other Users/testuser/INBOX"',
+                    'T4 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    // the modifiers extend and narrow the account rights instead of replacing them
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/Projects" "lrsi"') >= 0).to.be.true;
+                    expect(resp.indexOf('* MYRIGHTS "Other Users/testuser/INBOX" "lr"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should track subscriptions of account grant folders per folder', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 SETACL "Other Users/testuser" seconduser lrs', 'T4 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 UNSUBSCRIBE "Other Users/testuser/Projects"',
+                    'T3 LSUB "" "*"',
+                    'T4 SUBSCRIBE "Other Users/testuser/Projects"',
+                    'T5 LSUB "" "*"',
+                    'T6 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    let unsubscribed = resp.slice(resp.indexOf('T2 OK'), resp.indexOf('T3 OK'));
+                    let subscribed = resp.slice(resp.indexOf('T4 OK'), resp.indexOf('T5 OK'));
+                    // only the unsubscribed folder leaves LSUB, and SUBSCRIBE brings it back
+                    expect(unsubscribed.indexOf('"Other Users/testuser/INBOX"') >= 0).to.be.true;
+                    expect(unsubscribed.indexOf('"Other Users/testuser/Projects"') >= 0).to.be.false;
+                    expect(subscribed.indexOf('"Other Users/testuser/Projects"') >= 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should create a top level folder with the account create right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrswipkxtea', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/newtop"', 'T3 SELECT "Other Users/testuser/newtop"', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    expect(/^T3 OK/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should refuse a top level folder without the account create right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lrs', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/nope"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NOPERM\] Permission denied\r$/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should rename a folder to the top level with the account create right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 CREATE Projects/Sub', 'T4 SETACL "Other Users/testuser" seconduser lrswipkxtea', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = [
+                    'T1 LOGIN seconduser secondpass',
+                    'T2 RENAME "Other Users/testuser/Projects/Sub" "Other Users/testuser/Sub"',
+                    'T3 LIST "" "Other Users/testuser/*"',
+                    'T4 LOGOUT'
+                ];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 OK/m.test(resp)).to.be.true;
+                    expect(resp.indexOf('"Other Users/testuser/Sub"') >= 0).to.be.true;
+                    expect(resp.indexOf('"Other Users/testuser/Projects/Sub"') < 0).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should refuse renaming a folder to the top level with NOPERM when only a folder is shared', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 CREATE Projects', 'T3 CREATE Projects/Sub', 'T4 SETACL Projects/Sub seconduser lrx', 'T5 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 RENAME "Other Users/testuser/Projects/Sub" "Other Users/testuser/Sub"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should refuse a top level folder with NOPERM when only a folder is shared', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL INBOX seconduser lr', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 CREATE "Other Users/testuser/nope"', 'T3 CREATE "Other Users/nobody/nope"', 'T4 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    resp = resp.toString();
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp)).to.be.true;
+                    expect(/^T3 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should remove an account grant with DELETEACL', function (done) {
+            let cmds = [
+                'T1 LOGIN testuser pass',
+                'T2 SETACL "Other Users/testuser" seconduser lrs',
+                'T3 DELETEACL "Other Users/testuser" seconduser',
+                'T4 LOGOUT'
+            ];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 SELECT "Other Users/testuser/INBOX"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NONEXISTENT\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
+        });
+
+        it('should not disclose the account node without a grant', function (done) {
+            let cmds = ['T1 LOGIN seconduser secondpass', 'T2 GETACL "Other Users/testuser"', 'T3 SELECT "Other Users/testuser"', 'T4 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function (resp) {
+                resp = resp.toString();
+                expect(/^T2 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                expect(/^T3 NO \[NONEXISTENT\]/m.test(resp)).to.be.true;
+                done();
+            });
+        });
+
+        it('should refuse GETACL on the account node without the administer right', function (done) {
+            let cmds = ['T1 LOGIN testuser pass', 'T2 SETACL "Other Users/testuser" seconduser lr', 'T3 LOGOUT'];
+
+            testClient({ commands: cmds, secure: true, port }, function () {
+                let cmds = ['T1 LOGIN seconduser secondpass', 'T2 GETACL "Other Users/testuser"', 'T3 LOGOUT'];
+                testClient({ commands: cmds, secure: true, port }, function (resp) {
+                    expect(/^T2 NO \[NOPERM\]/m.test(resp.toString())).to.be.true;
+                    done();
+                });
+            });
         });
     });
 

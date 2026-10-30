@@ -1,5 +1,7 @@
 'use strict';
 
+const imapTools = require('../imap-tools');
+
 module.exports = {
     state: 'Selected',
 
@@ -12,8 +14,8 @@ module.exports = {
             });
         }
 
-        // Just unselect if in read only mode
-        if (this.selected.readOnly) {
+        // Just unselect if in read only mode or if a shared mailbox does not allow expunging
+        if (this.selected.readOnly || !imapTools.checkAclRights(this.selected, imapTools.ACL_RIGHTS.EXPUNGE)) {
             this.session.selected = this.selected = false;
             this.state = 'Authenticated';
             return callback(null, {

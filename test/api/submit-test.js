@@ -133,6 +133,49 @@ describe('API Submit', function () {
         }
     });
 
+    describe('shared account', function () {
+        let shared;
+
+        before(async () => {
+            const response = await server
+                .post('/users')
+                .send({
+                    username: `submitteam-${testTag}`,
+                    password: false,
+                    address: `submitteam-${testTag}@web.zone.test`,
+                    shared: true
+                })
+                .expect(200);
+            shared = response.body.id;
+        });
+
+        after(async () => {
+            if (shared) {
+                await server.delete(`/users/${shared}`).expect(200);
+            }
+        });
+
+        it('should POST /users/{user}/submit expect failure / shared account', async () => {
+            const response = await server
+                .post(`/users/${shared}/submit`)
+                .send({
+                    to: [{ address: 'recipient@example.com' }],
+                    subject: 'shared account',
+                    text: 'A shared account can not send'
+                })
+                .expect(403);
+
+            expect(response.body.code).to.equal('UserDisabled');
+        });
+
+        it('should POST /users/{user}/mailboxes/{mailbox}/messages/{message}/submit expect failure / shared account', async () => {
+            // the account is checked before the message is looked up, so any mailbox and message id will do
+            const response = await server.post(`/users/${shared}/mailboxes/${inbox}/messages/1/submit`).send({}).expect(403);
+
+            expect(response.body.code).to.equal('UserDisabled');
+        });
+    });
+
     it('should POST /users/{user}/submit expect success / reply resolves recipients and threading from the reference', async () => {
         const response = await server
             .post(`/users/${user}/submit`)
