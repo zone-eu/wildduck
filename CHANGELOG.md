@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.55.3](https://github.com/zone-eu/wildduck/compare/v1.55.2...v1.55.3) (2026-11-02)
+
+
+### Bug Fixes
+
+* **attachments-s3-gridfs-migration:** ZMS-123: Add S3 -&gt; GridFS migration script ([#1244](https://github.com/zone-eu/wildduck/issues/1244)) ([2648fa1](https://github.com/zone-eu/wildduck/commit/2648fa15d380f67d172b21d7ee3d1d10e818cb60))
+* **attachments:** Only store attachments above minObjectSize in Object store ([#1246](https://github.com/zone-eu/wildduck/issues/1246)) ([f58f8e9](https://github.com/zone-eu/wildduck/commit/f58f8e9f4aa1cf50f68fcb8e820f72549c629313))
+* **messages-attachments:** release the attachments of messages whose mailbox is gone ([#1247](https://github.com/zone-eu/wildduck/issues/1247)) ([7f596f4](https://github.com/zone-eu/wildduck/commit/7f596f42e09341159de8cb3d4a40f98b488513df))
+* **messages-search:** preserve explicit mailbox scope during search timeouts ([#1250](https://github.com/zone-eu/wildduck/issues/1250)) ([ec26b4d](https://github.com/zone-eu/wildduck/commit/ec26b4df4694c80f3a0e7841f584b4bab72f6b33))
+* **roles:** ZMS-127: Add api readonly role, fix logout endpoint permissions ([#1260](https://github.com/zone-eu/wildduck/issues/1260)) ([ce11adc](https://github.com/zone-eu/wildduck/commit/ce11adccc7dd6179e8c08c4444a08b6a3b982a59))
+* ZMS-129: Log imap connection ECONNRESET etc errors to graylog too ([#1256](https://github.com/zone-eu/wildduck/issues/1256)) ([4aa74cf](https://github.com/zone-eu/wildduck/commit/4aa74cf9516cd8888df0a88e59c80b6aa2d50a35))
+* ZMS-130: IMAP SEARCH log search query on SEARCH success too ([#1257](https://github.com/zone-eu/wildduck/issues/1257)) ([6f5c2c3](https://github.com/zone-eu/wildduck/commit/6f5c2c3aa523f221ddc45196f6325022e79b8d2f))
+
 ## [1.55.2](https://github.com/zone-eu/wildduck/compare/v1.55.1...v1.55.2) (2026-10-27)
 
 
