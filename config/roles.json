@@ -214,10 +214,6 @@
             "read:any": ["*"]
         },
 
-        "audit": {
-            "read:any": ["*"]
-        },
-
         "labels": {
             "read:any": ["*"]
         }
