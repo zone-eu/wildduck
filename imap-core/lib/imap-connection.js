@@ -509,8 +509,8 @@ class IMAPConnection extends EventEmitter {
                 _code: err && err.code,
                 _tnx: 'connection',
                 _service: 'imap',
-                _username: this?.session?.user?.username,
-                _user: this?.session?.user?.id,
+                _username: this.user?.username,
+                _user: this.user?.id,
                 _sess: this.id,
                 _ip: this.remoteAddress
             });
