@@ -63,13 +63,15 @@ module.exports = {
             this.condstoreEnabled = this.selected.condstoreEnabled = true;
         }
 
+        let startTime = Date.now();
         let logdata = {
             short_message: '[SEARCH]',
             _mail_action: 'search',
             _user: this.session.user.id.toString(),
-            _mailbox: this.selected.mailbox,
+            _mailbox: this.selected.mailbox.toString(),
             _mailbox_path: this.selected.path,
             _sess: this.id,
+            _is_uid: isUid ? 'yes' : 'no',
             _query: JSON.stringify(parsed.query),
             _terms: JSON.stringify(parsed.terms)
         };
@@ -82,6 +84,8 @@ module.exports = {
             },
             this.session,
             (err, results) => {
+                logdata._query_time = Date.now() - startTime;
+
                 if (err) {
                     logdata._error = err.message;
                     logdata._code = err.code;
@@ -96,11 +100,17 @@ module.exports = {
                 let matches = results.uidList;
 
                 if (typeof matches === 'string') {
+                    logdata._response = matches;
+                    this._server.loggelf(logdata);
                     return callback(null, {
                         response: 'NO',
                         code: matches.toUpperCase()
                     });
                 }
+
+                logdata._response = true;
+                logdata._message_count = Array.isArray(matches) ? matches.length : 0;
+                this._server.loggelf(logdata);
 
                 let response = {
                     tag: '*',
