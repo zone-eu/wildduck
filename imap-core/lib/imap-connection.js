@@ -502,6 +502,18 @@ class IMAPConnection extends EventEmitter {
                 this.id,
                 err.code
             );
+            this.loggelf({
+                short_message: '[IMAPCONNECTION] Closing connection due to ' + err.code,
+                full_message: err && err.stack,
+                _error: err && err.message,
+                _code: err && err.code,
+                _tnx: 'connection',
+                _service: 'imap',
+                _username: this.user?.username,
+                _user: this.user?.id,
+                _sess: this.id,
+                _ip: this.remoteAddress
+            });
             this.close(); // mark connection as 'closing'
             return;
         }
