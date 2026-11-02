@@ -33,14 +33,6 @@ Generated access token for admin[root]:
 
 In this case `--config="/etc/wildduck/wildduck.toml` points to server specific configuration file, "admin" is username for the token (this is not a user account but just a name to use in access logs etc) and "root" is role. You need to use actual production config as the tokens are written to the database.
 
-The `api:read` role provides service-wide read-only access to API resources. It uses `read:any` permissions, so it is not scoped to a single account. It does not grant create, update, or delete access. Provision a reader token with:
-
-```
-$ ./bin/access-tokens --config="/path/to/server/config.toml" provision reader api:read
-```
-
-The available roles, including `api:read`, are defined by `config.api.roles` in the server configuration.
-
 ### Considerations
 
 When building a publicly available front end application to access mailboxes consider the following:
