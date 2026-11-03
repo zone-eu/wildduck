@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.56.0](https://github.com/zone-eu/wildduck/compare/v1.55.3...v1.56.0) (2026-11-03)
+
+
+### Features
+
+* **mongodb:** ZMS-125: Use mongodb driver v7, update mongo-cursor-pagination driver too ([#1255](https://github.com/zone-eu/wildduck/issues/1255)) ([8c83581](https://github.com/zone-eu/wildduck/commit/8c8358146bf3ee017fdd815ba909411a1620238a))
+* ZMS-126: Bump ioredis to v6, bump deps ([#1263](https://github.com/zone-eu/wildduck/issues/1263)) ([7ce3c3d](https://github.com/zone-eu/wildduck/commit/7ce3c3dd1e71c47d0a8a78ee8322547fe233e1ee))
+
 ## [1.55.3](https://github.com/zone-eu/wildduck/compare/v1.55.2...v1.55.3) (2026-11-02)
 
 
