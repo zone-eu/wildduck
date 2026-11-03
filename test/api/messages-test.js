@@ -14,6 +14,12 @@ const { ImapFlow } = require('imapflow');
 const { parseSearchQuery, getMongoDBQuery } = require('../../lib/search-query');
 const { prepareSearchFilter } = require('../../lib/prepare-search-filter');
 const db = require('../../lib/db');
+const { randomBytes } = require('crypto');
+const { promisify } = require('util');
+const { connect } = require('./_helpers');
+const MessageHandler = require('../../lib/message-handler');
+const { TASK_LOCK_INTERVAL } = require('../../lib/consts');
+const searchApplyTask = promisify(require('../../lib/tasks/search-apply'));
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -1959,6 +1965,33 @@ describe('Messages tests', function () {
         });
         const unlabelledMessageId = unlabelledMessage.body.message.id;
 
+        await connect();
+        const messageHandler = new MessageHandler({
+            database: db.database,
+            users: db.users,
+            redis: db.redis,
+            gridfs: db.gridfs,
+            attachments: config.attachments
+        });
+        const runScheduledTask = async scheduled => {
+            // Claim only this test's task so worker startup and unrelated queued
+            // jobs cannot delay it. If the worker won the claim, poll its result.
+            const lock = randomBytes(12);
+            const task = await db.database.collection('tasks').findOneAndUpdate(
+                { _id: new ObjectId(scheduled), task: 'search-apply', 'data.user': user, locked: false },
+                { $set: { locked: lock, lockedUntil: new Date(Date.now() + TASK_LOCK_INTERVAL), status: 'active' } },
+                { returnDocument: 'after' }
+            );
+            if (!task) {
+                return;
+            }
+            try {
+                await searchApplyTask(task, task.data, { messageHandler });
+            } finally {
+                await db.database.collection('tasks').deleteOne({ _id: task._id, locked: lock });
+            }
+        };
+
         const getMessageState = async messageId => {
             const search = await searchQ(`mailbox:${applyMailbox} id:${messageId}`);
             const entry = search.results.find(item => item.id === messageId);
@@ -1988,6 +2021,7 @@ describe('Messages tests', function () {
         expect(structuredApply.body.success).to.be.true;
         expect(structuredApply.body.scheduled).to.exist;
 
+        await runScheduledTask(structuredApply.body.scheduled);
         await waitForMessageState(labelledMessageId, { flagged: true });
         expect((await getMessageState(unlabelledMessageId)).flagged).to.be.false;
 
@@ -1999,6 +2033,7 @@ describe('Messages tests', function () {
         expect(qApply.body.success).to.be.true;
         expect(qApply.body.scheduled).to.exist;
 
+        await runScheduledTask(qApply.body.scheduled);
         await waitForMessageState(labelledMessageId, { seen: true });
         expect((await getMessageState(unlabelledMessageId)).seen).to.be.false;
     });

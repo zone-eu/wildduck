@@ -139,6 +139,39 @@ describe('Storage tests', function () {
         expect(response.body.success).to.be.true;
     });
 
+    it('should GET /users/{user}/storage expect success / stored contentType is returned', async () => {
+        // the file extension maps to a different type, so a lost contentType can not be inferred back
+        const upload = await server
+            .post(`/users/${user}/storage`)
+            .send({
+                filename: 'contenttype-check.dat',
+                contentType: 'application/pdf',
+                encoding: 'base64',
+                content: Buffer.from('content type check').toString('base64')
+            })
+            .expect(200);
+        expect(upload.body.success).to.be.true;
+
+        const listing = await server.get(`/users/${user}/storage`).send({}).expect(200);
+        const fileData = listing.body.results.find(entry => entry.id === upload.body.id);
+        expect(fileData).to.exist;
+        expect(fileData.contentType).to.equal('application/pdf');
+
+        const download = await server
+            .get(`/users/${user}/storage/${upload.body.id}`)
+            .buffer(true)
+            .parse((res, callback) => {
+                const chunks = [];
+                res.on('data', chunk => chunks.push(chunk));
+                res.on('end', () => callback(null, Buffer.concat(chunks)));
+            })
+            .expect(200);
+        expect(download.headers['content-type']).to.equal('application/pdf');
+        expect(download.body.toString()).to.equal('content type check');
+
+        await server.del(`/users/${user}/storage/${upload.body.id}`).send({}).expect(200);
+    });
+
     it('should GET /users/{user}/storage expect failure / incorrect limit', async () => {
         const response = await server.get(`/users/${user}/storage?limit=1000`).send({}).expect(400);
         expect(response.body.code).to.be.equal('InputValidationError');

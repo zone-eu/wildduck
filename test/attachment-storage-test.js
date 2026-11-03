@@ -3,9 +3,21 @@
 const { expect } = require('chai');
 const AttachmentLock = require('../lib/attachments/attachment-lock');
 const AttachmentStorage = require('../lib/attachment-storage');
+const AttachmentCatalog = require('../lib/attachments/catalog');
 
 describe('Attachment storage facade and locking', () => {
     const id = Buffer.alloc(32, 0xab);
+
+    for (const file of [
+        { contentType: 'text/plain', metadata: {} },
+        { metadata: { contentType: 'text/plain' } },
+        { contentType: 'application/octet-stream', metadata: { contentType: 'text/plain' } }
+    ]) {
+        it(`reads the attachment MIME type from ${file.metadata.contentType ? 'custom metadata' : 'legacy GridFS metadata'}`, async () => {
+            const catalog = new AttachmentCatalog({ collection: () => ({ findOne: async () => ({ _id: id, length: 4, ...file }) }) }, 'attachments');
+            expect((await catalog.get(id)).contentType).to.equal('text/plain');
+        });
+    }
 
     for (const writeConcern of [undefined, 1, 2, 'majority']) {
         it(`inserts S3 catalog entries with ${writeConcern === undefined ? 'majority by default' : `configured w:${writeConcern}`}`, async () => {

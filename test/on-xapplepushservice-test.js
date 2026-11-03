@@ -58,7 +58,7 @@ describe('on-xapplepushservice handler', function () {
         });
 
     before(async () => {
-        mongoClient = await MongoClient.connect(config.dbs.mongo, { useNewUrlParser: true, useUnifiedTopology: true });
+        mongoClient = await MongoClient.connect(config.dbs.mongo);
         database = mongoClient.db();
         // share the connection with the handler's db singleton (same module instance)
         db.database = database;
