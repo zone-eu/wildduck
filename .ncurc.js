@@ -16,7 +16,6 @@ module.exports = {
         'yargs',
 
         // new major upgrade requires rewrite
-        'accesscontrol',
-        'ioredis'
+        'accesscontrol'
     ]
 };
