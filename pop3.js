@@ -173,6 +173,7 @@ async function listMessages(session) {
         .project({
             uid: true,
             size: true,
+            root: true,
             mailbox: true,
             // required to decide if we need to update flags after RETR
             flags: true,
@@ -206,6 +207,7 @@ async function listMessages(session) {
             // compose message objects
             .map(message => ({
                 id: message._id.toString(),
+                root: message.root,
                 uid: message.uid,
                 mailbox: message.mailbox,
                 size: message.size,
