@@ -63,6 +63,9 @@ function createSearch({ failCount = false, empty = false } = {}) {
             let sort = { _id: -1 };
             let limit = messages.length;
             const cursor = {
+                project() {
+                    return cursor;
+                },
                 sort(value) {
                     sort = value;
                     return cursor;
