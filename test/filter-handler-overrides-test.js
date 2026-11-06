@@ -597,6 +597,20 @@ describe('FilterHandler recipient spam overrides', () => {
             expect(entry).to.include({ id: id.toString(), root: root.toString() });
             expect(getDuplicateProjection()).to.include({ root: true });
         });
+
+        it('should skip storing a duplicate without root and fall back to its id', async () => {
+            const id = new ObjectId();
+            const existingMessage = { _id: id, uid: 8 };
+            const { handler, getAddOptions } = createHandler({ existingMessage, preparedOverrides: duplicatePrepared });
+            const result = await handler.storeMessage(
+                { _id: new ObjectId(), address: 'recipient@example.com', spamLevel: 50, encryptMessages: false, autoreply: false, tagsview: [] },
+                { recipient: 'recipient@example.com', raw: Buffer.from('Subject: duplicate test\r\n\r\nHello\r\n'), meta: {} }
+            );
+
+            const entry = result.response.filterResults.find(item => item.duplicate);
+            expect(entry).to.include({ duplicate: true, id: id.toString(), root: id.toString(), uid: 8 });
+            expect(getAddOptions()).to.equal(undefined);
+        });
     });
 
     it('should preserve real indexer maildata and rebuilt body for mimeTree reuse without maildata', async () => {
