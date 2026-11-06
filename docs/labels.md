@@ -11,6 +11,13 @@ an account; `{ user: 1, slot: 1 }` reserves one of 5,000 slots for each label.
 Message and filter assignments store label IDs in `messages.labels` and
 `filters.action.labels`. Ordinary IMAP flags stay in `messages.flags`.
 
+Label management and label-counter endpoints require permissions on the `labels`
+resource: `read` for GET, `create` for POST, `update` for PUT, and `delete` for
+DELETE. User-bound requests targeting their own account use `:own`; other
+requests require `:any`. The default `user` role grants label CRUD for its own
+account; `root` and `webmail` grant label CRUD across accounts. Custom roles
+must grant these label permissions explicitly.
+
 `POST /users/:user/labels` accepts `{ "name": "Projects", "metaData": { "color": "blue" } }`.
 Creating the same name again returns its existing ID and metadata. The name is
 at most 256 characters. The metadata is an optional JSON object. Creating a
