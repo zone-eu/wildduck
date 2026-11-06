@@ -39,6 +39,13 @@
             "delete:any": ["*"]
         },
 
+        "labels": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "messages": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -348,6 +355,13 @@
             "delete:any": ["*"]
         },
 
+        "labels": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "messages": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -463,6 +477,13 @@
         "mcptokens": {
             "create:own": ["*"],
             "read:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "labels": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
             "delete:own": ["*"]
         },
 
