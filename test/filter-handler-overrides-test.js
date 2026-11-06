@@ -25,9 +25,10 @@ describe('FilterHandler recipient spam overrides', () => {
         hdate: false
     });
 
-    const createHandler = ({ filters = [], domainaccessData = false } = {}) => {
+    const createHandler = ({ filters = [], domainaccessData = false, existingMessage = false, preparedOverrides = {}, storedMessageId } = {}) => {
         let addOptions;
         let encryptionOptions;
+        let duplicateProjection;
 
         const handler = new FilterHandler({
             db: {
@@ -56,8 +57,9 @@ describe('FilterHandler recipient spam overrides', () => {
 
                             case 'messages':
                                 return {
-                                    async findOne() {
-                                        return false;
+                                    async findOne(query, options) {
+                                        duplicateProjection = options && options.projection;
+                                        return existingMessage;
                                     }
                                 };
 
@@ -102,7 +104,7 @@ describe('FilterHandler recipient spam overrides', () => {
                     }
                 },
                 async prepareMessageAsync(options = {}) {
-                    let prepared = buildPrepared();
+                    let prepared = Object.assign(buildPrepared(), preparedOverrides);
                     if (options.mimeTree) {
                         prepared.mimeTree = options.mimeTree;
                         prepared.headers = this.generateIndexedHeaders(options.mimeTree.header);
@@ -135,10 +137,13 @@ describe('FilterHandler recipient spam overrides', () => {
                             mailbox: new ObjectId(),
                             mailboxPath: options.specialUse === '\\Junk' ? 'Junk' : 'INBOX',
                             uid: 1,
-                            id: new ObjectId(),
+                            id: storedMessageId || new ObjectId(),
                             size: 1024
                         }
                     };
+                },
+                async getMailboxAsync() {
+                    return { _id: new ObjectId(), path: 'INBOX' };
                 }
             },
             sender: {
@@ -156,6 +161,9 @@ describe('FilterHandler recipient spam overrides', () => {
             },
             getEncryptionOptions() {
                 return encryptionOptions;
+            },
+            getDuplicateProjection() {
+                return duplicateProjection;
             }
         };
     };
@@ -550,6 +558,45 @@ describe('FilterHandler recipient spam overrides', () => {
 
         expect(reusableMimeTree.header).to.deep.equal(['From: Alice Example <alice@example.com>']);
         expect(getAddOptions().prepared.mimeTree.header.slice(0, 2)).to.deep.equal(['Delivered-To: second@example.com', 'Return-Path: <alice@example.com>']);
+    });
+
+    describe('stored message root', () => {
+        const duplicatePrepared = {
+            msgid: 'duplicate-message-id',
+            hdate: new Date('2026-06-05T12:00:00Z'),
+            mimeTree: {
+                header: [],
+                attachmentMap: {},
+                parsedHeader: { 'message-id': '<duplicate@example.com>' }
+            }
+        };
+
+        it('should return the stored id as root for a newly stored message', async () => {
+            const id = new ObjectId();
+            const { handler } = createHandler({ storedMessageId: id });
+            const result = await handler.storeMessage(
+                { _id: new ObjectId(), address: 'recipient@example.com', spamLevel: 50, encryptMessages: false, autoreply: false, tagsview: [] },
+                { recipient: 'recipient@example.com', raw: Buffer.from('Subject: root test\r\n\r\nHello\r\n'), meta: {} }
+            );
+
+            const entry = result.response.filterResults.find(item => item.id);
+            expect(entry).to.include({ id: id.toString(), root: id.toString() });
+        });
+
+        it('should use the stored root when it differs from _id', async () => {
+            const id = new ObjectId();
+            const root = new ObjectId();
+            const existingMessage = { _id: id, root, uid: 8 };
+            const { handler, getDuplicateProjection } = createHandler({ existingMessage, preparedOverrides: duplicatePrepared });
+            const result = await handler.storeMessage(
+                { _id: new ObjectId(), address: 'recipient@example.com', spamLevel: 50, encryptMessages: false, autoreply: false, tagsview: [] },
+                { recipient: 'recipient@example.com', raw: Buffer.from('Subject: duplicate test\r\n\r\nHello\r\n'), meta: {} }
+            );
+
+            const entry = result.response.filterResults.find(item => item.duplicate);
+            expect(entry).to.include({ id: id.toString(), root: root.toString() });
+            expect(getDuplicateProjection()).to.include({ root: true });
+        });
     });
 
     it('should preserve real indexer maildata and rebuilt body for mimeTree reuse without maildata', async () => {
