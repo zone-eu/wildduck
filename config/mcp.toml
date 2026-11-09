@@ -1,8 +1,9 @@
-# Read-only Model Context Protocol service
+# Model Context Protocol service
 #
-# Exposes mailbox and message data to MCP clients over Streamable HTTP. The service reads
-# through the WildDuck REST API, so every tool call is an ordinary API request subject to the
-# same validation, roles and audit trail. Disabled by default.
+# Exposes mailbox and message data to MCP clients over Streamable HTTP. The service accesses
+# WildDuck through the REST API, so every tool call is an ordinary API request subject to the
+# same validation, roles and audit trail. Tokens default to read-only access. The opt-in
+# mcp:write_partial role can create filters, mailboxes and autoreply settings. Disabled by default.
 enabled = false
 port = 8082
 # by default bind to localhost only

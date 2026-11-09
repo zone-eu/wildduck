@@ -14,7 +14,7 @@ function createClient(responder) {
     let client = new McpApiClient({
         apiUrl: 'http://127.0.0.1:8080',
         fetch: async (url, options) => {
-            calls.push({ url: url.toString(), headers: options.headers });
+            calls.push({ url: url.toString(), headers: options.headers, method: options.method, body: options.body });
             let { status = 200, body = { success: true } } = (await responder(url, options)) || {};
             return { ok: status < 400, status, json: async () => body };
         }
@@ -43,6 +43,32 @@ describe('MCP API client', () => {
 
         expect(calls[0].headers.Authorization).to.equal(`Bearer ${TOKEN}`);
         expect(calls[0].url).to.include(`/users/${USER_ID}/mailboxes`);
+    });
+
+    it('reads filters and autoreply settings only for the bound account', async () => {
+        let filters = { success: true, limits: { allowed: 100, used: 0 }, results: [] };
+        let autoreply = { success: true, status: false, name: '', subject: '', text: '', html: '' };
+        let { reader, calls } = createClient(async url => ({ body: url.pathname.endsWith('/filters') ? filters : autoreply }));
+        expect(await reader.listFilters()).to.deep.equal(filters);
+        expect(await reader.getAutoreply()).to.deep.equal(autoreply);
+        for (let [index, resource] of ['filters', 'autoreply'].entries()) {
+            expect(calls[index].method).to.equal('GET');
+            expect(calls[index].url).to.equal(`http://127.0.0.1:8080/users/${USER_ID}/${resource}`);
+            expect(calls[index].headers.Authorization).to.equal(`Bearer ${TOKEN}`);
+        }
+    });
+
+    it('sends scoped write requests as JSON and returns the REST result', async () => {
+        let { reader, calls } = createClient(async () => ({ body: { success: true, id: 'created-id' } }));
+
+        expect(await reader.createMailbox({ path: 'Projects' })).to.deep.equal({ success: true, id: 'created-id' });
+        expect(calls[0]).to.include({ method: 'POST', body: JSON.stringify({ path: 'Projects' }) });
+        expect(calls[0].url).to.include(`/users/${USER_ID}/mailboxes`);
+        expect(calls[0].headers['Content-Type']).to.equal('application/json');
+
+        await reader.setAutoreply({ status: true });
+        expect(calls[1].method).to.equal('PUT');
+        expect(calls[1].url).to.include(`/users/${USER_ID}/autoreply`);
     });
 
     it('lists labels for the bound user with counters off by default', async () => {

@@ -25,7 +25,7 @@ WildDuck is a Node.js IMAP/POP3 mail server and REST API backed by MongoDB and R
 | `api.js`, `lib/api/` | Fastify API construction, startup, and resource routes |
 | `lib/fastify/` | Shared HTTP bootstrap, merged request validation, route/OpenAPI compilation, and response contract checks |
 | `imap.js`, `pop3.js`, `lmtp.js` | Protocol services; LMTP is commonly used for local/testing delivery |
-| `mcp.js`, `lib/mcp-*.js` | Independent read-only MCP service, API client, tools, and credentials |
+| `mcp.js`, `lib/mcp-*.js` | Independent MCP service, API client, tools, and credentials |
 | `prometheus.js`, `lib/metrics.js`, `lib/metrics-config.js` | Metrics listener, instrumentation, and configuration |
 | `tasks.js`, `lib/task-handler.js`, `lib/tasks/` | Durable MongoDB tasks and their implementations |
 | `webhooks.js`, `lib/events.js` | BullMQ event matching and webhook delivery |
@@ -121,7 +121,7 @@ Follow `lib/api/messages.js` and `docs/in-depth/api-validation.md`:
 
 ### MCP and Metrics
 
-- MCP is an independent, disabled-by-default, read-only Streamable HTTP service. Tools access the REST API through `lib/mcp-api-client.js`; preserve its validation, permission, audit, and scope checks instead of introducing direct MongoDB reads. See `docs/in-depth/mcp.md`.
+- MCP is an independent, disabled-by-default Streamable HTTP service. Tokens default to read-only `mcp:read`, including filter and autoreply reads. Opt-in `mcp:write_partial` adds only filter creation, mailbox creation and autoreply upsert tools. Tools access the REST API through `lib/mcp-api-client.js`. Preserve its validation, permission, audit, and scope checks instead of introducing direct MongoDB reads. See `docs/in-depth/mcp.md`.
 - MCP credentials use the `wdmcp_` prefix, `lib/mcp-token-handler.js`, the `mcptokens` users-database collection, and dedicated Redis sessions. Preserve bearer-only transport, user binding, expiry, revocation, 2FA, and MCP-only authentication behavior.
 - Metrics run on their own listener through `prometheus.js` and top-level `[metrics]`. Preserve startup/service status instrumentation and bounded metric label cardinality; avoid user IDs, addresses, or message IDs as metric labels.
 

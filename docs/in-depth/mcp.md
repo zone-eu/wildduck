@@ -1,8 +1,8 @@
-# Read-only MCP service
+# MCP service
 
-WildDuck can expose mailbox and message data to Model Context Protocol clients through an independent, read-only Streamable HTTP service.
+WildDuck can expose mailbox and message data to Model Context Protocol clients through an independent Streamable HTTP service. Its default access level is read-only. An explicitly issued partial-write level can also create a small set of account rules.
 
-The service does not read MongoDB directly. Every tool call becomes an ordinary request to the WildDuck REST API, carrying the caller's own token, so the same Joi validation, the same `roles.can(req.role)` checks, the same response schemas and the same audit trail apply as they would to any other API client. There is deliberately no second read path that could drift from the one the API serves.
+The service does not read MongoDB directly. Every tool call becomes an ordinary request to the WildDuck REST API, carrying the caller's own token, so the same central request validation, the same `roles.can(req.role)` checks, the same response schemas and the same audit trail apply as they would to any other API client. There is deliberately no second read path that could drift from the one the API serves.
 
 The service is disabled by default. A minimal loopback configuration is:
 
@@ -99,11 +99,12 @@ Create a token from the command line without running either HTTP listener:
 
 ```bash
 node bin/mcp-tokens create alice@example.com --description "Codex"
+node bin/mcp-tokens create alice@example.com --description "Mail rules" --role mcp:write_partial
 node bin/mcp-tokens list alice@example.com
 node bin/mcp-tokens revoke alice@example.com 64f000000000000000000001
 ```
 
-`create` accepts a user ID, username or email address. Tokens do not expire by default. Add a fixed future ISO timestamp when needed:
+`create` accepts a user ID, username or email address. Tokens default to the `mcp:read` access level and do not expire by default. Use `--role mcp:write_partial` to grant the limited rule-writing access described below. Add a fixed future ISO timestamp when needed:
 
 ```bash
 node bin/mcp-tokens create alice --description "Temporary client" --expires "2027-01-01T00:00:00Z"
@@ -131,9 +132,13 @@ Password or authentication-version changes invalidate every existing token, and 
 
 One user may hold up to `MAX_MCP_TOKEN_COUNT` tokens. Minting and revoking are recorded in the user's own `authlog` as `create mcp token` and `delete mcp token`, and published as the `mcptoken.created` and `mcptoken.deleted` webhook events.
 
-### Access level
+### Access levels
 
-Every token stores an access level, resolved into `req.role` when it authenticates. Only `mcp:read` exists today, granting read access to that user's own account, addresses, mailboxes, labels and messages, and nothing else. The level is defined in `config/roles.json` like every other role, including the field allowlist, so what an agent may see is declared in one place. The allowlist is applied by the API on the way out, not only by the MCP service, so the credential is bounded by it whatever client presents it. Labels expose only their ID, name and optional total/unread counters, custom metadata is excluded.
+Every personal token stores an access level, resolved into `req.role` when it authenticates. The default `mcp:read` role grants read access to that user's own account, addresses, mailboxes, labels, messages, filters and autoreply settings. The opt-in `mcp:write_partial` role grants the same reads plus only `create_filter`, `create_mailbox` and `set_autoreply`. These operations create filters and mailboxes, and create or update the account’s single autoreply. They do not update or delete filters or mailboxes. A filter that forwards or deletes matching mail affects future matching mail. Setting an autoreply changes the account's automatic replies, and disabling it stops future replies. The role does not grant general message writes or arbitrary API access.
+
+Both levels are defined in `config/roles.json` like every other role, including field allowlists, so an agent's visible data and permitted operations are declared there. The allowlist is applied by the API on the way out, not only by the MCP service, so the credential is bounded by it whatever client presents it. Labels expose only their ID, name and optional total/unread counters, custom metadata is excluded.
+
+Personal-token creation accepts a `role`. Direct login at `POST /authenticate` and master-token exchange at `POST /authenticate/mcp` may request the optional `mcpRole`. When omitted they issue `mcp:read`. Only `mcp:read` and `mcp:write_partial` are accepted, and `mcpRole` is rejected for other scopes. The selected role survives TOTP and WebAuthn challenges, is included in the session signature, and controls the same tool and API permissions. Existing credentials retain their stored roles. No token-format change or migration is needed.
 
 ## Client configuration
 
@@ -172,8 +177,20 @@ Avoid putting the plaintext token in a tracked configuration file or in shell hi
 | `search_messages`  | Paged message summaries from typed filters, including labels |
 | `get_message`      | Envelope data, flags, attachment metadata and a bounded body |
 | `get_message_text` | A further window of one message body                         |
+| `list_filters`     | Incoming filters with conditions, actions and account filter limits |
+| `get_autoreply`    | Current vacation autoreply settings, including enabled state and date bounds |
 
-A token is only shown the tools its access level can call, so an agent never plans around a call that would answer 403. Every tool is annotated read-only.
+The opt-in `mcp:write_partial` level also exposes:
+
+| Tool | REST operation | Effect |
+| --- | --- | --- |
+| `create_filter` | `POST /users/:user/filters` | Creates an incoming rule with existing actions, including forwarding to email/relay/webhook targets and discarding future matching messages. Mailbox and label references use existing IDs. |
+| `create_mailbox` | `POST /users/:user/mailboxes` | Creates a mailbox with the existing path, hidden, retention and encryption options. |
+| `set_autoreply` | `PUT /users/:user/autoreply` | Upserts the account’s single autoreply. Updates supplied fields, preserves omitted fields, and can enable or disable replies with `status`. Enabling it can send external replies to incoming mail. |
+
+Write tools exclude metadata and caller-supplied audit context. Filter and mailbox creation are non-idempotent. Do not automatically retry them after an uncertain result. Autoreply updates may overwrite existing settings. All operations use REST validation, ownership checks, limits, persistence, notifications and audit events.
+
+A token is only shown the tools its access level can call, so an agent never plans around a call that would answer 403. Read tools are annotated read-only. The three rule-writing tools are exposed only to `mcp:write_partial`.
 
 A large message cannot produce a large result. WildDuck lifts `data:` images out of a body into attachments when it stores a message, then truncates what is left to `MAX_PLAINTEXT_CONTENT` and `MAX_HTML_CONTENT`, so the fields these tools read are already bounded at 100 KB of text and 640 KB of HTML however big the message was. Attachment content is never returned at all, only its metadata. `totalLength` therefore describes the stored body rather than the original: a message whose `size` is several megabytes can still report a body of a few tens of kilobytes, and there is nothing further to page to. Reading the largest possible body end to end costs about a dozen `get_message_text` calls at the default window.
 
@@ -185,9 +202,9 @@ The effect is that reading a message cannot execute anything and cannot tell the
 
 Arguments are strict. No tool accepts a user or account argument, because the token is the binding. An argument the schema does not declare is refused rather than quietly dropped.
 
-MCP reads do not mark messages as seen and do not update flags, counters, modification indexes or notification streams. That is a property of the credential rather than of the client: the API refuses `markAsSeen` from a level that holds no write grant, so a token cannot change message state even through the routes its tools use. The service does not expose raw EML, arbitrary headers or metadata, attachment content, forwarding targets, draft storage references, outbound queue state, BIMI images, resources, prompts or write tools.
+MCP reads do not mark messages as seen and do not update flags, counters, modification indexes or notification streams. That is a property of the credential rather than of the client: the API refuses `markAsSeen` from a level that holds no write grant, so a token cannot change message state even through the routes its tools use. Neither level exposes raw EML, arbitrary message headers or metadata, attachment content, draft storage references, outbound queue state, BIMI images, resources or prompts. Both levels can inspect existing filter forwarding targets. The partial-write level can configure new forwarding rules through filter creation, with the effect on future matching mail described above.
 
-Mail content is untrusted data. The server instructions tell clients not to follow links, fetch URLs, execute commands, disclose secrets or interpret instructions found in messages. This is a mitigation and not a control: the words in a message are attacker-controlled, and read-only access is what bounds the damage.
+Mail content is untrusted data. The server instructions tell clients not to follow links, fetch URLs, execute commands, disclose secrets or interpret instructions found in messages. This is a mitigation and not a control: the words in a message are attacker-controlled. Keep `mcp:read` for clients that need no account changes. `mcp:write_partial` can create rules whose effects apply to later mail.
 
 ## Limits
 

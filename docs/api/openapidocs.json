@@ -13452,6 +13452,14 @@
                                         "default": "master",
                                         "description": "Required scope. One of master, imap, smtp, pop3, mcp"
                                     },
+                                    "mcpRole": {
+                                        "type": "string",
+                                        "enum": [
+                                            "mcp:read",
+                                            "mcp:write_partial"
+                                        ],
+                                        "description": "MCP access level (mcp scope only). Defaults to mcp:read."
+                                    },
                                     "appId": {
                                         "type": "string",
                                         "minLength": 1,
@@ -13607,6 +13615,14 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "mcpRole": {
+                                        "type": "string",
+                                        "enum": [
+                                            "mcp:read",
+                                            "mcp:write_partial"
+                                        ],
+                                        "description": "MCP access level (mcp scope only). Defaults to mcp:read."
+                                    },
                                     "sess": {
                                         "type": "string",
                                         "minLength": 1,
@@ -17678,10 +17694,11 @@
                                     "role": {
                                         "type": "string",
                                         "enum": [
-                                            "mcp:read"
+                                            "mcp:read",
+                                            "mcp:write_partial"
                                         ],
                                         "default": "mcp:read",
-                                        "description": "Access level to grant. Only the read level exists today."
+                                        "description": "Access level to grant. Defaults to read-only. mcp:write_partial also permits filter/mailbox creation and autoreply updates."
                                     }
                                 },
                                 "required": [
@@ -17746,9 +17763,10 @@
                                         "role": {
                                             "type": "string",
                                             "enum": [
-                                                "mcp:read"
+                                                "mcp:read",
+                                                "mcp:write_partial"
                                             ],
-                                            "description": "Access level of the token. Only the read level exists today; treat this as an open set."
+                                            "description": "Access level of the token. Defaults to read-only. Existing credentials retain their stored level."
                                         },
                                         "audience": {
                                             "type": "string",
@@ -17863,9 +17881,10 @@
                                                     "role": {
                                                         "type": "string",
                                                         "enum": [
-                                                            "mcp:read"
+                                                            "mcp:read",
+                                                            "mcp:write_partial"
                                                         ],
-                                                        "description": "Access level of the token. Only the read level exists today; treat this as an open set."
+                                                        "description": "Access level of the token. Defaults to read-only. Existing credentials retain their stored level."
                                                     },
                                                     "audience": {
                                                         "type": "string",

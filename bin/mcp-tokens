@@ -50,7 +50,7 @@ function buildParser(args, dependencies) {
         .usage('Usage: $0 <command> [options]')
         .command(
             'create <user>',
-            'Create a read-only MCP personal access token',
+            'Create an MCP personal access token',
             command =>
                 command
                     .positional('user', {
@@ -74,13 +74,19 @@ function buildParser(args, dependencies) {
                         alias: 'e',
                         describe: 'Optional fixed ISO expiration time in the future',
                         type: 'string'
+                    })
+                    .option('role', {
+                        describe: 'MCP access level',
+                        choices: ['mcp:read', 'mcp:write_partial'],
+                        default: 'mcp:read'
                     }),
             async argv => {
                 let handler = await connectHandler();
                 let user = await handler.resolveUser(argv.user);
                 let entry = await handler.create(user._id, {
                     description: argv.description,
-                    expires: argv.expires
+                    expires: argv.expires,
+                    role: argv.role
                 });
                 output({ user: user._id.toString(), ...entry });
             }

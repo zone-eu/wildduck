@@ -54,12 +54,28 @@ describe('MCP service integration', function () {
     let user;
     let inbox;
     let token;
+    let writeToken;
     let uid;
 
     // Every request that presents the MCP credential goes through here, so the account it is
     // scoped to and how the token is carried are each stated once. `init` is open because what
     // carries the credential is itself something the API has an opinion about.
     let authed = (path, init) => fetch(`${API}/users/${user.id}${path}`, { headers: { Authorization: `Bearer ${token.token}` }, ...init });
+    let authedWith = (accessToken, path, init = {}) =>
+        fetch(`${API}/users/${user.id}${path}`, {
+            ...init,
+            headers: { Authorization: `Bearer ${accessToken}`, ...(init.headers || {}) }
+        });
+
+    let connectClient = async accessToken => {
+        let writeClient = new Client({ name: 'wildduck-write-integration', version: '1.0.0' });
+        await writeClient.connect(
+            new StreamableHTTPClientTransport(new URL(MCP_URL), {
+                requestInit: { headers: { Authorization: `Bearer ${accessToken}` } }
+            })
+        );
+        return writeClient;
+    };
 
     before(async () => {
         await new Promise((resolve, reject) => db.connect(err => (err ? reject(err) : resolve())));
@@ -84,6 +100,7 @@ describe('MCP service integration', function () {
         });
 
         token = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'integration' });
+        writeToken = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'write integration', role: 'mcp:write_partial' });
 
         server = await new Promise((resolve, reject) =>
             mcp.start(
@@ -130,7 +147,7 @@ describe('MCP service integration', function () {
         expect(token.role).to.equal('mcp:read');
 
         let listed = await api('GET', `/users/${user.id}/mcp-tokens?sess=integration&ip=127.0.0.1`);
-        expect(listed.results).to.have.length(1);
+        expect(listed.results).to.have.length(2);
         expect(listed.results[0]).to.not.have.property('hash');
         expect(listed.results[0]).to.not.have.property('token');
     });
@@ -153,8 +170,10 @@ describe('MCP service integration', function () {
 
         expect(tools.tools.map(tool => tool.name).sort()).to.deep.equal([
             'get_account',
+            'get_autoreply',
             'get_message',
             'get_message_text',
+            'list_filters',
             'list_labels',
             'list_mailboxes',
             'list_messages',
@@ -162,6 +181,257 @@ describe('MCP service integration', function () {
         ]);
         for (let tool of tools.tools) {
             expect(tool.annotations.readOnlyHint, tool.name).to.equal(true);
+        }
+    });
+
+    it('grants only the partial write tools to the opt-in role and preserves read annotations', async () => {
+        let readTools = await client.listTools();
+        expect(readTools.tools.map(tool => tool.name)).to.not.include.members(['create_filter', 'create_mailbox', 'set_autoreply']);
+        expect(readTools.tools.every(tool => tool.annotations.readOnlyHint === true)).to.equal(true);
+
+        let writeClient = await connectClient(writeToken.token);
+        try {
+            let tools = await writeClient.listTools();
+            let byName = new Map(tools.tools.map(tool => [tool.name, tool]));
+            for (let name of ['create_filter', 'create_mailbox', 'set_autoreply']) {
+                expect(byName.has(name), name).to.equal(true);
+            }
+            for (let name of ['delete_mailbox', 'update_filter', 'delete_filter', 'send_message']) {
+                expect(byName.has(name), name).to.equal(false);
+            }
+            expect(byName.get('list_mailboxes').annotations.readOnlyHint).to.equal(true);
+        } finally {
+            await writeClient.close();
+        }
+    });
+
+    it('reads empty filters and an unconfigured autoreply without creating settings', async () => {
+        let filters = await client.callTool({ name: 'list_filters', arguments: {} });
+        expect(filters.isError).to.not.equal(true);
+        expect(filters.structuredContent.filters).to.deep.equal([]);
+        expect(filters.structuredContent.limits.used).to.equal(0);
+        let autoreply = await client.callTool({ name: 'get_autoreply', arguments: {} });
+        expect(autoreply.isError).to.not.equal(true);
+        expect(autoreply.structuredContent.status).to.equal(false);
+        expect(await db.database.collection('autoreplies').countDocuments({ user: new ObjectId(user.id) })).to.equal(0);
+    });
+
+    it('creates mailboxes, filters and autoreplies through MCP, with writes visible through REST', async () => {
+        let writeClient = await connectClient(writeToken.token);
+        try {
+            let mailbox = await writeClient.callTool({ name: 'create_mailbox', arguments: { path: 'Agents/Research' } });
+            expect(mailbox.isError).to.not.equal(true);
+            expect(mailbox.structuredContent.success).to.equal(true);
+
+            let duplicate = await writeClient.callTool({ name: 'create_mailbox', arguments: { path: 'Agents/Research' } });
+            expect(duplicate.isError).to.equal(true);
+
+            let malformedAction = await writeClient.callTool({
+                name: 'create_filter',
+                arguments: { name: 'Malformed MCP action', query: {}, action: { unexpected: true } }
+            });
+            expect(malformedAction.isError).to.equal(true);
+
+            let malformedReference = await writeClient.callTool({
+                name: 'create_filter',
+                arguments: { name: 'Malformed MCP reference', query: {}, action: { mailbox: 'not-an-id' } }
+            });
+            expect(malformedReference.isError).to.equal(true);
+
+            let mailboxes = await api('GET', `/users/${user.id}/mailboxes`);
+            expect(mailboxes.results.some(entry => entry.id === mailbox.structuredContent.id && entry.path === 'Agents/Research')).to.equal(true);
+
+            let label = await api('POST', `/users/${user.id}/labels`, { name: 'Agent rule label' });
+            let filter = await writeClient.callTool({
+                name: 'create_filter',
+                arguments: {
+                    name: 'Agent invoice rule',
+                    query: { subject: 'invoice' },
+                    action: {
+                        seen: true,
+                        flag: true,
+                        delete: true,
+                        spam: false,
+                        mailbox: mailbox.structuredContent.id,
+                        labels: [label.id],
+                        targets: ['forward@example.com', 'smtp://mx.example.com:25', 'https://example.com/incoming']
+                    }
+                }
+            });
+            expect(filter.isError).to.not.equal(true);
+            expect(filter.structuredContent.success).to.equal(true);
+
+            let filters = await api('GET', `/users/${user.id}/filters`);
+            expect(filters.results.some(entry => entry.id === filter.structuredContent.id && entry.name === 'Agent invoice rule')).to.equal(true);
+
+            let autoreply = await writeClient.callTool({ name: 'set_autoreply', arguments: { status: true, subject: 'Away', text: 'Back soon' } });
+            expect(autoreply.isError).to.not.equal(true);
+            expect(autoreply.structuredContent.success).to.equal(true);
+            let settings = await api('GET', `/users/${user.id}/autoreply`);
+            expect(settings.status).to.equal(true);
+            expect(settings.subject).to.equal('Away');
+            expect(settings.text).to.equal('Back soon');
+            let updated = await writeClient.callTool({ name: 'set_autoreply', arguments: { status: false, subject: 'Returned' } });
+            expect(updated.structuredContent.id).to.equal(autoreply.structuredContent.id);
+            settings = await api('GET', `/users/${user.id}/autoreply`);
+            expect(settings.status).to.equal(false);
+            expect(settings.subject).to.equal('Returned');
+            expect(settings.text).to.equal('Back soon');
+            for (let reader of [client, writeClient]) {
+                let filterResult = await reader.callTool({ name: 'list_filters', arguments: {} });
+                expect(filterResult.isError).to.not.equal(true);
+                let entry = filterResult.structuredContent.filters.find(item => item.id === filter.structuredContent.id);
+                expect(entry.originalQuery.subject).to.equal('invoice');
+                expect(entry.originalAction.targets).to.include('forward@example.com');
+                expect(entry.originalAction.labels).to.deep.equal([label.id]);
+                expect(entry.originalAction.delete).to.equal(true);
+                expect(entry).to.not.have.any.keys('user', 'metaData', 'internalData');
+                let autoreplyResult = await reader.callTool({ name: 'get_autoreply', arguments: {} });
+                expect(autoreplyResult.isError).to.not.equal(true);
+                expect(autoreplyResult.structuredContent).to.include({ status: false, subject: 'Returned', text: 'Back soon' });
+            }
+            let messages = await api('GET', `/users/${user.id}/mailboxes/${inbox.id}/messages`);
+            let read = await writeClient.callTool({ name: 'get_message', arguments: { mailbox: 'INBOX', uid: messages.results[0].id } });
+            expect(read.isError).to.not.equal(true);
+            expect(read.structuredContent.flags.seen).to.equal(false);
+        } finally {
+            await writeClient.close();
+        }
+    });
+
+    it('filters metadata from direct filter reads for both roles', async () => {
+        let created = await api('POST', `/users/${user.id}/filters`, {
+            name: 'Private metadata', query: {}, action: {}, metaData: { private: 'hidden' }
+        });
+        for (let credential of [token.token, writeToken.token]) {
+            let response = await authedWith(credential, '/filters?metaData=true');
+            expect(response.status).to.equal(200);
+            let body = await response.json();
+            expect(body.results.find(entry => entry.id === created.id)).to.not.have.property('metaData');
+            let autoreply = await authedWith(credential, '/autoreply');
+            expect(autoreply.status).to.equal(200);
+            expect((await autoreply.json()).subject).to.equal('Returned');
+        }
+    });
+
+    it('allows the partial role through direct REST only for its own supported writes', async () => {
+        let mailboxResponse = await authedWith(writeToken.token, '/mailboxes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'Direct/REST' })
+        });
+        expect(mailboxResponse.status).to.equal(200);
+        let mailbox = await mailboxResponse.json();
+
+        let filterResponse = await authedWith(writeToken.token, '/filters', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Direct REST rule', query: { from: 'sender@example.com' }, action: { flag: true } })
+        });
+        expect(filterResponse.status).to.equal(200);
+        let filter = await filterResponse.json();
+        expect(filter.success).to.equal(true);
+
+        let autoreplyResponse = await authedWith(writeToken.token, '/autoreply', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: true, subject: 'REST away' })
+        });
+        expect(autoreplyResponse.status).to.equal(200);
+
+        // These routes are outside the bounded role even though some are state changes.
+        for (let [method, path] of [
+            ['DELETE', `/mailboxes/${mailbox.id}`],
+            ['PUT', `/filters/${filter.id}`],
+            ['DELETE', `/filters/${filter.id}`],
+            ['POST', '/mcp-tokens'],
+            ['POST', '/labels']
+        ]) {
+            let response = await authedWith(writeToken.token, path, { method });
+            expect(response.status, `${method} ${path}`).to.equal(403);
+        }
+    });
+
+    it('rejects collisions, invalid filter references, and malformed filter actions without partial writes', async () => {
+        let duplicateMailbox = await authedWith(writeToken.token, '/mailboxes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'INBOX' })
+        });
+        expect([400, 409]).to.include(duplicateMailbox.status);
+
+        let foreignMailboxId = '507f191e810c19729de860ea';
+        let invalidReference = await authedWith(writeToken.token, '/filters', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Invalid target', query: {}, action: { mailbox: foreignMailboxId } })
+        });
+        expect([400, 404]).to.include(invalidReference.status);
+
+        let invalidAction = await authedWith(writeToken.token, '/filters', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Invalid action', query: {}, action: { unknown: true } })
+        });
+        expect(invalidAction.status).to.equal(400);
+        expect((await api('GET', `/users/${user.id}/filters`)).results.some(entry => entry.name === 'Invalid action')).to.equal(false);
+    });
+
+    it('preserves filter limits and validates label references through MCP', async () => {
+        let writeClient = await connectClient(writeToken.token);
+        try {
+            let invalidLabel = await writeClient.callTool({ name: 'create_filter', arguments: {
+                query: {}, action: { labels: [new ObjectId().toString()] }
+            } });
+            expect(invalidLabel.isError).to.equal(true);
+            expect(invalidLabel.content[0].text).to.include('LabelNotFound');
+            let userId = new ObjectId(user.id);
+            let original = await db.users.collection('users').findOne({ _id: userId }, { projection: { filters: true } });
+            let count = await db.database.collection('filters').countDocuments({ user: userId });
+            try {
+                await db.users.collection('users').updateOne({ _id: userId }, { $set: { filters: count } });
+                let limited = await writeClient.callTool({ name: 'create_filter', arguments: { query: {}, action: {} } });
+                expect(limited.isError).to.equal(true);
+                expect(limited.content[0].text).to.include('TooMany');
+                expect(await db.database.collection('filters').countDocuments({ user: userId })).to.equal(count);
+            } finally {
+                await db.users.collection('users').updateOne({ _id: userId }, original.filters === undefined ? { $unset: { filters: '' } } : { $set: { filters: original.filters } });
+            }
+        } finally {
+            await writeClient.close();
+        }
+    });
+
+    it('keeps the read role denied on writes and confines partial writes to the token owner', async () => {
+        for (let [method, path, body] of [
+            ['POST', '/mailboxes', { path: 'Read/Denied' }],
+            ['POST', '/filters', { name: 'Read denied', query: {}, action: {} }],
+            ['PUT', '/autoreply', { status: true }]
+        ]) {
+            let response = await authedWith(token.token, path, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            expect(response.status, `${method} ${path}`).to.equal(403);
+        }
+
+        for (let credential of [token.token, writeToken.token]) {
+            for (let [method, path, body] of [
+                ['GET', '/mailboxes'],
+                ['GET', '/filters'],
+                ['GET', '/autoreply'],
+                ['POST', '/mailboxes', { path: 'Cross/User' }],
+                ['POST', '/filters', { query: {}, action: {} }],
+                ['PUT', '/autoreply', { status: false }]
+            ]) {
+                let response = await fetch(`${API}/users/507f191e810c19729de860ea${path}`, {
+                    method,
+                    headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json' },
+                    body: body ? JSON.stringify(body) : undefined
+                });
+                expect(response.status, `${method} ${path}`).to.equal(403);
+            }
         }
     });
 
@@ -202,9 +472,9 @@ describe('MCP service integration', function () {
         for (let counters of [false, true]) {
             let response = await authed(`/labels?counters=${counters}`);
             expect(response.status).to.equal(200);
-            expect((await response.json()).labels).to.deep.equal([
+            expect((await response.json()).labels.find(entry => entry.id === label.id)).to.deep.equal(
                 { id: label.id, name: 'Empty MCP label', ...(counters ? { total: 0, unseen: 0 } : {}) }
-            ]);
+            );
         }
     });
 
@@ -278,8 +548,10 @@ describe('MCP service integration', function () {
             ['PUT', '/logout'],
             ['DELETE', `/mailboxes/${inbox.id}/messages/${uid}`]
         ]) {
-            let res = await authed(path, { method });
-            expect(res.status, `${method} ${path}`).to.equal(403);
+            for (let credential of [token.token, writeToken.token]) {
+                let res = await authedWith(credential, path, { method });
+                expect(res.status, `${method} ${path}`).to.equal(403);
+            }
         }
 
         // and the routes the tools do use still work
@@ -362,6 +634,8 @@ describe('MCP service integration', function () {
         let res = await authed(`/mailboxes/${inbox.id}/messages/${uid}?markAsSeen=true`);
 
         expect(res.status).to.equal(403);
+        let writeRes = await authedWith(writeToken.token, `/mailboxes/${inbox.id}/messages/${uid}?markAsSeen=true`);
+        expect(writeRes.status).to.equal(403);
 
         let listed = await api('GET', `/users/${user.id}/mailboxes/${inbox.id}/messages`);
         expect(listed.results[0].seen).to.equal(false);

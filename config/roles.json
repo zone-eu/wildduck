@@ -602,6 +602,14 @@
     },
 
     "mcp:read": {
+        "filters": {
+            "read:own": ["id", "name", "query", "action", "originalQuery", "originalAction", "disabled", "created"]
+        },
+
+        "autoreplies": {
+            "read:own": ["status", "name", "subject", "text", "html", "start", "end", "created"]
+        },
+
         "users": {
             "read:own": ["id", "username", "name", "address", "limits"]
         },
@@ -648,6 +656,18 @@
                 "attachmentsList",
                 "encrypted"
             ]
+        }
+    },
+    "mcp:write_partial": {
+        "$extend": ["mcp:read"],
+        "filters": {
+            "create:own": ["*"]
+        },
+        "mailboxes": {
+            "create:own": ["*"]
+        },
+        "autoreplies": {
+            "update:own": ["*"]
         }
     }
 }
