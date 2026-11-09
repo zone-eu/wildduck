@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.56.0](https://github.com/zone-eu/wildduck/compare/v1.55.3...v1.56.0) (2026-11-09)
+
+
+### Features
+
+* **mongodb:** ZMS-125: Use mongodb driver v7, update mongo-cursor-pagination driver too ([#1255](https://github.com/zone-eu/wildduck/issues/1255)) ([8c83581](https://github.com/zone-eu/wildduck/commit/8c8358146bf3ee017fdd815ba909411a1620238a))
+* ZMS-126: Bump ioredis to v6, bump deps ([#1263](https://github.com/zone-eu/wildduck/issues/1263)) ([7ce3c3d](https://github.com/zone-eu/wildduck/commit/7ce3c3dd1e71c47d0a8a78ee8322547fe233e1ee))
+
+
+### Bug Fixes
+
+* **labels:** ZMS-134: Make labels endpoints actually require label permissions, update roles ([#1266](https://github.com/zone-eu/wildduck/issues/1266)) ([d373dd5](https://github.com/zone-eu/wildduck/commit/d373dd5dcb6c8e638ffa2c6c2b5c3922e29cec12))
+* **messages-search:** allow skipping exact totals ([#1261](https://github.com/zone-eu/wildduck/issues/1261)) ([d44dab7](https://github.com/zone-eu/wildduck/commit/d44dab7ad9ab8dae1ae12b831cb5297aad528596))
+* ZMS-128-2: Add root to return of filter-handler storeMessages ([#1265](https://github.com/zone-eu/wildduck/issues/1265)) ([c01fe25](https://github.com/zone-eu/wildduck/commit/c01fe25c1b04a6db39dcc1130115f7159d83659a))
+* ZMS-128: Add message root id logging to common loggelf paths ([#1264](https://github.com/zone-eu/wildduck/issues/1264)) ([e075285](https://github.com/zone-eu/wildduck/commit/e07528585e34b3fc1b0ff5caa2719cebc9d5222a))
+
 ## [1.55.3](https://github.com/zone-eu/wildduck/compare/v1.55.2...v1.55.3) (2026-11-02)
 
 
