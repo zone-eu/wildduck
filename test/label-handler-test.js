@@ -5,7 +5,7 @@ const { ObjectId } = require('mongodb');
 const { isValidLabelName, ensureLabels, getRequestedNames, getMessageImapFlags, resolveImapLabels } = require('../lib/label-handler');
 const { MAX_LABELS } = require('../lib/consts');
 
-function createDatabase(records = []) {
+function createDatabase(records = [], userData = {}) {
     for (const record of records) {
         record._id = record._id || new ObjectId();
     }
@@ -13,6 +13,9 @@ function createDatabase(records = []) {
         records,
         collection() {
             return {
+                async findOne() {
+                    return userData;
+                },
                 find({ user, name }) {
                     const names = name?.$in;
                     return {
@@ -23,6 +26,7 @@ function createDatabase(records = []) {
                 },
                 aggregate(pipeline) {
                     const user = pipeline[0].$match.user;
+                    const maxLabels = pipeline[2].$project.slot.$min.$setDifference[0].$range[1];
                     return {
                         async toArray() {
                             const userRecords = records.filter(record => record.user.equals(user));
@@ -31,10 +35,10 @@ function createDatabase(records = []) {
                             }
                             const used = new Set(userRecords.map(record => record.slot));
                             let slot = 0;
-                            while (used.has(slot) && slot < MAX_LABELS) {
+                            while (used.has(slot) && slot < maxLabels) {
                                 slot++;
                             }
-                            return [{ count: userRecords.length, slot: slot < MAX_LABELS ? slot : undefined }];
+                            return [{ count: userRecords.length, slot: slot < maxLabels ? slot : undefined }];
                         }
                     };
                 },
@@ -148,6 +152,59 @@ describe('Persistent labels', () => {
         expect(results.filter(result => result.status === 'fulfilled').length).to.equal(1);
         expect(results.find(result => result.status === 'rejected').reason.code).to.equal('LabelLimitExceeded');
         expect(db.records.length).to.equal(MAX_LABELS);
+    });
+
+    it('enforces a per-user limit across concurrent label creation', async () => {
+        const user = new ObjectId();
+        const db = createDatabase([{ user, slot: 0, name: 'Existing' }], { maxLabels: 2 });
+        const results = await Promise.allSettled([ensureLabels(db, user, ['First']), ensureLabels(db, user, ['Second'])]);
+        expect(results.filter(result => result.status === 'fulfilled')).to.have.length(1);
+        expect(results.find(result => result.status === 'rejected').reason.code).to.equal('LabelLimitExceeded');
+        expect(db.records).to.have.length(2);
+        await ensureLabels(db, user, ['Existing']);
+    });
+
+    it('uses the separate users database and retains labels after lowering the limit', async () => {
+        const user = new ObjectId();
+        const db = createDatabase([{ user, slot: MAX_LABELS - 1, name: 'HighSlot' }]);
+        const users = {
+            collection(name) {
+                expect(name).to.equal('users');
+                return {
+                    async findOne(query) {
+                        expect(query._id).to.equal(user);
+                        return { maxLabels: 2 };
+                    }
+                };
+            }
+        };
+        await ensureLabels(db, user, ['New'], { users });
+        expect(db.records).to.have.length(2);
+        expect(db.records[1].slot).to.equal(0);
+        let error;
+        try {
+            await ensureLabels(db, user, ['OverLimit'], { users });
+        } catch (err) {
+            error = err;
+        }
+        expect(error.code).to.equal('LabelLimitExceeded');
+        expect(error.message).to.include('2 labels');
+        await ensureLabels(db, user, ['HighSlot', 'New'], { userData: { maxLabels: 1 } });
+        expect(db.records).to.have.length(2);
+    });
+
+    it('inherits the deployment limit for zero and caps overrides at the structural ceiling', async () => {
+        const user = new ObjectId();
+        const db = createDatabase(Array.from({ length: MAX_LABELS }, (_, slot) => ({ user, slot, name: `label-${slot}` })));
+        for (const maxLabels of [0, MAX_LABELS + 1]) {
+            let error;
+            try {
+                await ensureLabels(db, user, ['New'], { userData: { maxLabels } });
+            } catch (err) {
+                error = err;
+            }
+            expect(error.code).to.equal('LabelLimitExceeded');
+        }
     });
 
     it('rejects assigning a name while it is being deleted', async () => {

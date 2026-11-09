@@ -901,6 +901,44 @@ describe('Messages tests', function () {
         }
     });
 
+    it('applies the per-user recipient limit when submitting an existing draft and inherits it when reset', async () => {
+        const username = `recipient-limit-${randomBytes(8).toString('hex')}`;
+        const address = `${username}@web.zone.test`;
+        const created = await server.post('/users').send({ username, address, password: 'secretpassword', recipients: 100 }).expect(200);
+        const limitUser = created.body.id;
+        let queueId;
+        try {
+            const mailboxes = await server.get(`/users/${limitUser}/mailboxes`).expect(200);
+            const mailbox = mailboxes.body.results.find(entry => entry.path === 'INBOX').id;
+            const messageResponse = await server
+                .post(`/users/${limitUser}/mailboxes/${mailbox}/messages`)
+                .send({
+                    draft: true,
+                    from: { address },
+                    to: [{ address: 'limit-to@example.com' }],
+                    cc: [{ address: 'limit-cc@example.com' }],
+                    bcc: [{ address: 'limit-bcc@example.com' }],
+                    subject: 'per-user recipient limit',
+                    text: 'All three recipients count'
+                })
+                .expect(200);
+            const message = messageResponse.body.message.id;
+            await server.put(`/users/${limitUser}`).send({ maxRecipientsPerMessage: 2 }).expect(200);
+            const rejected = await server.post(`/users/${limitUser}/mailboxes/${mailbox}/messages/${message}/submit`).send({}).expect(403);
+            expect(rejected.body.code).to.equal('TooMany');
+
+            await server.put(`/users/${limitUser}`).send({ maxRecipientsPerMessage: 0 }).expect(200);
+            const accepted = await server.post(`/users/${limitUser}/mailboxes/${mailbox}/messages/${message}/submit`).send({}).expect(200);
+            expect(accepted.body.success).to.equal(true);
+            queueId = accepted.body.queueId;
+        } finally {
+            if (queueId) {
+                await server.delete(`/users/${limitUser}/outbound/${queueId}`).expect(200);
+            }
+            await server.delete(`/users/${limitUser}`).expect(200);
+        }
+    });
+
     it('should POST /users/:user/mailboxes/:mailbox/messages/:message/submit expect success / normal submit', async () => {
         const messageResponse = await server
             .post(`/users/${user}/mailboxes/${testMailbox}/messages`)

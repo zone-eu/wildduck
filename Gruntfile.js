@@ -48,6 +48,8 @@ module.exports = function (grunt) {
     ];
     const unitTests = [
         'test/apn-client-test.js',
+        'test/api-download-test.js',
+        'test/autoreply-interval-test.js',
         'test/imap-notifier-apn-test.js',
         'test/xapplepushservice-validation-test.js',
         'test/certs-test.js',
@@ -71,6 +73,7 @@ module.exports = function (grunt) {
         'test/prometheus-test.js',
         'test/roles-test.js',
         'test/tools-test.js',
+        'test/submit-user-limits-test.js',
         'test/user-handler-auth-test.js'
     ];
 

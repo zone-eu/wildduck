@@ -19,6 +19,7 @@
     -   [Operating WildDuck](in-depth/operating-wildduck.md)
     -   [Read-only MCP service](in-depth/mcp.md)
     -   [Default values](in-depth/default-values.md)
+    -   [Per-user limits](in-depth/user-limits.md)
     -   [E-Mail Protocol support](in-depth/protocol-support.md)
     -   [Connection Management](in-depth/connection-management.md)
     -   [CONDSTORE Extension](in-depth/condstore-extension.md)
