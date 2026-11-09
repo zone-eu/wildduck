@@ -6778,6 +6778,16 @@
                     {
                         "schema": {
                             "type": "boolean",
+                            "default": true
+                        },
+                        "in": "query",
+                        "name": "includeTotal",
+                        "required": false,
+                        "description": "If false, skips calculating the total number of matching messages or threads and omits total from the response"
+                    },
+                    {
+                        "schema": {
+                            "type": "boolean",
                             "default": false
                         },
                         "in": "query",
@@ -6855,7 +6865,12 @@
                                             "description": "Query"
                                         },
                                         "total": {
-                                            "$ref": "#/components/schemas/totalRes"
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/totalRes"
+                                                }
+                                            ],
+                                            "description": "Total number of matching messages or threads. Omitted when includeTotal is false"
                                         },
                                         "page": {
                                             "$ref": "#/components/schemas/pageRes"
