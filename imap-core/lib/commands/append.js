@@ -168,6 +168,8 @@ module.exports = {
                     logdata._append_header_from_value = from.value;
                 }
 
+                logdata._root = info.prepared.id;
+
                 const { msgid } = info.prepared;
                 logdata._append_message_id = msgid;
 
