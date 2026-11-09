@@ -67,7 +67,7 @@ describe('Autoreply interval', () => {
             }
         };
         const started = Date.now();
-        expect(await autoreply(options, { _id: user })).to.equal(false);
+        expect(await autoreply(options, { _id: new ObjectId(), user })).to.equal(false);
         expect(calls.expiry).to.equal(expected);
         expect(calls.cutoff).to.be.at.least(started - expected);
         expect(calls.cutoff).to.be.at.most(Date.now() - expected);
