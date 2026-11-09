@@ -490,6 +490,62 @@
                                         "description": "How many filters are allowed for this account",
                                         "default": 0
                                     },
+                                    "maxMailboxes": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum total mailbox count, including standard folders. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxLabels": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum custom label count, capped at the deployment label ceiling. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxRecipientsPerMessage": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum combined To/Cc/Bcc recipients per submitted message. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxApplicationPasswords": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum application password count. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxMcpTokens": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum persistent MCP token count. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxAutoreplies": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum autoreplies per 24 hours. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "autoreplyInterval": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Minimum interval between autoreplies to the same sender in milliseconds. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
+                                    "apiMaxDownload": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "API attachment download allowance in bytes per 24 hours. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
                                     "requirePasswordChange": {
                                         "type": "boolean",
                                         "default": false,
@@ -959,10 +1015,58 @@
                                             "type": "number",
                                             "description": "Relative scale for detecting spam. 0 means that everything is spam, 100 means that nothing is spam"
                                         },
+                                        "maxMailboxes": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum total mailbox count, including standard folders. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "maxLabels": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum custom label count, capped at the deployment label ceiling. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "maxRecipientsPerMessage": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum combined To/Cc/Bcc recipients per submitted message. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "maxApplicationPasswords": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum application password count. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "maxMcpTokens": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum persistent MCP token count. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "maxAutoreplies": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum autoreplies per 24 hours. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "autoreplyInterval": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Minimum interval between autoreplies to the same sender in milliseconds. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
+                                        "apiMaxDownload": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "API attachment download allowance in bytes per 24 hours. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
                                         "limits": {
                                             "type": "object",
                                             "additionalProperties": true,
-                                            "description": "Account limits and usage"
+                                            "description": "Effective account limits and usage"
                                         },
                                         "tags": {
                                             "type": "array",
@@ -1186,6 +1290,54 @@
                                         "type": "number",
                                         "minimum": 0,
                                         "description": "How many filters are allowed for this account"
+                                    },
+                                    "maxMailboxes": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum total mailbox count, including standard folders. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxLabels": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum custom label count, capped at the deployment label ceiling. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxRecipientsPerMessage": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum combined To/Cc/Bcc recipients per submitted message. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxApplicationPasswords": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum application password count. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxMcpTokens": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum persistent MCP token count. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "maxAutoreplies": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum autoreplies per 24 hours. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "autoreplyInterval": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Minimum interval between autoreplies to the same sender in milliseconds. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
+                                    "apiMaxDownload": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "API attachment download allowance in bytes per 24 hours. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
                                     },
                                     "imapMaxUpload": {
                                         "type": "number",
@@ -17470,6 +17622,7 @@
                                 "const:autoreply:interval",
                                 "const:asp:limit",
                                 "const:max:imap:download",
+                                "const:max:api:download",
                                 "const:max:pop3:download",
                                 "const:max:imap:upload",
                                 "const:imap:use_wd_worker_channels",

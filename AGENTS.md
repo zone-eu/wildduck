@@ -54,6 +54,7 @@ Use **`lib/api/messages.js` as a concrete style reference**, along with the code
 - Use dependency-injected factories/classes rather than introducing global dependencies. API modules receive handlers and database connections from their caller.
 - Match `.prettierrc.js`: 4-space indentation, single quotes, LF, no trailing commas, `printWidth: 160`, and `arrowParens: 'avoid'`. ESLint extends `nodemailer` and `prettier` through `.eslintrc`.
 - Use camelCase for variables/functions, PascalCase for classes, and the existing uppercase convention for shared constants. Use descriptive names such as `messageData`, `mailboxData`, `requestBody`, and `pathParams`.
+- In prose texts, descriptions, and READMEs, separate sentences with commas or full stops instead of semicolons. Preserve programming syntax and literal data.
 - Use `const` for imports and fixed bindings and `let` for reassigned values; respect surrounding conventions without rewriting unrelated declarations. Do not introduce `var`.
 - Use object shorthand, destructuring, template literals, and spread where they make the code clearer. Split large schemas, queries, and response objects into readable blocks; preserve the surrounding field order and formatting.
 - Prefer small helpers and early returns for invalid input, missing records, and errors. Comments should explain behavior or constraints, especially protocol quirks, races, and compatibility requirements.
@@ -104,6 +105,14 @@ Follow `lib/api/messages.js` and `docs/in-depth/api-validation.md`:
 - Message date changes must keep `hdate`, MIME header data, cached ENVELOPE, stored size, and quota consistent. Reuse `messageHandler.getMessageDateUpdate()` and apply its `sizeDelta` where appropriate.
 - Treat `imap-core/test/fixtures/legacy-v1/` and `legacy-v1-trees.json` as frozen references. Do not edit or regenerate them from current code. A deliberate legacy behavior change needs a documented reason in its regression tests.
 - Preserve literal admission checks and the `maxMB`, `maxLineLength`, and `maxLiterals` limits in `config/imap.toml`. Cover synchronizing/non-synchronizing literals and command-line boundaries when changing parsing.
+
+### Per-user Limits
+
+- `maxMailboxes`, `maxLabels`, `maxRecipientsPerMessage`, `maxApplicationPasswords`, `maxMcpTokens`, `autoreplyInterval`, `maxAutoreplies`, and `apiMaxDownload` are administrative user fields. Missing/zero values inherit deployment defaults through `lib/user-limits.js`. User-role updates cannot change allowances. User details return configured fields and effective `limits` entries with usage where applicable.
+- Mailbox creation retains its count-then-insert admission and greater-than comparison. Initial folders count in later checks, but initial account creation is not capped. These paths retain their existing concurrency and off-by-one limitations.
+- Sizes are bytes, and `autoreplyInterval` is milliseconds. Message sizes remain deployment-wide through `MAX_ALLOWED_MESSAGE_SIZE` and existing transport/parser ceilings. `maxMessageSize` is not a user field. `maxAttachmentSize` is not a user field. `MAX_ALLOWED_ATTACHMENT_SIZE` remains defined without individual attachment enforcement. Autoreply history expires with `PEXPIRE`. The independent daily cap uses per-user `maxAutoreplies`, falling back to `MAX_AUTOREPLIES` (2000) when missing or zero.
+- `apiMaxDownload` inherits `const:max:api:download`/`MAX_API_DOWNLOAD`, which defaults to zero (unlimited) for backwards compatibility. Message-attachment and API storage-file downloads share `adw:<userId>`, with a 24-hour window from the first charged chunk. `lib/api-download.js` meters decoded response bytes through the atomic `spendcounter` script. Preserve concurrent accounting, fail-closed errors, backpressure, and source teardown. Limit edits retain usage. User details expose `limits.apiDownload` with `allowed`, `used`, and `ttl`. Raw message downloads and exports are outside this allowance.
+- Label creation helpers accept `options.users` for a separate users database or `options.userData` for an already loaded user. Pass one from production callers. The default fallback supports colocated library callers. See `docs/in-depth/user-limits.md` for defaults and API behavior.
 
 ### Attachments, Labels, and Notifications
 
