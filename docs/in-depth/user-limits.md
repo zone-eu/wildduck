@@ -10,6 +10,7 @@ Administrators can set these fields through `POST /users` and `PUT /users/:user`
 | `maxApplicationPasswords` | `const:asp:limit`, then `MAX_ASP_COUNT` (50) | Application password creation |
 | `maxMcpTokens` | `MAX_MCP_TOKEN_COUNT` (50) | Personal MCP token creation, interactive sessions are separate |
 | `autoreplyInterval` | `const:autoreply:interval`, then `MAX_AUTOREPLY_INTERVAL` (4 hours) | Per-sender autoreply history and its expiry, in milliseconds |
+| `maxAutoreplies` | `MAX_AUTOREPLIES` (2000) | Per-user autoreply sends per 24-hour counter window |
 | `apiMaxDownload` | `const:max:api:download`, then `MAX_API_DOWNLOAD` (0, unlimited) | API attachment and uploaded-file response bytes per 24 hours |
 
 Positive count overrides replace deployment defaults. Label allocation remains capped at `MAX_LABELS`, and the existing global message-size ceiling still applies. IMAP APPEND, LMTP, HTTP parsers and multipart/schema byte limits retain their deployment-wide ceilings.
@@ -39,4 +40,4 @@ Raw `.eml` downloads, message JSON/text, data exports, and non-API protocols are
 
 ## Autoreplies
 
-Sender-history comparisons and Redis `PEXPIRE` use the configured interval in milliseconds. The independent daily reply cap now uses `MAX_AUTOREPLIES` (2000) with the existing 24-hour counter. Changing the per-sender interval does not change that daily cap. Existing sender-history keys adopt the corrected expiry when next touched.
+Sender-history comparisons and Redis `PEXPIRE` use the configured interval in milliseconds. The independent daily reply cap uses `maxAutoreplies`, falling back to `MAX_AUTOREPLIES` (2000) when the user value is missing or zero. Changing the per-sender interval does not change that daily cap. The existing 24-hour counter remains independent of sender-history expiry.

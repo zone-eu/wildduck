@@ -23,7 +23,8 @@ const overrides = {
     maxRecipientsPerMessage: 3,
     maxApplicationPasswords: 1,
     maxMcpTokens: 2,
-    autoreplyInterval: 60000
+    autoreplyInterval: 60000,
+    maxAutoreplies: 25
 };
 
 describe('Per-user limits API', function () {

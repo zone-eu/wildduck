@@ -6,7 +6,7 @@ const autoreply = require('../lib/autoreply');
 const consts = require('../lib/consts');
 
 describe('Autoreply interval', () => {
-    async function checkInterval(userData, expected, loadUser = false, suppliedPartial = false) {
+    async function checkInterval(userData, expected, expectedCap = consts.MAX_AUTOREPLIES, loadUser = false, suppliedPartial = false) {
         const calls = {};
         const configuredInterval = 4 * 3600 * 1000;
         const user = new ObjectId();
@@ -45,8 +45,9 @@ describe('Autoreply interval', () => {
                 users: {
                     collection() {
                         return {
-                            async findOne(query) {
+                            async findOne(query, options) {
                                 expect(query._id).to.equal(user);
+                                expect(options.projection).to.include({ autoreplyInterval: true, maxAutoreplies: true });
                                 calls.loaded = true;
                                 return userData;
                             }
@@ -70,24 +71,26 @@ describe('Autoreply interval', () => {
         expect(calls.expiry).to.equal(expected);
         expect(calls.cutoff).to.be.at.least(started - expected);
         expect(calls.cutoff).to.be.at.most(Date.now() - expected);
-        expect(calls.dailyCap).to.equal(consts.MAX_AUTOREPLIES);
-        expect(!!calls.loaded).to.equal(loadUser || suppliedPartial || !Object.hasOwn(userData, 'autoreplyInterval'));
+        expect(calls.dailyCap).to.equal(expectedCap);
+        expect(!!calls.loaded).to.equal(loadUser || suppliedPartial || !Object.hasOwn(userData, 'autoreplyInterval') || !Object.hasOwn(userData, 'maxAutoreplies'));
     }
 
     it('uses the per-user interval without changing the existing expiry and daily cap semantics', async () => {
-        await checkInterval({ autoreplyInterval: 60000 }, 60000);
+        await checkInterval({ autoreplyInterval: 60000, maxAutoreplies: 17 }, 60000, 17);
     });
 
     it('inherits the deployment interval for missing or zero user values', async () => {
         await checkInterval({}, 4 * 3600 * 1000);
         await checkInterval({ autoreplyInterval: 0 }, 4 * 3600 * 1000);
+        await checkInterval({ maxAutoreplies: 0 }, 4 * 3600 * 1000);
+        await checkInterval({ autoreplyInterval: 60000, maxAutoreplies: 0 }, 60000);
     });
 
     it('loads the user from the users database when it was not supplied', async () => {
-        await checkInterval({ autoreplyInterval: 120000 }, 120000, true);
+        await checkInterval({ autoreplyInterval: 120000, maxAutoreplies: 23 }, 120000, 23, true);
     });
 
     it('loads the interval when a library caller supplies partial user data', async () => {
-        await checkInterval({ autoreplyInterval: 120000 }, 120000, false, true);
+        await checkInterval({ autoreplyInterval: 120000, maxAutoreplies: 23 }, 120000, 23, false, true);
     });
 });

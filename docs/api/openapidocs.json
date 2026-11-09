@@ -525,6 +525,13 @@
                                         "default": 0,
                                         "maximum": 9007199254740991
                                     },
+                                    "maxAutoreplies": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum autoreplies per 24 hours. 0 inherits the deployment default",
+                                        "default": 0,
+                                        "maximum": 9007199254740991
+                                    },
                                     "autoreplyInterval": {
                                         "type": "integer",
                                         "minimum": 0,
@@ -535,7 +542,7 @@
                                     "apiMaxDownload": {
                                         "type": "integer",
                                         "minimum": 0,
-                                        "description": "API attachment download allowance in bytes per 24 hours; 0 inherits the deployment default",
+                                        "description": "API attachment download allowance in bytes per 24 hours. 0 inherits the deployment default",
                                         "default": 0,
                                         "maximum": 9007199254740991
                                     },
@@ -1038,6 +1045,12 @@
                                             "description": "Maximum persistent MCP token count. 0 inherits the deployment default",
                                             "maximum": 9007199254740991
                                         },
+                                        "maxAutoreplies": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": "Maximum autoreplies per 24 hours. 0 inherits the deployment default",
+                                            "maximum": 9007199254740991
+                                        },
                                         "autoreplyInterval": {
                                             "type": "integer",
                                             "minimum": 0,
@@ -1047,7 +1060,7 @@
                                         "apiMaxDownload": {
                                             "type": "integer",
                                             "minimum": 0,
-                                            "description": "API attachment download allowance in bytes per 24 hours; 0 inherits the deployment default",
+                                            "description": "API attachment download allowance in bytes per 24 hours. 0 inherits the deployment default",
                                             "maximum": 9007199254740991
                                         },
                                         "limits": {
@@ -1308,6 +1321,12 @@
                                         "description": "Maximum persistent MCP token count. 0 inherits the deployment default",
                                         "maximum": 9007199254740991
                                     },
+                                    "maxAutoreplies": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Maximum autoreplies per 24 hours. 0 inherits the deployment default",
+                                        "maximum": 9007199254740991
+                                    },
                                     "autoreplyInterval": {
                                         "type": "integer",
                                         "minimum": 0,
@@ -1317,7 +1336,7 @@
                                     "apiMaxDownload": {
                                         "type": "integer",
                                         "minimum": 0,
-                                        "description": "API attachment download allowance in bytes per 24 hours; 0 inherits the deployment default",
+                                        "description": "API attachment download allowance in bytes per 24 hours. 0 inherits the deployment default",
                                         "maximum": 9007199254740991
                                     },
                                     "imapMaxUpload": {
