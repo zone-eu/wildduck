@@ -386,6 +386,34 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "role": {
+                                        "type": "string",
+                                        "description": "Root only. Configured role name; null restores the user role.",
+                                        "nullable": true
+                                    },
+                                    "permissions": {
+                                        "type": "object",
+                                        "description": "Root only. Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "properties": {
+                                                "create": {
+                                                    "type": "boolean"
+                                                },
+                                                "read": {
+                                                    "type": "boolean"
+                                                },
+                                                "update": {
+                                                    "type": "boolean"
+                                                },
+                                                "delete": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
+                                        "nullable": true
+                                    },
                                     "username": {
                                         "type": "string",
                                         "minLength": 1,
@@ -854,6 +882,34 @@
                                     "title": "GetUserResponse",
                                     "additionalProperties": true,
                                     "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "description": "Root only. Configured role name; null restores the user role.",
+                                            "nullable": true
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Root only. Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "create": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "read": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "update": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "delete": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "additionalProperties": false
+                                            },
+                                            "nullable": true
+                                        },
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
                                         },
@@ -1040,6 +1096,34 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "role": {
+                                        "type": "string",
+                                        "description": "Root only. Configured role name; null restores the user role.",
+                                        "nullable": true
+                                    },
+                                    "permissions": {
+                                        "type": "object",
+                                        "description": "Root only. Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "properties": {
+                                                "create": {
+                                                    "type": "boolean"
+                                                },
+                                                "read": {
+                                                    "type": "boolean"
+                                                },
+                                                "update": {
+                                                    "type": "boolean"
+                                                },
+                                                "delete": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
+                                        "nullable": true
+                                    },
                                     "existingPassword": {
                                         "type": "string",
                                         "maxLength": 256,

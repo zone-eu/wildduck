@@ -474,11 +474,11 @@ function createApp(options = {}) {
                 // Every MCP token holder reaches this listener from the same socket, so a budget
                 // here would also let one of them spend everyone else's.
                 authenticated = await mcpTokenHandler.authenticate(bearerToken);
+                request.role = roles.forUser(authenticated.role, authenticated.user);
             } catch {
                 return fail();
             }
 
-            request.role = authenticated.role;
             request.user = authenticated.user._id.toString();
 
             if (mcpRoute.resource) {
@@ -631,7 +631,7 @@ function createApp(options = {}) {
                             {
                                 _id: new ObjectId(request.user)
                             },
-                            { projection: { authVersion: true, disabled: true, suspended: true } }
+                            { projection: { authVersion: true, disabled: true, suspended: true, role: true, permissions: true } }
                         );
                         let userAuthVersion = Number(userData && userData.authVersion) || 0;
                         if (!userData || tokenAuthVersion < userAuthVersion) {
@@ -640,6 +640,11 @@ function createApp(options = {}) {
                         }
                         if (userData.disabled || userData.suspended) {
                             // locked out account, existing tokens must not keep working
+                            return fail();
+                        }
+                        try {
+                            request.role = roles.forUser(tokenData.role, userData);
+                        } catch {
                             return fail();
                         }
                     }
@@ -708,7 +713,7 @@ function createApp(options = {}) {
             _http_route: path,
             _http_method: request.method,
             _user: request.user,
-            _role: request.role,
+            _role: String(request.role),
 
             _api_response: body.success ? 'success' : 'fail',
 

@@ -202,6 +202,25 @@ describe('MCP token handler', () => {
         expect(fixture.tokens.updates).to.have.length(2);
     });
 
+    it('reloads user restrictions for existing tokens and fails closed for invalid stored policies', async () => {
+        const fixture = createFixture();
+        const created = await fixture.handler.create(fixture.user._id, { description: 'Client' });
+        const first = await fixture.handler.authenticate(created.token);
+        const admittedRole = roles.forUser(first.role, first.user);
+        expect(roles.can(admittedRole).readOwn('labels').granted).to.equal(true);
+
+        fixture.user.permissions = { labels: { read: false } };
+        const second = await fixture.handler.authenticate(created.token);
+        expect(roles.can(roles.forUser(second.role, second.user)).readOwn('labels').granted).to.equal(false);
+        expect(roles.can(admittedRole).readOwn('labels').granted).to.equal(true);
+
+        fixture.user.permissions = { labels: { read: 'false' } };
+        await expectCode(fixture.handler.authenticate(created.token), 'InvalidMcpToken');
+        fixture.user.permissions = null;
+        fixture.user.role = 'missing-role';
+        await expectCode(fixture.handler.authenticate(created.token), 'InvalidMcpToken');
+    });
+
     it('immediately rejects revocation, expiration, authVersion changes, and unavailable users', async () => {
         let fixture = createFixture();
         let created = await fixture.handler.create(fixture.user._id, { description: 'Client' });

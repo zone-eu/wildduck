@@ -25,6 +25,74 @@ const MESSAGE = {
 };
 
 describe('Roles', () => {
+    describe('#forUser and restricted grants', () => {
+        it('should use the assigned role for user tokens and preserve explicit token roles', () => {
+            expect(String(roles.forUser('user', { role: 'mcp:read' }))).to.equal('mcp:read');
+            expect(String(roles.forUser('user', {}))).to.equal('user');
+            expect(String(roles.forUser('mcp:read', {}))).to.equal('mcp:read');
+        });
+
+        it('should keep restrictions local to each request context', () => {
+            let readOnly = roles.forUser('user', { role: 'user', permissions: { labels: { create: false, read: true } } });
+            let unrestricted = roles.forUser('user', { role: 'user' });
+
+            expect(roles.can(readOnly).createOwn('labels').granted).to.equal(false);
+            expect(roles.can(readOnly).createAny('labels').granted).to.equal(false);
+            expect(roles.can(unrestricted).createOwn('labels').granted).to.equal(true);
+        });
+
+        it('should deny restricted CRUD operations without falling back to Any grants', () => {
+            let context = roles.forUser('user', { role: 'user', permissions: { labels: { create: false, read: false, update: false, delete: false } } });
+
+            for (let operation of ['create', 'read', 'update', 'delete']) {
+                expect(roles.can(context)[`${operation}Own`]('labels').granted, `${operation}Own`).to.equal(false);
+                expect(roles.can(context)[`${operation}Any`]('labels').granted, `${operation}Any`).to.equal(false);
+                expect(roles.can('root')[`${operation}Any`]('labels').granted).to.equal(true);
+                expect(roles.can('root', { labels: { [operation]: false } })[`${operation}Own`]('labels').granted).to.equal(false);
+                expect(roles.can('root', { labels: { [operation]: false } })[`${operation}Any`]('labels').granted).to.equal(false);
+            }
+        });
+
+        it('should preserve role attributes and keep MCP privileges independent of the assigned role', () => {
+            let context = roles.forUser('mcp:read', { role: 'root', permissions: { messages: { read: true, create: true } } });
+            const permission = roles.can(context).readOwn('messages');
+            expect(permission.attributes).to.deep.equal(roles.can('mcp:read').readOwn('messages').attributes);
+            expect(permission.filter(MESSAGE)).not.to.have.property('metaData');
+            expect(roles.can(context).createOwn('messages').granted).to.equal(false);
+            expect(roles.can(roles.forUser('user', { permissions: null })).readOwn('messages').granted).to.equal(true);
+        });
+
+        it('should treat true as no elevation and nullish values as inherited policy', () => {
+            let base = roles.can('user');
+            let context = roles.forUser('user', {
+                role: 'user',
+                permissions: { labels: { create: true, delete: false } }
+            });
+
+            expect(roles.can(context).createAny('labels').granted).to.equal(base.createAny('labels').granted);
+            expect(roles.can(context).readOwn('labels').granted).to.equal(base.readOwn('labels').granted);
+            expect(roles.can(context).updateOwn('labels').granted).to.equal(base.updateOwn('labels').granted);
+            expect(roles.can(context).deleteOwn('labels').granted).to.equal(false);
+        });
+
+        it('should reject invalid roles and malformed or unknown restrictions', () => {
+            expect(() => roles.forUser('user', { role: 'not-a-role' })).to.throw();
+            expect(() => roles.forUser('user', { role: 'user', permissions: { messages: { publish: false } } })).to.throw();
+            expect(() => roles.forUser('user', { role: 'user', permissions: { unknownResource: { read: false } } })).to.throw();
+            expect(() => roles.forUser('user', { role: 'user', permissions: { labels: { read: 'false' } } })).to.throw();
+            expect(() => roles.forUser('user', { permissions: new Date() })).to.throw();
+            expect(() => roles.forUser('user', { permissions: { labels: new Date() } })).to.throw();
+            expect(roles.can('user').readOwn('unknownResource').granted).to.equal(false);
+        });
+
+        it('should filter label fields through the effective role context', () => {
+            let context = roles.forUser('user', { role: 'user', permissions: { labels: { read: false } } });
+            let permission = roles.can(context).readOwn('labels');
+            expect(permission.granted).to.equal(false);
+            expect(roles.filterResponseBody(permission, { success: true, labels: [{ id: 'id', name: 'Work' }] }, 'labels').labels).to.deep.equal([{}]);
+        });
+    });
+
     describe('#filterFields', () => {
         it('should keep only the fields the level grants', () => {
             let permission = roles.can('mcp:read').readOwn('messages');

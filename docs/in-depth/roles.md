@@ -41,6 +41,28 @@ $ ./bin/access-tokens --config="/path/to/server/config.toml" provision reader ap
 
 The available roles, including `api:read`, are defined by `config.api.roles` in the server configuration.
 
+### Per-user restrictions
+
+Root may set optional `role` and `permissions` fields through `POST /users` and `PUT /users/:user`. Only root credentials may write these fields, even when clearing them, and only root sees stored settings in user details. Named roles remain in `config/roles.json`; the assigned role must be configured.
+
+For example, this update disables label creation and deletion and filter creation:
+
+```json
+{
+    "role": "user",
+    "permissions": {
+        "labels": { "create": false, "delete": false },
+        "filters": { "create": false }
+    }
+}
+```
+
+Permissions accept recognized resource names and boolean `create`, `read`, `update`, and `delete` settings only. Missing settings inherit the role. `false` denies the entire operation, including an inherited any grant or a route's own-to-any fallback. `true` adds no restriction and cannot grant access the role lacks. Restrictions never grant any-resource access or change the role's attribute filtering; per-user attribute lists are unsupported.
+
+Omitting a field leaves it unchanged. `role: null` restores the default `user` role. `permissions: null` or `{}` clears restrictions. A supplied permission map replaces the previous map rather than merging with it.
+
+Ordinary login tokens use the user's current assigned role, defaulting to `user`. Explicit service-token roles remain in effect; user-bound service tokens also apply that user's restrictions. MCP tokens retain their MCP role and apply the user's restrictions. Each authenticated request loads current settings, so existing tokens observe edits on their next request. Invalid stored policies or unknown assigned roles fail closed. Existing users need no migration. Enforcement remains at existing API permission checks; active requests and streams keep their admitted permissions.
+
 ### Considerations
 
 When building a publicly available front end application to access mailboxes consider the following:
