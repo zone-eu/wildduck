@@ -102,6 +102,7 @@ Follow `lib/api/messages.js` and `docs/in-depth/api-validation.md`:
 - MIME parsing/rebuilding lives under `imap-core/lib/indexer/`, including `parse-mime-tree.js`, `tree-walker.js`, `indexer.js`, `body-structure.js`, and `create-envelope.js`. New trees use v2; persisted trees without `v` are v1 and retain legacy rendering behavior.
 - Preserve exact RFC822 bytes, CRLF handling, MIME boundaries, preambles/epilogues, literal lengths, partial FETCH ranges, BODYSTRUCTURE, and ENVELOPE output. Size calculations must agree with the bytes emitted.
 - Message date changes must keep `hdate`, MIME header data, cached ENVELOPE, stored size, and quota consistent. Reuse `messageHandler.getMessageDateUpdate()` and apply its `sizeDelta` where appropriate.
+- APPEND over IMAPS or successful STARTTLS stores `verificationResults.tls: true` for the upload connection. Keep `session.secure` synchronized with the connection; this TLS result does not imply SMTP transport security or SPF, DKIM, or DMARC verification.
 - Treat `imap-core/test/fixtures/legacy-v1/` and `legacy-v1-trees.json` as frozen references. Do not edit or regenerate them from current code. A deliberate legacy behavior change needs a documented reason in its regression tests.
 - Preserve literal admission checks and the `maxMB`, `maxLineLength`, and `maxLiterals` limits in `config/imap.toml`. Cover synchronizing/non-synchronizing literals and command-line boundaries when changing parsing.
 

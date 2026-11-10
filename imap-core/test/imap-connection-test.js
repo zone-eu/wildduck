@@ -6,8 +6,10 @@
 const chai = require('chai');
 const expect = chai.expect;
 const Duplex = require('stream').Duplex;
+const tls = require('tls');
 const { IMAPConnection } = require('../lib/imap-connection');
 const idleCommand = require('../lib/commands/idle');
+const starttlsCommand = require('../lib/commands/starttls');
 
 chai.config.includeStack = true;
 
@@ -27,10 +29,10 @@ class MockSocket extends Duplex {
     setTimeout() {}
 }
 
-function createConnection(uidList) {
+function createConnection(uidList, options) {
     const server = {
         logger: { debug: () => {}, info: () => {}, error: () => {} },
-        options: {},
+        options: options || {},
         connections: new Set(),
         notifier: {}
     };
@@ -44,6 +46,55 @@ function createConnection(uidList) {
 
     return connection;
 }
+
+describe('IMAPConnection session TLS status', function () {
+    it('reports TLS for an IMAPS connection', function () {
+        const connection = createConnection([], { secure: true });
+
+        expect(connection.session.secure).to.be.true;
+    });
+
+    it('reports no TLS for a plaintext connection', function () {
+        const connection = createConnection();
+
+        expect(connection.session.secure).to.be.false;
+    });
+
+    it('reports TLS only after STARTTLS succeeds', async function () {
+        const connection = createConnection();
+        connection._server.secureContext = new Map([['*', tls.createSecureContext()]]);
+        const originalTLSSocket = tls.TLSSocket;
+        let secureSocket;
+
+        tls.TLSSocket = class extends MockSocket {
+            constructor() {
+                super();
+                secureSocket = this;
+            }
+
+            getCipher() {
+                return { name: 'test-cipher' };
+            }
+        };
+
+        try {
+            starttlsCommand.handler.call(connection, {}, (err, response) => {
+                expect(err).to.not.exist;
+                expect(response.response).to.equal('OK');
+            });
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(connection.session.secure).to.be.false;
+            secureSocket.emit('secure');
+            expect(connection.secure).to.be.true;
+            expect(connection.session.secure).to.be.true;
+        } finally {
+            tls.TLSSocket = originalTLSSocket;
+            connection.writeStream.unpipe();
+            connection._socket.unpipe();
+        }
+    });
+});
 
 describe('IMAPConnection formatResponse', function () {
     it('should add a new uid and report its sequence number', function () {
