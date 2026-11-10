@@ -68,6 +68,7 @@ module.exports = function (grunt) {
         'test/mcp-token-handler-test.js',
         'test/mcp-tools-test.js',
         'test/metrics-config-test.js',
+        'test/on-append-test.js',
         'test/prometheus-test.js',
         'test/roles-test.js',
         'test/tools-test.js',
