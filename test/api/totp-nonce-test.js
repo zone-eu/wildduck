@@ -8,6 +8,7 @@ const ObjectId = require('mongodb').ObjectId;
 const { Fido2Lib } = require('fido2-lib');
 const speakeasy = require('speakeasy');
 const config = require('@zone-eu/wild-config');
+const roles = require('../../lib/roles');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -358,7 +359,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', sess, ip: '192.0.2.1' },
-                role: 'user',
+                role: roles.forUser('user', {}),
                 user: user.toString(),
                 accessToken: {
                     user: user.toString(),
@@ -436,7 +437,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', sess: 'sess-123', ip: '192.0.2.1' },
-                role: 'user',
+                role: roles.forUser('user', {}),
                 user: user.toString(),
                 accessToken: {
                     user: user.toString(),
@@ -497,7 +498,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp' },
-                role: 'user',
+                role: roles.forUser('user', {}),
                 user: user.toString(),
                 accessToken: {
                     user: user.toString(),
@@ -536,7 +537,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', token: tokenId },
-                role: 'user',
+                role: roles.forUser('user', {}),
                 user: user.toString(),
                 accessToken: { user: user.toString() },
                 validate: assertGranted
@@ -589,7 +590,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', token: tokenId, sess: 'sess-123', ip: '192.0.2.1' },
-                role: 'user',
+                role: roles.forUser('user', {}),
                 user: user.toString(),
                 accessToken: { user: user.toString() },
                 validate: assertGranted
