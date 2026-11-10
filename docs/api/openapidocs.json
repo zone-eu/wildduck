@@ -272,6 +272,34 @@
                                                 "title": "GetUsersResult",
                                                 "additionalProperties": true,
                                                 "properties": {
+                                                    "role": {
+                                                        "type": "string",
+                                                        "description": "Stored role name or null.",
+                                                        "nullable": true
+                                                    },
+                                                    "permissions": {
+                                                        "type": "object",
+                                                        "description": "Stored resource restrictions or null.",
+                                                        "additionalProperties": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "create": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "read": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "update": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "delete": {
+                                                                    "type": "boolean"
+                                                                }
+                                                            },
+                                                            "additionalProperties": false
+                                                        },
+                                                        "nullable": true
+                                                    },
                                                     "id": {
                                                         "type": "string",
                                                         "description": "Users unique ID (24byte hex)"
@@ -388,12 +416,12 @@
                                 "properties": {
                                     "role": {
                                         "type": "string",
-                                        "description": "Root only. Configured role name; null restores the user role.",
+                                        "description": "Configured role name; null restores the user role.",
                                         "nullable": true
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Root only. Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "description": "Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
                                         "additionalProperties": {
                                             "type": "object",
                                             "properties": {
@@ -884,12 +912,12 @@
                                     "properties": {
                                         "role": {
                                             "type": "string",
-                                            "description": "Root only. Configured role name; null restores the user role.",
+                                            "description": "Stored role name or null.",
                                             "nullable": true
                                         },
                                         "permissions": {
                                             "type": "object",
-                                            "description": "Root only. Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                            "description": "Stored resource restrictions or null.",
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "properties": {
@@ -1098,12 +1126,12 @@
                                 "properties": {
                                     "role": {
                                         "type": "string",
-                                        "description": "Root only. Configured role name; null restores the user role.",
+                                        "description": "Configured role name; null restores the user role.",
                                         "nullable": true
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Root only. Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "description": "Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
                                         "additionalProperties": {
                                             "type": "object",
                                             "properties": {
@@ -13441,6 +13469,34 @@
                                     "type": "object",
                                     "title": "PreAuthCheckResponse",
                                     "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "description": "Stored role name or null.",
+                                            "nullable": true
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Stored resource restrictions or null.",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "create": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "read": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "update": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "delete": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "additionalProperties": false
+                                            },
+                                            "nullable": true
+                                        },
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
                                         },
@@ -13575,6 +13631,34 @@
                                     "type": "object",
                                     "title": "AuthenticateResponse",
                                     "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "description": "Stored role name or null.",
+                                            "nullable": true
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Stored resource restrictions or null.",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "create": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "read": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "update": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "delete": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "additionalProperties": false
+                                            },
+                                            "nullable": true
+                                        },
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
                                         },

@@ -25,6 +25,26 @@ const MESSAGE = {
 };
 
 describe('Roles', () => {
+    describe('#getPolicyResponse', () => {
+        const userData = { _id: '507f191e810c19729de860ea', role: 'user', permissions: { labels: { create: false } } };
+        const policy = { role: userData.role, permissions: userData.permissions };
+
+        it('should use user read grants for any role and preserve own/any scope', () => {
+            for (const role of ['root', 'manager', 'api:read']) {
+                expect(roles.getPolicyResponse({ role, user: 'another-user' }, userData)).to.deep.equal(policy);
+            }
+            expect(roles.getPolicyResponse({ role: 'user', user: userData._id }, userData)).to.deep.equal(policy);
+            expect(roles.getPolicyResponse({ role: 'user', user: 'another-user' }, userData)).to.deep.equal({});
+            expect(roles.getPolicyResponse({ role: 'tokenAuth', user: userData._id }, userData)).to.deep.equal({});
+        });
+
+        it('should honor resource restrictions and response field allowlists', () => {
+            const role = roles.forUser('manager', { permissions: { users: { read: false } } });
+            expect(roles.getPolicyResponse({ role, user: userData._id }, userData)).to.deep.equal({});
+            expect(roles.getPolicyResponse({ role: 'mcp:read', user: userData._id }, userData)).to.deep.equal({});
+        });
+    });
+
     describe('#forUser and restricted grants', () => {
         it('should use the assigned role for user tokens and preserve explicit token roles', () => {
             expect(String(roles.forUser('user', { role: 'mcp:read' }))).to.equal('mcp:read');

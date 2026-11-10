@@ -43,7 +43,9 @@ The available roles, including `api:read`, are defined by `config.api.roles` in 
 
 ### Per-user restrictions
 
-Root may set optional `role` and `permissions` fields through `POST /users` and `PUT /users/:user`. Only root credentials may write these fields, even when clearing them, and only root sees stored settings in user details. Named roles remain in `config/roles.json`; the assigned role must be configured.
+Optional `role` and `permissions` fields can be supplied through `POST /users` and `PUT /users/:user`. Writes use the normal user-resource grants and field filtering; there is no separate root-only write rule. The existing field allowlists still prevent an ordinary user from changing their own policy unless their effective permissions explicitly allow those fields. Named roles remain in `config/roles.json`; the assigned role must be configured.
+
+Policy visibility follows the normal user read grants, with response attribute allowlists still applied. A credential with `readAny('users')` may see stored `role` and `permissions` for any user; `readOwn('users')` may see them only for the authenticated user's own account. This applies to `GET /users/:user`, matching rows in `GET /users`, and authorized `/preauth` or `/authenticate` responses for the corresponding user. No special root rule applies to policy reads.
 
 For example, this update disables label creation and deletion and filter creation:
 
