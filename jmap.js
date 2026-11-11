@@ -16,6 +16,7 @@ const MailboxHandler = require('./lib/mailbox-handler');
 const { SettingsHandler } = require('./lib/settings-handler');
 const StorageHandler = require('./lib/storage-handler');
 const ImapNotifier = require('./lib/imap-notifier');
+const Lock = require('ioredfour');
 const { createApp } = require('./lib/jmap/server');
 const types = require('./lib/jmap/types');
 
@@ -45,6 +46,8 @@ function createDeps() {
         gridfs: db.gridfs,
         redis: db.redis,
         userHandler,
+        // the mailbox write lock IMAP and the REST API take around moves
+        lock: new Lock({ redis: db.redis, namespace: 'mail' }),
         modules: types.modules,
         routes: types.routes
     };
