@@ -566,6 +566,25 @@ indexes:
               root:
                   $exists: true
 
+    - collection: jmapchanges
+      feature: jmap
+      index:
+          # JMAP /changes of the owned types (lib/jmap/changelog.js): tombstones after a sequence number
+          name: user_type_seq
+          key:
+              user: 1
+              type: 1
+              seq: 1
+
+    - collection: jmapchanges
+      feature: jmap
+      index:
+          name: entry_autoexpire
+          # tombstones are removed once no valid state can reach them
+          expireAfterSeconds: 0
+          key:
+              expires: 1
+
     - collection: archived
       index:
           name: user_messages_archived
