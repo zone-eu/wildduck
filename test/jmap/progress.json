@@ -362,6 +362,18 @@
         {
             "package": "4.6",
             "ids": ["EQRY-065"]
+        },
+        {
+            "package": "6.1",
+            "ids": ["CAL-010..CAL-012", "CAL-065", "CAL-066"]
+        },
+        {
+            "package": "6.2",
+            "ids": ["CAL-022", "CAL-033", "CAL-035", "CAL-036"]
+        },
+        {
+            "package": "6.4",
+            "ids": ["CAL-001..CAL-007", "CAL-009", "CAL-014..CAL-040", "CAL-042..CAL-059", "CAL-062..CAL-074", "CAL-077", "PID-001..PID-019"]
         }
     ]
 }
