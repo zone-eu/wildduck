@@ -495,7 +495,7 @@ scenarios:
 
   # ---- cross protocol invariants not covered per method
   - id: WDX-001
-    title: "POP3 deletion is seen as a destroyed Email"
+    title: "POP3 deletion is seen as an Email moved to Trash"
     method: Email/changes
     spec: "RFC 8621 4.3"
     level: must
@@ -504,9 +504,10 @@ scenarios:
     seed: [lmtp]
     given: "Three messages in INBOX and a known Email state."
     when: "A POP3 session deletes one message (DELE, QUIT)."
-    then: "Email/changes lists that id as destroyed, Mailbox counts drop by one, and the other two ids are unchanged."
+    then: "Email/changes lists that id as updated (POP3 moves deleted messages to Trash, see ECHG-037), the INBOX count drops by one and the Trash count rises by one, and the other two ids are unchanged."
     sources:
       - "wildduck:lib/pop3"
+    notes: "Changed 2026-11-11: pop3.js moves a deleted message to Trash and marks it seen, so the Email is updated, not destroyed."
   - id: WDX-002
     title: "Retention expiry is seen as destroyed Emails"
     method: Email/changes
@@ -520,6 +521,7 @@ scenarios:
     then: "Email/changes lists them as destroyed and Email/get answers notFound for them."
     sources:
       - "wildduck:tasks.js retention"
+    notes: "The expiry step of the garbage collector is run by the test for the one user, as in ECHG-056."
   - id: WDX-003
     title: "Messages in encrypted mailboxes are served as stored"
     method: Email/get

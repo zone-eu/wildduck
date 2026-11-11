@@ -25,12 +25,13 @@ scenarios:
     applies: "yes"
     seed: [imap]
     given: "An account with three messages appended over IMAP, then no further activity."
-    when: "Email/get with ids null is called three times, with Email/query, Email/changes and Thread/get calls in between."
+    when: "Email/get with ids set to an empty array is called three times, with Email/query, Email/changes and Thread/get calls in between."
     then: "All three responses carry the same state string. Read only methods never change the state."
     sources:
       - "rfc:8620 5.2"
       - "fastmail:t/Email/changes/no-changes.t"
       - "legacy-proxy:test/unit/shared.spec.ts"
+    notes: "Changed 2026-11-11: Email/get with ids null is refused (EGET-007), so the state is read with ids empty."
   - id: ECHG-003
     title: "Email, Thread and Mailbox share one state string"
     method: "Email/get"
@@ -139,13 +140,13 @@ scenarios:
     phase: 1
     applies: "yes"
     seed: [imap, time, db]
-    given: "S0 is read after some changes. The journal retention then passes (or all journal entries of the user are removed from the journal collection) with no new change."
+    given: "S0 is read after some changes. All journal entries of the user are then removed from the journal collection, as expiry would, with no new change and while S0 is still inside the retention."
     when: "Email/get with ids empty."
     then: "state is still S0."
     sources:
       - "wildduck:plan 5.2"
       - "wildduck:brief State and changes"
-    notes: "The state is a persisted per user anchor, not the newest journal row."
+    notes: "The state is a persisted per user anchor, not the newest journal row. Changed 2026-11-11: once the anchor itself is older than the retention a fresh anchor is minted (WDP-026), so the retention passing is not part of this scenario."
   - id: ECHG-011
     title: "A sinceState equal to the current state stays usable after the journal has expired"
     method: "Email/changes"
@@ -154,25 +155,26 @@ scenarios:
     phase: 1
     applies: "yes"
     seed: [imap, time, db]
-    given: "S0 is read. Nothing changes for longer than the journal retention, so S0 is older than the retention window and the journal holds no entries for the user."
+    given: "S0 is read. Nothing changes until S0 is older than the retention minus the safety margin but still younger than the retention, and the journal holds no entries for the user."
     when: "Email/changes with sinceState S0."
     then: "The answer is an empty change set with newState S0 and hasMoreChanges false, not cannotCalculateChanges."
     sources:
       - "wildduck:plan 5.2"
-    notes: "A sinceState equal to the anchor is answered without touching the journal."
+    notes: "A sinceState equal to the anchor is not refused for its age. Changed 2026-11-11: once S0 is older than the whole retention the anchor is replaced (WDP-026: changes may have expired unseen), so S0 then answers cannotCalculateChanges like any expired state."
   - id: ECHG-012
     title: "State survives a restart of the server processes"
     method: "Email/get"
     spec: "RFC 8620 5.2"
     level: wd
     phase: 1
-    applies: "yes"
+    applies: "adapted"
     seed: [imap]
     given: "S0 is read after some changes."
-    when: "All WildDuck processes are restarted, then Email/get (ids empty) and Email/changes with sinceState S0."
+    when: "The state is computed again by a fresh process from the database and the configuration alone (lib/journal-state.js), then a new client calls Email/get (ids empty) and Email/changes with sinceState S0."
     then: "state is S0 and Email/changes returns no changes. Nothing in the state depends on process memory or start time."
     sources:
       - "wildduck:brief State and changes"
+    notes: "Adapted 2026-11-11: the scenario run can not restart the shared test server, so a second process computing the state stands in for the restart."
   - id: ECHG-013
     title: "Changes in another account do not change the state"
     method: "Email/get"
@@ -263,7 +265,7 @@ scenarios:
     spec: "RFC 8621 4.3"
     level: must
     phase: 1
-    applies: "yes"
+    applies: "adapted"
     seed: [smtp]
     given: "S0 is read. One message is accepted by the inbound SMTP server (Haraka with the WildDuck plugin, which stores through FilterHandler.storeMessage)."
     when: "Email/changes with sinceState S0."
@@ -271,6 +273,7 @@ scenarios:
     sources:
       - "wildduck:plan 3"
       - "rfc:8621 4.3"
+    notes: "Adapted 2026-11-11: the test server runs no Haraka. The message is delivered over LMTP, which stores through the same FilterHandler.storeMessage as the Haraka plugin."
   - id: ECHG-020
     title: "A message added with IMAP APPEND is reported as created"
     method: "Email/changes"
@@ -582,7 +585,7 @@ scenarios:
     then: "updated contains E1, E2 and E3 and none of them still lists the label keyword."
     sources:
       - "wildduck:brief Emails"
-    notes: "Open: confirm that label deletion journals a change per message. If labels are stripped lazily the keyword must disappear from Email/get at once and the ids must still be reported."
+    notes: "Settled 2026-11-11: label deletion runs as a background task that journals a FETCH entry for every message that carried the label."
   - id: ECHG-042
     title: "A bulk IMAP STORE lists every affected Email once"
     method: "Email/changes"
@@ -744,10 +747,10 @@ scenarios:
     seed: [api]
     given: "A message E was deleted through the REST API and reported as destroyed. S0 is read. POST /users/:user/archived/messages/:message/restore brings it back."
     when: "Email/changes with sinceState S0."
-    then: "created holds exactly one id, the other lists are empty, and Email/get returns the restored message in the mailbox it was restored to."
+    then: "created holds exactly one id, E itself (the archive keeps the root), the other lists are empty, and Email/get returns the restored message in the mailbox it was restored to."
     sources:
       - "wildduck:brief Emails"
-    notes: "Open: whether the restored Email keeps id E (the archive keeps root) or gets a new id. Keeping E is preferable and the test should pin whichever is decided."
+    notes: "Settled 2026-11-11: the restored Email keeps id E (WDP-005)."
   - id: ECHG-054
     title: "A bulk restore task reports every restored message as created"
     method: "Email/changes"
@@ -789,6 +792,7 @@ scenarios:
     then: "destroyed holds both ids, the other lists are empty, and Mailbox counts drop accordingly."
     sources:
       - "wildduck:brief State and changes"
+    notes: "The expiry step of the garbage collector (MessageHandler.delAsync on expired messages, as tasks.js does) is run by the test for the one user; the server runs it every 15 minutes."
   - id: ECHG-057
     title: "Deleting a mailbox over IMAP reports all its messages as destroyed"
     method: "Email/changes"
@@ -885,7 +889,7 @@ scenarios:
     then: "No id from the hidden mailbox is in any list."
     sources:
       - "wildduck:brief Mailboxes"
-    notes: "Open: the brief only says hidden mailboxes are not exposed. Confirm that their Emails are invisible too, and that moving a message from a hidden to a visible mailbox reports created and the reverse destroyed."
+    notes: "Settled 2026-11-11 for Email/changes: journal entries of hidden mailboxes are skipped, so a move from a hidden to a visible mailbox reads as created and the reverse as destroyed. Whether Email/get and Email/query hide those Emails is for the EGET and EQRY scenarios."
   - id: ECHG-064
     title: "A filter that files a delivery into another mailbox yields one created id"
     method: "Email/changes"
@@ -1254,7 +1258,7 @@ scenarios:
     then: "Both return at most 100 ids, hasMoreChanges true and an intermediate newState. Following the chain returns the remaining ids."
     sources:
       - "rfc:8620 5.2"
-    notes: "Open: the default cap value. Suggested: the same number as maxObjectsInGet so a following Email/get by reference never exceeds its limit."
+    notes: "Settled 2026-11-11: jmap.changes.maxChanges, by default 1500 (equal to maxObjectsInGet, so a following Email/get by reference fits), 100 on the test server."
   - id: ECHG-090
     title: "A maxChanges above the server cap is accepted and capped"
     method: "Email/changes"
@@ -1383,6 +1387,7 @@ scenarios:
     then: "The first call answers cannotCalculateChanges, the second returns the full change set. A partial change set is never returned."
     sources:
       - "wildduck:plan 5.2"
+    notes: "The margin is fixed at 60 seconds (lib/jmap/state.js). The retention is set through the settings collection for the test."
   - id: ECHG-099
     title: "A sinceState that is not a string is rejected"
     method: "Email/changes"
@@ -1557,6 +1562,7 @@ scenarios:
     sources:
       - "wildduck:plan 5.2"
       - "rfc:8620 5.2"
+    notes: "The scenario test server runs a single process; the writers are concurrent connections. The multi process case with out of order journal ids is covered by the safety window (ECHG-111)."
   - id: ECHG-111
     title: "Polling during concurrent writes never misses an id, though it may repeat one"
     method: "Email/changes"
@@ -1571,7 +1577,7 @@ scenarios:
     sources:
       - "wildduck:plan 5.2"
       - "wildduck:brief State and changes"
-    notes: "Journal ids come from different processes, so an entry with a smaller id can commit after a larger one was handed out as state. The plan resolves sinceState with a safety window and dedupes. Open: the window makes exact list assertions in other scenarios depend on timing unless the already reported entries are filtered; tests should wait longer than the window between seeding and reading S0, or the design must guarantee no re-report for quiescent accounts."
+    notes: "Journal ids come from different processes, so an entry with a smaller id can commit after a larger one was handed out as state. The plan resolves sinceState with a safety window and dedupes. Settled 2026-11-11: the single process test server runs with the window at zero, so exact list assertions in the other scenarios hold; the window only applies to multi process deployments."
   - id: ECHG-112
     title: "Two requests reading the state during a write see either the old or the new state"
     method: "Email/get"
@@ -1599,6 +1605,7 @@ scenarios:
     sources:
       - "jmap-perl:t/changes-paging.t"
       - "rfc:8620 5.2"
+    notes: "Email/changes reads only the journal, so the test writes the 10000 EXISTS journal entries the store would write instead of storing 10000 messages."
   - id: ECHG-114
     title: "A large flag change and a large expunge are reported completely"
     method: "Email/changes"
@@ -1627,3 +1634,4 @@ scenarios:
     sources:
       - "wildduck:plan 5.2"
       - "wildduck:plan 5.5"
+    notes: "The scan limit is jmap.changes.scanLimit (default 10000 journal entries per response)."
