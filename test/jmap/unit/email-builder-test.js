@@ -281,6 +281,31 @@ describe('JMAP email builder', () => {
         expect(text).to.include('Content-Description: desc');
     });
 
+    it('moves the headers of a single textBody or htmlBody part to the message', async () => {
+        for (const property of ['textBody', 'htmlBody']) {
+            const { text, get } = await build({
+                [property]: [{ partId: 'p', 'header:from': ' Foo <foo@example.org>', 'header:X-Part': ' yes' }],
+                bodyValues: { p: { value: 'body' } }
+            });
+            expect(get('header:From:asAddresses'), property).to.deep.equal([{ name: 'Foo', email: 'foo@example.org' }]);
+            expect(get('header:X-Part'), property).to.equal(' yes');
+            expect(text.match(/^X-Part:/gm), property).to.have.length(1);
+        }
+        rejects({ subject: 'a', textBody: [{ partId: 'p', 'header:Subject': ' b' }], bodyValues: { p: { value: 'x' } } }, ['textBody']);
+    });
+
+    it('gives a part written from a body value a charset only when it is text', async () => {
+        const { structure } = await build({
+            textBody: [{ partId: 't' }],
+            attachments: [{ partId: 'j', type: 'application/json', disposition: 'attachment', name: 'a.json' }],
+            bodyValues: { t: { value: 'text' }, j: { value: '{"a":1}' } }
+        });
+        expect(structure.subParts.map(part => [part.type, part.charset])).to.deep.equal([
+            ['text/plain', 'utf-8'],
+            ['application/json', null]
+        ]);
+    });
+
     it('defaults the type of an attachment to its blob type or application/octet-stream', async () => {
         const { structure } = await build(
             { attachments: [{ blobId: 'A', name: 'x.png' }, { blobId: 'B' }] },
