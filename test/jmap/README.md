@@ -72,6 +72,29 @@ scenarios:
 
 Source prefixes: `james`, `cyrus`, `stalwart`, `jmapio`, `fastmail`, `tmail`, `legacy-proxy`, `jmap-perl` (a test in that project), `rfc` (derived from the spec text), `wildduck` (derived from WildDuck's design or code).
 
+## Running the scenario tests
+
+```bash
+npm run test:jmap            # start a test server, run test/jmap/scenarios, stop the server
+npm run test:jmap:coverage   # the same, then check that every scenario of a finished work package passed
+npm run test:jmap:catalogue  # validate the catalogue and the expectation files, build overview.html
+```
+
+`npm test` and CI run the scenario target too (Grunt `shell:mocha-jmap`), and CI runs the coverage check. Finished work packages and the scenarios they must keep passing are listed in `progress.json`.
+
+The harness lives in `harness/` and is loaded with `require('../harness')`:
+
+| Module             | Gives                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `scenario(id, fn)` | Registers the Mocha test for a catalogue scenario; the title is the id plus the catalogue title. Unknown or duplicate ids fail at load time, withdrawn scenarios are registered as pending |
+| `accounts`         | `createUser`, `mailboxes`, `createAsp`, `createToken`; every user created is deleted after the run                                                                                         |
+| `seed`             | `deliver` (LMTP), `imap` and `withImap` (imapflow sessions), `db` (MongoDB of the test server)                                                                                             |
+| `api`              | The REST API of the test server                                                                                                                                                            |
+| `fixtures`         | `buildMessage` (nodemailer MailComposer), `readFixture`, `listFixtures` over WildDuck's own fixture directories                                                                            |
+| `clock`            | `waitFor` for asynchronous effects, `delay`                                                                                                                                                |
+
+`hooks.js` (root hooks) closes connections and removes test users; `reporter.js` writes per test results to the file named by `JMAP_RESULTS`.
+
 ## Turning scenarios into tests
 
 - Put the scenario id in the test title, for example `it('EGET-012 returns notFound for a \\Deleted message', ...)`, so results can be matched to the catalogue.

@@ -1,282 +1,972 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WildDuck JMAP Test Portfolio</title>
-<meta name="description" content="Test portfolio for JMAP support in WildDuck: a scenario catalogue drawn from the RFCs and from the JMAP test suites of Apache James, Cyrus, Stalwart and two independent conformance suites, with per phase gates.">
-<style>
-:root {
-  --bg: #fbfaf7; --surface: #ffffff; --surface-2: #f2efe8; --text: #1f2328; --muted: #5c6670; --line: #ddd8cc;
-  --accent: #0b6e4f; --accent-soft: #e2f1ea; --warn: #9a5b00; --warn-soft: #fdf1dc; --bad: #a4262c; --bad-soft: #fbe4e4;
-  --info: #2a5db0; --info-soft: #e4ecfa; --code-bg: #f1efe9;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #15171a; --surface: #1d2024; --surface-2: #24282d; --text: #e6e4df; --muted: #a3a9b0; --line: #353a40;
-    --accent: #5fc19b; --accent-soft: #1b3a2f; --warn: #e5a94a; --warn-soft: #3b2e14; --bad: #ef8b8f; --bad-soft: #43201f;
-    --info: #86aef2; --info-soft: #1e2d4a; --code-bg: #272b31;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #15171a; --surface: #1d2024; --surface-2: #24282d; --text: #e6e4df; --muted: #a3a9b0; --line: #353a40;
-  --accent: #5fc19b; --accent-soft: #1b3a2f; --warn: #e5a94a; --warn-soft: #3b2e14; --bad: #ef8b8f; --bad-soft: #43201f;
-  --info: #86aef2; --info-soft: #1e2d4a; --code-bg: #272b31;
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-.wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; max-width: 1280px; margin: 0 auto; padding: 24px 16px 80px; }
-nav.toc { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; font-size: 14px; padding-right: 8px; }
-nav.toc h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; border: 0; padding: 0; }
-nav.toc ol { list-style: none; padding: 0; margin: 0; }
-nav.toc li { margin: 0 0 6px; }
-nav.toc a { color: var(--text); text-decoration: none; }
-nav.toc a:hover { color: var(--accent); }
-nav.toc ol ol { padding-left: 14px; margin-top: 4px; }
-main { min-width: 0; }
-header.top { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 28px; }
-h1 { font-size: 30px; line-height: 1.2; margin: 0 0 10px; }
-.sub { color: var(--muted); font-size: 15px; }
-h2 { font-size: 22px; margin: 44px 0 14px; padding-top: 8px; border-top: 1px solid var(--line); }
-h3 { font-size: 17px; margin: 28px 0 10px; }
-p { margin: 0 0 12px; }
-ul, ol { margin: 0 0 14px; padding-left: 22px; }
-li { margin-bottom: 5px; }
-a { color: var(--info); }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
-table { border-collapse: collapse; width: 100%; margin: 0; font-size: 14.5px; }
-th, td { border: 1px solid var(--line); padding: 7px 10px; vertical-align: top; text-align: left; }
-th { background: var(--surface-2); font-weight: 600; }
-td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tbl-wrap { overflow-x: auto; margin: 0 0 18px; }
-.callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 0 0 18px; }
-.callout.warn { border-color: var(--warn); background: var(--warn-soft); }
-.callout.info { border-color: var(--info); background: var(--info-soft); }
-.callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
-.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
-.ok { background: var(--accent-soft); color: var(--accent); }
-.part { background: var(--warn-soft); color: var(--warn); }
-.gap { background: var(--bad-soft); color: var(--bad); }
-.na { background: var(--info-soft); color: var(--info); }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 0 0 20px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-.card .k { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.card .v { font-size: 24px; font-weight: 650; margin-top: 4px; }
-.card .d { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
-.small, .meta { font-size: 13px; color: var(--muted); font-weight: 400; }
-details { margin: 0 0 6px; }
-details > summary { cursor: pointer; }
-details.sc { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; }
-details.sc[open] { border-color: var(--accent); }
-details.sc .body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14.5px; }
-details.sc .body p:last-child { margin-bottom: 2px; }
-.filters { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 10px 0; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
-.filters input, .filters select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); }
-.filters input { flex: 1 1 220px; min-width: 0; }
-.hidden { display: none; }
-footer { margin-top: 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
-@media (max-width: 900px) {
-  .wrap { grid-template-columns: 1fr; gap: 12px; }
-  nav.toc { position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
-  h1 { font-size: 24px; }
-}
-@media print { nav.toc, .filters { display: none; } .wrap { display: block; } }
-</style>
-</head>
-<body>
-<div class="wrap">
-<nav class="toc">
-  <h2>Contents</h2>
-  <ol>
-    <li><a href="#summary">1. Summary</a></li>
-    <li><a href="#landscape">2. Who tests JMAP, and how</a></li>
-    <li><a href="#layers">3. The five layers</a></li>
-    <li><a href="#gates">4. Phase gates</a></li>
-    <li><a href="#matrix">5. Coverage matrix</a></li>
-    <li><a href="#external">6. External suites</a></li>
-    <li><a href="#interop">7. Client interop</a></li>
-    <li><a href="#rules">8. Rules for using the sources</a></li>
-    <li><a href="#findings">9. What the research changed</a></li>
-    <li><a href="#catalogue">10. Scenario catalogue</a>
-      <ol>{{toc}}</ol>
-    </li>
-  </ol>
-</nav>
-<main>
-<header class="top">
-  <h1>WildDuck JMAP test portfolio</h1>
-  <div class="sub">
-    Built 2026-11-11 on branch <code>jmap-test-portfolio</code>, as the guardrail for the JMAP plan
-    (feasibility review revised 2026-11-11, phases 0 to 7). Generated from <code>test/jmap/catalogue/*.yaml</code> and
-    <code>test/jmap/external/*-expectations.yaml</code> by <code>node test/jmap/tools/build-overview.js</code>. Do not edit this page by hand.
-  </div>
-</header>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>WildDuck JMAP Test Portfolio</title>
+        <meta
+            name="description"
+            content="Test portfolio for JMAP support in WildDuck: a scenario catalogue drawn from the RFCs and from the JMAP test suites of Apache James, Cyrus, Stalwart and two independent conformance suites, with per phase gates."
+        />
+        <style>
+            :root {
+                --bg: #fbfaf7;
+                --surface: #ffffff;
+                --surface-2: #f2efe8;
+                --text: #1f2328;
+                --muted: #5c6670;
+                --line: #ddd8cc;
+                --accent: #0b6e4f;
+                --accent-soft: #e2f1ea;
+                --warn: #9a5b00;
+                --warn-soft: #fdf1dc;
+                --bad: #a4262c;
+                --bad-soft: #fbe4e4;
+                --info: #2a5db0;
+                --info-soft: #e4ecfa;
+                --code-bg: #f1efe9;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root:not([data-theme='light']) {
+                    --bg: #15171a;
+                    --surface: #1d2024;
+                    --surface-2: #24282d;
+                    --text: #e6e4df;
+                    --muted: #a3a9b0;
+                    --line: #353a40;
+                    --accent: #5fc19b;
+                    --accent-soft: #1b3a2f;
+                    --warn: #e5a94a;
+                    --warn-soft: #3b2e14;
+                    --bad: #ef8b8f;
+                    --bad-soft: #43201f;
+                    --info: #86aef2;
+                    --info-soft: #1e2d4a;
+                    --code-bg: #272b31;
+                }
+            }
+            :root[data-theme='dark'] {
+                --bg: #15171a;
+                --surface: #1d2024;
+                --surface-2: #24282d;
+                --text: #e6e4df;
+                --muted: #a3a9b0;
+                --line: #353a40;
+                --accent: #5fc19b;
+                --accent-soft: #1b3a2f;
+                --warn: #e5a94a;
+                --warn-soft: #3b2e14;
+                --bad: #ef8b8f;
+                --bad-soft: #43201f;
+                --info: #86aef2;
+                --info-soft: #1e2d4a;
+                --code-bg: #272b31;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html {
+                scroll-behavior: smooth;
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                font:
+                    16px/1.55 -apple-system,
+                    BlinkMacSystemFont,
+                    'Segoe UI',
+                    Roboto,
+                    Helvetica,
+                    Arial,
+                    sans-serif;
+            }
+            .wrap {
+                display: grid;
+                grid-template-columns: 250px minmax(0, 1fr);
+                gap: 32px;
+                max-width: 1280px;
+                margin: 0 auto;
+                padding: 24px 16px 80px;
+            }
+            nav.toc {
+                position: sticky;
+                top: 16px;
+                align-self: start;
+                max-height: calc(100vh - 32px);
+                overflow: auto;
+                font-size: 14px;
+                padding-right: 8px;
+            }
+            nav.toc h2 {
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+                margin: 0 0 8px;
+                border: 0;
+                padding: 0;
+            }
+            nav.toc ol {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }
+            nav.toc li {
+                margin: 0 0 6px;
+            }
+            nav.toc a {
+                color: var(--text);
+                text-decoration: none;
+            }
+            nav.toc a:hover {
+                color: var(--accent);
+            }
+            nav.toc ol ol {
+                padding-left: 14px;
+                margin-top: 4px;
+            }
+            main {
+                min-width: 0;
+            }
+            header.top {
+                border-bottom: 1px solid var(--line);
+                padding-bottom: 20px;
+                margin-bottom: 28px;
+            }
+            h1 {
+                font-size: 30px;
+                line-height: 1.2;
+                margin: 0 0 10px;
+            }
+            .sub {
+                color: var(--muted);
+                font-size: 15px;
+            }
+            h2 {
+                font-size: 22px;
+                margin: 44px 0 14px;
+                padding-top: 8px;
+                border-top: 1px solid var(--line);
+            }
+            h3 {
+                font-size: 17px;
+                margin: 28px 0 10px;
+            }
+            p {
+                margin: 0 0 12px;
+            }
+            ul,
+            ol {
+                margin: 0 0 14px;
+                padding-left: 22px;
+            }
+            li {
+                margin-bottom: 5px;
+            }
+            a {
+                color: var(--info);
+            }
+            code {
+                font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                font-size: 13px;
+                background: var(--code-bg);
+                padding: 1px 5px;
+                border-radius: 4px;
+                overflow-wrap: anywhere;
+            }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                margin: 0;
+                font-size: 14.5px;
+            }
+            th,
+            td {
+                border: 1px solid var(--line);
+                padding: 7px 10px;
+                vertical-align: top;
+                text-align: left;
+            }
+            th {
+                background: var(--surface-2);
+                font-weight: 600;
+            }
+            td.num {
+                text-align: right;
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+            }
+            .tbl-wrap {
+                overflow-x: auto;
+                margin: 0 0 18px;
+            }
+            .callout {
+                border-left: 4px solid var(--accent);
+                background: var(--accent-soft);
+                padding: 12px 16px;
+                border-radius: 0 8px 8px 0;
+                margin: 0 0 18px;
+            }
+            .callout.warn {
+                border-color: var(--warn);
+                background: var(--warn-soft);
+            }
+            .callout.info {
+                border-color: var(--info);
+                background: var(--info-soft);
+            }
+            .callout p:last-child,
+            .callout ul:last-child {
+                margin-bottom: 0;
+            }
+            .badge {
+                display: inline-block;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 1px 8px;
+                border-radius: 999px;
+                white-space: nowrap;
+            }
+            .ok {
+                background: var(--accent-soft);
+                color: var(--accent);
+            }
+            .part {
+                background: var(--warn-soft);
+                color: var(--warn);
+            }
+            .gap {
+                background: var(--bad-soft);
+                color: var(--bad);
+            }
+            .na {
+                background: var(--info-soft);
+                color: var(--info);
+            }
+            .cards {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+                gap: 12px;
+                margin: 0 0 20px;
+            }
+            .card {
+                background: var(--surface);
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 14px 16px;
+            }
+            .card .k {
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--muted);
+            }
+            .card .v {
+                font-size: 24px;
+                font-weight: 650;
+                margin-top: 4px;
+            }
+            .card .d {
+                font-size: 13.5px;
+                color: var(--muted);
+                margin-top: 4px;
+            }
+            .small,
+            .meta {
+                font-size: 13px;
+                color: var(--muted);
+                font-weight: 400;
+            }
+            details {
+                margin: 0 0 6px;
+            }
+            details > summary {
+                cursor: pointer;
+            }
+            details.sc {
+                background: var(--surface);
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 7px 12px;
+            }
+            details.sc[open] {
+                border-color: var(--accent);
+            }
+            details.sc .body {
+                margin-top: 10px;
+                padding-top: 10px;
+                border-top: 1px solid var(--line);
+                font-size: 14.5px;
+            }
+            details.sc .body p:last-child {
+                margin-bottom: 2px;
+            }
+            .filters {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                background: var(--bg);
+                border-bottom: 1px solid var(--line);
+                padding: 10px 0;
+                margin: 0 0 14px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                font-size: 14px;
+            }
+            .filters input,
+            .filters select {
+                font: inherit;
+                padding: 5px 8px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                background: var(--surface);
+                color: var(--text);
+            }
+            .filters input {
+                flex: 1 1 220px;
+                min-width: 0;
+            }
+            .hidden {
+                display: none;
+            }
+            footer {
+                margin-top: 48px;
+                color: var(--muted);
+                font-size: 13px;
+                border-top: 1px solid var(--line);
+                padding-top: 14px;
+            }
+            @media (max-width: 900px) {
+                .wrap {
+                    grid-template-columns: 1fr;
+                    gap: 12px;
+                }
+                nav.toc {
+                    position: static;
+                    max-height: none;
+                    border-bottom: 1px solid var(--line);
+                    padding-bottom: 12px;
+                }
+                h1 {
+                    font-size: 24px;
+                }
+            }
+            @media print {
+                nav.toc,
+                .filters {
+                    display: none;
+                }
+                .wrap {
+                    display: block;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <nav class="toc">
+                <h2>Contents</h2>
+                <ol>
+                    <li><a href="#summary">1. Summary</a></li>
+                    <li><a href="#landscape">2. Who tests JMAP, and how</a></li>
+                    <li><a href="#layers">3. The five layers</a></li>
+                    <li><a href="#gates">4. Phase gates</a></li>
+                    <li><a href="#matrix">5. Coverage matrix</a></li>
+                    <li><a href="#external">6. External suites</a></li>
+                    <li><a href="#interop">7. Client interop</a></li>
+                    <li><a href="#rules">8. Rules for using the sources</a></li>
+                    <li><a href="#findings">9. What the research changed</a></li>
+                    <li>
+                        <a href="#catalogue">10. Scenario catalogue</a>
+                        <ol>
+                            {{toc}}
+                        </ol>
+                    </li>
+                </ol>
+            </nav>
+            <main>
+                <header class="top">
+                    <h1>WildDuck JMAP test portfolio</h1>
+                    <div class="sub">
+                        Built 2026-11-11 on branch <code>jmap-test-portfolio</code>, as the guardrail for the JMAP plan (feasibility review revised 2026-11-11,
+                        phases 0 to 7). Generated from <code>test/jmap/catalogue/*.yaml</code> and <code>test/jmap/external/*-expectations.yaml</code> by
+                        <code>node test/jmap/tools/build-overview.js</code>. Do not edit this page by hand.
+                    </div>
+                </header>
 
-<section id="summary">
-<h2>1. Summary</h2>
-<p>WildDuck has no JMAP code yet. This portfolio defines, before development starts, what "works" will mean at every phase:
-<strong>{{total}} scenarios</strong> in a structured catalogue, each tied to an RFC section, to the phase in which it must start passing, and to the tests in other servers that check the same behaviour,
-plus two independent black box conformance suites with a per test prediction for WildDuck. No test code is written yet, by decision: the catalogue is the specification the tests will be written from.</p>
-{{cards}}
-<div class="callout info">
-  <p><strong>How to use it.</strong> When a phase starts, its scenarios become Mocha tests (the scenario id goes into the test title). A phase is done when every scenario due by that phase passes and both external suites match their expectation lists. Section 4 has the numbers.</p>
-</div>
-</section>
+                <section id="summary">
+                    <h2>1. Summary</h2>
+                    <p>
+                        WildDuck has no JMAP code yet. This portfolio defines, before development starts, what "works" will mean at every phase:
+                        <strong>{{total}} scenarios</strong> in a structured catalogue, each tied to an RFC section, to the phase in which it must start
+                        passing, and to the tests in other servers that check the same behaviour, plus two independent black box conformance suites with a per
+                        test prediction for WildDuck. No test code is written yet, by decision: the catalogue is the specification the tests will be written
+                        from.
+                    </p>
+                    {{cards}}
+                    <div class="callout info">
+                        <p>
+                            <strong>How to use it.</strong> When a phase starts, its scenarios become Mocha tests (the scenario id goes into the test title). A
+                            phase is done when every scenario due by that phase passes and both external suites match their expectation lists. Section 4 has the
+                            numbers.
+                        </p>
+                    </div>
+                </section>
 
-<section id="landscape">
-<h2>2. Who tests JMAP, and how</h2>
-<p>All repositories were cloned and read on 2026-11-11; nothing was built or run. Counts are test cases unless stated.</p>
-<div class="tbl-wrap"><table>
-<tr><th style="width:17%">Source</th><th style="width:13%">Licence</th><th style="width:22%">JMAP tests</th><th>Can it run against WildDuck?</th><th style="width:24%">Use in this portfolio</th></tr>
-<tr><td><a href="https://github.com/apache/james-project">Apache James</a> (Java, Scala)</td><td>Apache 2.0</td><td>1,306 in 60 contract files. Largest: Mailbox/set 161, Email/get 142, Email/query 134, Email/set 124, EmailSubmission 97, PushSubscription 65</td><td>No. Each contract boots James in process and seeds data through internal probes. The exercised behaviour is real JMAP over HTTP with inline JSON, so scenarios port well</td><td>Scenario source for core mail, submission, identity, vacation, push. Documented deviations (no anchor paging, no Email/queryChanges) show what a production server gets away with</td></tr>
-<tr><td><a href="https://github.com/cyrusimap/cyrus-imapd">Cyrus IMAP</a> (C, Perl tests)</td><td>BSD style (CMU), notices must be kept</td><td>1,166 files, one test each. Email 393, Calendars 341, Contacts 163, Mailbox 110, EmailSubmission 42, Core 34</td><td>No. Each test starts a Cyrus instance. Most seed over IMAP and mutate over IMAP between JMAP calls, which is exactly WildDuck's situation</td><td>Main scenario source for cross protocol change tracking, query paging, contacts and calendars. About 90 tests depend on sharing or several mailboxes per message and do not apply</td></tr>
-<tr><td><a href="https://github.com/stalwartlabs/stalwart">Stalwart</a> (Rust)</td><td>AGPL 3.0 or proprietary</td><td>Tests left the public repository with 1.0. Last public copy (v0.16.27): 55 files, about 614 assertion sites, plus a 309 case port of the jmapio suite. Golden fixtures for Email/get, set and parse</td><td>No. One in process test function, internal provisioning, direct store writes</td><td>Scenario checklist only. Code and fixtures must not be copied (AGPL)</td></tr>
-<tr><td><a href="https://github.com/jmapio/jmap-test-suite">jmapio/jmap-test-suite</a> (TypeScript)</td><td>No licence file</td><td>309 tests in 42 files, RFC 8620 and 8621 only. Each test carries its RFC section and a required or recommended flag</td><td><strong>Yes.</strong> A JSON config with the session URL and Basic or Bearer credentials. Needs an empty account; a second user enables submission tests</td><td>External gate, run at a pinned commit, never vendored. See section 6</td></tr>
-<tr><td><a href="https://github.com/fastmail/JMAP-TestSuite">fastmail/JMAP-TestSuite</a> (Perl)</td><td>No licence file</td><td>173 files, 315 subtests: mail, submission, vacation, MDN, quota, Blob (RFC 9404), contacts, calendars. Revived in 2026</td><td><strong>Yes</strong>, with one Perl adapter class. A user creation hook (WildDuck <code>POST /users</code>) unlocks the 52 files that need a pristine account</td><td>External gate, the only independent suite covering Blob, contacts and calendars</td></tr>
-<tr><td><a href="https://github.com/bulwarkmail/legacy-proxy">Bulwark legacy-proxy</a> (TypeScript)</td><td>AGPL 3.0</td><td>55 vitest files, and a runner for the jmapio suite with a known failures list</td><td>Not a suite. It is JMAP over IMAP on Fastify, the closest analogue to WildDuck</td><td>Its known failures list is the model for ours: stable ids on move and one mailbox per message are where an IMAP shaped store fails</td></tr>
-<tr><td><a href="https://github.com/jmapio/jmap-perl">jmap-perl proxy</a> (Perl)</td><td>MIT</td><td>75 test files; passes the Fastmail suite in full according to its roadmap</td><td>Not a suite</td><td>Proof that an IMAP backed server can pass the Fastmail suite; source for state and paging scenarios</td></tr>
-</table></div>
-<p class="small">Also checked: Dovecot, Maddy, mailcow, SOGo and Mailpit have no JMAP code; mox lists it as roadmap only; Nextcloud Mail is adding JMAP as a client. A dozen newer servers (Herold, YariloMail, shardpost, ionosphere and others) have JMAP tests of their own, several openly AI written; they were read for ideas only. No IETF or NLnet funded conformance suite exists.</p>
-</section>
+                <section id="landscape">
+                    <h2>2. Who tests JMAP, and how</h2>
+                    <p>All repositories were cloned and read on 2026-11-11; nothing was built or run. Counts are test cases unless stated.</p>
+                    <div class="tbl-wrap">
+                        <table>
+                            <tr>
+                                <th style="width: 17%">Source</th>
+                                <th style="width: 13%">Licence</th>
+                                <th style="width: 22%">JMAP tests</th>
+                                <th>Can it run against WildDuck?</th>
+                                <th style="width: 24%">Use in this portfolio</th>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/apache/james-project">Apache James</a> (Java, Scala)</td>
+                                <td>Apache 2.0</td>
+                                <td>
+                                    1,306 in 60 contract files. Largest: Mailbox/set 161, Email/get 142, Email/query 134, Email/set 124, EmailSubmission 97,
+                                    PushSubscription 65
+                                </td>
+                                <td>
+                                    No. Each contract boots James in process and seeds data through internal probes. The exercised behaviour is real JMAP over
+                                    HTTP with inline JSON, so scenarios port well
+                                </td>
+                                <td>
+                                    Scenario source for core mail, submission, identity, vacation, push. Documented deviations (no anchor paging, no
+                                    Email/queryChanges) show what a production server gets away with
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/cyrusimap/cyrus-imapd">Cyrus IMAP</a> (C, Perl tests)</td>
+                                <td>BSD style (CMU), notices must be kept</td>
+                                <td>1,166 files, one test each. Email 393, Calendars 341, Contacts 163, Mailbox 110, EmailSubmission 42, Core 34</td>
+                                <td>
+                                    No. Each test starts a Cyrus instance. Most seed over IMAP and mutate over IMAP between JMAP calls, which is exactly
+                                    WildDuck's situation
+                                </td>
+                                <td>
+                                    Main scenario source for cross protocol change tracking, query paging, contacts and calendars. About 90 tests depend on
+                                    sharing or several mailboxes per message and do not apply
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/stalwartlabs/stalwart">Stalwart</a> (Rust)</td>
+                                <td>AGPL 3.0 or proprietary</td>
+                                <td>
+                                    Tests left the public repository with 1.0. Last public copy (v0.16.27): 55 files, about 614 assertion sites, plus a 309 case
+                                    port of the jmapio suite. Golden fixtures for Email/get, set and parse
+                                </td>
+                                <td>No. One in process test function, internal provisioning, direct store writes</td>
+                                <td>Scenario checklist only. Code and fixtures must not be copied (AGPL)</td>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/jmapio/jmap-test-suite">jmapio/jmap-test-suite</a> (TypeScript)</td>
+                                <td>No licence file</td>
+                                <td>309 tests in 42 files, RFC 8620 and 8621 only. Each test carries its RFC section and a required or recommended flag</td>
+                                <td>
+                                    <strong>Yes.</strong> A JSON config with the session URL and Basic or Bearer credentials. Needs an empty account; a second
+                                    user enables submission tests
+                                </td>
+                                <td>External gate, run at a pinned commit, never vendored. See section 6</td>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/fastmail/JMAP-TestSuite">fastmail/JMAP-TestSuite</a> (Perl)</td>
+                                <td>No licence file</td>
+                                <td>173 files, 315 subtests: mail, submission, vacation, MDN, quota, Blob (RFC 9404), contacts, calendars. Revived in 2026</td>
+                                <td>
+                                    <strong>Yes</strong>, with one Perl adapter class. A user creation hook (WildDuck <code>POST /users</code>) unlocks the 52
+                                    files that need a pristine account
+                                </td>
+                                <td>External gate, the only independent suite covering Blob, contacts and calendars</td>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/bulwarkmail/legacy-proxy">Bulwark legacy-proxy</a> (TypeScript)</td>
+                                <td>AGPL 3.0</td>
+                                <td>55 vitest files, and a runner for the jmapio suite with a known failures list</td>
+                                <td>Not a suite. It is JMAP over IMAP on Fastify, the closest analogue to WildDuck</td>
+                                <td>
+                                    Its known failures list is the model for ours: stable ids on move and one mailbox per message are where an IMAP shaped store
+                                    fails
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><a href="https://github.com/jmapio/jmap-perl">jmap-perl proxy</a> (Perl)</td>
+                                <td>MIT</td>
+                                <td>75 test files; passes the Fastmail suite in full according to its roadmap</td>
+                                <td>Not a suite</td>
+                                <td>Proof that an IMAP backed server can pass the Fastmail suite; source for state and paging scenarios</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <p class="small">
+                        Also checked: Dovecot, Maddy, mailcow, SOGo and Mailpit have no JMAP code; mox lists it as roadmap only; Nextcloud Mail is adding JMAP
+                        as a client. A dozen newer servers (Herold, YariloMail, shardpost, ionosphere and others) have JMAP tests of their own, several openly
+                        AI written; they were read for ideas only. No IETF or NLnet funded conformance suite exists.
+                    </p>
+                </section>
 
-<section id="layers">
-<h2>3. The five layers</h2>
-<div class="tbl-wrap"><table>
-<tr><th style="width:4%">#</th><th style="width:20%">Layer</th><th>What it is</th><th style="width:26%">Where</th><th style="width:16%">When it runs</th></tr>
-<tr><td>A</td><td>Backend prerequisites</td><td>Tests of the shared handler changes of phase 0 (stable ids through <code>root</code>, journal contents and retention, state anchor, upload expiry, auth scope). They need no JMAP code and protect IMAP, POP3 and the REST API while those handlers change.</td><td><code>catalogue/wildduck.yaml</code>, ids <code>WDP-*</code></td><td>From phase 0, in the existing <code>npm test</code></td></tr>
-<tr><td>B</td><td>Scenario catalogue</td><td>WildDuck's own conformance tests, to be written as Mocha tests over plain HTTP. In phase 1 this is the only layer that can run, so its 800 odd phase 1 scenarios carry the whole gate. Many seed or mutate over IMAP, LMTP or the REST API and observe over JMAP, which no external suite can do.</td><td><code>catalogue/*.yaml</code></td><td>Every commit, from phase 1</td></tr>
-<tr><td>C</td><td>jmapio suite</td><td>309 black box tests for RFC 8620 and 8621, compared against a per test expectation list.</td><td><code>external/jmapio-expectations.yaml</code></td><td>Every pull request, from the end of phase 2. The suite seeds through Mailbox/set, upload and Email/import, so it cannot run against a read only phase 1 server. The runner blocks the public relay smee.io</td></tr>
-<tr><td>D</td><td>Fastmail suite</td><td>173 files run through a WildDuck adapter that provisions accounts over the REST API. Adds Blob, contacts and calendars.</td><td><code>external/fastmail-expectations.yaml</code></td><td>Nightly. 12 files can pass in phase 1, most need the writes of phase 2</td></tr>
-<tr><td>E</td><td>Client interop</td><td>Scripted and manual runs with real clients. Finds what conformance suites cannot: discovery quirks, capability assumptions, sync loops.</td><td>Section 7</td><td>At the end of each phase</td></tr>
-</table></div>
-<p>The catalogue format, the validator and the commands are documented in <code>test/jmap/README.md</code>; the external suites in <code>test/jmap/external/README.md</code>.</p>
-</section>
+                <section id="layers">
+                    <h2>3. The five layers</h2>
+                    <div class="tbl-wrap">
+                        <table>
+                            <tr>
+                                <th style="width: 4%">#</th>
+                                <th style="width: 20%">Layer</th>
+                                <th>What it is</th>
+                                <th style="width: 26%">Where</th>
+                                <th style="width: 16%">When it runs</th>
+                            </tr>
+                            <tr>
+                                <td>A</td>
+                                <td>Backend prerequisites</td>
+                                <td>
+                                    Tests of the shared handler changes of phase 0 (stable ids through <code>root</code>, journal contents and retention, state
+                                    anchor, upload expiry, auth scope). They need no JMAP code and protect IMAP, POP3 and the REST API while those handlers
+                                    change.
+                                </td>
+                                <td><code>catalogue/wildduck.yaml</code>, ids <code>WDP-*</code></td>
+                                <td>From phase 0, in the existing <code>npm test</code></td>
+                            </tr>
+                            <tr>
+                                <td>B</td>
+                                <td>Scenario catalogue</td>
+                                <td>
+                                    WildDuck's own conformance tests, to be written as Mocha tests over plain HTTP. In phase 1 this is the only layer that can
+                                    run, so its 800 odd phase 1 scenarios carry the whole gate. Many seed or mutate over IMAP, LMTP or the REST API and observe
+                                    over JMAP, which no external suite can do.
+                                </td>
+                                <td><code>catalogue/*.yaml</code></td>
+                                <td>Every commit, from phase 1</td>
+                            </tr>
+                            <tr>
+                                <td>C</td>
+                                <td>jmapio suite</td>
+                                <td>309 black box tests for RFC 8620 and 8621, compared against a per test expectation list.</td>
+                                <td><code>external/jmapio-expectations.yaml</code></td>
+                                <td>
+                                    Every pull request, from the end of phase 2. The suite seeds through Mailbox/set, upload and Email/import, so it cannot run
+                                    against a read only phase 1 server. The runner blocks the public relay smee.io
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>D</td>
+                                <td>Fastmail suite</td>
+                                <td>173 files run through a WildDuck adapter that provisions accounts over the REST API. Adds Blob, contacts and calendars.</td>
+                                <td><code>external/fastmail-expectations.yaml</code></td>
+                                <td>Nightly. 12 files can pass in phase 1, most need the writes of phase 2</td>
+                            </tr>
+                            <tr>
+                                <td>E</td>
+                                <td>Client interop</td>
+                                <td>
+                                    Scripted and manual runs with real clients. Finds what conformance suites cannot: discovery quirks, capability assumptions,
+                                    sync loops.
+                                </td>
+                                <td>Section 7</td>
+                                <td>At the end of each phase</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <p>
+                        The catalogue format, the validator and the commands are documented in <code>test/jmap/README.md</code>; the external suites in
+                        <code>test/jmap/external/README.md</code>.
+                    </p>
+                </section>
 
-<section id="gates">
-<h2>4. Phase gates</h2>
-<p>A phase is complete when (1) every catalogue scenario with that phase number or lower passes, (2) every external test expected to pass by that phase passes, and (3) every external test listed as <em>never</em> still fails. The third rule makes an unexpected pass visible, so the list is corrected instead of drifting.</p>
-{{phases}}
-<p class="small">External counts include tests where the suite is stricter than the RFC but WildDuck plans to comply. Phase names follow section 8 of the feasibility review. Phase 7 is held until the calendars draft is published as an RFC.</p>
-</section>
+                <section id="gates">
+                    <h2>4. Phase gates</h2>
+                    <p>
+                        A phase is complete when (1) every catalogue scenario with that phase number or lower passes, (2) every external test expected to pass
+                        by that phase passes, and (3) every external test listed as <em>never</em> still fails. The third rule makes an unexpected pass visible,
+                        so the list is corrected instead of drifting.
+                    </p>
+                    {{phases}}
+                    <p class="small">
+                        External counts include tests where the suite is stricter than the RFC but WildDuck plans to comply. Phase names follow section 8 of the
+                        feasibility review. Phase 7 is held until the calendars draft is published as an RFC.
+                    </p>
+                </section>
 
-<section id="matrix">
-<h2>5. Coverage matrix</h2>
-<p>Scenarios per catalogue file and phase.</p>
-{{matrix}}
-</section>
+                <section id="matrix">
+                    <h2>5. Coverage matrix</h2>
+                    <p>Scenarios per catalogue file and phase.</p>
+                    {{matrix}}
+                </section>
 
-<section id="external">
-<h2>6. External suites</h2>
-<p>Predictions for every test of both suites, made by reading the test source against the WildDuck design. <span class="badge ok">pass</span> must pass from its phase on. <span class="badge gap">never</span> fails by design, for the stated constraint. <span class="badge part">opinion</span> is where the suite is stricter than the RFC text. <span class="badge na">skip</span> is skipped by the suite itself because WildDuck does not advertise the capability or has no second account.</p>
-{{suites}}
-</section>
+                <section id="external">
+                    <h2>6. External suites</h2>
+                    <p>
+                        Predictions for every test of both suites, made by reading the test source against the WildDuck design.
+                        <span class="badge ok">pass</span> must pass from its phase on. <span class="badge gap">never</span> fails by design, for the stated
+                        constraint. <span class="badge part">opinion</span> is where the suite is stricter than the RFC text.
+                        <span class="badge na">skip</span> is skipped by the suite itself because WildDuck does not advertise the capability or has no second
+                        account.
+                    </p>
+                    {{suites}}
+                </section>
 
-<section id="interop">
-<h2>7. Client interop</h2>
-<div class="tbl-wrap"><table>
-<tr><th style="width:18%">Client</th><th style="width:10%">From phase</th><th>What it needs from the server</th><th style="width:30%">What it proves</th></tr>
-<tr><td>jmap-jam (Node library, MIT)</td><td>1</td><td>Bearer token auth, session resource. ESM only, so loaded with dynamic import from Mocha.</td><td>A typed client library can read mail, follow result references, download blobs and hold an EventSource connection. Can be automated.</td></tr>
-<tr><td>aerc (terminal, MIT)</td><td>1, sending from 3</td><td>The session URL itself as account URL, Basic or OAuth bearer, the mail capability, and the submission capability when sending through JMAP.</td><td>Scriptable real client; strict about capabilities.</td></tr>
-<tr><td>meli (terminal, GPL)</td><td>1</td><td><code>/.well-known/jmap</code> discovery (no DNS SRV), Basic or Bearer.</td><td>Discovery and a second independent sync implementation.</td></tr>
-<tr><td>Ltt.rs or lttrs-cli (Android and headless, Apache 2.0)</td><td>2, complete at 4</td><td>Basic auth, <code>/.well-known/jmap</code>, Mailbox, Email and Thread get, changes and set, Email/query with queryChanges, Identity/get, EmailSubmission/set, EventSource.</td><td>A caching mobile client. Reacts to <code>canCalculateChanges</code>, so it shows how the phase 1 to 3 fallback (no queryChanges) behaves in practice.</td></tr>
-<tr><td>Bulwark Webmail (web, AGPL)</td><td>2, complete at 5</td><td>Basic or OIDC. Uses mail, contacts, calendars and more.</td><td>The most demanding open client; already runs against two IMAP backed proxies.</td></tr>
-<tr><td>Twake Mail (mobile and web, AGPL)</td><td>3</td><td>Basic or OIDC.</td><td>A client developed against James.</td></tr>
-<tr><td>Cypht (webmail, LGPL)</td><td>2</td><td>Basic auth; always sends the quota capability in <code>using</code>.</td><td>Shows the cost of not advertising quota: the request fails with unknownCapability. See section 9.</td></tr>
-</table></div>
-<p class="small">Thunderbird has no JMAP support (bug 1322991 is still unassigned). Whether the Fastmail apps can use a third party server could not be established.</p>
-</section>
+                <section id="interop">
+                    <h2>7. Client interop</h2>
+                    <div class="tbl-wrap">
+                        <table>
+                            <tr>
+                                <th style="width: 18%">Client</th>
+                                <th style="width: 10%">From phase</th>
+                                <th>What it needs from the server</th>
+                                <th style="width: 30%">What it proves</th>
+                            </tr>
+                            <tr>
+                                <td>jmap-jam (Node library, MIT)</td>
+                                <td>1</td>
+                                <td>Bearer token auth, session resource. ESM only, so loaded with dynamic import from Mocha.</td>
+                                <td>
+                                    A typed client library can read mail, follow result references, download blobs and hold an EventSource connection. Can be
+                                    automated.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>aerc (terminal, MIT)</td>
+                                <td>1, sending from 3</td>
+                                <td>
+                                    The session URL itself as account URL, Basic or OAuth bearer, the mail capability, and the submission capability when
+                                    sending through JMAP.
+                                </td>
+                                <td>Scriptable real client; strict about capabilities.</td>
+                            </tr>
+                            <tr>
+                                <td>meli (terminal, GPL)</td>
+                                <td>1</td>
+                                <td><code>/.well-known/jmap</code> discovery (no DNS SRV), Basic or Bearer.</td>
+                                <td>Discovery and a second independent sync implementation.</td>
+                            </tr>
+                            <tr>
+                                <td>Ltt.rs or lttrs-cli (Android and headless, Apache 2.0)</td>
+                                <td>2, complete at 4</td>
+                                <td>
+                                    Basic auth, <code>/.well-known/jmap</code>, Mailbox, Email and Thread get, changes and set, Email/query with queryChanges,
+                                    Identity/get, EmailSubmission/set, EventSource.
+                                </td>
+                                <td>
+                                    A caching mobile client. Reacts to <code>canCalculateChanges</code>, so it shows how the phase 1 to 3 fallback (no
+                                    queryChanges) behaves in practice.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Bulwark Webmail (web, AGPL)</td>
+                                <td>2, complete at 5</td>
+                                <td>Basic or OIDC. Uses mail, contacts, calendars and more.</td>
+                                <td>The most demanding open client; already runs against two IMAP backed proxies.</td>
+                            </tr>
+                            <tr>
+                                <td>Twake Mail (mobile and web, AGPL)</td>
+                                <td>3</td>
+                                <td>Basic or OIDC.</td>
+                                <td>A client developed against James.</td>
+                            </tr>
+                            <tr>
+                                <td>Cypht (webmail, LGPL)</td>
+                                <td>2</td>
+                                <td>Basic auth; always sends the quota capability in <code>using</code>.</td>
+                                <td>Shows the cost of not advertising quota: the request fails with unknownCapability. See section 9.</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <p class="small">
+                        Thunderbird has no JMAP support (bug 1322991 is still unassigned). Whether the Fastmail apps can use a third party server could not be
+                        established.
+                    </p>
+                </section>
 
-<section id="rules">
-<h2>8. Rules for using the sources</h2>
-<ul>
-  <li><strong>Scenarios are written in our own words.</strong> The catalogue cites other suites' tests by name and never copies their code, expected JSON or fixtures. This matters most for Stalwart (AGPL) and for the two independent suites, which have no licence file.</li>
-  <li><strong>The independent suites are run, not vendored.</strong> CI fetches each at the commit pinned in its expectations file. Updating the pin is a deliberate change that is reviewed together with the expectation list.</li>
-  <li><strong>The jmapio suite contacts a public relay</strong> (smee.io) for its push tests. Runs against anything but a throwaway instance should block that or skip the push tests.</li>
-  <li><strong>Fixtures come from WildDuck's own corpus</strong> (<code>imap-core/test/fixtures</code>, <code>test/fixtures</code>) and from permissively licensed parser corpora (mailparser, postal-mime, MimeKit under MIT). James's sixteen <code>.eml</code> files are Apache 2.0 and may be used with attribution.</li>
-  <li><strong>A scenario id is permanent.</strong> Scenarios are never renumbered; a withdrawn scenario keeps its id with <code>applies: no</code> and a reason.</li>
-</ul>
-</section>
+                <section id="rules">
+                    <h2>8. Rules for using the sources</h2>
+                    <ul>
+                        <li>
+                            <strong>Scenarios are written in our own words.</strong> The catalogue cites other suites' tests by name and never copies their
+                            code, expected JSON or fixtures. This matters most for Stalwart (AGPL) and for the two independent suites, which have no licence
+                            file.
+                        </li>
+                        <li>
+                            <strong>The independent suites are run, not vendored.</strong> CI fetches each at the commit pinned in its expectations file.
+                            Updating the pin is a deliberate change that is reviewed together with the expectation list.
+                        </li>
+                        <li>
+                            <strong>The jmapio suite contacts a public relay</strong> (smee.io) for its push tests. Runs against anything but a throwaway
+                            instance should block that or skip the push tests.
+                        </li>
+                        <li>
+                            <strong>Fixtures come from WildDuck's own corpus</strong> (<code>imap-core/test/fixtures</code>, <code>test/fixtures</code>) and
+                            from permissively licensed parser corpora (mailparser, postal-mime, MimeKit under MIT). James's sixteen <code>.eml</code> files are
+                            Apache 2.0 and may be used with attribution.
+                        </li>
+                        <li>
+                            <strong>A scenario id is permanent.</strong> Scenarios are never renumbered; a withdrawn scenario keeps its id with
+                            <code>applies: no</code> and a reason.
+                        </li>
+                    </ul>
+                </section>
 
-<section id="findings">
-<h2>9. What the research changed</h2>
-<p>Writing 2,500 scenarios against the RFC text and against what other servers test exposed places where the plan was wrong or silent. Where the RFC is clear, the catalogue follows the RFC and the scenario notes say so. Each item names the scenarios it affects.</p>
-<h3>Corrections: the plan said one thing, the RFC or the code says another</h3>
-<div class="tbl-wrap"><table>
-<tr><th style="width:24%">Topic</th><th>Plan or brief</th><th>What holds</th><th style="width:14%">Scenarios</th></tr>
-<tr><td>Destroying a pending submission</td><td>Removes the message from the queue</td><td>RFC 8621 7.5: destroying an EmailSubmission MUST NOT affect delivery. Cancelling is done by setting <code>undoStatus</code> to canceled. The server may instead forbid destroying a pending submission.</td><td>SUB-111</td></tr>
-<tr><td>Upload quota</td><td>An upload over quota is refused</td><td>RFC 8620 6.1: the server MUST delete unreferenced blobs, oldest first, until there is room. Refusal is only right when nothing unreferenced is left.</td><td>BLOB-042, WDP-043</td></tr>
-<tr><td>EmailDelivery state</td><td>Changes only on delivered mail</td><td>RFC 8621 1.5: it MUST change whenever a new Email is added to the store. Read literally that includes IMAP APPEND, Email/set create and Email/import. Two authors flagged this independently. <strong>Decided 2026-11-11: any new Email</strong>, following the RFC literally.</td><td>EDLV-*, WDP-022</td></tr>
-<tr><td>Renaming special use mailboxes</td><td>Review 4.2: <code>mayRename</code> false for INBOX and special use, citing <code>lib/mailbox-handler.js:176</code></td><td>The handler refuses rename only for INBOX and hidden mailboxes; Sent, Trash, Drafts and Junk can be renamed over IMAP and the REST API today (delete is refused for them). <strong>Decided 2026-11-11: JMAP mirrors the handler</strong>; INBOX alone cannot be renamed.</td><td>MBX-016, MBX-038, MBX-191</td></tr>
-<tr><td>Email/import with an unknown blob</td><td><code>blobNotFound</code></td><td>RFC 8621 4.8: <code>invalidProperties</code> naming <code>blobId</code>. <code>blobNotFound</code> belongs to Email/set create.</td><td>EIMP-*</td></tr>
-<tr><td><code>/copy</code> methods</td><td>Always answer <code>fromAccountNotFound</code>; Blob/copy not offered</td><td>The error depends on which id is wrong: unknown <code>accountId</code> is <code>accountNotFound</code>, equal ids are <code>invalidArguments</code>, a foreign <code>fromAccountId</code> is <code>fromAccountNotFound</code>. Blob/copy has to exist as a method to answer at all.</td><td>ECPY-*, BLOB-*</td></tr>
-<tr><td>Moving with one patch</td><td>More than one mailbox id is <code>tooManyMailboxes</code></td><td>A patch that sets the old mailbox id to null and the new one to true is a move. It must be judged on the resulting object, not on an intermediate state. Both external suites and real clients move this way.</td><td>ESET-*</td></tr>
-<tr><td>Delayed send capability</td><td><code>submissionExtensions</code> is empty</td><td>Delayed send is expressed with the FUTURERELEASE hold parameters, so the capability has to list FUTURERELEASE for clients to use it.</td><td>SUB-001</td></tr>
-<tr><td>State strings</td><td>The state is the journal id</td><td>A bare journal id cannot be told apart from another account's, so the state must bind the account. <code>queryState</code> must also carry a fingerprint of filter, sort and <code>collapseThreads</code>, or Email/queryChanges cannot detect a mismatched query.</td><td>ECHG-*, EQRY-*</td></tr>
-<tr><td>"The JMAP worker owns every write" (review 10.3)</td><td>Contacts and calendar types are written only by JMAP</td><td>Not for two of them: the address register is written by the mail sending path, and ParticipantIdentity follows address changes made through the REST API. Those writers must feed the owned change log too.</td><td>ABK-*, PID-*</td></tr>
-<tr><td>When the jmapio suite can start</td><td>From phase 1</td><td>From the end of phase 2. It seeds through writes. Phase 1 is guarded by the catalogue alone.</td><td>Section 4</td></tr>
-</table></div>
-<h3>Decisions taken and defaults chosen</h3>
-<p>Quota is included (phase 4), Email/queryChanges is general with cached results, VAPID is included, and the pull request covers phases 0 to 6. The remaining items below have defaults in section 1.3 of <code>docs/jmap/implementation-plan.md</code>; each is also recorded in the notes of the scenarios it affects.</p>
-<ul>
-  <li><strong>Quota capability (RFC 9425).</strong> Decided: included in phase 4, so the Cypht webmail client can connect (<code>QUOTA-*</code>).</li>
-  <li><strong>Identity before submission.</strong> Moot in a single pull request: the submission capability ships with both.</li>
-  <li><strong>Scope of Email/queryChanges in phase 4.</strong> The plan sketches mailbox views sorted by receivedAt. A Fastmail test uses a text filter with a subject sort and two jmapio tests use no mailbox filter. Decided: general queryChanges backed by cached query results, so these pass.</li>
-  <li><strong>Text search semantics.</strong> MongoDB <code>$text</code> ORs terms, treats a leading minus as negation and mixes headers with body; JMAP wants all terms, and <code>body</code> separate from headers. Stop words and stemming in the phase 4 OpenSearch analyzer must not swallow short terms the suites search for.</li>
-  <li><strong>Safety window on sinceState.</strong> It can report an id twice, which the RFC allows, but tests then cannot assert exact lists. Tests need a deterministic mode or set based assertions.</li>
-  <li><strong>Shared state string.</strong> Every mail change moves the Email, Mailbox and Thread states together, so <code>ifInState</code> on Mailbox/set trips on unrelated mail delivery (MBX-218), and every push names all three types.</li>
-  <li><strong>Account id format.</strong> The plan uses the user id (24 hex, may start with a digit) and also says ids are letter prefixed (CORE-009).</li>
-  <li><strong><code>maxObjectsInGet</code>.</strong> 500 conflicts with 1,500 mailboxes when Mailbox/get is called with <code>ids</code> null (CORE-088).</li>
-  <li><strong>Phase 1 advertises more than it implements.</strong> The mail capability and <code>uploadUrl</code> exist before the write methods do. Assumed: <code>unknownMethod</code> and HTTP 501 (CORE-099, BLOB-002).</li>
-  <li><strong>Threading rule.</strong> References plus equal subject, the rule the RFC suggests, costs the largest query file of the Fastmail suite, which assumes references only.</li>
-  <li><strong>Subscription default.</strong> WildDuck subscribes new mailboxes and the RFC says SHOULD default to true; two Fastmail files expect false.</li>
-  <li><strong>Contacts and calendars.</strong> Values for <code>maxAddressBooksPerCard</code> and <code>maxCalendarsPerEvent</code>, card size limits and a contact quota, whether register entries are synthesised on read or stored as cards, the meaning of a null calendar time zone without principals, and whether an inbound CANCEL destroys the event or marks it cancelled.</li>
-</ul>
-</section>
+                <section id="findings">
+                    <h2>9. What the research changed</h2>
+                    <p>
+                        Writing 2,500 scenarios against the RFC text and against what other servers test exposed places where the plan was wrong or silent.
+                        Where the RFC is clear, the catalogue follows the RFC and the scenario notes say so. Each item names the scenarios it affects.
+                    </p>
+                    <h3>Corrections: the plan said one thing, the RFC or the code says another</h3>
+                    <div class="tbl-wrap">
+                        <table>
+                            <tr>
+                                <th style="width: 24%">Topic</th>
+                                <th>Plan or brief</th>
+                                <th>What holds</th>
+                                <th style="width: 14%">Scenarios</th>
+                            </tr>
+                            <tr>
+                                <td>Destroying a pending submission</td>
+                                <td>Removes the message from the queue</td>
+                                <td>
+                                    RFC 8621 7.5: destroying an EmailSubmission MUST NOT affect delivery. Cancelling is done by setting
+                                    <code>undoStatus</code> to canceled. The server may instead forbid destroying a pending submission.
+                                </td>
+                                <td>SUB-111</td>
+                            </tr>
+                            <tr>
+                                <td>Upload quota</td>
+                                <td>An upload over quota is refused</td>
+                                <td>
+                                    RFC 8620 6.1: the server MUST delete unreferenced blobs, oldest first, until there is room. Refusal is only right when
+                                    nothing unreferenced is left.
+                                </td>
+                                <td>BLOB-042, WDP-043</td>
+                            </tr>
+                            <tr>
+                                <td>EmailDelivery state</td>
+                                <td>Changes only on delivered mail</td>
+                                <td>
+                                    RFC 8621 1.5: it MUST change whenever a new Email is added to the store. Read literally that includes IMAP APPEND, Email/set
+                                    create and Email/import. Two authors flagged this independently. <strong>Decided 2026-11-11: any new Email</strong>,
+                                    following the RFC literally.
+                                </td>
+                                <td>EDLV-*, WDP-022</td>
+                            </tr>
+                            <tr>
+                                <td>Renaming special use mailboxes</td>
+                                <td>Review 4.2: <code>mayRename</code> false for INBOX and special use, citing <code>lib/mailbox-handler.js:176</code></td>
+                                <td>
+                                    The handler refuses rename only for INBOX and hidden mailboxes; Sent, Trash, Drafts and Junk can be renamed over IMAP and
+                                    the REST API today (delete is refused for them). <strong>Decided 2026-11-11: JMAP mirrors the handler</strong>; INBOX alone
+                                    cannot be renamed.
+                                </td>
+                                <td>MBX-016, MBX-038, MBX-191</td>
+                            </tr>
+                            <tr>
+                                <td>Email/import with an unknown blob</td>
+                                <td><code>blobNotFound</code></td>
+                                <td>
+                                    RFC 8621 4.8: <code>invalidProperties</code> naming <code>blobId</code>. <code>blobNotFound</code> belongs to Email/set
+                                    create.
+                                </td>
+                                <td>EIMP-*</td>
+                            </tr>
+                            <tr>
+                                <td><code>/copy</code> methods</td>
+                                <td>Always answer <code>fromAccountNotFound</code>; Blob/copy not offered</td>
+                                <td>
+                                    The error depends on which id is wrong: unknown <code>accountId</code> is <code>accountNotFound</code>, equal ids are
+                                    <code>invalidArguments</code>, a foreign <code>fromAccountId</code> is <code>fromAccountNotFound</code>. Blob/copy has to
+                                    exist as a method to answer at all.
+                                </td>
+                                <td>ECPY-*, BLOB-*</td>
+                            </tr>
+                            <tr>
+                                <td>Moving with one patch</td>
+                                <td>More than one mailbox id is <code>tooManyMailboxes</code></td>
+                                <td>
+                                    A patch that sets the old mailbox id to null and the new one to true is a move. It must be judged on the resulting object,
+                                    not on an intermediate state. Both external suites and real clients move this way.
+                                </td>
+                                <td>ESET-*</td>
+                            </tr>
+                            <tr>
+                                <td>Delayed send capability</td>
+                                <td><code>submissionExtensions</code> is empty</td>
+                                <td>
+                                    Delayed send is expressed with the FUTURERELEASE hold parameters, so the capability has to list FUTURERELEASE for clients to
+                                    use it.
+                                </td>
+                                <td>SUB-001</td>
+                            </tr>
+                            <tr>
+                                <td>State strings</td>
+                                <td>The state is the journal id</td>
+                                <td>
+                                    A bare journal id cannot be told apart from another account's, so the state must bind the account.
+                                    <code>queryState</code> must also carry a fingerprint of filter, sort and <code>collapseThreads</code>, or
+                                    Email/queryChanges cannot detect a mismatched query.
+                                </td>
+                                <td>ECHG-*, EQRY-*</td>
+                            </tr>
+                            <tr>
+                                <td>"The JMAP worker owns every write" (review 10.3)</td>
+                                <td>Contacts and calendar types are written only by JMAP</td>
+                                <td>
+                                    Not for two of them: the address register is written by the mail sending path, and ParticipantIdentity follows address
+                                    changes made through the REST API. Those writers must feed the owned change log too.
+                                </td>
+                                <td>ABK-*, PID-*</td>
+                            </tr>
+                            <tr>
+                                <td>When the jmapio suite can start</td>
+                                <td>From phase 1</td>
+                                <td>From the end of phase 2. It seeds through writes. Phase 1 is guarded by the catalogue alone.</td>
+                                <td>Section 4</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <h3>Decisions taken and defaults chosen</h3>
+                    <p>
+                        Quota is included (phase 4), Email/queryChanges is general with cached results, VAPID is included, and the pull request covers phases 0
+                        to 6. The remaining items below have defaults in section 1.3 of <code>docs/jmap/implementation-plan.md</code>; each is also recorded in
+                        the notes of the scenarios it affects.
+                    </p>
+                    <ul>
+                        <li>
+                            <strong>Quota capability (RFC 9425).</strong> Decided: included in phase 4, so the Cypht webmail client can connect
+                            (<code>QUOTA-*</code>).
+                        </li>
+                        <li><strong>Identity before submission.</strong> Moot in a single pull request: the submission capability ships with both.</li>
+                        <li>
+                            <strong>Scope of Email/queryChanges in phase 4.</strong> The plan sketches mailbox views sorted by receivedAt. A Fastmail test uses
+                            a text filter with a subject sort and two jmapio tests use no mailbox filter. Decided: general queryChanges backed by cached query
+                            results, so these pass.
+                        </li>
+                        <li>
+                            <strong>Text search semantics.</strong> MongoDB <code>$text</code> ORs terms, treats a leading minus as negation and mixes headers
+                            with body; JMAP wants all terms, and <code>body</code> separate from headers. Stop words and stemming in the phase 4 OpenSearch
+                            analyzer must not swallow short terms the suites search for.
+                        </li>
+                        <li>
+                            <strong>Safety window on sinceState.</strong> It can report an id twice, which the RFC allows, but tests then cannot assert exact
+                            lists. Tests need a deterministic mode or set based assertions.
+                        </li>
+                        <li>
+                            <strong>Shared state string.</strong> Every mail change moves the Email, Mailbox and Thread states together, so
+                            <code>ifInState</code> on Mailbox/set trips on unrelated mail delivery (MBX-218), and every push names all three types.
+                        </li>
+                        <li>
+                            <strong>Account id format.</strong> The plan uses the user id (24 hex, may start with a digit) and also says ids are letter prefixed
+                            (CORE-009).
+                        </li>
+                        <li>
+                            <strong><code>maxObjectsInGet</code>.</strong> 500 conflicts with 1,500 mailboxes when Mailbox/get is called with
+                            <code>ids</code> null (CORE-088).
+                        </li>
+                        <li>
+                            <strong>Phase 1 advertises more than it implements.</strong> The mail capability and <code>uploadUrl</code> exist before the write
+                            methods do. Assumed: <code>unknownMethod</code> and HTTP 501 (CORE-099, BLOB-002).
+                        </li>
+                        <li>
+                            <strong>Threading rule.</strong> References plus equal subject, the rule the RFC suggests, costs the largest query file of the
+                            Fastmail suite, which assumes references only.
+                        </li>
+                        <li>
+                            <strong>Subscription default.</strong> WildDuck subscribes new mailboxes and the RFC says SHOULD default to true; two Fastmail files
+                            expect false.
+                        </li>
+                        <li>
+                            <strong>Contacts and calendars.</strong> Values for <code>maxAddressBooksPerCard</code> and <code>maxCalendarsPerEvent</code>, card
+                            size limits and a contact quota, whether register entries are synthesised on read or stored as cards, the meaning of a null calendar
+                            time zone without principals, and whether an inbound CANCEL destroys the event or marks it cancelled.
+                        </li>
+                    </ul>
+                </section>
 
-<section id="catalogue">
-<h2>10. Scenario catalogue</h2>
-<div class="filters">
-  <input id="q" type="search" placeholder="Filter by id, title, method or RFC section" aria-label="Filter scenarios">
-  <select id="fphase" aria-label="Phase"><option value="">All phases</option><option value="0">Phase 0</option><option value="1">Phase 1</option><option value="2">Phase 2</option><option value="3">Phase 3</option><option value="4">Phase 4</option><option value="5">Phase 5</option><option value="6">Phase 6</option><option value="7">Phase 7</option></select>
-  <select id="flevel" aria-label="Level"><option value="">All levels</option><option value="must">must</option><option value="should">should</option><option value="may">may</option><option value="wd">wd</option></select>
-  <select id="fapplies" aria-label="Applies"><option value="">All</option><option value="yes">as the RFC states</option><option value="adapted">adapted</option><option value="no">not applicable</option></select>
-  <span id="shown" class="small"></span>
-</div>
-{{catalogue}}
-</section>
+                <section id="catalogue">
+                    <h2>10. Scenario catalogue</h2>
+                    <div class="filters">
+                        <input id="q" type="search" placeholder="Filter by id, title, method or RFC section" aria-label="Filter scenarios" />
+                        <select id="fphase" aria-label="Phase">
+                            <option value="">All phases</option>
+                            <option value="0">Phase 0</option>
+                            <option value="1">Phase 1</option>
+                            <option value="2">Phase 2</option>
+                            <option value="3">Phase 3</option>
+                            <option value="4">Phase 4</option>
+                            <option value="5">Phase 5</option>
+                            <option value="6">Phase 6</option>
+                            <option value="7">Phase 7</option>
+                        </select>
+                        <select id="flevel" aria-label="Level">
+                            <option value="">All levels</option>
+                            <option value="must">must</option>
+                            <option value="should">should</option>
+                            <option value="may">may</option>
+                            <option value="wd">wd</option>
+                        </select>
+                        <select id="fapplies" aria-label="Applies">
+                            <option value="">All</option>
+                            <option value="yes">as the RFC states</option>
+                            <option value="adapted">adapted</option>
+                            <option value="no">not applicable</option>
+                        </select>
+                        <span id="shown" class="small"></span>
+                    </div>
+                    {{catalogue}}
+                </section>
 
-<footer>
-  Sources read on 2026-11-11: apache/james-project <code>c4e8abb7</code>, cyrusimap/cyrus-imapd <code>592a7e26</code>, stalwartlabs/stalwart tag v0.16.27, and the independent suites at the commits pinned in the expectation files.
-  Levels: <span class="badge gap">must</span> <span class="badge part">should</span> <span class="badge na">may</span> follow the RFC wording; <span class="badge ok">wd</span> is a WildDuck design decision.
-</footer>
-</main>
-</div>
-<script>
-(function () {
-  var q = document.getElementById('q');
-  var selects = { phase: document.getElementById('fphase'), level: document.getElementById('flevel'), applies: document.getElementById('fapplies') };
-  var shown = document.getElementById('shown');
-  var items = Array.prototype.slice.call(document.querySelectorAll('details.sc'));
-  var search = items.map(function (el) { return el.querySelector('summary').textContent.toLowerCase(); });
-  function apply() {
-    var text = q.value.trim().toLowerCase();
-    var count = 0;
-    items.forEach(function (el, i) {
-      var ok = (!text || search[i].indexOf(text) !== -1) &&
-        Object.keys(selects).every(function (key) { return !selects[key].value || el.dataset[key] === selects[key].value; });
-      el.classList.toggle('hidden', !ok);
-      if (ok) { count++; }
-    });
-    document.querySelectorAll('section.area').forEach(function (section) {
-      section.classList.toggle('hidden', !section.querySelector('details.sc:not(.hidden)'));
-    });
-    shown.textContent = count + ' of ' + items.length + ' shown';
-  }
-  q.addEventListener('input', apply);
-  Object.keys(selects).forEach(function (key) { selects[key].addEventListener('change', apply); });
-  apply();
-})();
-</script>
-</body>
+                <footer>
+                    Sources read on 2026-11-11: apache/james-project <code>c4e8abb7</code>, cyrusimap/cyrus-imapd <code>592a7e26</code>, stalwartlabs/stalwart
+                    tag v0.16.27, and the independent suites at the commits pinned in the expectation files. Levels: <span class="badge gap">must</span>
+                    <span class="badge part">should</span> <span class="badge na">may</span> follow the RFC wording; <span class="badge ok">wd</span> is a
+                    WildDuck design decision.
+                </footer>
+            </main>
+        </div>
+        <script>
+            (function () {
+                var q = document.getElementById('q');
+                var selects = {
+                    phase: document.getElementById('fphase'),
+                    level: document.getElementById('flevel'),
+                    applies: document.getElementById('fapplies')
+                };
+                var shown = document.getElementById('shown');
+                var items = Array.prototype.slice.call(document.querySelectorAll('details.sc'));
+                var search = items.map(function (el) {
+                    return el.querySelector('summary').textContent.toLowerCase();
+                });
+                function apply() {
+                    var text = q.value.trim().toLowerCase();
+                    var count = 0;
+                    items.forEach(function (el, i) {
+                        var ok =
+                            (!text || search[i].indexOf(text) !== -1) &&
+                            Object.keys(selects).every(function (key) {
+                                return !selects[key].value || el.dataset[key] === selects[key].value;
+                            });
+                        el.classList.toggle('hidden', !ok);
+                        if (ok) {
+                            count++;
+                        }
+                    });
+                    document.querySelectorAll('section.area').forEach(function (section) {
+                        section.classList.toggle('hidden', !section.querySelector('details.sc:not(.hidden)'));
+                    });
+                    shown.textContent = count + ' of ' + items.length + ' shown';
+                }
+                q.addEventListener('input', apply);
+                Object.keys(selects).forEach(function (key) {
+                    selects[key].addEventListener('change', apply);
+                });
+                apply();
+            })();
+        </script>
+    </body>
 </html>

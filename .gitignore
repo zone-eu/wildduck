@@ -12,3 +12,4 @@ api-tests-overview.md
 docker-mcp-demo
 coverage
 test/jmap/overview.html
+test/jmap/.results/

@@ -104,8 +104,13 @@ module.exports = function (grunt) {
                 options: mochaOutput
             },
             'mocha-api': {
-                // the POP3 and unit files match the glob too, they already ran in their own targets
-                command: `${mocha} ${['test/pop3-*-test.js', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
+                // the POP3, unit and JMAP files match the glob too, they run in their own targets
+                command: `${mocha} ${['test/pop3-*-test.js', 'test/jmap/**', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
+                options: mochaOutput
+            },
+            'mocha-jmap': {
+                // JMAP catalogue scenarios; JMAP_RESULTS=1 records results for tools/check-coverage.js
+                command: 'npx mocha --config test/jmap/.mocharc.js',
                 options: mochaOutput
             },
             options: {
@@ -164,9 +169,11 @@ module.exports = function (grunt) {
 
     // Tasks
     // mocha-imap globs every imap-core test, so the in-process ones must not be listed again here
-    const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api'];
+    const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api', 'shell:mocha-jmap'];
     grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
     grunt.registerTask('testonly', ['shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
+    // jmap: only the JMAP scenario target against a fresh test server
+    grunt.registerTask('jmap', ['shell:server', 'wait:server', 'shell:mocha-jmap', 'shell:server:kill']);
     // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
     grunt.registerTask('proto', ['shell:mocha-imap-unit', 'shell:mocha-pop3', 'shell:mocha-unit']);
 };

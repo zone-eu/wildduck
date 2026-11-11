@@ -11,6 +11,8 @@ const yaml = require('js-yaml');
 const ROOT = path.join(__dirname, '..');
 const CATALOGUE_DIR = path.join(ROOT, 'catalogue');
 const EXTERNAL_DIR = path.join(ROOT, 'external');
+// One JSON file per mocha run, written by harness/reporter.js when JMAP_RESULTS is set
+const RESULTS_DIR = path.join(ROOT, '.results');
 
 // Index is the phase number
 const PHASES = [
@@ -33,7 +35,9 @@ const OPTIONAL = ['notes', 'planned'];
 // Field order inside a scenario block, used by edit-catalogue.js when it inserts a field
 const FIELD_ORDER = [...REQUIRED, ...OPTIONAL];
 const TEXT_FIELDS = ['title', 'method', 'spec', 'given', 'when', 'then', 'notes'];
-const ID_PATTERN = /^[A-Z]{2,5}-\d{3}$/;
+// Scenario id, for building other patterns
+const ID = '[A-Z]{2,5}-\\d{3}';
+const ID_PATTERN = new RegExp(`^${ID}$`);
 const BANNED_CHARS = /[–—]/;
 
 const EXPECTS = ['pass', 'never', 'opinion', 'skip'];
@@ -219,4 +223,4 @@ function loadExpectations() {
  */
 const mustPassBy = (test, phase) => ['pass', 'opinion'].includes(test.expect) && isPhase(test.phase) && test.phase <= phase;
 
-module.exports = { loadCatalogue, loadExpectations, mustPassBy, PHASES, FIELD_ORDER, BANNED_CHARS, CATALOGUE_DIR };
+module.exports = { loadCatalogue, loadExpectations, mustPassBy, PHASES, FIELD_ORDER, BANNED_CHARS, CATALOGUE_DIR, RESULTS_DIR, ID };

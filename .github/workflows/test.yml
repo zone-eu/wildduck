@@ -61,8 +61,13 @@ jobs:
             - run: npm install
             - name: Wait for Moto S3
               run: curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 "$S3_TEST_ENDPOINT"
+            - name: Validate the JMAP test catalogue
+              run: node test/jmap/tools/check-catalogue.js
             - name: Run tests
               run: npm run runtest
               env:
                   APPCONF_dbs_redis: redis://127.0.0.1:6379/1
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
+                  JMAP_RESULTS: 1
+            - name: Check JMAP catalogue coverage
+              run: node test/jmap/tools/check-coverage.js

@@ -1,0 +1,9 @@
+{
+    "comment": "Finished work packages of docs/jmap/implementation-plan.md and the catalogue scenarios each one must keep passing. ids accepts single ids and ranges (WDP-001..WDP-005); select picks by prefix, phase and method. Checked by tools/check-coverage.js.",
+    "packages": [
+        {
+            "package": "0.2",
+            "ids": ["WDP-001"]
+        }
+    ]
+}
