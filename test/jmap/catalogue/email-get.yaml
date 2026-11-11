@@ -1809,11 +1809,12 @@ scenarios:
     applies: yes
     seed: [imap]
     given: "Six messages, each multipart/mixed [text/plain, embedded message with an 8 bit UTF-8 Subject], the embedded part typed message/rfc822 or message/global and transfer encoded as 8bit, base64 or quoted-printable."
-    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['partId', 'blobId', 'size', 'type', 'header:content-transfer-encoding:asText']; then download the part blob and IMAP FETCH BINARY[2]."
-    then: "For every variant the part is a leaf with the stated type, size equals the length of the decoded embedded message, the header property echoes the encoding, and the blob download and BINARY[2] both return the identical decoded message bytes."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['partId', 'blobId', 'size', 'type', 'header:content-transfer-encoding:asText']; then download the part blob and IMAP FETCH BODY[2], decoded by the test."
+    then: "For every variant the part is a leaf with the stated type, size equals the length of the decoded embedded message, the header property echoes the encoding, and the blob download and the decoded BODY[2] both return the identical decoded message bytes."
     sources:
       - "cyrus:JMAPEmail/email_get_encoded_message"
       - "rfc:8621 4.1.4"
+    notes: "WildDuck IMAP does not offer the BINARY extension (RFC 3516), so the IMAP side fetches BODY[2] and the test removes the transfer encoding."
 
   - id: EGET-113
     title: "Describe a multipart/signed message"

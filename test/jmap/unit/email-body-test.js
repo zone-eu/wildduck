@@ -3,7 +3,7 @@
 
 const { expect } = require('chai');
 const Indexer = require('../../../imap-core/lib/indexer/indexer');
-const { bodyStructure, parseStructure, pickPart, truncateUtf8 } = require('../../../lib/jmap/email-body');
+const { bodyStructure, parseStructure, pickPart, truncateUtf8, decodeText, withoutPartialTag } = require('../../../lib/jmap/email-body');
 
 const indexer = new Indexer();
 const ROOT = 'aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -88,7 +88,35 @@ describe('JMAP body structure', () => {
     it('picks requested properties, also deep into subParts', () => {
         const raw = 'Content-Type: multipart/alternative; boundary=b\n\n--b\nContent-Type: text/plain\n\nplain\n--b--\n';
         const picked = pickPart(bodyStructure(tree(raw), ROOT), ['type', 'subParts']);
-        expect(picked).to.deep.equal({ type: 'multipart/alternative', subParts: [{ type: 'text/plain', subParts: null }] });
+        // only multipart parts carry subParts
+        expect(picked).to.deep.equal({ type: 'multipart/alternative', subParts: [{ type: 'text/plain' }] });
+    });
+
+    it('picks header properties of a part', () => {
+        const raw = 'Content-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: text/plain\nX-Dup: one\nX-Dup: two\n\nplain\n--b--\n';
+        const picked = pickPart(bodyStructure(tree(raw), ROOT), ['header:X-Dup', 'header:X-Dup:all', 'subParts']);
+        expect(picked.subParts[0]).to.deep.equal({ 'header:X-Dup': ' two', 'header:X-Dup:all': [' one', ' two'] });
+        expect(picked['header:X-Dup:all']).to.deep.equal([]);
+    });
+
+    it('normalises type, disposition, cid and language', () => {
+        const raw =
+            'Content-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: TEXT/Plain (comment); charset=UTF-8\nContent-Disposition: inline (c)\nContent-ID: <a@b> (c)\nContent-Language: en, de (German)\n\nx\n--b\nContent-Type: image/not/valid\n\ny\n--b--\n';
+        const [first, second] = bodyStructure(tree(raw), ROOT).subParts;
+        expect([first.type, first.charset, first.disposition, first.cid, first.language]).to.deep.equal(['text/plain', 'utf-8', 'inline', 'a@b', ['en', 'de']]);
+        expect([second.type, second.charset]).to.deep.equal(['application/octet-stream', null]);
+    });
+
+    it('decodes text and reports encoding problems', () => {
+        expect(decodeText(Buffer.from('caf\xc3\xa9 \xef\xbf\xbd', 'latin1'), 'utf-8')).to.deep.equal({ value: 'café \uFFFD', isEncodingProblem: false });
+        expect(decodeText(Buffer.from([0x61, 0xc3, 0x28, 0x62]), 'utf-8').isEncodingProblem).to.be.true;
+        expect(decodeText(Buffer.from('abc'), 'x-unknown').isEncodingProblem).to.be.true;
+        expect(decodeText(Buffer.from('1b2442244b1b2842', 'hex'), 'iso-2022-jp')).to.deep.equal({ value: 'に', isEncodingProblem: false });
+    });
+
+    it('does not end a truncated HTML value inside a tag', () => {
+        expect(withoutPartialTag('<p>Hello <a href="x')).to.equal('<p>Hello ');
+        expect(withoutPartialTag('<p>Hello <b>')).to.equal('<p>Hello <b>');
     });
 
     it('truncates on a UTF-8 character boundary', () => {
