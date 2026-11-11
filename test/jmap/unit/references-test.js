@@ -84,4 +84,13 @@ describe('JMAP result references', () => {
             'invalidArguments'
         );
     });
+
+    it('keeps an argument named __proto__ an own property and refuses it as a reference target', () => {
+        const args = resolveReferences(JSON.parse('{"__proto__":{"polluted":true},"a":1}'), []);
+        expect(Object.keys(args)).to.deep.equal(['__proto__', 'a']);
+        expect(Object.getPrototypeOf(args)).to.equal(Object.prototype);
+        expect(args.polluted).to.be.undefined;
+        const responses = [['Core/echo', { a: 1 }, 'c0']];
+        expect(typeOf(() => resolveReferences({ '#__proto__': { resultOf: 'c0', name: 'Core/echo', path: '/a' } }, responses))).to.equal('invalidArguments');
+    });
 });
