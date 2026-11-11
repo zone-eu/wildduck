@@ -32,6 +32,21 @@ jobs:
                 image: motoserver/moto:latest
                 ports:
                     - 5000:5000
+            # the JMAP full body search scenario (EQRY-065) indexes into it, at the default [elasticsearch] url
+            opensearch:
+                image: opensearchproject/opensearch:2.19.1
+                env:
+                    discovery.type: single-node
+                    DISABLE_SECURITY_PLUGIN: 'true'
+                    DISABLE_INSTALL_DEMO_CONFIG: 'true'
+                    OPENSEARCH_JAVA_OPTS: '-Xms512m -Xmx512m'
+                options: >-
+                    --health-cmd "curl -fs http://localhost:9200"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 12
+                ports:
+                    - 9200:9200
         steps:
             - uses: actions/checkout@v6
 
@@ -73,6 +88,7 @@ jobs:
                   APPCONF_dbs_redis: redis://127.0.0.1:6379/1
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
                   JMAP_RESULTS: 1
+                  JMAP_REQUIRE_OPENSEARCH: 1
             - name: Summary of the test run
               if: always()
               run: grep -aE '^ *[0-9]+ (passing|failing|pending)|^Running "|Aborted|^ *[0-9]+\) ' test-output.log | sed 's/\x1b\[[0-9;]*m//g' | head -200 || true
