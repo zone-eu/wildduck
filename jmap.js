@@ -26,6 +26,9 @@ const { createApp } = require('./lib/jmap/server');
 const types = require('./lib/jmap/types');
 const { startPoller } = require('./lib/jmap/submission-queue');
 const { settingsOf } = require('./lib/jmap/types/submission');
+const { PushService } = require('./lib/jmap/push/delivery');
+const { VapidKeys } = require('./lib/jmap/push/vapid');
+const { pushSettings } = require('./lib/jmap/push/settings');
 
 // audit and mail action log lines of the handlers, as the other services write them
 function createLoggelf() {
@@ -130,24 +133,44 @@ function start(options, done) {
     }
 
     let app;
+    let push = null;
     try {
         const factory = serverFactory(options);
-        const deps = createDeps();
-        app = createApp(deps, {
+        const appOptions = {
             ...options,
             accessSecret: config.api.accessControl.secret,
             roles: config.api.roles,
             tokenLifetime: config.api.accessControl.tokenLifetime,
             serverFactory: factory
-        });
+        };
+        // Web Push (PushSubscription), see lib/jmap/push/delivery.js; invalid settings stop the start here
+        const settings = pushSettings(appOptions);
+        const deps = createDeps();
+        if (settings.enabled) {
+            push = new PushService(
+                Object.assign(deps, { queueConf: db.queueConf }),
+                appOptions,
+                new VapidKeys(db.database, { refresh: settings.vapidRefresh })
+            );
+            deps.push = push;
+        }
+        app = createApp(deps, appOptions);
         // pending EmailSubmissions follow the outbound queue, see lib/jmap/submission-queue.js
         const stopPoller = startPoller(deps, settingsOf(options).pollInterval);
-        app.addHook('onClose', async () => stopPoller());
+        app.addHook('onClose', async () => {
+            stopPoller();
+            if (push) {
+                push.vapid.stop();
+                await push.stop();
+            }
+        });
     } catch (err) {
         return setImmediate(() => done(err));
     }
 
-    app.listen({ port: options.port, host: options.host || '127.0.0.1' })
+    const ready = push ? push.vapid.start().then(() => push.start()) : Promise.resolve();
+    ready
+        .then(() => app.listen({ port: options.port, host: options.host || '127.0.0.1' }))
         .then(() => {
             metrics.setServiceUp('jmap', true);
             log.info('JMAP', '%s server listening on %s:%s', options.secure ? 'HTTPS' : 'HTTP', options.host || '127.0.0.1', options.port);
@@ -155,6 +178,8 @@ function start(options, done) {
         })
         .catch(err => {
             metrics.setServiceUp('jmap', false);
+            // stops what was started (push worker, poller)
+            app.close().catch(() => false);
             done(err);
         });
 }

@@ -86,3 +86,42 @@ retention = 604800
 # the delay doubles from this value up to an hour. 0 turns the check off (submissions are then updated
 # when they are read)
 pollInterval = 15
+
+[push]
+# Web Push for PushSubscription (RFC 8620 7.2, RFC 8030, RFC 8291 encryption, RFC 8292 VAPID). Push
+# requests go out from the JMAP workers through the BullMQ queue jmap_push. The VAPID key pair is made
+# on first start and kept in the settings collection (key jmap:vapid); delete that setting to rotate it
+enabled = true
+# subscriptions per user (all credentials together), and new subscriptions per user and hour
+maxPerUser = 20
+createRate = 30
+# longest lifetime of a subscription in seconds; a later expires is shortened (at least 48 hours)
+maxLifetime = 604800
+# seconds an unverified subscription is kept, and wrong verification codes that destroy it
+verificationTimeout = 3600
+verifyAttempts = 5
+# a push answered with 5xx or not answered is tried this many times, with an exponential delay starting
+# at retryDelay seconds and growing up to maxRetryDelay; a 429 is retried at that pace (at least its
+# Retry-After) until it succeeds. Pushes that failed this many times in a row remove the subscription
+attempts = 5
+retryDelay = 10
+maxRetryDelay = 600
+failureLimit = 5
+# seconds to wait for a push service to answer
+timeout = 10
+# seconds changes are collected before they are pushed together
+coalesce = 1
+# TTL header of push requests, in seconds
+ttl = 86400
+# push requests one worker runs in parallel
+concurrency = 20
+# seconds between two reads of the VAPID key (a rotated key is noticed this late)
+vapidRefresh = 60
+# contact of the VAPID JWT (sub claim), mailto: or https:. Defaults to the origin of an https baseUrl,
+# else mailto:postmaster@<hostname>
+#vapidSubject = "mailto:postmaster@example.com"
+# Push URLs must be public: hosts that resolve to loopback, private, link local or reserved addresses
+# are refused. Host names listed here are exempt (tests only, keep empty in production)
+allowHosts = []
+# extra trusted certificate files for push services, on top of the default ones (tests only)
+#ca = ["/path/to/ca.pem"]

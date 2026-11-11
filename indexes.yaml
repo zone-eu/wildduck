@@ -655,6 +655,34 @@ indexes:
           key:
               purgeAt: 1
 
+    - collection: jmappush
+      feature: jmap
+      index:
+          # PushSubscription/get and set: the subscriptions of one set of credentials, and of a user
+          name: user_cred
+          key:
+              user: 1
+              cred: 1
+
+    - collection: jmappush
+      feature: jmap
+      index:
+          # the push dispatcher: users with a verified subscription
+          name: verified_user
+          key:
+              user: 1
+          partialFilterExpression:
+              verified: true
+
+    - collection: jmappush
+      feature: jmap
+      index:
+          name: push_autoexpire
+          # expired subscriptions, and unverified ones past their grace period
+          expireAfterSeconds: 0
+          key:
+              purgeAt: 1
+
     - collection: jmapchanges
       feature: jmap
       index:
