@@ -53,10 +53,6 @@ async function waitForEvent(user, types, match, trigger, timeout = 8000) {
     let triggered = false;
     try {
         for (;;) {
-            if (!triggered && buffer.includes(': connected')) {
-                triggered = true;
-                await trigger();
-            }
             const { value, done } = await reader.read();
             if (done) {
                 return null;
@@ -66,14 +62,16 @@ async function waitForEvent(user, types, match, trigger, timeout = 8000) {
             while ((end = buffer.indexOf('\n\n')) >= 0) {
                 const block = buffer.slice(0, end);
                 buffer = buffer.slice(end + 2);
+                if (!triggered && block.startsWith(': connected')) {
+                    // the stream is listening and has its baseline: make the change now
+                    triggered = true;
+                    await trigger();
+                    continue;
+                }
                 const data = block.split('\n').find(line => line.startsWith('data: '));
                 if (/^event: state/m.test(block) && data && match(JSON.parse(data.slice(6)))) {
                     return JSON.parse(data.slice(6));
                 }
-            }
-            if (!triggered && buffer.includes(': connected')) {
-                triggered = true;
-                await trigger();
             }
         }
     } catch (err) {
