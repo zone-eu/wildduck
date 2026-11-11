@@ -12,7 +12,8 @@ const fs = require('fs');
 const path = require('path');
 const { loadCatalogue, FIELD_ORDER, BANNED_CHARS, CATALOGUE_DIR } = require('./catalogue');
 
-const BLOCK_START = /^ {2}- id: (\S+)\s*$/;
+// the id may be quoted (contacts.yaml and calendars.yaml quote every scalar)
+const BLOCK_START = /^ {2}- id: ['"]?([^'"\s]+)['"]?\s*$/;
 const FIELD_LINE = /^ {4}([a-z]+):/;
 
 function scalar(value) {

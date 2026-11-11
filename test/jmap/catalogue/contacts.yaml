@@ -36,7 +36,7 @@ scenarios:
       - 'rfc:9610 1.4.1'
       - 'cyrus:JMAPContacts/account_get_capabilities'
       - 'legacy-proxy:test/unit/capabilities.spec.ts'
-    notes: 'The plan stores addressBooks as an array, so several books per card are possible. The concrete value of maxAddressBooksPerCard (null or a number) is not fixed by the plan; scenarios below refer to it as the advertised value.'
+    notes: "Settled in phase 5: maxAddressBooksPerCard is [jmap.contacts] maxAddressBooksPerCard, default 1 (plan 1.3); scenarios that need a card in several books run on an instance configured with more."
 
   - id: 'ABK-003'
     title: 'Contacts methods are rejected when the capability is not in using'
@@ -245,7 +245,7 @@ scenarios:
     sources:
       - 'wildduck:plan 10.1'
       - 'rfc:9610 4.1'
-    notes: 'The plan leaves two things open: the display name (the RFC example calls it "Autosaved") and whether the book is listed when the register is empty. This catalogue assumes it is always listed so the id set is stable.'
+    notes: "Settled in phase 5: the register book has the id Aregister and the name \"Autosaved\", and is always listed, also while the register is empty."
 
   - id: 'ABK-015'
     title: 'shareWith is null on every address book'
@@ -878,7 +878,7 @@ scenarios:
     sources:
       - 'wildduck:plan 10.1'
       - 'rfc:8620 5.3'
-    notes: 'Open: the team may want isSubscribed and sortOrder to be writable on the register book so a user can hide it. If so, split this scenario.'
+    notes: "Settled in phase 5: every property of the register book is read only, sortOrder and isSubscribed included."
 
   - id: 'ABK-052'
     title: 'The register address book cannot be destroyed'
@@ -1279,11 +1279,11 @@ scenarios:
       - 'imap'
       - 'lmtp'
     given: 'AddressBook state S and ContactCard state T.'
-    when: 'Deliver a message over LMTP, set a flag over IMAP and create a mailbox over JMAP, then read the AddressBook and ContactCard states.'
+    when: "Deliver a message with an Auto-Submitted header over LMTP, set a flag over IMAP and create a mailbox over JMAP, then read the AddressBook and ContactCard states."
     then: 'Both states are unchanged, and AddressBook/changes and ContactCard/changes from S and T report nothing.'
     sources:
       - 'wildduck:plan 10.3'
-    notes: 'The owned change log is separate from the mail journal.'
+    notes: "The owned change log is separate from the mail journal. Corrected in phase 5: a delivery from a sender the address register does not know yet adds a register card (CARD-099), which is a ContactCard change; an automatic message (Auto-Submitted) is not recorded in the register, so it shows that mail activity alone moves neither state."
 
   - id: 'ABK-076'
     title: 'EventSource pushes a StateChange for AddressBook'
@@ -1476,7 +1476,7 @@ scenarios:
       - 'stalwart:contacts/contact.rs'
       - 'rfc:9553 1.3.4'
       - 'rfc:9553 2.1.2'
-    notes: 'RFC 9553 makes both mandatory in a Card. Stalwart accepts creates without them, Cyrus and the Fastmail suite always send them. Decision to confirm: accept and fill in, as written here, or reject with invalidProperties.'
+    notes: "RFC 9553 makes both mandatory in a Card. Stalwart accepts creates without them, Cyrus and the Fastmail suite always send them. Settled in phase 5: accepted and filled in by the server, as written here."
 
   - id: 'CARD-009'
     title: 'A wrong @type or an unsupported version is rejected'
@@ -1652,7 +1652,7 @@ scenarios:
       - 'cyrus:JMAPContacts/card_set_addressbookids'
       - 'cyrus:JMAPContacts/card_get_no_addressbookid'
       - 'rfc:9610 3'
-    notes: 'Cyrus (card_set_create_default_addressbook) and legacy-proxy put a card without addressBookIds into the default book instead. The assignment for this catalogue says addressBookIds is required, matching Stalwart. Confirm.'
+    notes: "Cyrus (card_set_create_default_addressbook) and legacy-proxy put a card without addressBookIds into the default book instead. Settled in phase 5: addressBookIds is required, matching Stalwart and RFC 9610 3 (a card belongs to at least one address book at all times)."
 
   - id: 'CARD-019'
     title: 'addressBookIds values must be true'
@@ -1797,7 +1797,7 @@ scenarios:
       - 'rfc:8620 5.3'
       - 'wildduck:plan 10.1'
       - 'stalwart:contacts/contact.rs'
-    notes: 'Decision to confirm: a client supplied updated on create or update is overridden with the server time and the override is reported in the response. Cyrus honours client supplied created and updated values, which its tests use for seeding.'
+    notes: "Settled in phase 5: updated is kept by the server with second precision; a client value on create or update is overridden and the override is reported. created is kept as the client sent it. Cyrus honours client supplied created and updated values."
 
   - id: 'CARD-027'
     title: 'language, prodId and preferredLanguages are validated and stored'
@@ -2494,7 +2494,7 @@ scenarios:
     sources:
       - 'rfc:9610 3.5'
       - 'cyrus:JMAPContacts/card_set_create_media_blob'
-    notes: 'Recognised image types to be listed in the implementation (at least JPEG, PNG, GIF, WebP). Open: whether kind "logo" follows the same rule and whether kind "sound" may reference an uploaded audio blob. This catalogue assumes logo is treated like photo and sound accepts audio types only.'
+    notes: "Settled in phase 5: photo and logo accept JPEG, PNG, GIF and WebP, sound accepts Ogg, MP3, WAV and FLAC, recognised by content (lib/jmap/contact-media.js); a vendor kind takes any non empty content."
 
   - id: 'CARD-066'
     title: 'An unknown blobId in media is rejected'
@@ -2592,12 +2592,12 @@ scenarios:
       - 'jmap'
     given: 'A card whose photo has blobId P. using includes the blob and contacts capabilities.'
     when: 'Call Blob/lookup with typeNames ["ContactCard"] and ids [P, "Gunknownblob"].'
-    then: 'list has one entry per requested id: for P, matchedIds {"ContactCard": [cardId]}; for the unknown id it is listed in notFound. The card id resolves with ContactCard/get.'
+    then: "list has one entry per requested id: for P, matchedIds {\"ContactCard\": [cardId]}; the unknown id is listed with matchedIds {\"ContactCard\": []} (as every unknown blob, BLOB-081) and notFound is []. The card id resolves with ContactCard/get."
     sources:
       - 'cyrus:JMAPContacts/card_blob_lookup'
       - 'rfc:9404 4.3'
       - 'rfc:9610 7.3'
-    notes: 'ContactCard is registered as "Can Reference Blobs: Yes". It must also be listed in the supportedTypeNames of the blob account capability once contacts ship.'
+    notes: "ContactCard is listed in supportedTypeNames of the blob account capability. Corrected in phase 5: an unknown blob id is answered as in BLOB-081 (empty matches, nothing in notFound), so a blob of another account can not be told apart from an unknown one."
 
   - id: 'CARD-072'
     title: 'Blob/lookup refuses AddressBook as a type name and requires the contacts capability'
@@ -2668,7 +2668,7 @@ scenarios:
     sources:
       - 'cyrus:JMAPContacts/card_copy_overquota'
       - 'rfc:8620 5.3'
-    notes: 'Open: the plan defines no contact quota. Some bound is needed because cards are free storage otherwise; whether it is a count, a byte total, or part of the mail quota is undecided. The same applies to the number of address books per account.'
+    notes: "Settled in phase 5 (plan 1.3): a count, [jmap.contacts] maxCards (default 10,000), and maxAddressBooks (default 100) for address books; both answer overQuota."
 
   - id: 'CARD-076'
     title: 'A data: URI photo beyond the upload size limit is refused'
@@ -2822,12 +2822,13 @@ scenarios:
     applies: 'yes'
     seed:
       - 'jmap'
-    given: 'A card with name full "Before".'
+    given: "A card with name full \"Before\" and an emails map with one entry e0."
     when: 'Update with {"name/full": "After", "emails/e1": {"address": 5}}.'
     then: 'The update is in notUpdated with type invalidProperties and ContactCard/get still returns name full "Before".'
     sources:
       - 'rfc:8620 5.3'
       - 'rfc:9553 1.4.3'
+    notes: "Corrected in phase 5: the emails map must exist, otherwise the pointer emails/e1 has no parent and the patch is invalidPatch (RFC 9553 1.4.3 rule 2) before the result can be judged."
 
   - id: 'CARD-085'
     title: 'Patch keys with JSON pointer escapes'
@@ -3065,7 +3066,7 @@ scenarios:
     sources:
       - 'wildduck:plan 10.1'
       - 'rfc:9610 4.1'
-    notes: 'Open in the plan: synthesise cards on read (as assumed here) or seed real cards. Also open: entries with an empty name (name omitted, since Name needs full or components), entries flagged disabled in the register (assumed hidden), and what created and updated are (assumed: the register entry updated date for both).'
+    notes: "Settled in phase 5: cards are synthesised on read from the enabled register entries (disabled ones are hidden and reported as destroyed); an entry without a name has no name property; created is the time the entry was made and updated the time of its last visible change."
 
   - id: 'CARD-099'
     title: 'A recipient of a JMAP submission appears in the register book'
@@ -3082,7 +3083,7 @@ scenarios:
     sources:
       - 'wildduck:plan 10.1'
       - 'wildduck:lib/message-handler.js address register'
-    notes: 'Open question for the plan: the register is written by the mail path (message-handler), not by the JMAP worker, which contradicts the statement in 10.1 that no other path writes contacts. Either register writes must also append to the owned change log and publish a ContactCard StateChange, or register cards must be declared outside ContactCard/changes. This scenario assumes the former.'
+    notes: "Settled in phase 5 (plan 1.3): register writes of the mail path and the REST API append to the owned change log through lib/jmap/contacts-sync.js, for users who use JMAP, without the mail path waiting for it, and publish a ContactCard StateChange."
 
   - id: 'CARD-100'
     title: 'Sending to the same recipient again updates rather than duplicates the register card'
@@ -3213,10 +3214,11 @@ scenarios:
       - 'jmap'
     given: 'State S, then 25 cards are created, 5 of them updated and 5 others destroyed.'
     when: 'Call ContactCard/changes with sinceState S and maxChanges 7 repeatedly, feeding newState back in, until hasMoreChanges is false.'
-    then: 'No page has more than 7 ids. Applying all pages in order yields exactly the 20 surviving cards as created, with no id missing. The final newState is the current state.'
+    then: "No page has more than 7 ids. Applying all pages in order, with an id in updated that the client does not hold fetched like a created one, yields exactly the 20 surviving cards, and no id is in created on one page and destroyed on another. The final newState is the current state."
     sources:
       - 'rfc:8620 5.2'
       - 'wildduck:plan 10.3'
+    notes: "Corrected in phase 5: the owned change log reports an object at its last change, so a card created and then updated is listed as updated on a later page when maxChanges cuts between its creation and its update (RFC 8620 5.2 lets a client treat an unknown updated id as new)."
 
   - id: 'CARD-108'
     title: 'Unknown or expired sinceState answers cannotCalculateChanges'
@@ -3797,7 +3799,7 @@ scenarios:
     sources:
       - 'cyrus:JMAPContacts/card_query'
       - 'rfc:9610 3.3.2'
-    notes: 'Decisions to confirm: collation is case insensitive (a Unicode collation, not byte order), and cards lacking the component sort after all others in ascending order and therefore first when descending is requested, unless the team prefers "missing always last". The descending expectation above assumes missing always last; fix whichever rule is chosen in the test.'
+    notes: "Settled in phase 5: the collation is i;unicode-casemap unless the comparator names another advertised one, and cards lacking the component sort after all others whichever the direction (missing always last)."
 
   - id: 'CARD-142'
     title: 'Sort uses the first component of the kind'
@@ -3830,7 +3832,7 @@ scenarios:
       - 'cyrus:JMAPContacts/card_query'
       - 'cyrus:JMAPContacts/card_get_sortas'
       - 'rfc:9553 2.2.1.1'
-    notes: 'RFC 9610 3.3.2 literally says the sort uses the component value, while RFC 9553 defines sortAs as the value to sort by. Cyrus honours sortAs. Open question; drop this scenario if the literal reading is chosen.'
+    notes: "RFC 9610 3.3.2 literally says the sort uses the component value, while RFC 9553 defines sortAs as the value to sort by. Settled in phase 5: sortAs is honoured, as Cyrus does."
 
   - id: 'CARD-144'
     title: 'Multiple comparators break ties in order'
@@ -3994,7 +3996,7 @@ scenarios:
     sources:
       - 'fastmail:t/ContactCard/queryChanges/basic.t'
       - 'wildduck:plan 10.3'
-    notes: 'Open: the plan does not say whether ContactCard/queryChanges is implemented. With the exact change log and small address books it is cheap (re-run the query, report every changed or destroyed id in removed and the changed ids that still match in added). If the team decides against it, replace CARD-154 to CARD-159 with one scenario: canCalculateChanges false and queryChanges answers cannotCalculateChanges.'
+    notes: "Settled in phase 5: ContactCard/queryChanges is implemented over the query cache of Email/queryChanges (lib/jmap/query-cache.js), so canCalculateChanges is true."
 
   - id: 'CARD-154'
     title: 'queryChanges with no changes'
