@@ -12,6 +12,7 @@ const certs = require('./lib/certs');
 const metrics = require('./lib/metrics');
 const UserHandler = require('./lib/user-handler');
 const MessageHandler = require('./lib/message-handler');
+const MailboxHandler = require('./lib/mailbox-handler');
 const { SettingsHandler } = require('./lib/settings-handler');
 const StorageHandler = require('./lib/storage-handler');
 const ImapNotifier = require('./lib/imap-notifier');
@@ -32,9 +33,11 @@ function createDeps() {
     // listens to change notifications for the event source, fanned out across workers through Redis
     const notifier = new ImapNotifier({ database: db.database, redis: db.redis, settingsHandler });
     const storageHandler = new StorageHandler({ database: db.database, users: db.users, gridfs: db.gridfs });
+    const mailboxHandler = new MailboxHandler({ database: db.database, users: db.users, redis: db.redis, notifier, settingsHandler });
     return {
         settingsHandler,
         messageHandler,
+        mailboxHandler,
         notifier,
         storageHandler,
         database: db.database,
