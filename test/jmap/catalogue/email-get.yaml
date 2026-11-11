@@ -1624,10 +1624,10 @@ scenarios:
     seed: [imap]
     given: "A message with From 'J. Besteiro <jb@julián.example.com>' (UTF-8 domain) and To 'x@xn--julin-0qa.example.com' (A-label)."
     when: "Email/get with properties ['from', 'to'] and IMAP FETCH ENVELOPE."
-    then: "from[0].email is 'jb@julián.example.com' and to[0].email is 'x@xn--julin-0qa.example.com': neither is converted. The same spellings appear in the IMAP ENVELOPE."
+    then: "from[0].email is 'jb@julián.example.com' and to[0].email is 'x@xn--julin-0qa.example.com': neither is converted. The IMAP ENVELOPE names the same addresses once both domains are compared in A-label form."
     sources:
       - "cyrus:JMAPEmail/email_get_utf8_domain"
-    notes: "Cyrus converts the U-label to punycode in JMAP. WildDuck returns the addr-spec as in the message so that IMAP and JMAP agree. Open question if the team prefers normalisation."
+    notes: "Cyrus converts the U-label to punycode in JMAP. WildDuck JMAP returns the addr-spec as in the message. IMAP ENVELOPE does not keep the spelling: the indexer stores the domain as a U-label and the server sends an A-label to clients without UTF8=ACCEPT, so the IMAP comparison is made on A-labels. Open question if the team prefers normalisation."
 
   - id: EGET-102
     title: "Skip malformed header lines without losing the others"
@@ -2142,12 +2142,12 @@ scenarios:
     applies: yes
     seed: [imap]
     given: "Any message."
-    when: "Separate Email/get calls with bodyProperties ['partId', 'invalid'], ['partId', 'id'] (an Email property, not a part property), ['imageSize'], ['header:Content-Type:asDate'] and bodyProperties given as a string."
+    when: "Separate Email/get calls with bodyProperties ['partId', 'invalid'], ['partId', 'id'] (an Email property, not a part property), ['imageSize'], ['header:Subject:asDate'] and bodyProperties given as a string."
     then: "Every call answers invalidArguments, also when properties requests no body property at all."
     sources:
       - "james:EmailGetMethodContract#invalidBodyPropertiesShouldBeRejected"
       - "cyrus:JMAPEmail/email_get_invalid_body_properties"
-    notes: "Valid names: partId, blobId, size, headers, name, type, charset, disposition, cid, language, location, subParts and header:* properties."
+    notes: "Valid names: partId, blobId, size, headers, name, type, charset, disposition, cid, language, location, subParts and header:* properties. The header example was header:Content-Type:asDate, but RFC 8621 4.1.2 restricts forms only for fields defined in RFC 5322 or RFC 2369, so Content-Type may use every form; header:Subject:asDate is a form the RFC forbids."
 
   - id: EGET-134
     title: "Return part headers and header properties on EmailBodyPart"

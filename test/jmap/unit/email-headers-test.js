@@ -29,8 +29,19 @@ describe('JMAP header forms', () => {
     });
 
     it('produces the Text form', () => {
-        expect(h.asText(' =?UTF-8?Q?t=C3=B6=C3=B6?= world\r\n  folded ')).to.equal('töö world  folded');
+        expect(h.asText(' =?UTF-8?Q?t=C3=B6=C3=B6?= world\r\n  folded ')).to.equal('töö world  folded ');
         expect(h.asText(' plain')).to.equal('plain');
+    });
+
+    it('decodes RFC 2047 encoded words strictly', () => {
+        expect(h.decodeWords('=?ISO-8859-1?Q?a?= =?ISO-8859-1?Q?b?=')).to.equal('ab');
+        expect(h.decodeWords('=?ISO-8859-1?Q?a?= b')).to.equal('a b');
+        expect(h.decodeWords('=?UTF-8?Q?smile_=F0?=\r\n =?UTF-8?Q?=9F=98=80?=')).to.equal('smile \u{1F600}');
+        expect(h.decodeWords('=?x-unknown?Q?abc?= tail')).to.equal('=?x-unknown?Q?abc?= tail');
+        expect(h.decodeWords('foo=?UTF-8?Q?bar?=baz')).to.equal('foo=?UTF-8?Q?bar?=baz');
+        expect(h.decodeWords('=?UTF-8?Q?a=00b=07c?=')).to.equal('abc');
+        expect(h.decodeWords('=?UTF-8?Q?x=FFy?=')).to.equal('x\uFFFDy');
+        expect(h.decodeWords('=?ISO-2022-JP?B?GyRCJDMkcyRLJEEkTxsoQg==?=')).to.equal('こんにちは');
     });
 
     it('produces Addresses and GroupedAddresses', () => {
