@@ -350,7 +350,7 @@ scenarios:
       - "cyrus:JMAPEmail/email_parse_notparsable"
       - "jmapio:email-parse#parse-not-parsable"
       - "rfc:8621 4.9"
-    notes: "WildDuck's MIME parser accepts any input, so an explicit rule is needed. Proposed: a blob is not parsable when it is empty, or its first line is not a header field (name of printable ASCII, colon) and not an empty line, or its header block contains NUL octets. Open question: confirm the rule, in particular for a plain text blob with no header lines at all."
+    notes: "Rule settled (lib/jmap/parsed-message.js, shared with Email/import invalidEmail): a blob is not parsable when it is empty, its first line is not a header field (printable ASCII name, colon) or its header block contains NUL octets. A plain text blob with no header lines is not parsable."
 
   - id: EPAR-023
     title: "Parse leniently when mandatory headers are missing"
