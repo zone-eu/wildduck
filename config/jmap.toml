@@ -41,6 +41,20 @@ uploadTtl = 86400
 # asks for a range (offset and length); octets before the offset are streamed past, not held
 #maxSizeBlobGet = 16777216
 
+[contacts]
+# JMAP for Contacts (RFC 9610): address books and cards (lib/contact-handler.js), advertised as
+# maxAddressBooksPerCard. The address register (addresses the user exchanged mail with) is shown as a
+# read only address book of its own
+maxAddressBooksPerCard = 1
+maxAddressBooks = 100
+maxCards = 10000
+# largest card in octets of JSON; photos are blobs and do not count
+maxCardSize = 262144
+# largest photo, logo or sound of a card, in octets (also limited by limits.maxSizeUpload)
+maxMediaSize = 4194304
+# most register entries shown as cards of the register book, the most recently used first
+maxRegisterCards = 10000
+
 [auth]
 # Basic credentials that verified are remembered for this many seconds, so a client sending the
 # same application password with every request does not pay for a password hash every time.

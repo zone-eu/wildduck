@@ -160,7 +160,7 @@ describe('JMAP blob management (blob.yaml, RFC 9404)', () => {
             expect(capability).to.be.an('object');
             expect(capability.maxSizeBlobSet === null || (Number.isInteger(capability.maxSizeBlobSet) && capability.maxSizeBlobSet >= 0)).to.be.true;
             expect(capability.maxDataSources).to.be.a('number').and.at.least(64);
-            expect([...capability.supportedTypeNames].sort()).to.deep.equal(['Email', 'Mailbox', 'Thread']);
+            expect([...capability.supportedTypeNames].sort()).to.deep.equal(['ContactCard', 'Email', 'Mailbox', 'Thread']);
             expect(capability.supportedDigestAlgorithms).to.be.an('array').that.includes.members(['sha', 'sha-256']);
             for (const name of capability.supportedDigestAlgorithms) {
                 expect(name).to.equal(name.toLowerCase());

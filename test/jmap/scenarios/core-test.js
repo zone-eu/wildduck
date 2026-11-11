@@ -17,8 +17,8 @@ const redisUrl = require('../../../lib/redis-url');
 const { JmapClient, forUser, basic, URN, JMAP_URL } = jmap;
 const ERROR = 'urn:ietf:params:jmap:error:';
 const SESSION_KEYS = ['capabilities', 'accounts', 'primaryAccounts', 'username', 'apiUrl', 'downloadUrl', 'uploadUrl', 'eventSourceUrl', 'state'];
-// calendars is advertised from phase 6 (CAL-001)
-const NOT_IMPLEMENTED = ['urn:ietf:params:jmap:websocket', 'urn:ietf:params:jmap:mdn', 'urn:ietf:params:jmap:principals', URN.contacts];
+// contacts and calendars are advertised from phases 5 and 6 (ABK-001, CAL-001)
+const NOT_IMPLEMENTED = ['urn:ietf:params:jmap:websocket', 'urn:ietf:params:jmap:mdn', 'urn:ietf:params:jmap:principals'];
 
 let redis;
 const redisClient = () => {

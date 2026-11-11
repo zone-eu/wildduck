@@ -759,6 +759,111 @@ indexes:
           key:
               expires: 1
 
+    - collection: addressbooks
+      feature: jmap
+      index:
+          # JMAP AddressBook (lib/contact-handler.js): the address books of a user
+          name: user_id
+          key:
+              user: 1
+              _id: 1
+
+    - collection: addressbooks
+      feature: jmap
+      index:
+          # at most one default address book per user (RFC 9610 2), also under concurrent first use
+          name: user_default
+          unique: true
+          key:
+              user: 1
+              isDefault: 1
+          partialFilterExpression:
+              isDefault: true
+
+    - collection: addressbooks
+      feature: jmap
+      index:
+          # AddressBook/changes (lib/jmap/changelog.js)
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: contacts
+      feature: jmap
+      index:
+          # one card per uid in an account (RFC 9610 3), ContactCard/query uid filter
+          name: user_uid
+          unique: true
+          key:
+              user: 1
+              uid: 1
+
+    - collection: contacts
+      feature: jmap
+      index:
+          # ContactCard/changes (lib/jmap/changelog.js)
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: contacts
+      feature: jmap
+      index:
+          # the cards of an address book: ContactCard/query inAddressBook, AddressBook/set destroy
+          name: user_books
+          key:
+              user: 1
+              addressBooks: 1
+
+    - collection: contacts
+      feature: jmap
+      index:
+          # ContactCard/query text filters: the search terms of a card (lib/jmap/contact-search.js)
+          name: user_terms
+          key:
+              user: 1
+              terms: 1
+
+    - collection: contacts
+      feature: jmap
+      index:
+          # ContactCard/query hasMember
+          name: user_members
+          key:
+              user: 1
+              members: 1
+
+    - collection: contacts
+      feature: jmap
+      index:
+          # the cards that reference a media file: Blob/lookup, and removal of unreferenced media
+          name: user_blobs
+          key:
+              user: 1
+              blobs: 1
+
+    - collection: contactmedia
+      feature: jmap
+      index:
+          # removal with the user
+          name: user
+          key:
+              user: 1
+
+    - collection: addressregister
+      feature: jmap
+      index:
+          # ContactCard/changes of the cards of the address register book (lib/jmap/contacts-sync.js)
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+          partialFilterExpression:
+              modSeq:
+                  $exists: true
+
     - collection: archived
       index:
           name: user_messages_archived
