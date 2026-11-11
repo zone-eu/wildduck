@@ -1960,7 +1960,10 @@ describe('Email/changes and state strings (email-changes.yaml)', function () {
                 const elapsed = Date.now() - started;
                 expect(allIds(res).length).to.be.at.most(100);
                 expect(res.hasMoreChanges).to.be.true;
-                // the scan stopped after the scan limit, and the intermediate state is where it stopped
+                // the scan stopped after the scan limit, and the intermediate state is where it stopped. Positions
+                // are counted in the order the journal is read (by _id): ids made in one second compare by a
+                // counter that wraps, so the order of creation is not always that order
+                ids.sort();
                 const position = ids.indexOf(res.newState.slice(0, 24));
                 expect(position, 'the intermediate state is a scanned entry').to.be.at.least(0);
                 expect(position).to.be.below(SCAN_LIMIT);
