@@ -610,6 +610,15 @@ indexes:
     - collection: jmapsubmissions
       feature: jmap
       index:
+          # EmailSubmission/get without ids and EmailSubmission/query without sort: a user's records in id order
+          name: user_id
+          key:
+              user: 1
+              _id: 1
+
+    - collection: jmapsubmissions
+      feature: jmap
+      index:
           # pending submissions of a user (checked against the queue) and the cleanup of old ones
           name: user_status_sendat
           key:
@@ -629,10 +638,10 @@ indexes:
     - collection: jmapsubmissions
       feature: jmap
       index:
-          # the poller: due pending submissions of all users, least recently checked first
-          name: pending_checked
+          # the poller: pending submissions of all users whose next check is due, earliest first
+          name: pending_checkat
           key:
-              checked: 1
+              checkAt: 1
           partialFilterExpression:
               undoStatus: pending
 

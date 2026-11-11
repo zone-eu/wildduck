@@ -26,6 +26,16 @@ describe('JMAP submission envelope', () => {
             expect(envelopes.validAddress('postmaster@localhost')).to.not.equal(null);
         });
 
+        it('accepts UTF-8 local parts (RFC 6531) and keeps them as written', () => {
+            expect(envelopes.validAddress('üser@example.com')).to.deep.equal({
+                email: 'üser@example.com',
+                address: 'üser@example.com',
+                key: 'üser@example.com'
+            });
+            expect(envelopes.validAddress('ä.ö@bücher.de').address).to.equal('ä.ö@xn--bcher-kva.de');
+            expect(envelopes.validAddress('用户@例子.广告')).to.not.equal(null);
+        });
+
         it('refuses anything that could carry SMTP syntax', () => {
             const bad = [
                 'a@example.com>\r\nRCPT TO:<b@example.com',
@@ -42,9 +52,19 @@ describe('JMAP submission envelope', () => {
                 'user@bad-.example',
                 'user@bad .example',
                 'user@[127.0.0.1]',
-                'üser@example.com',
                 'a..b@example.com',
                 `${'a'.repeat(65)}@example.com`,
+                // 33 two octet characters are more than the 64 octets of a local part
+                `${'ü'.repeat(33)}@example.com`,
+                // Unicode spaces, line separators, controls, format characters and lone surrogates
+                'a\u00a0b@example.com',
+                'a\u3000b@example.com',
+                'a\u2028b@example.com',
+                'a\u0085b@example.com',
+                'a\u200bb@example.com',
+                'a\ud800b@example.com',
+                'ü\r\n@example.com',
+                '"ü"@example.com',
                 null,
                 42
             ];
@@ -111,7 +131,25 @@ describe('JMAP submission envelope', () => {
 
         it('reads UTF-8 header values as text', () => {
             const raw = Buffer.from('To: üser@example.net').toString('binary');
-            expect(envelopes.messageAddresses(fields(['From: a@example.com', raw])).invalidRecipients).to.deep.equal(['üser@example.net']);
+            const result = envelopes.messageAddresses(fields(['From: a@example.com', raw]));
+            expect(result.recipients.map(entry => entry.email)).to.deep.equal(['üser@example.net']);
+            expect(result.invalidRecipients).to.deep.equal([]);
+        });
+
+        it('refuses a group in From and Sender (RFC 5322 3.6.2)', () => {
+            const cases = [
+                [['From: Team: a@example.com;', 'To: t@example.net'], ['from']],
+                [['From: undisclosed-recipients:;', 'To: t@example.net'], ['from']],
+                [['From: a@example.com', 'Sender: Team: s@example.com;', 'To: t@example.net'], ['sender']]
+            ];
+            for (const [lines, properties] of cases) {
+                const err = errorOf(() => envelopes.messageAddresses(fields(lines)));
+                expect(err.type).to.equal('invalidEmail');
+                expect(err.extra.properties).to.deep.equal(properties);
+            }
+            // a group stays allowed among the recipients
+            const result = envelopes.messageAddresses(fields(['From: a@example.com', 'To: Team: t@example.net;']));
+            expect(result.recipients.map(entry => entry.email)).to.deep.equal(['t@example.net']);
         });
 
         it('keeps the first spelling of a repeated recipient', () => {

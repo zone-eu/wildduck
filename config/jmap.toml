@@ -75,7 +75,8 @@ retryAfter = 30
 retention = 604800
 # Largest message that can be submitted, in bytes (default: limits.maxSizeMessage, else 64 MB)
 #maxSize = 67108864
-# Seconds between two checks of a due, still pending submission against the outbound queue, so
-# clients are told when delivery started. 0 turns the check off (submissions are then updated when
-# they are read)
+# Seconds between two polls of the outbound queue for due, still pending submissions, so clients are
+# told when delivery started. A message that keeps waiting (deferred by the MTA) is checked less often,
+# the delay doubles from this value up to an hour. 0 turns the check off (submissions are then updated
+# when they are read)
 pollInterval = 15
