@@ -24,6 +24,9 @@ const event = (start, rule, extra) => Object.assign({ '@type': 'Event', start, r
 const starts = (ev, options) => expandEvent(ev, options || {}).instances.map(instance => instance.start);
 const dates = list => list.map(value => value.slice(0, 10));
 
+// every capped expansion below stays under 40 ms on a developer machine; the bound leaves room for slow CI runners
+const BUDGET_MS = 200;
+
 /** Finishes under budget with RecurrenceLimitError or an empty result */
 function withinBudget(fn, budget) {
     const started = Date.now();
@@ -36,7 +39,7 @@ function withinBudget(fn, budget) {
         expect(err.code).to.equal('cannotCalculateOccurrences');
         outcome = 'limit';
     }
-    expect(Date.now() - started, 'time budget').to.be.below(budget || 1000);
+    expect(Date.now() - started, 'time budget').to.be.below(budget || BUDGET_MS);
     return outcome;
 }
 
@@ -1053,12 +1056,12 @@ describe('Calendar recurrence', function () {
                 '2150-01-01T09:00:00',
                 '2150-01-02T09:00:00'
             ]);
-            const minutely = event('2026-01-01T00:00:00', { frequency: 'minutely', count: 20000 });
-            const list = starts(minutely, { from: utc('2026-01-13T12:00:00Z'), to: utc('2026-01-13T13:00:00Z') });
+            const minutely = event('2026-01-01T00:00:00', { frequency: 'minutely', count: 5000 });
+            const list = starts(minutely, { from: utc('2026-01-03T12:00:00Z'), to: utc('2026-01-03T13:00:00Z') });
             expect(list).to.have.length(59);
-            expect(list[0]).to.equal('2026-01-13T12:01:00');
-            // the 20000th occurrence is the last one
-            expect(starts(minutely, { from: utc('2026-01-14T21:18:30Z'), to: utc('2026-01-15T00:00:00Z') })).to.deep.equal(['2026-01-14T21:19:00']);
+            expect(list[0]).to.equal('2026-01-03T12:01:00');
+            // the 5000th occurrence is the last one
+            expect(starts(minutely, { from: utc('2026-01-04T11:18:30Z'), to: utc('2026-01-05T00:00:00Z') })).to.deep.equal(['2026-01-04T11:19:00']);
             expect(Date.now() - started).to.be.below(500);
         });
 
@@ -1287,7 +1290,7 @@ describe('Calendar recurrence', function () {
 
     describe('caps', () => {
         it('exports frozen defaults and the error', () => {
-            expect(DEFAULT_LIMITS).to.deep.equal({ maxInstances: 10000, maxIterations: 20000 });
+            expect(DEFAULT_LIMITS).to.deep.equal({ maxInstances: 10000, maxIterations: 5000 });
             expect(Object.isFrozen(DEFAULT_LIMITS)).to.be.true;
             const err = new RecurrenceLimitError();
             expect(err).to.be.instanceOf(Error);
@@ -1340,9 +1343,9 @@ describe('Calendar recurrence', function () {
             // without count the rule jumps to the window, but every chunk evaluates a whole day of slots
             const setPosOpen = event('2000-01-01T00:00:00', { frequency: 'daily', byHour: hours, byMinute: sixty, bySecond: sixty, bySetPosition: [-1] });
             const year = { timeZone: 'Europe/Tallinn', from: utc('2026-01-01T00:00:00Z'), to: utc('2027-01-01T00:00:00Z') };
-            expect(withinBudget(() => expandEvent(Object.assign({}, setPosOpen, { timeZone: 'Europe/Tallinn' }), year), 500)).to.equal('limit');
+            expect(withinBudget(() => expandEvent(Object.assign({}, setPosOpen, { timeZone: 'Europe/Tallinn' }), year))).to.equal('limit');
             const minuteSlots = event('2000-01-01T00:00:00', { frequency: 'daily', byHour: hours, byMinute: sixty, bySetPosition: [-1] });
-            expect(withinBudget(() => expandEvent(minuteSlots, year), 500)).to.equal(365);
+            expect(withinBudget(() => expandEvent(minuteSlots, year))).to.equal(365);
             const yearly = event('1900-01-01T00:00:00', {
                 frequency: 'yearly',
                 byDay: DAYS.map(day => ({ day })),
