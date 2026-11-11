@@ -2735,11 +2735,12 @@ scenarios:
     seed: [imap]
     given: "A text/plain message with a 5000 character body, and one whose body is 200 four byte emoji."
     when: "Email/get with properties ['preview']."
-    then: "preview is a prefix of the white space collapsed body, at most 128 characters long (the RFC ceiling is 256), and is never cut inside a surrogate pair. It equals the intro value the REST API shows."
+    then: "preview is a prefix of the white space collapsed body, at most 128 characters long (the RFC ceiling is 256) and followed by an ellipsis when it was cut, and is never cut inside a surrogate pair. It equals the intro value the REST API shows."
     sources:
       - "james:EmailGetMethodContract#previewShouldBeTruncatedForLongTextBodies"
       - "wildduck:brief emails"
       - "rfc:8621 4.1.4"
+    notes: "The stored intro is cut at the last space before 128 characters and ends with an ellipsis character when the body is longer, so the prefix is compared without that ellipsis."
 
   - id: EGET-171
     title: "Collapse white space in preview"
@@ -2907,13 +2908,14 @@ scenarios:
     phase: 1
     applies: yes
     seed: [imap]
-    given: "A message close to the configured maximum size with one 20 MB base64 attachment and a short text part."
+    given: "A message close to the configured maximum size with one 18 MB base64 attachment and a short text part."
     when: "Email/get with only the fast properties (id, blobId, threadId, mailboxIds, keywords, size, receivedAt, messageId, inReplyTo, sender, from, to, cc, bcc, replyTo, subject, sentAt, hasAttachment, preview); then with bodyStructure and fetchAllBodyValues true."
     then: "Both calls succeed. The first is answered from the message document alone (response time comparable to a small message). The second reports the attachment's decoded size, about three quarters of its encoded size, and returns only the short text in bodyValues."
     sources:
       - "rfc:8621 4.2"
       - "james:EmailGetMethodContract#shouldUseFastViewWithAttachmentMetadataWhenSupportedBodyProperties"
       - "james:EmailGetMethodContract#shouldUseFullViewReaderWhenFetchAllBodyProperties"
+    notes: "Was a 20 MB attachment, which is about 27 MB once base64 encoded and over the 25 MB APPENDLIMIT WildDuck IMAP advertises by default; 18 MB encodes to about 24.3 MB."
 
   - id: EGET-182
     title: "Handle a message with very many parts"
