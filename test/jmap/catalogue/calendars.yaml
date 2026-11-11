@@ -3041,12 +3041,13 @@ scenarios:
     phase: 6
     applies: "yes"
     seed: [jmap]
-    given: "An event with categories {\"http://example.com/cat/a\": true} and a participant whose id is \"a~b\"."
-    when: "Update with {\"categories/http:~1~1example.com~1cat~1b\": true, \"participants/a~0b/name\": \"Renamed\"}."
-    then: "The category \"http://example.com/cat/b\" is added and participant \"a~b\" has the new name."
+    given: "An event with categories {\"http://example.com/cat/a\": true} and keywords {\"a~b\": true}."
+    when: "Update with {\"categories/http:~1~1example.com~1cat~1b\": true, \"keywords/a~0b\": null, \"keywords/c~0d\": true}."
+    then: "The category \"http://example.com/cat/b\" is added, the keyword \"a~b\" is removed and the keyword \"c~d\" is added."
     sources:
       - "rfc:8620 5.3"
       - "rfc:draft-ietf-jmap-calendars-33 5.9.1"
+    notes: "Corrected: the participant id \"a~b\" of the first version is not a JSCalendar Id (bis 1.4.1: characters of the URL and filename safe base64 alphabet), so it can never exist. Keyword keys are free strings, so the ~0 escape is exercised on keywords."
 
   - id: CEV-096
     title: "Reject invalid patches with invalidPatch"

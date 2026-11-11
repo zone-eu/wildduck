@@ -1,14 +1,12 @@
 /* eslint no-unused-expressions: 0, no-invalid-this: 0 */
+/* global after */
 'use strict';
 
 // Catalogue file calendars.yaml, phase 6, first part: the calendars capability and Calendar/get,
 // /changes and /set (CAL). ParticipantIdentity is in participant-identity-test.js.
 //
-// Waiting for CalendarEvent (work packages 6.5 and 6.6), not registered here yet: CAL-008 (calls the
-// CalendarEvent methods, and CalendarEventNotification/get of phase 7), CAL-013 (CalendarEvent/query),
-// CAL-041 (CalendarEvent/set), CAL-060 and CAL-061 (CalendarEvent/get and /changes after a calendar is
-// destroyed), CAL-075 and CAL-076 (event writes and CalendarEvent/changes). The scenarios that only need
-// an event to exist seed it in the calendarevents collection.
+// The scenarios that need CalendarEvent methods (CAL-008, 013, 041, 060, 061, 075, 076) are at the end.
+// The others that only need an event to exist seed it in the calendarevents collection.
 
 const crypto = require('crypto');
 const config = require('@zone-eu/wild-config');
@@ -16,6 +14,7 @@ const { expect } = require('chai');
 const { scenario, accounts, seed, clock, jmap } = require('../harness');
 const sse = require('../harness/sse');
 const instance = require('../harness/instance');
+const h = require('./calendar-event-helpers');
 
 const USING = [jmap.URN.core, jmap.URN.calendars];
 const ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
@@ -986,6 +985,126 @@ describe('Calendars (CAL)', function () {
                 es.close();
             }
             await clock.delay(10);
+        });
+    });
+    describe('with events', () => {
+        after(() => h.stopMulti());
+
+        const lunch = calendar => ({
+            calendarIds: { [calendar]: true },
+            title: 'Lunch',
+            start: '2026-03-10T12:00:00',
+            timeZone: 'Europe/Tallinn',
+            duration: 'PT1H'
+        });
+        const evMethod = (client, name, args) => method(client, name, args);
+
+        scenario('CAL-008', async () => {
+            const { client } = await setupUser();
+            const { client: other } = await setupUser();
+            await calGet(other);
+            const foreign = other.accountId;
+            const calls = [
+                ['Calendar/get', { ids: null }],
+                ['Calendar/changes', { sinceState: 'x' }],
+                ['Calendar/set', { create: { k: { name: 'X' } } }],
+                ['CalendarEvent/get', { ids: null }],
+                ['CalendarEvent/changes', { sinceState: 'x' }],
+                ['CalendarEvent/query', {}],
+                ['CalendarEvent/queryChanges', { sinceQueryState: 'x' }],
+                ['CalendarEvent/set', { create: { k: { title: 'X', start: '2026-01-01T00:00:00' } } }],
+                ['ParticipantIdentity/get', { ids: null }],
+                ['CalendarEventNotification/get', { ids: null }]
+            ];
+            const responses = await client.call(
+                calls.map(([name, args], i) => [name, Object.assign({ accountId: foreign }, args), `c${i}`]),
+                USING
+            );
+            for (const [i, [name, args]] of responses.entries()) {
+                expect(name, calls[i][0]).to.equal('error');
+                expect(args.type, calls[i][0]).to.equal('accountNotFound');
+            }
+            expect((await calGet(other)).list).to.have.length(1);
+            expect((await evMethod(other, 'CalendarEvent/get', { ids: null })).list).to.deep.equal([]);
+        });
+
+        scenario('CAL-013', async () => {
+            const { user, client } = await setupUser();
+            const res = await evMethod(client, 'CalendarEvent/query', { filter: {} });
+            expect(res.ids).to.deep.equal([]);
+            const calendars = await calGet(client);
+            expect(calendars.list).to.have.length(1);
+            expect(calendars.list[0].isDefault).to.equal(true);
+            expect(await userCalendars(user)).to.equal(1);
+        });
+
+        scenario('CAL-041', async () => {
+            const { client } = await setupUser();
+            const responses = await client.call(
+                [
+                    ['Calendar/set', { accountId: client.accountId, create: { cal1: { name: 'New' } } }, 'a'],
+                    ['CalendarEvent/set', { accountId: client.accountId, create: { ev: Object.assign(lunch('#cal1'), {}) } }, 'b']
+                ],
+                USING
+            );
+            const calendarId = responses[0][1].created.cal1.id;
+            expect(responses[1][1].notCreated).to.equal(null);
+            const eventId = responses[1][1].created.ev.id;
+            const event = (await evMethod(client, 'CalendarEvent/get', { ids: [eventId] })).list[0];
+            expect(event.calendarIds).to.deep.equal({ [calendarId]: true });
+        });
+
+        scenario('CAL-060', async () => {
+            const { client } = await setupUser();
+            const [idA] = await createCalendars(client, 'A');
+            const created = await evMethod(client, 'CalendarEvent/set', { create: { a: lunch(idA), b: lunch(idA) } });
+            const ids = [created.created.a.id, created.created.b.id];
+            const s1 = (await evMethod(client, 'CalendarEvent/get', { ids: [] })).state;
+            const res = await calSet(client, { destroy: [idA], onDestroyRemoveEvents: true });
+            expect(res.destroyed).to.deep.equal([idA]);
+            expect((await evMethod(client, 'CalendarEvent/get', { ids })).notFound.sort()).to.deep.equal([...ids].sort());
+            expect((await evMethod(client, 'CalendarEvent/changes', { sinceState: s1 })).destroyed.sort()).to.deep.equal([...ids].sort());
+        });
+
+        scenario('CAL-061', async () => {
+            const { url } = await h.multiInstance();
+            const ctx = await h.setupUser({}, url);
+            const idA = await h.createCalendar(ctx, { name: 'A' });
+            const idB = await h.createCalendar(ctx, { name: 'B' });
+            const { id } = await h.createEvent(ctx, Object.assign(lunch(idA), { calendarIds: { [idA]: true, [idB]: true } }));
+            const s1 = await h.evState(ctx);
+            const res = await h.method(ctx, 'Calendar/set', { destroy: [idA], onDestroyRemoveEvents: true });
+            expect(res.destroyed).to.deep.equal([idA]);
+            expect((await h.fetch1(ctx, id)).calendarIds).to.deep.equal({ [idB]: true });
+            expect((await h.evChanges(ctx, s1)).updated).to.deep.equal([id]);
+        });
+
+        scenario('CAL-075', async () => {
+            const { client } = await setupUser();
+            const calendar = (await defaultOf(client)).id;
+            const s1 = await calState(client);
+            const created = await evMethod(client, 'CalendarEvent/set', { create: { k: lunch(calendar) } });
+            const id = created.created.k.id;
+            await evMethod(client, 'CalendarEvent/set', { update: { [id]: { title: 'Dinner' } } });
+            await evMethod(client, 'CalendarEvent/set', { destroy: [id] });
+            const res = await calChanges(client, s1);
+            expect(res.newState).to.equal(s1);
+            expect(res.created).to.deep.equal([]);
+            expect(res.updated).to.deep.equal([]);
+            expect(res.destroyed).to.deep.equal([]);
+        });
+
+        scenario('CAL-076', async () => {
+            const { client } = await setupUser();
+            const calendar = (await defaultOf(client)).id;
+            await evMethod(client, 'CalendarEvent/set', { create: { k: lunch(calendar) } });
+            const e1 = (await evMethod(client, 'CalendarEvent/get', { ids: [] })).state;
+            await calSet(client, { update: { [calendar]: { name: 'Renamed', color: '#ff0000' } } });
+            const res = await evMethod(client, 'CalendarEvent/changes', { sinceState: e1 });
+            expect(res.newState).to.equal(e1);
+            expect(res.created).to.deep.equal([]);
+            expect(res.updated).to.deep.equal([]);
+            expect(res.destroyed).to.deep.equal([]);
         });
     });
 });

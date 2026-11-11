@@ -21,7 +21,18 @@ const FilterHandler = require('../../../lib/filter-handler');
 const MAIL_TYPES = ['Email', 'Mailbox', 'Thread'];
 const ALL_TYPES = ['Email', 'Mailbox', 'Thread', 'EmailDelivery'];
 // every type a types=* stream carries, mail or not
-const STAR_TYPES = [...ALL_TYPES, 'Identity', 'EmailSubmission', 'VacationResponse', 'Quota', 'AddressBook', 'ContactCard', 'Calendar', 'ParticipantIdentity'];
+const STAR_TYPES = [
+    ...ALL_TYPES,
+    'Identity',
+    'EmailSubmission',
+    'VacationResponse',
+    'Quota',
+    'AddressBook',
+    'ContactCard',
+    'Calendar',
+    'ParticipantIdentity',
+    'CalendarEvent'
+];
 // how long "no event arrives" is observed when the scenario does not name a time
 const QUIET = 2000;
 

@@ -806,12 +806,12 @@ scenarios:
     seed: [none]
     given: "A server at phase 4 feature level."
     when: "GET the session resource."
-    then: "capabilities['urn:ietf:params:jmap:blob'] is {}. The account capability object has maxSizeBlobSet (unsigned integer or null), maxDataSources (integer >= 64), supportedTypeNames equal to [Mailbox, Thread, Email] in any order, and supportedDigestAlgorithms as an array of lower case names that includes sha and sha-256."
+    then: "capabilities['urn:ietf:params:jmap:blob'] is {}. The account capability object has maxSizeBlobSet (unsigned integer or null), maxDataSources (integer >= 64), supportedTypeNames equal to [Mailbox, Thread, Email] in any order (plus CalendarEvent from phase 6), and supportedDigestAlgorithms as an array of lower case names that includes sha and sha-256."
     sources:
       - "rfc:9404 3.1"
       - "stalwart:principal/get.rs"
       - "fastmail:t/Blob/lookup/basic.t"
-    notes: "Digest names come from the HTTP Digest Algorithm Values registry, lower cased: sha is SHA-1."
+    notes: "Digest names come from the HTTP Digest Algorithm Values registry, lower cased: sha is SHA-1. From phase 6 CalendarEvent is a type that references blobs (CEV-066), so it is listed too; Blob/lookup accepts it when the calendars capability is in using."
 
   - id: BLOB-051
     title: "Blob methods need the blob capability in using"
