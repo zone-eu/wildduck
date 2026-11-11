@@ -7,6 +7,7 @@ const pop3 = require('./pop3');
 const lmtp = require('./lmtp');
 const prometheus = require('./prometheus');
 const mcp = require('./mcp');
+const jmap = require('./jmap');
 const api = require('./api');
 const acme = require('./acme');
 const tasks = require('./tasks');
@@ -33,6 +34,7 @@ const SERVICES = [
     ['LMTP server', util.promisify(lmtp)],
     ['API server', api],
     ['MCP server', util.promisify(mcp)],
+    ['JMAP server', util.promisify(jmap)],
     ['ACME server', acme]
 ];
 

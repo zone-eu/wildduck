@@ -55,6 +55,7 @@ module.exports = function (grunt) {
         'test/create-decipher-test.js',
         'test/filtering-tools-test.js',
         'test/hibp-tools-test.js',
+        'test/jmap/unit/*-test.js',
         'test/label-delete-task-test.js',
         'test/list-headers-test.js',
         'test/maildropper-test.js',

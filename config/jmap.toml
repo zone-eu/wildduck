@@ -41,8 +41,8 @@ cacheTtl = 300
 safetyWindow = 2000
 
 [eventSource]
-# ping interval bounds in seconds (RFC 8620 7.3)
-minPing = 10
+# ping interval bounds in seconds (RFC 8620 7.3: the minimum must not be above 30, the maximum not below 300)
+minPing = 5
 maxPing = 300
 # a stream is closed after this many seconds and the client reconnects with Last-Event-ID
 maxDuration = 1800
