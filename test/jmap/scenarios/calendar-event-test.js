@@ -835,4 +835,39 @@ describe('CalendarEvent get and set (CEV, part 1)', function () {
         const res = await ctx.client.method('Blob/lookup', { typeNames: ['CalendarEvent'], ids: [blobId] }, [jmap.URN.core, jmap.URN.blob, jmap.URN.calendars]);
         expect(res.list).to.deep.equal([{ id: blobId, matchedIds: { CalendarEvent: [id] } }]);
     });
+
+    describe('links of locations and participants, data: URI uploads', () => {
+        const uploadsOf = async ctx =>
+            (await instance.connect()).gridfs.collection('storage.files').countDocuments({ 'metadata.user': new seed.ObjectId(ctx.user.id) });
+        const dataLink = { '@type': 'Link', rel: 'enclosure', href: 'data:text/plain;base64,aGVsbG8=' };
+
+        it('a participant link must name an upload of the account', async () => {
+            const ctx = await h.setupUser();
+            const other = await h.setupUser();
+            const foreign = await upload(other, Buffer.from('not yours'), 'text/plain');
+            const participants = { p: { '@type': 'Participant', calendarAddress: 'mailto:p@example.net', links: { l: { '@type': 'Link', blobId: foreign } } } };
+            const { error } = await h.tryCreate(ctx, Object.assign({}, LUNCH, { participants }));
+            h.expectInvalid(error, ['participants/p/links/l/blobId']);
+        });
+
+        it('no upload is made from a data: URI when another link of the event is invalid', async () => {
+            const ctx = await h.setupUser();
+            const links = { a: dataLink, b: { '@type': 'Link', rel: 'enclosure', blobId: 'Bnope' } };
+            const { error } = await h.tryCreate(ctx, Object.assign({}, LUNCH, { links }));
+            h.expectInvalid(error, ['links/b/blobId']);
+            expect(await uploadsOf(ctx)).to.equal(0);
+        });
+
+        it('a data: URI counts against the upload quota', async () => {
+            const small = await instance.startInstance({ limits: Object.assign({}, config.jmap.limits, { uploadQuota: 4 }), alerts: { enabled: false } });
+            try {
+                const ctx = await h.setupUser({}, small.url);
+                const { error } = await h.tryCreate(ctx, Object.assign({}, LUNCH, { links: { a: dataLink } }));
+                expect(error.type).to.equal('overQuota');
+                expect(await uploadsOf(ctx)).to.equal(0);
+            } finally {
+                await instance.stopInstance(small.app);
+            }
+        });
+    });
 });
