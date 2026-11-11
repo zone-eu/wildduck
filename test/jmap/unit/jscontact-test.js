@@ -266,6 +266,25 @@ describe('JSContact validation (RFC 9553)', () => {
             invalid({ localizations: { de: { 'titles/t9/name': 'x' } } }, 'localizations/de');
         });
 
+        it('checks a localization in the properties it touches, related ones included', () => {
+            // members need kind group, also when only the localization changes kind
+            invalid({ kind: 'group', members: { u: true }, localizations: { de: { kind: 'individual' } } }, 'localizations/de');
+            valid({ kind: 'group', members: { u: true }, localizations: { de: { 'members/v': true } } });
+            // an invalid property of the card itself is reported once, not again for each localization
+            invalid(
+                { phones: { p1: { number: 5 } }, localizations: { de: { 'titles/t1': { name: 'Chef' } } }, titles: { t1: { name: 'Boss' } } },
+                'phones/p1/number'
+            );
+        });
+
+        it('bounds the work of localizations', () => {
+            const many = Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`x-l${i}`, { 'titles/t1/name': `n${i}` }]));
+            invalid({ titles: { t1: { name: 'Boss' } }, localizations: many }, 'localizations');
+            const notes = { n1: { note: 'x'.repeat(200 * 1024) } };
+            const heavy = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`x-l${i}`, { 'notes/n1/note': `n${i}` }]));
+            invalid({ notes, localizations: heavy }, 'localizations');
+        });
+
         it('rejects control characters in text', () => {
             invalid({ notes: { n: { note: 'bell\u0007' } } }, 'notes/n/note');
             valid({ notes: { n: { note: 'tab\tline\r\nend' } } });
