@@ -138,6 +138,15 @@ describe('JMAP email builder', () => {
     });
 
     describe('rejects', () => {
+        it('a multipart part without sub parts', () => {
+            rejects({ bodyStructure: { type: 'multipart/mixed', subParts: [] } }, ['bodyStructure']);
+        });
+
+        it('a leaf part without content', () => {
+            rejects({ textBody: [{ type: 'text/plain' }] }, ['textBody']);
+            rejects({ bodyStructure: { type: 'text/plain' } }, ['bodyStructure']);
+        });
+
         const cases = [
             ['the headers property', { headers: [{ name: 'X', value: ' y' }] }, ['headers']],
             ['server set properties', { id: 'x', size: 5 }, ['id', 'size']],
@@ -278,6 +287,42 @@ describe('JMAP email builder', () => {
             { A: { content: Buffer.from('a'), type: 'image/png' }, B: { content: Buffer.from('b') } }
         );
         expect(structure.subParts.map(part => part.type)).to.deep.equal(['image/png', 'application/octet-stream']);
+    });
+
+    it('gives the parts of a multipart/digest the type message/rfc822', async () => {
+        const message = Buffer.from('Subject: inner\r\n\r\nbody\r\n');
+        const { structure } = await build(
+            { bodyStructure: { type: 'multipart/digest', subParts: [{ blobId: 'B1' }] } },
+            { B1: { content: message, type: null } }
+        );
+        expect(structure.subParts.map(part => part.type)).to.deep.equal(['message/rfc822']);
+    });
+
+    it('writes an attached message with an identity transfer encoding', async () => {
+        const attach = async content => {
+            const { text } = await build({ attachments: [{ blobId: 'B1', type: 'message/rfc822' }] }, { B1: { content, type: null } });
+            return /Content-Type: message\/rfc822[^]*?Content-Transfer-Encoding: (\S+)/i.exec(text)[1];
+        };
+        expect(await attach(Buffer.from('Subject: a\r\n\r\nascii\r\n'))).to.equal('7bit');
+        expect(await attach(Buffer.from('Subject: a\r\n\r\nK\u00f5ik\r\n', 'utf8'))).to.equal('8bit');
+        expect(await attach(Buffer.from('Subject: a\r\n\r\nbare\nline\r\n'))).to.equal('binary');
+    });
+
+    it('keeps a name without a disposition in the Content-Type only', async () => {
+        const { text, structure } = await build(
+            { attachments: [{ blobId: 'B1', type: 'application/pdf', name: 'r\u00e9sum\u00e9.pdf' }] },
+            {
+                B1: { content: Buffer.from('%PDF'), type: null }
+            }
+        );
+        expect(text).to.not.match(/Content-Disposition/i);
+        expect(structure.subParts[0]).to.include({ name: 'r\u00e9sum\u00e9.pdf', disposition: null });
+    });
+
+    it('writes an address that is not one as typed', async () => {
+        const { get } = await build({ to: [{ email: 'not an address' }] });
+        expect(get('header:To:asAddresses')).to.deep.equal([{ name: 'not an address', email: '' }]);
+        rejects({ to: [{ email: 'a, b <c@d>' }] }, ['to']);
     });
 
     it('formats dates with their offset', () => {
