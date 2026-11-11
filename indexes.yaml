@@ -576,6 +576,28 @@ indexes:
               type: 1
               seq: 1
 
+    - collection: jmapidentities
+      feature: jmap
+      index:
+          # one derived identity per sending right (lib/jmap/types/identity.js), also under concurrent requests
+          name: user_source
+          unique: true
+          key:
+              user: 1
+              source: 1
+          partialFilterExpression:
+              source:
+                  $exists: true
+
+    - collection: jmapidentities
+      feature: jmap
+      index:
+          # Identity/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
     - collection: jmapchanges
       feature: jmap
       index:
