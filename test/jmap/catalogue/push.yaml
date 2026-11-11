@@ -689,9 +689,9 @@ scenarios:
     phase: 1
     applies: "yes"
     seed: [api]
-    given: "Two streams are open, one with the account password over Basic and one with a Bearer token."
-    when: "The password is changed through the REST API (which bumps authVersion)."
-    then: "Both streams are ended by the server and reconnecting with the old credentials gets HTTP 401."
+    given: "Three streams are open, one with the account password over Basic and two with different Bearer tokens."
+    when: "One token is revoked with DELETE /authenticate, then the password is changed through the REST API (which bumps authVersion)."
+    then: "The revoked token's stream ends at once while the other two stay open; the password change ends both of them. Reconnecting with the old credentials gets HTTP 401."
     sources:
       - "wildduck:brief Accounts and auth"
       - "wildduck:plan 3"

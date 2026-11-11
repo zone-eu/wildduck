@@ -883,6 +883,13 @@ describe('JMAP push (push.yaml)', () => {
             const basic = basicOf(user);
             const withPassword = await openStream(user);
             const withToken = await openStream(null, {}, { authorization: `Bearer ${token}` });
+            // revoking one token ends only the stream of that token
+            const revokedToken = await accounts.createToken(user);
+            const withRevoked = await openStream(null, {}, { authorization: `Bearer ${revokedToken}` });
+            await api('DELETE', '/authenticate', null, { headers: { 'X-Access-Token': revokedToken } });
+            expect((await expectRevoked(withRevoked, `Bearer ${revokedToken}`)).status).to.equal(401);
+            expect(withPassword.ended).to.be.false;
+            expect(withToken.ended).to.be.false;
             await api('PUT', `/users/${user.id}`, { password: 'Jm4pScenario-Changed' });
             expect((await expectRevoked(withPassword, basic)).status).to.equal(401);
             expect((await expectRevoked(withToken, `Bearer ${token}`)).status).to.equal(401);
