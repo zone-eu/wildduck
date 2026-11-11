@@ -34,13 +34,29 @@ describe('JMAP ids', () => {
         expect(part.kind).to.equal('part');
         expect(part.part).to.equal('1.2.3');
         expect(part.id.equals(oid)).to.be.true;
-        for (const id of [blobId.message(oid), blobId.part(oid, '2'), blobId.upload(oid)]) {
+        const uploadPart = parseBlobId(blobId.uploadPart(oid, '2.1'));
+        expect(uploadPart.kind).to.equal('uploadPart');
+        expect(uploadPart.part).to.equal('2.1');
+        expect(uploadPart.id.equals(oid)).to.be.true;
+        for (const id of [blobId.message(oid), blobId.part(oid, '2'), blobId.upload(oid), blobId.uploadPart(oid, '1.2')]) {
             expect(isValidId(id), id).to.be.true;
         }
     });
 
     it('rejects malformed blob ids', () => {
-        for (const id of ['Bx' + oid, 'Bp' + oid, 'Bp' + oid + '_', 'Bp' + oid + '_0', 'Bp' + oid + '_1--2', 'Bp' + oid + '_1.2', 'Bm' + oid + '1', 5, null]) {
+        for (const id of [
+            'Bx' + oid,
+            'Bp' + oid,
+            'Bp' + oid + '_',
+            'Bp' + oid + '_0',
+            'Bp' + oid + '_1--2',
+            'Bp' + oid + '_1.2',
+            'Bm' + oid + '1',
+            'Bv' + oid,
+            'Bv' + oid + '_0',
+            5,
+            null
+        ]) {
             expect(parseBlobId(id), String(id)).to.be.null;
         }
     });
