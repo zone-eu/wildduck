@@ -6,9 +6,10 @@ WildDuck has no JMAP implementation yet. When development starts, two independen
 | ---------------------------- | -------------------------------------------------------------- |
 | `jmapio-expectations.yaml`   | One entry per test of jmapio/jmap-test-suite (309 tests)       |
 | `fastmail-expectations.yaml` | One entry per `.t` file of fastmail/JMAP-TestSuite (173 files) |
+| `fastmail-adapter/`          | WildDuck adapter for the Fastmail suite and its Perl image     |
 | `README.md`                  | This document                                                  |
 
-The directory contains documents only. Runner scripts, adapters and config files with credentials live elsewhere.
+Apart from the adapter (our own code, written from the contract below), the directory contains documents only. The runners are `scripts/jmap/run-jmapio.js` (`npm run test:jmap:jmapio`) and `scripts/jmap/run-fastmail.js` (`npm run test:jmap:fastmail`), the CI jobs are in `.github/workflows/jmap-compliance.yml`. Config files with credentials are written outside the repository for one run and removed afterwards.
 
 Both files were derived by reading the suite sources at the pinned commits, together with the WildDuck constraints in the JMAP plan. Neither suite has been executed against WildDuck, so the first real run is expected to correct some entries. Phases are the plan phases: 0 backend prerequisites, 1 core and read only mail, 2 writes, 3 submission, 4 conformance extras, 5 contacts, 6 calendars, 7 calendar scheduling.
 
@@ -132,7 +133,7 @@ For WildDuck: implement `any_account`, `authenticated_tester` and `pristine_acco
 
 ### Outline of a WildDuck adapter
 
-The adapter is our own code written against the documented contract, so it may be kept in a WildDuck owned location (not in this directory, and not inside the suite clone). `prove` finds it through a second include path.
+The adapter is our own code written against the documented contract, never inside the suite clone. It lives in `fastmail-adapter/lib/JMAP/TestSuite/ServerAdapter/WildDuck.pm` and `fastmail-adapter/lib/JMAP/TestSuite/Account/WildDuck.pm`; `prove` finds it through a second include path. The outline it follows:
 
 Config file (`<WILDDUCK_ADAPTER.json>`, outside the repository):
 
@@ -206,6 +207,10 @@ The suite's own `Simple` adapter (static credentials, no provisioning) cannot be
 
 ### Running it
 
+`npm run test:jmap:fastmail -- --phase <P> --api <REST API URL> --jmap <JMAP URL> [--token <access token>] [--workdir <dir>] [--report <file>] [--filter 'Mailbox/*'] [--jobs 4]` does all of the following: it clones the suite at the pinned commit into the work directory, builds the Perl image from `fastmail-adapter/Dockerfile` (the build context is the clone, only its `cpanfile` is read; the image is reused while the commit and the Dockerfile stay the same), runs `prove` in a container with the suite, the adapter and the config file mounted read only, reads the raw TAP of every file (`PERL_TEST_HARNESS_DUMP_TAP`), and gates the result. Docker is the only requirement on the host. On Linux the container uses the host network; on macOS (Docker Desktop) it reaches the host as `host.docker.internal`, and 127.0.0.1 in `--api` and `--jmap` is rewritten to that. Several files read the session themselves and call its `apiUrl`, `uploadUrl` and `downloadUrl`, so `jmap.baseUrl` of the server must be the URL the container uses (for example `APPCONF_jmap_baseUrl=http://host.docker.internal:8091` on macOS); the runner checks this with a throwaway user before the run. Exit codes as for the jmapio runner: 0 the gate passed, 1 it failed, 2 no usable run.
+
+By hand:
+
 ```
 git clone https://github.com/fastmail/JMAP-TestSuite <WORKDIR>/JMAP-TestSuite
 git -C <WORKDIR>/JMAP-TestSuite checkout 0319ec8b1841f040fd313531a3df12a74c4b7bf7
@@ -221,7 +226,7 @@ Mapping to the expectations file, per `.t` file (path relative to `t/`):
 - `skip`: prove reports the file ok and the test body was skipped as a whole (TAP line with `# skip`, reason `server does not support ...`, `test requires pristine_account` or `test requires implementation of pool_account_pair`).
 - anything else is a failure.
 
-The gate needs the TAP of each file to tell pass from skip (run prove with `-v` and parse it, or use a TAP archive or JUnit formatter). This mapping is taken from the suite source and should be confirmed on the first run.
+The gate needs the TAP of each file to tell pass from skip. Confirmed on the first run (2026-11-11): Test::Routine nests the body of a file two levels deep (`ok 1 - tests` at the top, `ok 1 - test from t/<file>` at four spaces, the body's assertions at eight). A `require_capabilities` skip is the plan `1..0 # SKIP server does not support ...` of the body at eight spaces, a pristine or pool pair skip is `1..0 # SKIP test requires ...` at the top. The runner counts a file as skipped when prove reports it ok, one of these skip plans is present and the body has no assertion at eight spaces; as passed when prove reports it ok otherwise.
 
 Unlike the jmapio suite, this one creates its own fixtures per file, so the files that only read can already run in phase 1 (12 files).
 
@@ -230,6 +235,11 @@ Unlike the jmapio suite, this one creates its own fixtures per file, so the file
 - `never`, multiple mailboxes: `Email/import/good-imports.t`, `Mailbox/set/destroy/on-destroy-remove-messages-true-mail-in-other-boxes.t`.
 - `never`, threading rule (a reply with a different subject starts a new thread in WildDuck, the suite assumes References alone): `Email/query/filtering.t`.
 - `never`, mailbox subscription default (the suite expects `isSubscribed` false on a mailbox the user just created): `Mailbox/get/some-entities.t`, `Mailbox/get/limiting-properties-in-response.t`.
+- `never` since the first run (2026-11-11), each a WildDuck decision recorded in the catalogue that the suite reads differently; each entry names the catalogue scenario:
+    - final line break of a single part body (WildDuck keeps the line break that ends the last line of a single part message in the body value, the suite expects it removed), 9 files: `Email/get/fetch-all-body-values.t`, `Email/get/fetch-html-body-values.t`, `Email/get/fetch-text-body-values.t`, `Email/import/one-fails-another-succeeds.t`, `Email/set/create/body-structure.t`, `Email/set/create/html-body.t`, `Email/set/create/text-body.t`, `getMessages-htmlBody.t`, `previews.t`.
+    - invalidProperties names the top level property, the suite expects paths into it (`bodyStructure/size`, `myRights/mayDelete`) or only one of two conflicting properties, 8 files: `Email/set/create/content-transfer-encoding-not-allowed.t`, `email-body-value-restrictions.t`, `headers-property-forbidden-in-body-structure.t`, `no-size-with-partid.t`, `no-duplicate-header-representations.t`, `no-duplicate-structural-representations.t`, `Mailbox/set/create/immutable-fields.t`, `Mailbox/set/update/basic.t`.
+    - hasAttachment is the stored flag, false for an attachment with an empty body: `Email/get/attachments.t`, `Email/get/has-attachment.t`.
+    - `subParts` only on multipart parts (EGET-131): `Email/get/body-properties.t`. `maxBodyValueBytes: null` is accepted as the default (EGET-154): `Email/get/max-body-value-bytes.t`. Raw header values are written as given and atom display names unquoted: `Email/set/create/header-header-field-name.t`. Mailbox names sort case insensitively by default (commit c7442a3d, which overrides point 9 below): `Mailbox/query/filtering-with-filter-operators.t`. A position past the end is answered clamped to the list length, as in Email/query: `Mailbox/query/sorting-and-limiting.t`.
 - `skip`, no second account: the four `copy/basic.t` files (Email, Blob, ContactCard, CalendarEvent).
 - `skip`, capability not advertised: `urn:ietf:params:jmap:blob2` (3 files), `mdn` (2), `principals` (3), `quota` (3).
 
@@ -257,18 +267,18 @@ fastmail/JMAP-TestSuite, 173 files:
 | Phase | pass |
 | ----- | ---- |
 | 1     | 12   |
-| 2     | 100  |
+| 2     | 76   |
 | 3     | 4    |
 | 4     | 8    |
 | 5     | 16   |
 | 6     | 16   |
 | 7     | 0    |
 
-| expect | Count                                                              |
-| ------ | ------------------------------------------------------------------ |
-| pass   | 156                                                                |
-| never  | 5 (2 multiple mailboxes, 1 threading rule, 2 subscription default) |
-| skip   | 12 (4 no second account, 8 capability not advertised)              |
+| expect | Count                                                                                                 |
+| ------ | ----------------------------------------------------------------------------------------------------- |
+| pass   | 132                                                                                                   |
+| never  | 29 (2 multiple mailboxes, 1 threading rule, 2 subscription default, 24 from the first run, see above) |
+| skip   | 12 (4 no second account, 8 capability not advertised)                                                 |
 
 ## What the suites say about the plan
 
@@ -282,7 +292,7 @@ Points found while deriving the files. Each one changes or pins down a design de
 6. Text search and stop words. `Email/query/filtering.t` searches `text: "here"` and `Email/queryChanges/simple.t` searches `text: "aaa"`. A full text index that drops stop words or stems aggressively will miss these. Relevant for the OpenSearch analyzer in phase 4.
 7. Identity before submission. Identity is phase 2 but lives under `urn:ietf:params:jmap:submission`, which both suites use as the switch for Identity tests. The files assume the capability is advertised from phase 2 with EmailSubmission methods answering `unknownMethod` until phase 3. If it is only advertised in phase 3, move the 13 jmapio and 4 Fastmail Identity entries to phase 3.
 8. `Mailbox/changes` must fill `updatedProperties` with the four counters when only message changes touched a mailbox (`Mailbox/changes/changed-properties.t`). Null is allowed by the RFC and not by the suite. The journal can tell the two cases apart, so comply.
-9. Mailbox/query sort by `name` must compare byte wise (uppercase before lowercase) to satisfy `Mailbox/query/filtering-with-filter-operators.t`; the jmapio name sort test is satisfied by the same order with the default mailbox names.
+9. (Superseded by commit c7442a3d: names sort case insensitively by default, the Fastmail file is `never`.) Mailbox/query sort by `name` must compare byte wise (uppercase before lowercase) to satisfy `Mailbox/query/filtering-with-filter-operators.t`; the jmapio name sort test is satisfied by the same order with the default mailbox names.
 10. Exact response shapes. The Fastmail session test allows no property beyond the RFC ones in the session object, the core capability and the mail account capability; upload must echo `type` without parameters; download must answer with exactly the requested Content-Type. Vendor additions belong under their own capability URN.
 11. Uploads consumed by Email/import must stay downloadable until they expire (`Email/import/download-after-import.t`).
 12. Email/set create must accept an Email that has only `mailboxIds` (`Email/set/create/created-response-required-properties.t`) and must ignore an unknown key inside a `bodyValues` entry (`EmailSubmission/get/basic.t`).

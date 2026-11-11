@@ -58,3 +58,47 @@ jobs:
                       jmapio-report.json
                       server.log
                   retention-days: 14
+
+    fastmail:
+        timeout-minutes: 45
+        runs-on: ubuntu-latest
+        services:
+            redis:
+                image: redis
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                ports:
+                    - 6379:6379
+        steps:
+            - uses: actions/checkout@v6
+            - name: Start MongoDB
+              uses: supercharge/mongodb-github-action@1.12.1
+              with:
+                  mongodb-version: 6.0
+                  mongodb-port: 27017
+                  mongodb-db: wildduck-test
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24.x
+            - run: npm install
+            - name: Start the test server
+              run: |
+                  NODE_ENV=test node server.js > server.log 2>&1 &
+                  for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8091/.well-known/jmap && break; sleep 1; done
+            # prove runs in a container on the host network (test/jmap/external/fastmail-adapter/Dockerfile)
+            - name: Run fastmail/JMAP-TestSuite
+              run: node scripts/jmap/run-fastmail.js --phase "$JMAP_GATE_PHASE" --api http://127.0.0.1:8080 --jmap http://127.0.0.1:8091 --workdir "$RUNNER_TEMP/fastmail" --report fastmail-report.json
+            - name: Keep the report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: fastmail-report
+                  path: |
+                      fastmail-report.json
+                      server.log
+                      ${{ runner.temp }}/fastmail/run-*/prove.log
+                      ${{ runner.temp }}/fastmail/run-*/tap
+                  retention-days: 14
