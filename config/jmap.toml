@@ -1,0 +1,48 @@
+# JMAP service (RFC 8620, RFC 8621 and extensions), see docs/jmap/implementation-plan.md
+#
+# Disabled by default. Indexes used only by JMAP (indexes.yaml entries with `feature: jmap`) are created
+# at start up once this is enabled.
+enabled = false
+port = 8081
+# by default bind to localhost only
+host = "127.0.0.1"
+# Use true to serve JMAP over HTTPS (TLS settings from [jmap.tls] or the global [tls])
+secure = false
+
+# Public base URL clients use to reach this service, used for the URLs in the session resource
+# (apiUrl, downloadUrl, uploadUrl, eventSourceUrl). Must be set when the service is behind a proxy.
+#baseUrl = "https://jmap.example.com"
+
+[limits]
+# RFC 8620 2: core capability limits advertised in the session
+maxSizeUpload = 52428800
+maxConcurrentUpload = 4
+maxSizeRequest = 10485760
+maxConcurrentRequests = 8
+maxCallsInRequest = 32
+# equal to the mailbox limit, so Mailbox/get with ids null always fits
+maxObjectsInGet = 1500
+maxObjectsInSet = 500
+# temporary uploads per user, oldest are deleted first when a new upload does not fit
+uploadQuota = 209715200
+# how long an unreferenced upload is kept, in seconds (RFC 8620 6.1: at least one hour)
+uploadTtl = 86400
+
+[auth]
+# Basic credentials that verified are remembered for this many seconds, so a client sending the
+# same application password with every request does not pay for a password hash every time.
+# The cache entry names the account's authVersion, so a password or 2FA change ends it at once.
+cacheTtl = 300
+
+[changes]
+# Journal ids are generated in different processes, so an entry with a smaller id can be committed
+# after a larger one was read. Changes are looked up this many milliseconds before the given state.
+# An id may then be reported twice, which RFC 8620 5.2 allows.
+safetyWindow = 2000
+
+[eventSource]
+# ping interval bounds in seconds (RFC 8620 7.3)
+minPing = 10
+maxPing = 300
+# a stream is closed after this many seconds and the client reconnects with Last-Event-ID
+maxDuration = 1800

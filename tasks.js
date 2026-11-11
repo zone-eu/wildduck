@@ -34,6 +34,9 @@ const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
 const taskLabelDelete = require('./lib/tasks/label-delete');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const { SettingsHandler } = require('./lib/settings-handler');
+const { ensureIndex } = require('./lib/index-ttl');
+const StorageHandler = require('./lib/storage-handler');
 
 let messageHandler;
 let mailboxHandler;
@@ -189,11 +192,18 @@ module.exports.start = callback => {
 
     const ensureIndexes = async () => {
         let indexes = setupIndexes.indexes;
+        const settingsHandler = new SettingsHandler({ db: db.database });
         for (let [pos, index] of indexes.entries()) {
+            if (index.feature && !(config[index.feature] && config[index.feature].enabled)) {
+                // an index only that service uses, not built while the service is off
+                continue;
+            }
             try {
-                let r = await db[index.type || 'database'].collection(index.collection).createIndexes([index.index]);
-                if (r && r.numIndexesAfter !== r.numIndexesBefore) {
+                let r = await ensureIndex(db[index.type || 'database'], index, settingsHandler);
+                if (r.created) {
                     log.verbose('Setup', 'Created index %s %s', pos + 1, JSON.stringify(index.collection + '.' + index.index.name));
+                } else if (r.ttlChanged) {
+                    log.info('Setup', 'Changed expiry of index %s per %s', JSON.stringify(index.collection + '.' + index.index.name), index.ttlSetting);
                 }
             } catch (err) {
                 if (err.codeName !== 'IndexOptionsConflict') {
@@ -279,6 +289,18 @@ async function clearExpiredMessages() {
         }
     } catch (err) {
         log.error('GC', 'Garbage collection failed error=%s', err.message);
+    }
+
+    try {
+        // temporary uploads expire whatever the message retention settings are
+        let deleted = await new StorageHandler({ database: db.database, gridfs: db.gridfs }).removeExpiredUploads({
+            deadline: startTime + consts.GC_INTERVAL * 0.9
+        });
+        if (deleted) {
+            log.verbose('GC', 'Removed %s expired uploads', deleted);
+        }
+    } catch (err) {
+        log.error('GC', 'Removing expired uploads failed error=%s', err.message);
     }
 
     try {

@@ -276,10 +276,35 @@ indexes:
 
     - collection: messages
       index:
+          # also used by JMAP Thread/get, which lists a thread across mailboxes: keep it
           name: user_messages_by_thread
           key:
               user: 1
               thread: 1
+
+    - collection: messages
+      feature: jmap
+      index:
+          # JMAP Email/query without a mailbox filter, sorted by receivedAt (idate). Deleted (\Deleted) messages are
+          # rare, so they are filtered after the scan instead of in an index of their own
+          name: user_idate
+          key:
+              user: 1
+              idate: -1
+              _id: -1
+
+    - collection: messages
+      feature: jmap
+      index:
+          # JMAP Email ids (lib/message-roots.js): root stays the same when a message moves, _id does not
+          # because the shard key changes. Roots are globally unique ObjectIds, so root alone is selective
+          # and the index stays half the size of a {user, root} one. Documents without root are left out.
+          name: by_root
+          key:
+              root: 1
+          partialFilterExpression:
+              root:
+                  $exists: true
 
     - collection: messages
       index:
@@ -333,6 +358,7 @@ indexes:
 
     - collection: messages
       index:
+          # JMAP Email/query in one mailbox sorted by receivedAt uses the by_idate indexes: keep one of them
           name: by_idate
           key:
               mailbox: 1
@@ -530,6 +556,17 @@ indexes:
               thread: 1
 
     - collection: archived
+      feature: jmap
+      index:
+          # restore and lookups by JMAP Email id, see the by_root index of messages
+          name: by_root
+          key:
+              root: 1
+          partialFilterExpression:
+              root:
+                  $exists: true
+
+    - collection: archived
       index:
           name: user_messages_archived
           key:
@@ -571,6 +608,29 @@ indexes:
           key:
               metadata.user: 1
               filename: 1
+
+    - collection: storage.files
+      type: gridfs # index applies to gridfs database
+      index:
+          # temporary uploads (JMAP): the upload quota of a user, see StorageHandler.makeRoom
+          name: user_temporary_files
+          key:
+              metadata.user: 1
+              metadata.expires: 1
+          partialFilterExpression:
+              metadata.expires:
+                  $exists: true
+
+    - collection: storage.files
+      type: gridfs # index applies to gridfs database
+      index:
+          # temporary uploads (JMAP): removal once expired, see lib/tasks/upload-cleanup.js
+          name: temporary_files_expiry
+          key:
+              metadata.expires: 1
+          partialFilterExpression:
+              metadata.expires:
+                  $exists: true
 
     # Indexes for the attachments collection
     # attachments.files collection should be sharded by _id (hash)
@@ -652,7 +712,9 @@ indexes:
               _id: -1
 
     - collection: journal
-      # delete journal entries after 3 hours
+      # delete journal entries after const:journal:time (3 hours unless changed). The JMAP change
+      # history (Email/changes and friends) reaches back as far as the journal does
+      ttlSetting: const:journal:time
       index:
           name: journal_autoexpire
           expireAfterSeconds: 10800
