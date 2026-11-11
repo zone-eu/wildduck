@@ -414,6 +414,26 @@
                     "phase": 5
                 }
             ]
+        },
+        {
+            "package": "6.3",
+            "ids": ["CEQ-049..CEQ-070"]
+        },
+        {
+            "package": "6.5",
+            "ids": ["CEV-001..CEV-112", "CEV-115..CEV-159", "CEV-161", "CAL-041", "CAL-075", "CAL-076"]
+        },
+        {
+            "package": "6.6",
+            "ids": ["CEQ-001..CEQ-048", "CEQ-071..CEQ-077", "CAL-013"]
+        },
+        {
+            "package": "6.7",
+            "ids": ["CALR-001..CALR-042"]
+        },
+        {
+            "package": "6.8",
+            "ids": ["CEV-113", "CEV-114", "CAL-008", "CAL-060", "CAL-061"]
         }
     ]
 }
