@@ -331,6 +331,12 @@ describe('JMAP email builder', () => {
         expect(await attach(Buffer.from('Subject: a\r\n\r\nascii\r\n'))).to.equal('7bit');
         expect(await attach(Buffer.from('Subject: a\r\n\r\nK\u00f5ik\r\n', 'utf8'))).to.equal('8bit');
         expect(await attach(Buffer.from('Subject: a\r\n\r\nbare\nline\r\n'))).to.equal('binary');
+        expect(await attach(Buffer.from('Subject: a\r\n\r\nbare\rcr\r\n'))).to.equal('binary');
+        expect(await attach(Buffer.from('Subject: a\r\n\r\nnul\0\r\n'))).to.equal('binary');
+        expect(await attach(Buffer.from('Subject: a\r\n\r\nends with cr\r'))).to.equal('binary');
+        // a line of 998 octets is the longest allowed one, also as the last line without a line break
+        expect(await attach(Buffer.from(`Subject: a\r\n\r\n${'x'.repeat(998)}\r\n${'y'.repeat(998)}`))).to.equal('7bit');
+        expect(await attach(Buffer.from(`Subject: a\r\n\r\n${'x'.repeat(999)}\r\n`))).to.equal('binary');
     });
 
     it('keeps a name without a disposition in the Content-Type only', async () => {
