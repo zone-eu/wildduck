@@ -183,7 +183,7 @@ let createInterface = (ifaceOptions, callback) => {
     server.onOpen = onOpen(server);
     server.onStatus = onStatus(server);
     server.onAppend = onAppend(server, messageHandler, userHandler.userCache);
-    server.onStore = onStore(server);
+    server.onStore = onStore(server, messageHandler);
     server.onExpunge = onExpunge(server, messageHandler);
     server.onCopy = onCopy(server, messageHandler);
     server.onMove = onMove(server, messageHandler);
