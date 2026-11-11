@@ -66,6 +66,11 @@ cacheTtl = 300
 # after a larger one was read. Changes are looked up this many milliseconds before the given state.
 # An id may then be reported twice, which RFC 8620 5.2 allows.
 safetyWindow = 2000
+# The types JMAP owns (Identity, EmailSubmission, AddressBook, ContactCard, Calendar and the like) number
+# their changes with a sequence that is taken before the change is written, so two concurrent writers can
+# commit out of order. /changes reads this many sequence numbers below the given state again; their ids
+# may be reported twice (as updated or destroyed). 0 turns the window off
+ownedSafetyWindow = 32
 # Most ids in one /changes response. A larger maxChanges from the client, or none, is capped to this
 # (equal to maxObjectsInGet, so the ids always fit a following /get)
 maxChanges = 1500

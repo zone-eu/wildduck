@@ -125,6 +125,85 @@ describe('JMAP owned change log', function () {
         expect(seen.destroyed.every(id => ids.slice(0, 2).map(formatId).includes(id))).to.be.true;
     });
 
+    describe('writers committing out of order', () => {
+        // Two writers take sequence numbers 1 (A) and 2 (B); B commits first, a client reads the state
+        // (sequence 2) and only then A commits, with modSeq 1 below the state the client holds.
+        async function lateWrite(changeLog) {
+            const seqA = await changeLog.next(user, 'Identity');
+            const seqB = await changeLog.next(user, 'Identity');
+            const b = new ObjectId();
+            await objects().insertOne({ _id: b, user, createdSeq: seqB, modSeq: seqB });
+            const s1 = await changeLog.state(user, `u${user}`, 'Identity');
+            const a = new ObjectId();
+            await objects().insertOne({ _id: a, user, createdSeq: seqA, modSeq: seqA });
+            return { a, b, s1 };
+        }
+        const changesOf = (changeLog, sinceState, maxChanges = 100) =>
+            changeLog.changes({ user, accountId: `u${user}`, type: 'Identity', collection: 'jmapunitobjects', sinceState, maxChanges, formatId });
+
+        it('without a window the late write is lost for the state read between the commits', async () => {
+            const { a, s1 } = await lateWrite(log);
+            // the state did not move: nothing is reported, the client never learns of A
+            const result = await changesOf(log, s1);
+            expect(result.newState).to.equal(s1);
+            expect([...result.created, ...result.updated]).to.not.include(formatId(a));
+        });
+
+        it('the safety window reports the late write, as updated', async () => {
+            const windowed = new ChangeLog({ database, secret: 'unit', safetyWindow: 32 });
+            const { a, b, s1 } = await lateWrite(windowed);
+            const result = await changesOf(windowed, s1);
+            expect(result.newState).to.equal(s1);
+            // created before the state, so updated (the client fetches it); B is reported again too
+            expect(result.created).to.be.empty;
+            expect(result.updated.sort()).to.deep.equal([formatId(a), formatId(b)].sort());
+            expect(result.destroyed).to.be.empty;
+        });
+
+        it('keeps created, updated and destroyed apart around the window', async () => {
+            const windowed = new ChangeLog({ database, secret: 'unit', safetyWindow: 2 });
+
+            const old = await create();
+            const gone = await create();
+            const touched = await create();
+            const s0 = await windowed.state(user, `u${user}`, 'Identity');
+            const fresh = await create();
+            await update(touched);
+            await destroy([gone]);
+            const result = await changesOf(windowed, s0);
+            expect(result.created).to.deep.equal([formatId(fresh)]);
+            // gone and touched were created inside the window, old before it
+            expect(result.updated).to.deep.equal([formatId(touched)]);
+            expect(result.destroyed).to.deep.equal([formatId(gone)]);
+            expect(result.updated).to.not.include(formatId(old));
+        });
+
+        it('pages past a window larger than maxChanges', async () => {
+            const windowed = new ChangeLog({ database, secret: 'unit', safetyWindow: 32 });
+            for (let i = 0; i < 5; i++) {
+                await create();
+            }
+            const s0 = await windowed.state(user, `u${user}`, 'Identity');
+            const later = [];
+            for (let i = 0; i < 3; i++) {
+                later.push(formatId(await create()));
+            }
+            const seen = [];
+            let since = s0;
+            for (let round = 0; round < 10; round++) {
+                const result = await changesOf(windowed, since, 2);
+                expect(result.created.length + result.updated.length + result.destroyed.length).to.be.at.most(2);
+                seen.push(...result.created);
+                since = result.newState;
+                if (!result.hasMoreChanges) {
+                    break;
+                }
+            }
+            expect(since).to.equal(await windowed.state(user, `u${user}`, 'Identity'));
+            expect(seen.sort()).to.deep.equal(later.sort());
+        });
+    });
+
     it('refuses foreign, malformed, future and expired states', async () => {
         await create();
         await create();
