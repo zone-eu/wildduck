@@ -13,6 +13,10 @@ secure = false
 # (apiUrl, downloadUrl, uploadUrl, eventSourceUrl). Must be set when the service is behind a proxy.
 #baseUrl = "https://jmap.example.com"
 
+# Time limit in milliseconds for the database work of one Email/query call. A query that runs longer
+# answers serverUnavailable. Defaults to three times the message search limit of the REST API (9000)
+#queryTimeout = 9000
+
 [limits]
 # RFC 8620 2: core capability limits advertised in the session
 maxSizeUpload = 52428800
