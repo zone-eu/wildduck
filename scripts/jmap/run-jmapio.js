@@ -92,7 +92,9 @@ function gate(expectations, report, phase, filter) {
         counts[result.status] = (counts[result.status] || 0) + 1;
         const gated = (entry.expect === 'pass' || (entry.expect === 'opinion' && entry.phase !== undefined)) && entry.phase <= phase;
         if (gated && result.status !== 'pass') {
-            problems.push(`${entry.id}: expected to pass from phase ${entry.phase}, ${result.status}${result.error ? ` (${String(result.error).slice(0, 160)})` : ''}`);
+            problems.push(
+                `${entry.id}: expected to pass from phase ${entry.phase}, ${result.status}${result.error ? ` (${String(result.error).slice(0, 160)})` : ''}`
+            );
         } else if (entry.expect === 'never' && result.status === 'pass') {
             problems.push(`${entry.id}: expected never to pass (${entry.reason}), passed`);
         } else if (entry.phase > phase && result.status === 'pass') {

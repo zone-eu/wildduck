@@ -53,7 +53,9 @@ describe('Email/changes journal folding', () => {
     it('follows the \\Deleted flag', async () => {
         expect((await fold([e('FETCH', { flags: ['\\Deleted'] })])).result).to.deep.equal({ [id]: 'destroyed' });
         expect((await fold([e('FETCH', { flags: [], deletedChangedTo: false })])).result).to.deep.equal({ [id]: 'created' });
-        expect((await fold([e('FETCH', { flags: ['\\Deleted'] }), e('FETCH', { flags: [], deletedChangedTo: false })])).result).to.deep.equal({ [id]: 'updated' });
+        expect((await fold([e('FETCH', { flags: ['\\Deleted'] }), e('FETCH', { flags: [], deletedChangedTo: false })])).result).to.deep.equal({
+            [id]: 'updated'
+        });
         // a message carrying \Deleted that is moved stays gone
         expect((await fold([e('EXPUNGE', { origin: 'move', deleted: true }), e('EXISTS', { origin: 'move', deleted: true })])).result).to.deep.equal({
             [id]: 'destroyed'
