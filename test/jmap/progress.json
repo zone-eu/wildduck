@@ -285,6 +285,27 @@
             "ids": ["CORE-014", "ESET-087"]
         },
         {
+            "package": "Milestone 3",
+            "select": [
+                {
+                    "phase": 3
+                }
+            ]
+        },
+        {
+            "package": "Phase 2 core",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 2
+                },
+                {
+                    "prefix": "THR",
+                    "phase": 2
+                }
+            ]
+        },
+        {
             "package": "4.7",
             "select": [
                 {
@@ -308,14 +329,6 @@
             "ids": ["WDX-006"]
         },
         {
-            "package": "Milestone 3",
-            "select": [
-                {
-                    "phase": 3
-                }
-            ]
-        },
-        {
             "package": "4.1",
             "ids": ["PUSH-002..PUSH-031", "PUSH-043..PUSH-055"]
         },
@@ -327,29 +340,28 @@
                     "phase": 4
                 }
             ]
-            "package": "4.3",
-                    "prefix": "MBX",
-            ],
-            "ids": ["EQRY-158", "EQRY-166..EQRY-197"]
-            "package": "4.4",
-            "ids": ["EQRY-038..EQRY-042", "EQRY-114", "EQRY-115"]
-            "package": "4.5",
-            "ids": ["EQRY-105", "EQRY-106", "EQRY-110..EQRY-113", "CORE-012"]
-            "package": "4.6",
-            "ids": ["EQRY-065"]
         },
         {
-            "package": "Phase 2 core",
+            "package": "4.3",
             "select": [
                 {
-                    "prefix": "CORE",
-                    "phase": 2
-                },
-                {
-                    "prefix": "THR",
-                    "phase": 2
+                    "prefix": "MBX",
+                    "phase": 4
                 }
-            ]
+            ],
+            "ids": ["EQRY-158", "EQRY-166..EQRY-197"]
+        },
+        {
+            "package": "4.4",
+            "ids": ["EQRY-038..EQRY-042", "EQRY-114", "EQRY-115"]
+        },
+        {
+            "package": "4.5",
+            "ids": ["EQRY-105", "EQRY-106", "EQRY-110..EQRY-113", "CORE-012"]
+        },
+        {
+            "package": "4.6",
+            "ids": ["EQRY-065"]
         }
     ]
 }
