@@ -892,7 +892,7 @@ scenarios:
       - "stalwart:core/event_source.rs"
     notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
   - id: EDLV-012
-    title: "Email/import does not change EmailDelivery"
+    title: "Email/import changes EmailDelivery"
     method: "Email/import"
     spec: "RFC 8621 1.5"
     level: "must"

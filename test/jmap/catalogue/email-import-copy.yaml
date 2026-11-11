@@ -331,7 +331,7 @@ scenarios:
       - "fastmail:t/Email/import/invalid-email.t"
       - "stalwart:changelog: Email/import rejects non-message blobs"
       - "rfc:8621 4.8"
-    notes: "WildDuck should define the minimum: at least one syntactically valid header line before the body. Plain text without any header is treated as not a message."
+    notes: "Rule (lib/jmap/parsed-message.js, shared with Email/parse notParsable): a blob is a message when it is not empty, its first line is a header field (printable ASCII name, colon) and its header block holds no NUL octet. Plain text without any header is not a message."
 
   - id: EIMP-021
     title: "Unknown properties in an EmailImport object are rejected"
@@ -363,6 +363,7 @@ scenarios:
       - "stalwart:mail/parse.rs"
       - "rfc:8620 6"
       - "cyrus:JMAPEmail/email_import"
+    notes: "The sizes are equal when the attached message ends with a line break, as attached messages normally do: MessageHandler completes a last line without one, so the stored message is then two octets longer."
 
   - id: EIMP-023
     title: "Import the blob of an existing email creates an independent copy"
@@ -441,7 +442,7 @@ scenarios:
     sources:
       - "rfc:8620 5.3"
       - "rfc:8621 1.3.1"
-    notes: "If maxSizeUpload is never larger than the message limit this cannot be reached through the upload endpoint; keep the test for the part blob path and for configuration drift."
+    notes: "maxSizeUpload (50 MB) is below the message limit (64 MB), so the test lowers the limit for Email/import with the jmap limits.maxSizeMessage option of an in process instance and covers both an upload and a part blob."
 
   - id: EIMP-028
     title: "An import that would exceed the quota gives overQuota"
@@ -580,7 +581,7 @@ scenarios:
       - "rfc:8621 4.8"
       - "cyrus:JMAPEmail/email_import_issue3122"
       - "wildduck:MessageHandler.add normalisation"
-    notes: "Open question: confirm whether MessageHandler.add stores bare LF as is. Either is allowed, the three views must agree."
+    notes: "Settled: the MIME parser stores every line break as CRLF once the message has one bare LF, so created.size, the downloaded created.blobId and the IMAP view are the CRLF form, and the upload blob keeps its LF bytes."
 
   - id: EIMP-037
     title: "A message containing NUL octets is fixed or rejected, never half stored"
@@ -612,6 +613,7 @@ scenarios:
       - "cyrus:JMAPEmail/email_import_encoded_contenttype"
       - "cyrus:JMAPEmail/email_import_has_attachment"
       - "rfc:8621 4.8"
+    notes: "The binary part holds no bare LF: a message with one is stored with CRLF line breaks throughout (EIMP-036), which would change binary content."
 
   - id: ECPY-001
     title: "Email/copy with equal account ids is invalidArguments"

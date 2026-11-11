@@ -31,6 +31,8 @@ maxObjectsInSet = 500
 uploadQuota = 209715200
 # how long an unreferenced upload is kept, in seconds (RFC 8620 6.1: at least one hour)
 uploadTtl = 86400
+# largest message Email/import stores, in bytes (default: the message size limit of MessageHandler, 64 MB)
+#maxSizeMessage = 67108864
 
 [auth]
 # Basic credentials that verified are remembered for this many seconds, so a client sending the
