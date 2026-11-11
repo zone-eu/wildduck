@@ -46,4 +46,18 @@ describe('strict JSON for JMAP requests', () => {
         expect(fails('['.repeat(100000))).to.be.true;
         expect(parse('['.repeat(MAX_DEPTH) + ']'.repeat(MAX_DEPTH))).to.be.an('array');
     });
+
+    it('rejects escapes that leave a surrogate unpaired, accepts a pair', () => {
+        expect(fails('{"a":"\\ud800"}')).to.be.true;
+        expect(fails('{"a":"x\\udc00y"}')).to.be.true;
+        expect(fails('{"\\ud800":1}')).to.be.true;
+        expect(fails('{"a":"\\ud800\\u0041"}')).to.be.true;
+        expect(parse('{"a":"\\ud834\\udd1e"}')).to.deep.equal({ a: '\ud834\udd1e' });
+        expect(parse('{"a":"\\\\ud800"}')).to.deep.equal({ a: '\\ud800' });
+    });
+
+    it('answers a JsonError, not a SyntaxError, for a member name with control characters', () => {
+        expect(fails(Buffer.from('{"a\u0000b":1}'))).to.be.true;
+        expect(fails(Buffer.from(JSON.stringify({ using: [] }), 'utf16le'))).to.be.true;
+    });
 });
