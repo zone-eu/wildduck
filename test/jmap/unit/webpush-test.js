@@ -13,7 +13,8 @@ const net = require('net');
 const path = require('path');
 const { expect } = require('chai');
 const webpush = require('../../../lib/jmap/push/webpush');
-const { outcomeOf, retryAfterOf, changedTypes, backoff } = require('../../../lib/jmap/push/delivery');
+const { outcomeOf, retryAfterOf, changedTypes, wantedTypes, backoff } = require('../../../lib/jmap/push/delivery');
+const { readStates } = require('../../../lib/jmap/push/states');
 const { pushSettings } = require('../../../lib/jmap/push/settings');
 const { generate, load } = require('../../../lib/jmap/push/vapid');
 
@@ -286,6 +287,24 @@ describe('JMAP Web Push', () => {
             ]);
             expect(changedTypes(states, { types: ['EmailDelivery'], pushed: { EmailDelivery: 's1' } })).to.deep.equal([]);
             expect(changedTypes(states, { types: ['Mailbox'], pushed: {} })).to.deep.equal(['Mailbox']);
+        });
+
+        it('reads the states of the subscribed types only', async () => {
+            expect(wantedTypes([{ types: ['Email'] }, { types: ['Quota', 'Email'] }])).to.deep.equal(['Email', 'Quota']);
+            expect(wantedTypes([{ types: ['Email'] }, { types: null }])).to.equal(null);
+            const asked = [];
+            const module = (types, states) => ({
+                pushTypes: types,
+                pushStates: async context => {
+                    asked.push(types[0]);
+                    expect(context.cache).to.deep.equal({ seed: 1 });
+                    return states;
+                }
+            });
+            const modules = [module(['Email', 'Mailbox'], { Email: 'e', Mailbox: 'e' }), module(['Quota'], { Quota: 'q' }), { methods: {} }];
+            expect(await readStates(modules, { cache: { other: 1 } }, { types: ['Quota'], cache: { seed: 1 } })).to.deep.equal({ Quota: 'q' });
+            expect(asked).to.deep.equal(['Quota']);
+            expect(await readStates(modules, {}, { cache: { seed: 1 } })).to.deep.equal({ Email: 'e', Mailbox: 'e', Quota: 'q' });
         });
     });
 
