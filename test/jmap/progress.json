@@ -259,6 +259,33 @@
                     "phase": 2
                 }
             ]
+        },
+        {
+            "package": "2.6",
+            "select": [
+                {
+                    "prefix": "ESET",
+                    "phase": 2
+                }
+            ],
+            "ids": ["WDX-007", "WDX-008", "WDX-009", "BLOB-033", "BLOB-039", "BLOB-040", "ESRC-039", "ESRC-040"]
+        },
+        {
+            "package": "2.4",
+            "ids": ["ECHG-023", "ECHG-033", "ECHG-036", "ECHG-055", "ECHG-059", "ECHG-107", "ECHG-108"]
+        },
+        {
+            "package": "Phase 2 core",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 2
+                },
+                {
+                    "prefix": "THR",
+                    "phase": 2
+                }
+            ]
         }
     ]
 }

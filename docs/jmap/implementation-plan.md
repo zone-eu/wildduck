@@ -386,10 +386,10 @@ Each work package ends with the end of package steps of section 2.2. Scenario id
 
 - [x] **2.1 Upload endpoint.** `BLOB` phase 2 (20).
 - [x] **2.2 Mailbox/set.** Create, update, destroy, `onDestroyRemoveEmails`, `ifInState`, visibility over IMAP. `MBX` phase 2 (91).
-- [ ] **2.3 PatchObject and Email/set update.** `lib/jmap/patch.js` with unit and property tests; keywords, labels, moves judged on the resulting object, immutable properties. `ESET` update scenarios.
-- [ ] **2.4 Email/set destroy.** Archive behaviour, counts, state. `ESET` destroy scenarios, `ECHG` phase 2.
-- [ ] **2.5 MIME builder.** `lib/jmap/email-builder.js` over nodemailer's MimeNode: arbitrary bodyStructure, parts by blob id, per part headers, header forms, generated Message-ID and Date, injection safe. Unit tests and a build then parse round trip property test.
-- [ ] **2.6 Email/set create.** Through the existing store path (quota, encryption, journaling). Remaining `ESET` phase 2 (238 in total), `WDX-007`, `WDX-008`, `WDX-009`.
+- [x] **2.3 PatchObject and Email/set update.** `lib/jmap/patch.js` with unit and property tests; keywords, labels, moves judged on the resulting object, immutable properties. `ESET` update scenarios.
+- [x] **2.4 Email/set destroy.** Archive behaviour, counts, state. `ESET` destroy scenarios, `ECHG` phase 2.
+- [x] **2.5 MIME builder.** `lib/jmap/email-builder.js` over nodemailer's MimeNode: arbitrary bodyStructure, parts by blob id, per part headers, header forms, generated Message-ID and Date, injection safe. Unit tests and a build then parse round trip property test.
+- [x] **2.6 Email/set create.** Through the existing store path (quota, encryption, journaling). Remaining `ESET` phase 2 (238 in total), `WDX-007`, `WDX-008`, `WDX-009`.
 - [x] **2.7 Email/import.** `EIMP` phase 2 (37).
 - [x] **2.8 Email/parse.** `EPAR` phase 2 (31).
 - [x] **2.9 Copy methods.** Email/copy and Blob/copy with the RFC error order. `ECPY` (6), `BLOB` copy scenarios.
@@ -514,3 +514,4 @@ Rollback: disabling the service is enough. The schema additions (new fields, new
 | 2026-11-11 | Review                      | `/simplify` (reuse, simplification, efficiency, altitude) and `/security-review` over phases 0 and 1: one visibility rule for messages, one mailbox loader per request, fewer reads per request and per pushed event, task queue without a pause per task, WebAuthn ends password only sessions. No exploitable security finding |
 | 2026-11-11 | 2.1, 2.10, 2.11             | Upload endpoint (17 BLOB scenarios), owned change log, Identity (57 IDN scenarios, REST address changes reconciled and pushed). PatchObject (2.3) and the MIME builder (2.5) exist with unit tests, their methods follow                                                                                                         |
 | 2026-11-11 | 2.2, 2.7 to 2.9, 2.12, 2.13 | Mailbox/set (91 MBX), Email/import, Email/parse, Email/copy (EIMP, EPAR, ECPY), VacationResponse (48 VAC) and JMAP data removal on user deletion, built in parallel worktrees. Fixed on the way: REST mailbox update scoped to the user, mailbox limit off by one, autoreplies only for mail naming the user (RFC 3834)          |
+| 2026-11-11 | 2.3 to 2.6                  | Email/set update, destroy and create (238 ESET plus ECHG, THR, WDX, BLOB and ESRC phase 2 ids). All phase 0 to 2 catalogue scenarios except the external suites (2.14) pass: 1424 passing, 0 failing                                                                                                                             |
