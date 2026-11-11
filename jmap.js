@@ -5,6 +5,8 @@
 
 const config = require('@zone-eu/wild-config');
 const log = require('npmlog');
+const os = require('os');
+const Gelf = require('gelf');
 const https = require('https');
 const tls = require('tls');
 const db = require('./lib/db');
@@ -15,12 +17,37 @@ const MessageHandler = require('./lib/message-handler');
 const MailboxHandler = require('./lib/mailbox-handler');
 const { SettingsHandler } = require('./lib/settings-handler');
 const StorageHandler = require('./lib/storage-handler');
+const AutoreplyHandler = require('./lib/autoreply-handler');
+const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const ImapNotifier = require('./lib/imap-notifier');
 const Lock = require('ioredfour');
 const { createApp } = require('./lib/jmap/server');
 const types = require('./lib/jmap/types');
 
+// audit and mail action log lines of the handlers, as the other services write them
+function createLoggelf() {
+    const component = config.log.gelf.component || 'wildduck';
+    const hostname = config.log.gelf.hostname || os.hostname();
+    const gelf =
+        config.log.gelf && config.log.gelf.enabled ? new Gelf(config.log.gelf.options) : { emit: (key, message) => log.info('Gelf', JSON.stringify(message)) };
+    return message => {
+        message = typeof message === 'string' ? { short_message: message } : message || {};
+        normalizeLoggelfMessage(message);
+        if (!message.short_message || message.short_message.indexOf(component.toUpperCase()) !== 0) {
+            message.short_message = component.toUpperCase() + ' ' + (message.short_message || '');
+        }
+        Object.assign(message, { facility: component, host: hostname, timestamp: Date.now() / 1000, _component: component });
+        for (const key of Object.keys(message)) {
+            if (!message[key]) {
+                delete message[key];
+            }
+        }
+        gelf.emit('gelf.log', message);
+    };
+}
+
 function createDeps() {
+    const loggelf = createLoggelf();
     const settingsHandler = new SettingsHandler({ db: db.database });
     const messageHandler = new MessageHandler({
         database: db.database,
@@ -28,17 +55,20 @@ function createDeps() {
         redis: db.redis,
         gridfs: db.gridfs,
         attachments: config.attachments,
-        settingsHandler
+        settingsHandler,
+        loggelf
     });
-    const userHandler = new UserHandler({ database: db.database, users: db.users, redis: db.redis, messageHandler });
+    const userHandler = new UserHandler({ database: db.database, users: db.users, redis: db.redis, messageHandler, loggelf });
     // listens to change notifications for the event source, fanned out across workers through Redis
     const notifier = new ImapNotifier({ database: db.database, redis: db.redis, settingsHandler });
-    const storageHandler = new StorageHandler({ database: db.database, users: db.users, gridfs: db.gridfs });
-    const mailboxHandler = new MailboxHandler({ database: db.database, users: db.users, redis: db.redis, notifier, settingsHandler });
+    const storageHandler = new StorageHandler({ database: db.database, users: db.users, gridfs: db.gridfs, loggelf });
+    const mailboxHandler = new MailboxHandler({ database: db.database, users: db.users, redis: db.redis, notifier, settingsHandler, loggelf });
+    const autoreplyHandler = new AutoreplyHandler({ database: db.database, users: db.users, redis: db.redis, notifier, loggelf });
     return {
         settingsHandler,
         messageHandler,
         mailboxHandler,
+        autoreplyHandler,
         notifier,
         storageHandler,
         database: db.database,

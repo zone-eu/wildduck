@@ -8,7 +8,7 @@
 const { expect } = require('chai');
 const { MongoClient, ObjectId } = require('mongodb');
 const config = require('@zone-eu/wild-config');
-const { toVacation, toAutoreply, checkVacation, utcDate, reconcile } = require('../../../lib/jmap/types/vacation');
+const { toVacation, toAutoreply, checkVacation, reconcile } = require('../../../lib/jmap/types/vacation');
 
 const DEFAULTS = { id: 'singleton', isEnabled: false, fromDate: null, toDate: null, subject: null, textBody: null, htmlBody: null };
 
@@ -28,7 +28,6 @@ describe('JMAP VacationResponse', () => {
             const vacation = toVacation({ start: new Date('2030-01-01T00:00:00.000Z'), end: new Date('2030-01-02T03:04:05.250Z') });
             expect(vacation.fromDate).to.equal('2030-01-01T00:00:00Z');
             expect(vacation.toDate).to.equal('2030-01-02T03:04:05.250Z');
-            expect(utcDate(null)).to.equal(null);
         });
 
         it('reads a date stored as a string and ignores an invalid one', () => {
@@ -74,6 +73,8 @@ describe('JMAP VacationResponse', () => {
                 'toDate'
             ]);
             expect(invalid({ id: 'other' })).to.deep.equal(['id']);
+            // a day that does not exist is not a UTCDate
+            expect(invalid({ fromDate: '2018-02-30T00:00:00Z' })).to.deep.equal(['fromDate']);
         });
 
         it('rejects a date window that ends before it starts, judged on the result', () => {

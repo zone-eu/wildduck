@@ -14,6 +14,7 @@ const MailboxHandler = require('./lib/mailbox-handler');
 const MessageHandler = require('./lib/message-handler');
 const StorageHandler = require('./lib/storage-handler');
 const AuditHandler = require('./lib/audit-handler');
+const AutoreplyHandler = require('./lib/autoreply-handler');
 const ImapNotifier = require('./lib/imap-notifier');
 const db = require('./lib/db');
 const certs = require('./lib/certs');
@@ -263,6 +264,7 @@ function createApp(options = {}) {
     let messageHandler;
     let storageHandler;
     let auditHandler;
+    let autoreplyHandler;
     let settingsHandler;
     let mcpTokenHandler;
     let notifier;
@@ -737,6 +739,14 @@ function createApp(options = {}) {
         loggelf: message => loggelf(message)
     });
 
+    autoreplyHandler = new AutoreplyHandler({
+        database: db.database,
+        users: db.users,
+        redis: db.redis,
+        notifier,
+        loggelf: message => loggelf(message)
+    });
+
     // route modules read these off the fastify instance
     app.decorate('loggelf', (message, requiredKeys = []) => loggelf(message, requiredKeys));
     app.decorate(
@@ -764,7 +774,7 @@ function createApp(options = {}) {
         webauthnRoutes(db, app, userHandler, mcpTokenHandler);
         updatesRoutes(db, app, notifier);
         authRoutes(db, app, userHandler, mcpTokenHandler);
-        autoreplyRoutes(db, app, notifier);
+        autoreplyRoutes(db, app, autoreplyHandler);
         submitRoutes(db, app, messageHandler, userHandler, settingsHandler);
         auditRoutes(db, app, auditHandler);
         domainaliasRoutes(db, app);
