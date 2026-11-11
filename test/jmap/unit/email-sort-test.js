@@ -52,6 +52,21 @@ describe('JMAP Email/query sorts', () => {
         it('answers null for an unknown collation', () => {
             expect(collationKey('i;octet')).to.equal(null);
         });
+        it('sorts i;ascii-numeric by the value of the leading number, also for long numbers', () => {
+            const long = '9'.repeat(2000);
+            expect(sorted(['10', 'abc', '9', '0011x', long, `1${long}`, '0'], 'i;ascii-numeric')).to.deep.equal([
+                '0',
+                '9',
+                '10',
+                '0011x',
+                long,
+                `1${long}`,
+                'abc'
+            ]);
+            expect(collationKey('i;ascii-numeric')('007')).to.equal(collationKey('i;ascii-numeric')('7 days'));
+            // the key does not grow with padding: digit count and digits only
+            expect(collationKey('i;ascii-numeric')('42 apples').length).to.equal(6);
+        });
     });
 
     describe('parseSort', () => {
