@@ -96,4 +96,13 @@ describe('JMAP header forms', () => {
         expect(h.headerValue(fields, h.parseHeaderProperty('header:Missing'))).to.be.null;
         expect(h.headerValue(fields, h.parseHeaderProperty('header:Missing:all'))).to.deep.equal([]);
     });
+
+    it('strips Date comments in one pass, nested and unclosed ones too', () => {
+        expect(h.asDate('Tue, 10 Nov 2026 10:00:00 +0200 (EET)')).to.equal('2026-11-10T10:00:00+02:00');
+        expect(h.asDate('Tue, (a (nested) comment) 10 Nov 2026 10:00:00 +0200')).to.equal('2026-11-10T10:00:00+02:00');
+        expect(h.asDate('Tue, 10 Nov 2026 10:00:00 +0200 (unclosed')).to.equal('2026-11-10T10:00:00+02:00');
+        const started = Date.now();
+        expect(h.asDate('('.repeat(160000))).to.equal(null);
+        expect(Date.now() - started).to.be.below(500);
+    });
 });

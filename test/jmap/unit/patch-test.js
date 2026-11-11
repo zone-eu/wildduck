@@ -122,4 +122,13 @@ describe('JMAP PatchObject', () => {
             expect(applyPatch(input, patch).object.keywords).to.deep.equal(expected);
         }
     });
+
+    it('checks overlapping paths in linear time, also for very long paths', () => {
+        const deep = Array.from({ length: 20000 }, (_, i) => 'k' + i).join('/');
+        const started = Date.now();
+        expect(() => applyPatch({ a: {} }, { a: true, ['a/' + deep]: 1 })).to.throw(PatchError);
+        expect(() => applyPatch({ a: {} }, { ['a/' + deep]: 1, a: true })).to.throw(PatchError);
+        expect(Date.now() - started).to.be.below(500);
+        expect(() => applyPatch({ a: { b: 1, c: 2 } }, { 'a/b': 3, 'a/c': 4 })).to.not.throw();
+    });
 });

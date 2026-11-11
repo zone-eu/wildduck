@@ -93,4 +93,19 @@ describe('JMAP result references', () => {
         const responses = [['Core/echo', { a: 1 }, 'c0']];
         expect(typeOf(() => resolveReferences({ '#__proto__': { resultOf: 'c0', name: 'Core/echo', path: '/a' } }, responses))).to.equal('invalidArguments');
     });
+
+    it('evaluates long paths through "*" in linear time', () => {
+        // a wide list walked with a long path: the remaining path is not copied for every member
+        const depth = 2000;
+        let member = 'end';
+        for (let i = 0; i < depth; i++) {
+            member = { k: member };
+        }
+        const list = Array.from({ length: 2000 }, () => member);
+        const started = Date.now();
+        const result = evaluatePointer({ list }, '/list/*' + '/k'.repeat(depth));
+        expect(result).to.have.length(2000);
+        expect(result[0]).to.equal('end');
+        expect(Date.now() - started).to.be.below(500);
+    });
 });
