@@ -573,9 +573,8 @@ tests:
   - id: "mailbox/set-duplicate-name-same-parent"
     required: true
     spec: "RFC 8621 2.5"
-    phase: 2
     expect: opinion
-    reason: "RFC 8621 2 forbids sibling Mailboxes with the same name but names no SetError type; the suite requires alreadyExists. WildDuck answers alreadyExists for a duplicate sibling name, simply comply."
+    reason: "RFC 8621 2 forbids sibling Mailboxes with the same name but names no SetError type, and RFC 8620 defines alreadyExists only for /copy and /import; the suite requires alreadyExists, WildDuck answers invalidProperties on name like James and Cyrus (MBX-151)."
   - id: "mailbox/set-change-sort-order"
     required: true
     spec: "RFC 8621 2.5"
