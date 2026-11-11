@@ -433,7 +433,7 @@ tests:
     capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
     pristine: true
     expect: never
-    reason: "Threading rule: the replies carry References but a different subject, and WildDuck threads only on a shared reference AND the same normalised subject, so each reply is its own thread and the allInThreadHaveKeyword and someInThreadHaveKeyword expectations cannot hold (every query also sorts by subject and one filters on the stop word \"here\", both phase 4 matters)."
+    reason: "Threading rule: the replies carry References but a different subject, and WildDuck threads only on a shared reference AND the same normalised subject, so each reply is its own thread and the allInThreadHaveKeyword and someInThreadHaveKeyword expectations cannot hold (run 2026-11-11 at phase 4: the subject sort works, the three thread keyword subtests and the text search fail; the text search is for the stop word \"here\", which the MongoDB text index drops for accounts without OpenSearch)."
   - id: "Email/query/no-existing-entities.t"
     subtests: 1
     capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]

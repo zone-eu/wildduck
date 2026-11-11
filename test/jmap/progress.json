@@ -327,6 +327,16 @@
                     "phase": 4
                 }
             ]
+            "package": "4.3",
+                    "prefix": "MBX",
+            ],
+            "ids": ["EQRY-158", "EQRY-166..EQRY-197"]
+            "package": "4.4",
+            "ids": ["EQRY-038..EQRY-042", "EQRY-114", "EQRY-115"]
+            "package": "4.5",
+            "ids": ["EQRY-105", "EQRY-106", "EQRY-110..EQRY-113", "CORE-012"]
+            "package": "4.6",
+            "ids": ["EQRY-065"]
         },
         {
             "package": "Phase 2 core",
