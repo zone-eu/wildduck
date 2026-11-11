@@ -683,6 +683,73 @@ indexes:
           key:
               purgeAt: 1
 
+    - collection: jmapparticipants
+      feature: jmap
+      index:
+          # one calendar participant identity per address (lib/jmap/types/participant-identity.js)
+          name: user_address
+          unique: true
+          key:
+              user: 1
+              address: 1
+
+    - collection: jmapparticipants
+      feature: jmap
+      index:
+          # ParticipantIdentity/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: calendars
+      feature: jmap
+      index:
+          # the calendars of a user in display order (lib/calendar-handler.js)
+          name: user_sortorder
+          key:
+              user: 1
+              sortOrder: 1
+              _id: 1
+
+    - collection: calendars
+      feature: jmap
+      index:
+          # at most one default calendar per user, also under concurrent first access
+          name: user_default
+          unique: true
+          key:
+              user: 1
+          partialFilterExpression:
+              isDefault: true
+
+    - collection: calendars
+      feature: jmap
+      index:
+          # Calendar/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: calendarevents
+      feature: jmap
+      index:
+          # the events of a calendar (calendarHasEvent, onDestroyRemoveEvents)
+          name: user_calendar
+          key:
+              user: 1
+              calendarIds: 1
+
+    - collection: calendarevents
+      feature: jmap
+      index:
+          # CalendarEvent/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
     - collection: jmapchanges
       feature: jmap
       index:

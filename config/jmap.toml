@@ -100,6 +100,22 @@ retention = 604800
 # when they are read)
 pollInterval = 15
 
+
+[calendars]
+# Calendars (draft-ietf-jmap-calendars), see lib/calendar-handler.js
+# calendars an account may have; Calendar/set create answers overQuota beyond it
+maxCalendars = 1000
+# calendars one event may be in (maxCalendarsPerEvent of the account capability)
+maxCalendarsPerEvent = 1
+# events an account may have
+maxEventsPerAccount = 50000
+maxParticipantsPerEvent = 500
+# the range of date-times an event may use, and how long a window CalendarEvent/query may expand
+minDateTime = "1900-01-01T00:00:00Z"
+maxDateTime = "2199-12-31T23:59:59Z"
+maxExpandedQueryDuration = "P366D"
+# name of the default calendar a user gets on first calendar access
+defaultName = "Calendar"
 [push]
 # Web Push for PushSubscription (RFC 8620 7.2, RFC 8030, RFC 8291 encryption, RFC 8292 VAPID). Push
 # requests go out from the JMAP workers through the BullMQ queue jmap_push. The VAPID key pair is made
