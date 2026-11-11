@@ -584,12 +584,13 @@ scenarios:
     phase: 2
     applies: yes
     seed: [api]
-    given: "A user whose storageUsed is at the quota."
+    given: "A user whose storageUsed is past the quota (the quota set below storageUsed through the REST API)."
     when: "A message is created with Email/set, imported with Email/import, and appended over IMAP."
     then: "The JMAP calls fail with overQuota, IMAP APPEND fails with OVERQUOTA, and storageUsed is unchanged."
     sources:
       - "james:EmailSetMethodContract"
       - "stalwart:system/quota.rs"
+    notes: "IMAP APPEND and the REST upload refuse a message once storageUsed is past the quota (storageUsed > quota), so a user exactly at the quota may still append one message over IMAP. JMAP refuses any message that would take storageUsed past the quota (ESET-223), so the case every protocol refuses is a user already past it."
   - id: WDX-008
     title: "Messages created over JMAP count towards quota and are released on destroy"
     method: Email/set

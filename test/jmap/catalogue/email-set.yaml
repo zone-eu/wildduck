@@ -1792,7 +1792,7 @@ scenarios:
     seed: [jmap]
     given: "The Drafts mailbox id is known."
     when: "Email/set create with mailboxIds, from, to, subject, textBody [{\"partId\": \"t\", \"type\": \"text/plain\"}] and bodyValues {\"t\": {\"value\": \"Hello\"}}."
-    then: "created.c1 is returned. Email/get with fetchTextBodyValues shows bodyStructure of type text/plain without subParts, textBody and htmlBody both pointing at that part, bodyValues value \"Hello\", and the from, to and subject as sent."
+    then: "created.c1 is returned. Email/get with fetchTextBodyValues shows bodyStructure of type text/plain without subParts, textBody and htmlBody both pointing at that part, bodyValues value \"Hello\" followed by one line feed (see notes), and the from, to and subject as sent."
     sources:
       - "james:EmailSetMethodContract#createShouldAddAnEmailInTargetMailbox"
       - "jmapio:email/set-create-plain-text"
@@ -1800,6 +1800,7 @@ scenarios:
       - "cyrus:JMAPEmail/email_set_draft"
       - "stalwart:resources/jmap/email_set/minimal"
       - "wildduck:MIME builder, after jmap-proxy-go mime_build_test.go"
+    notes: "WildDuck stores the last line of a single part body terminated (the MIME parser ends it with CRLF), so the value of a single part message comes back with one trailing LF, as for any message delivered or appended without a final line break. Parts of a multipart message round trip exactly (the CRLF before a boundary belongs to the delimiter)."
 
   - id: ESET-113
     title: "Create an HTML only email without a multipart wrapper"
@@ -1811,12 +1812,13 @@ scenarios:
     seed: [jmap]
     given: "The Drafts mailbox id is known."
     when: "Email/set create with htmlBody [{\"partId\": \"h\", \"type\": \"text/html\"}] and bodyValues {\"h\": {\"value\": \"<p>Hi</p>\"}}."
-    then: "Email/get shows bodyStructure type text/html with no subParts; htmlBody and textBody both list that part; the html value round trips."
+    then: "Email/get shows bodyStructure type text/html with no subParts; htmlBody and textBody both list that part; the html value round trips, followed by one line feed (see notes of ESET-112)."
     sources:
       - "james:EmailSetMethodContract#createShouldSupportHtmlBody"
       - "james:EmailSetMethodContract#htmlBodyOnlyShouldNotBeWrappedInMultiparts"
       - "jmapio:email/set-create-html"
       - "fastmail:t/Email/set/create/html-body.t"
+    notes: "A single part body is stored with its last line terminated, see ESET-112."
 
   - id: ESET-114
     title: "textBody plus htmlBody produce multipart/alternative"
@@ -2789,12 +2791,12 @@ scenarios:
     seed: [jmap]
     given: "The Drafts mailbox id is known."
     when: "Email/set create with bodyStructure {\"type\": \"text/plain\", \"partId\": \"t\"} and bodyValues {\"t\": {\"value\": \"body\"}}."
-    then: "Created; Email/get bodyStructure is a text/plain leaf, textBody lists it and the value round trips."
+    then: "Created; Email/get bodyStructure is a text/plain leaf, textBody lists it and the value round trips, followed by one line feed (see notes of ESET-112)."
     sources:
       - "fastmail:t/Email/set/create/body-structure.t"
       - "cyrus:JMAPEmail/email_set_bodystructure"
       - "stalwart:resources/jmap/email_set/minimal"
-    notes: "James rejects bodyStructure on create altogether (createShouldRejectBodyStructure). WildDuck supports it, as the plan calls for a full MIME builder."
+    notes: "James rejects bodyStructure on create altogether (createShouldRejectBodyStructure). WildDuck supports it, as the plan calls for a full MIME builder. A single part body is stored with its last line terminated, see ESET-112."
 
   - id: ESET-176
     title: "bodyStructure together with textBody, htmlBody or attachments is rejected"
@@ -2888,9 +2890,10 @@ scenarios:
     seed: [jmap]
     given: "The Drafts mailbox id is known."
     when: "Create with bodyStructure nested 200 multipart levels deep."
-    then: "notCreated.c1 is invalidProperties (or tooLarge); the server does not crash, time out or answer serverFail."
+    then: "The request is refused before Email/set runs (HTTP 400 notJSON: the request nests deeper than the I-JSON limit of the API endpoint), and a structure nested beyond the builder limit but within the JSON limit gives notCreated.c1 invalidProperties (or tooLarge); the server does not crash, time out or answer serverFail."
     sources:
       - "wildduck:imap-core max parser depth, MIME tree limits"
+    notes: "200 levels of bodyStructure are about 400 levels of JSON, which the request parser refuses (RFC 8620 3.6.1 notJSON) before any method runs. The builder limit (MAX_DEPTH) is checked with a structure that passes the request parser."
 
   - id: ESET-182
     title: "textBody or htmlBody with more than one part is rejected"
