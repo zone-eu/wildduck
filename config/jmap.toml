@@ -37,8 +37,9 @@ uploadTtl = 86400
 # sources per creation (at least 64)
 #maxSizeBlobSet = 10485760
 #maxDataSources = 64
-# most octets one Blob/get call reads (default: the larger of maxSizeUpload and the message size limit)
-#maxSizeBlobGet = 67108864
+# most octets one Blob/get call returns (16 MB). A larger blob answers requestTooLarge unless the client
+# asks for a range (offset and length); octets before the offset are streamed past, not held
+#maxSizeBlobGet = 16777216
 
 [auth]
 # Basic credentials that verified are remembered for this many seconds, so a client sending the

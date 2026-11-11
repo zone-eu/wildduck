@@ -6,7 +6,8 @@
 
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
-const { checkSource, literalSize, toBlob } = require('../../../lib/jmap/types/blob');
+const { Readable } = require('stream');
+const { checkSource, literalSize, readSlice, toBlob } = require('../../../lib/jmap/types/blob');
 const { filterOf } = require('../../../lib/jmap/types/quota');
 const { objectIds, searchCondition } = require('../../../lib/object-ids');
 const imapTools = require('../../../imap-core/lib/imap-tools');
@@ -83,6 +84,43 @@ describe('Blob/get objects', () => {
         const blob = toBlob('b', range('abc'), ['digest:sha', 'digest:sha-256']);
         expect(blob['digest:sha']).to.equal('qZk+NkcGgWq6PiVxeFDCbJzQ2J0=');
         expect(blob['digest:sha-256']).to.equal('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=');
+    });
+});
+
+describe('Blob range reads', () => {
+    const chunked = chunks => Readable.from(chunks.map(chunk => Buffer.from(chunk)));
+
+    it('keeps only the range, discarding the octets before the offset', async () => {
+        const res = await readSlice(chunked(['abcd', 'efgh', 'ijkl']), 5, 4, false);
+        expect(res.content.toString()).to.equal('fghi');
+        expect(res.more).to.be.true;
+        expect(res.size).to.equal(null);
+    });
+
+    it('reads on to the end for the size without keeping more than asked', async () => {
+        const res = await readSlice(chunked(['abcd', 'efgh', 'ijkl']), 2, 3, true);
+        expect(res.content.toString()).to.equal('cde');
+        expect(res).to.include({ more: true, size: 12 });
+        const none = await readSlice(chunked(['abcd', 'efgh']), 0, 0, true);
+        expect(none.content.length).to.equal(0);
+        expect(none.size).to.equal(8);
+    });
+
+    it('answers what there is when the range reaches past the end', async () => {
+        const res = await readSlice(chunked(['abcd', 'ef']), 4, 10, false);
+        expect(res.content.toString()).to.equal('ef');
+        expect(res).to.include({ more: false, size: 6 });
+        const past = await readSlice(chunked(['abcd']), 9, 2, false);
+        expect(past.content.length).to.equal(0);
+        expect(past).to.include({ more: false, size: 4 });
+    });
+
+    it('does not hold the octets before the offset in one buffer', async () => {
+        // 64 chunks of 64 KiB, the range is the last 10 octets
+        const chunk = Buffer.alloc(65536, 0x61);
+        const res = await readSlice(Readable.from(Array.from({ length: 64 }, () => chunk)), 64 * 65536 - 10, 10, false);
+        expect(res.content.length).to.equal(10);
+        expect(res.content.buffer.byteLength).to.be.at.most(65536);
     });
 });
 
