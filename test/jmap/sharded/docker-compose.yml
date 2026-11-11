@@ -1,0 +1,22 @@
+# A minimal sharded MongoDB cluster for the JMAP sharded tests (npm run test:jmap:sharded):
+# one config server and two shards, each a single member replica set, and a mongos on 27117.
+# The messages collection is sharded by {mailbox, uid} like in production, see init.js.
+services:
+    config:
+        image: mongo:6.0
+        command: mongod --configsvr --replSet cfg --port 27019 --bind_ip_all
+    shard1:
+        image: mongo:6.0
+        command: mongod --shardsvr --replSet shard1 --port 27018 --bind_ip_all
+    shard2:
+        image: mongo:6.0
+        command: mongod --shardsvr --replSet shard2 --port 27018 --bind_ip_all
+    mongos:
+        image: mongo:6.0
+        command: mongos --configdb cfg/config:27019 --port 27017 --bind_ip_all
+        ports:
+            - '127.0.0.1:27117:27017'
+        depends_on:
+            - config
+            - shard1
+            - shard2

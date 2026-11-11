@@ -56,7 +56,7 @@ scenarios:
     then: "The original keeps its root; each copy has a root different from the original and from each other, equal to the copy's own new _id."
     sources:
       - "wildduck:lib/handlers/on-copy.js"
-    notes: "Changes what the ZMS-128 logs show for copies. If lineage is wanted, the COPY log line carries the source root."
+    notes: "Changes what the ZMS-128 logs show for copies: a copy no longer shares the root of its original. The EXISTS journal entry of the copy carries sourceRoot, the root it was copied from."
   - id: WDP-005
     title: "Archive and restore keep the root"
     method: MessageHandler.del
@@ -84,7 +84,7 @@ scenarios:
     sources:
       - "wildduck:plan 5.1 uniqueness is an invariant, not an index"
   - id: WDP-007
-    title: "Migration fills in missing roots"
+    title: "The root repair fills in missing roots"
     method: Migration
     spec: "Plan 5.1"
     level: wd
@@ -92,12 +92,13 @@ scenarios:
     applies: yes
     seed: [db]
     given: "Messages and archived messages of a user without a root field (legacy documents)."
-    when: "The root migration task runs for the user."
-    then: "Every document has root equal to its _id; documents that already had a root are untouched; running the task again changes nothing."
+    when: "The root repair runs for the user (lib/message-roots.js repairUserRoots, run on first JMAP use or by the optional messages_root_repair migration)."
+    then: "Every message and archived document of the user has root equal to its _id; documents that already had a root are untouched; running the repair again changes nothing."
     sources:
       - "wildduck:run-migrations task"
+    notes: "Changed 2026-11-11: a per user repair instead of one migration over every message. Only users who use JMAP are touched, and the optional migration does the same for everyone ahead of time."
   - id: WDP-008
-    title: "Migration separates documents that share a root"
+    title: "The root repair separates documents that share a root"
     method: Migration
     spec: "Plan 5.1"
     level: wd
@@ -105,10 +106,11 @@ scenarios:
     applies: yes
     seed: [db]
     given: "Three documents of one user sharing a root (an original and two legacy IMAP copies)."
-    when: "The root migration task runs for the user."
-    then: "The oldest document keeps the root, the other two get new distinct roots; the task is resumable after an interruption and reports its progress."
+    when: "ensureUserRoots runs for the user, then runs again, and the repair itself is run once more."
+    then: "The oldest document keeps the root, the other two get their own _id as root. ensureUserRoots records that the user is done and does nothing the second time; the repair is idempotent, so an interrupted run can be repeated. Both report what they changed."
     sources:
       - "wildduck:run-migrations task"
+    notes: "A group is separated only if it still exists after a settle delay, because a move in progress also leaves two documents with one root for a moment."
   - id: WDP-009
     title: "A missing root is read as _id until the migration has run"
     method: MessageHandler
@@ -122,8 +124,9 @@ scenarios:
     then: "storeMessage reports root equal to the _id, and the id lookup finds the message."
     sources:
       - "wildduck:lib/filter-handler.js:1202"
+    notes: "The storeMessage half is covered by test/filter-handler-overrides-test.js (stored message root). The scenario test covers the resolver: a legacy document is found by its _id, not with legacy false, and never for another user."
   - id: WDP-010
-    title: "The {user, root} index exists on messages and archived"
+    title: "The by_root index exists on messages and archived"
     method: Indexes
     spec: "Plan 5.1"
     level: wd
@@ -132,11 +135,12 @@ scenarios:
     seed: [none]
     given: "A freshly started server on an empty database."
     when: "Index setup has finished."
-    then: "messages and archived each have a non unique index on {user, root}, and an explain of a {user, root: {$in}} query uses it."
+    then: "messages and archived each have a non unique index on {root: 1} named by_root, partial on documents that have a root, and the plan of a {user, root: {$in, $exists: true}} query uses it."
     sources:
       - "wildduck:indexes.yaml"
+    notes: "Changed 2026-11-11 from {user, root}: roots are globally unique ObjectIds, so root alone is as selective and the index is about half the size on a billion documents. The user condition stays in every query for isolation."
   - id: WDP-011
-    title: "A periodic audit reports users with duplicate roots"
+    title: "The root check reports shared roots of a user"
     method: Audit
     spec: "Plan 5.1"
     level: wd
@@ -144,10 +148,38 @@ scenarios:
     applies: yes
     seed: [db]
     given: "One user with two stable documents sharing a root, created directly in the database."
-    when: "The root uniqueness audit runs."
-    then: "The audit reports the user and the root, and does not report users whose roots are unique."
+    when: "findDuplicateRoots runs for each of the two users."
+    then: "For the first user it reports one group with the root and its documents oldest first; for the user whose roots are unique it reports nothing."
     sources:
       - "wildduck:plan 5.1 uniqueness cannot be enforced by a unique index on a sharded collection"
+  - id: WDP-012
+    title: "A move gives a message stored without root its current _id as root"
+    method: MessageHandler.move
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db, imap]
+    given: "A message whose document has no root field (stored before every message got one); its JMAP id is built from its _id."
+    when: "The message is moved to another mailbox with IMAP MOVE."
+    then: "The moved document has root equal to the _id the message had before the move, so the id under which it was known stays valid."
+    sources:
+      - "wildduck:lib/message-handler.js _moveAsync"
+    notes: "Added 2026-11-11 while implementing 0.3: without it a legacy message would change its JMAP id on its first move, before the root repair has run for the user."
+  - id: WDP-013
+    title: "Account wide listing by receivedAt uses the user_idate index"
+    method: Indexes
+    spec: "Plan 3.8"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "A user with many messages in several mailboxes."
+    when: "The messages of the user that are not deleted are listed newest first by idate, the query behind Email/query without a mailbox filter."
+    then: "The plan uses the user_idate index for the sort, without an in memory sort."
+    sources:
+      - "wildduck:indexes.yaml user_idate"
+    notes: "Added 2026-11-11 with work package 0.12."
 
   # ---- change journal
   - id: WDP-020
@@ -216,18 +248,19 @@ scenarios:
     sources:
       - "wildduck:indexes.yaml journal_autoexpire"
   - id: WDP-025
-    title: "The per user state anchor follows the newest journal entry"
+    title: "The per user state anchor follows the newest journal entry and never moves back"
     method: Journal
     spec: "Plan 5.2"
     level: wd
     phase: 0
     applies: yes
     seed: [imap]
-    given: "A user with no journal entries."
-    when: "Changes are made in several mailboxes, from two server processes at once."
-    then: "The stored anchor equals the largest journal id written for the user; it never decreases, also when a smaller id is committed after a larger one."
+    given: "A user with changes in several mailboxes."
+    when: "The anchors are read (lib/journal-state.js journalAnchors), then an entry with a smaller id is committed late, as by another server process, and they are read again."
+    then: "The journal anchor equals the newest journal id and is stored in jmapstate; the late entry with the smaller id does not move it back. The delivery anchor is the newest entry that added an Email, not a later flag change."
     sources:
       - "wildduck:plan 5.2 persisted anchor"
+    notes: "Changed 2026-11-11: anchors are maintained when a state is read, not on every journal write. That keeps every write path, including the Haraka and ZoneMTA plugins, free of an extra update."
   - id: WDP-026
     title: "The state anchor survives journal expiry"
     method: Journal
@@ -238,7 +271,7 @@ scenarios:
     seed: [imap, time]
     given: "A user whose newest journal entry has expired and been removed."
     when: "The anchor is read."
-    then: "The anchor still holds the id of that last entry; it does not become empty and does not change."
+    then: "The anchors still hold the ids of the last entries; they do not become empty and do not change. Once an anchor is older than the journal retention and nothing newer exists, a fresh anchor is minted: changes may have expired unseen, so a state change is the safe answer."
     sources:
       - "wildduck:plan 5.2 corrected 2026-11-11"
   - id: WDP-027
@@ -309,20 +342,21 @@ scenarios:
     sources:
       - "wildduck:lib/storage-handler.js get"
   - id: WDP-043
-    title: "Upload quota is separate from the mail quota"
+    title: "Temporary uploads have their own quota and evict the oldest first"
     method: StorageHandler
     spec: "RFC 8620 6.1"
     level: should
     phase: 0
     applies: yes
     seed: [api]
-    given: "A user near the upload quota but far from the mail storage quota."
-    when: "Files are uploaded until the upload quota is exceeded."
-    then: "The upload that exceeds it is refused, mail delivery to the user still works, and storageUsed is unchanged by uploads."
+    given: "A user with temporary uploads near the upload quota and a permanent storage file."
+    when: "A temporary upload is added that does not fit, then one larger than the whole quota."
+    then: "The oldest temporary upload is deleted to make room and the new one is stored; permanent storage files are neither counted nor deleted. The upload larger than the quota is refused with OverQuota. Mail delivery still works and the mail storage quota (storageUsed) is unchanged by uploads."
     sources:
       - "rfc:8620 6.1"
 
   # ---- auth
+    notes: "RFC 8620 6.1: when an upload would take the user over quota, the server MUST delete unreferenced blobs, oldest first, until there is room."
   - id: WDP-050
     title: "The jmap scope exists for application specific passwords"
     method: Auth

@@ -1,9 +1,17 @@
 {
     "comment": "Finished work packages of docs/jmap/implementation-plan.md and the catalogue scenarios each one must keep passing. ids accepts single ids and ranges (WDP-001..WDP-005); select picks by prefix, phase and method. Checked by tools/check-coverage.js.",
     "packages": [
-        {
-            "package": "0.2",
-            "ids": ["WDP-001"]
-        }
+        { "package": "0.2", "ids": ["WDP-001"] },
+        { "package": "0.3", "ids": ["WDP-002..WDP-005", "WDP-012"] },
+        { "package": "0.4", "ids": ["WDP-006", "WDP-009", "WDP-010"] },
+        { "package": "0.5", "ids": ["WDP-007", "WDP-008", "WDP-011"] },
+        { "package": "0.6", "ids": ["WDP-020..WDP-022", "WDP-027"] },
+        { "package": "0.7", "ids": ["WDP-023", "WDP-028"] },
+        { "package": "0.8", "ids": ["WDP-024"] },
+        { "package": "0.9", "ids": ["WDP-025", "WDP-026"] },
+        { "package": "0.10", "ids": ["WDP-040..WDP-043"] },
+        { "package": "0.11", "ids": ["WDP-050", "WDP-051"] },
+        { "package": "0.12", "ids": ["WDP-013"] },
+        { "package": "Milestone 0", "select": [{ "phase": 0 }] }
     ]
 }

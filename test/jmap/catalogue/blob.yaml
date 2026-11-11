@@ -608,7 +608,7 @@ scenarios:
     method: Upload
     spec: "RFC 8620 6"
     level: wd
-    phase: 0
+    phase: 2
     applies: yes
     seed: [time]
     given: "A file uploaded at time T with the default lifetime of one day."

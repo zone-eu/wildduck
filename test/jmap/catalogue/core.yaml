@@ -534,7 +534,7 @@ scenarios:
     method: Auth
     spec: "RFC 8620 8.2"
     level: wd
-    phase: 0
+    phase: 1
     applies: yes
     seed: [api]
     given: "A user with 2FA enabled and an application specific password created with scopes [jmap]."
@@ -551,7 +551,7 @@ scenarios:
     method: Auth
     spec: "WildDuck design"
     level: wd
-    phase: 0
+    phase: 1
     applies: yes
     seed: [api]
     given: "An application specific password created with scopes [*]."
@@ -565,7 +565,7 @@ scenarios:
     method: Auth
     spec: "WildDuck design"
     level: wd
-    phase: 0
+    phase: 1
     applies: yes
     seed: [api]
     given: "An application specific password created with scopes [imap, smtp]."
@@ -612,7 +612,7 @@ scenarios:
     method: Auth
     spec: "WildDuck design"
     level: wd
-    phase: 0
+    phase: 1
     applies: yes
     seed: [api]
     given: "A user whose disabledScopes contains jmap, with an account password, an application specific password with scope * and a Bearer token."
