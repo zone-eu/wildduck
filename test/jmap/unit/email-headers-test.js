@@ -23,7 +23,8 @@ describe('JMAP header forms', () => {
         expect(h.formAllowed('Message-ID', 'asMessageIds')).to.be.true;
         expect(h.formAllowed('List-Unsubscribe', 'asURLs')).to.be.true;
         expect(h.formAllowed('X-Custom', 'asAddresses')).to.be.true;
-        expect(h.formAllowed('Content-Type', 'asText')).to.be.false;
+        expect(h.formAllowed('Content-Type', 'asText')).to.be.true;
+        expect(h.formAllowed('Subject', 'asDate')).to.be.false;
         expect(h.formAllowed('Content-Type', 'asRaw')).to.be.true;
     });
 
@@ -39,7 +40,13 @@ describe('JMAP header forms', () => {
         ]);
         expect(h.asAddresses(' =?UTF-8?B?w6TDtg==?= <a@example.com>')).to.deep.equal([{ name: 'äö', email: 'a@example.com' }]);
         expect(h.asGroupedAddresses(' Team: a@example.com, b@example.com;, c@example.com')).to.deep.equal([
-            { name: 'Team', addresses: [{ name: null, email: 'a@example.com' }, { name: null, email: 'b@example.com' }] },
+            {
+                name: 'Team',
+                addresses: [
+                    { name: null, email: 'a@example.com' },
+                    { name: null, email: 'b@example.com' }
+                ]
+            },
             { name: null, addresses: [{ name: null, email: 'c@example.com' }] }
         ]);
         expect(h.asAddresses(' Team: a@example.com;')).to.deep.equal([{ name: null, email: 'a@example.com' }]);
@@ -60,7 +67,10 @@ describe('JMAP header forms', () => {
     });
 
     it('produces URLs', () => {
-        expect(h.asURLs(' <mailto:list@example.com?subject=unsubscribe>, <https://example.com/u>')).to.deep.equal(['mailto:list@example.com?subject=unsubscribe', 'https://example.com/u']);
+        expect(h.asURLs(' <mailto:list@example.com?subject=unsubscribe>, <https://example.com/u>')).to.deep.equal([
+            'mailto:list@example.com?subject=unsubscribe',
+            'https://example.com/u'
+        ]);
         expect(h.asURLs(' none')).to.be.null;
     });
 
