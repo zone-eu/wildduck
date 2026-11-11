@@ -50,3 +50,7 @@ minPing = 5
 maxPing = 300
 # a stream is closed after this many seconds and the client reconnects with Last-Event-ID
 maxDuration = 1800
+# open streams per user across all workers (counted in Redis like the IMAP connection limit), a
+# request over the limit is refused with HTTP 429 and this Retry-After value in seconds
+maxStreams = 15
+retryAfter = 30

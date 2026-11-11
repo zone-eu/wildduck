@@ -109,3 +109,4 @@ function start(options, done) {
 
 module.exports = done => start(config.jmap || {}, done);
 module.exports.start = start;
+module.exports.createDeps = createDeps;
