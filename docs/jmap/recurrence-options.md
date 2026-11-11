@@ -1,6 +1,6 @@
 # Recurrence engine: dependency options (work package 6.3)
 
-Status: for approval. Nothing is built or installed. Checked 2026-11-11.
+Status: approved 2026-11-12 and built: `rrule-temporal` 2.2.8 (exact pin) behind `lib/calendar/recurrence.js`, tests in `test/jmap/unit/recurrence-test.js`. The comparison below was checked 2026-11-11.
 
 Context: section 3.9 of the implementation plan allows a new runtime dependency only when the problem is large and well solved elsewhere, and each one is approved first. WildDuck is EUPL-1.2 and requires Node `>=22.19.0` (`package.json`; the brief said 20, the repo says 22.19).
 
