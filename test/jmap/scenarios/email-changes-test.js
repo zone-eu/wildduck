@@ -1994,9 +1994,16 @@ describe('cross protocol invariants (wildduck.yaml WDX)', function () {
         const ctx = await account();
         await api('PUT', `/users/${ctx.user.id}/mailboxes/${ctx.boxes.Archive.id}`, { retention: 3600 * 1000 });
         const ids = await Promise.all([uploadEmail(ctx, ctx.boxes.Archive.id), uploadEmail(ctx, ctx.boxes.Archive.id)]);
-        // the messages are older than the retention
+        // the messages are older than the retention; retentionTime is aged too, because the background retention
+        // task recomputes rdate from it and would otherwise move the expiry back into the future
         const db = await seed.db();
-        await db.collection('messages').updateMany({ mailbox: new ObjectId(ctx.boxes.Archive.id) }, { $set: { exp: true, rdate: Date.now() - 1000 } });
+        const received = new Date(Date.now() - 2 * 3600 * 1000);
+        await db
+            .collection('messages')
+            .updateMany(
+                { mailbox: new ObjectId(ctx.boxes.Archive.id) },
+                { $set: { exp: true, idate: received, retentionTime: received.getTime(), rdate: received.getTime() + 3600 * 1000 } }
+            );
         const s0 = await state(ctx.client);
         await afterSecondOf(s0);
         expect(await expireMessages(ctx.user)).to.equal(2);
