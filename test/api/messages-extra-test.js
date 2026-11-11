@@ -305,8 +305,9 @@ describe('Messages extra tests', function () {
         expect(response.body.mailbox).to.be.a('string');
         expect(response.body.id).to.be.a('number');
 
-        // the restored message is back in a mailbox
-        await server.get(`/users/${user}/mailboxes/${response.body.mailbox}/messages/${response.body.id}`).expect(200);
+        // the restored message is back in a mailbox, without a \Deleted flag
+        const restored = await server.get(`/users/${user}/mailboxes/${response.body.mailbox}/messages/${response.body.id}`).expect(200);
+        expect(restored.body.deleted).to.be.false;
 
         // and it is gone from the archive
         const archive = await server.get(`/users/${user}/archived/messages`).expect(200);
