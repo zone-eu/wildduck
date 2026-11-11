@@ -30,6 +30,7 @@ const { PushService } = require('./lib/jmap/push/delivery');
 const { VapidKeys } = require('./lib/jmap/push/vapid');
 const { pushSettings } = require('./lib/jmap/push/settings');
 const queryCache = require('./lib/jmap/query-cache');
+const calendarAlerts = require('./lib/calendar/alerts');
 
 // audit and mail action log lines of the handlers, as the other services write them
 function createLoggelf() {
@@ -160,8 +161,12 @@ function start(options, done) {
         app = createApp(deps, appOptions);
         // pending EmailSubmissions follow the outbound queue, see lib/jmap/submission-queue.js
         const stopPoller = startPoller(deps, settingsOf(options).pollInterval);
+        // calendar alerts, see lib/calendar/alerts.js
+        deps.alertSettings = calendarAlerts.settingsOf(options.alerts);
+        const stopAlerts = options.alerts && options.alerts.enabled === false ? () => false : calendarAlerts.startScheduler(deps, deps.alertSettings);
         app.addHook('onClose', async () => {
             stopPoller();
+            stopAlerts();
             if (push) {
                 push.vapid.stop();
                 await push.stop();

@@ -750,6 +750,46 @@ indexes:
               user: 1
               modSeq: 1
 
+    - collection: calendarevents
+      feature: jmap
+      index:
+          # one event per uid, or standalone instances with distinct recurrence ids (lib/calendar/events.js)
+          name: user_uid
+          unique: true
+          key:
+              user: 1
+              uid: 1
+              recurrenceId: 1
+
+    - collection: calendarevents
+      feature: jmap
+      index:
+          # CalendarEvent/query: candidates by their first start
+          name: user_first
+          key:
+              user: 1
+              first: 1
+
+    - collection: calendarevents
+      feature: jmap
+      index:
+          # the alert scheduler reads due events in time order (lib/calendar/alerts.js)
+          name: alert_due
+          key:
+              alertAt: 1
+          partialFilterExpression:
+              alertAt:
+                  $type: date
+
+    - collection: calendarevents
+      feature: jmap
+      index:
+          # events naming an upload (Blob/lookup, keeping uploads alive)
+          name: user_blobs
+          key:
+              user: 1
+              blobs: 1
+
     - collection: jmapchanges
       feature: jmap
       index:
