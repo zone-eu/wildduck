@@ -454,6 +454,7 @@ Each work package ends with the end of package steps of section 2.2. Scenario id
 - [ ] **F.3 Performance.** Final benchmark and sharded runs, compared with the earlier ones, recorded.
 - [ ] **F.4 Library consumers.** Plugin suites against the final branch.
 - [ ] **F.5 Final gates.** `npm test`, catalogue coverage (every scenario of phases 0 to 6 has a passing test), both external suites match their expectation files, mutation run, a last interop round with every client in section 4.6.
+- [ ] **F.5b Bulwark end to end.** Requested on 2026-11-11: once every phase is implemented, run the Bulwark mail client (https://bulwarkmail.org/) against a WildDuck test server and check that every feature it uses works (session and login, mailbox list and folder management, reading, search, threads, flags and moves, composing, drafts and sending, attachments, push, identities, vacation, contacts and calendars where Bulwark uses them). Every problem found is fixed in WildDuck or recorded with the reason.
 - [ ] **F.6 Pull request ready.** Merge `origin/master`, final description (section 8), mark ready for review.
 
 ### Phase 7 (not in this pull request)
