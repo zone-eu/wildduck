@@ -285,6 +285,29 @@
             "ids": ["CORE-014", "ESET-087"]
         },
         {
+            "package": "4.7",
+            "select": [
+                {
+                    "prefix": "BLOB",
+                    "phase": 4
+                }
+            ],
+            "ids": ["EIMP-026", "EPAR-032"]
+        },
+        {
+            "package": "4.8",
+            "select": [
+                {
+                    "prefix": "QUOTA",
+                    "phase": 4
+                }
+            ]
+        },
+        {
+            "package": "4.9",
+            "ids": ["WDX-006"]
+        },
+        {
             "package": "Milestone 3",
             "select": [
                 {
