@@ -43,6 +43,12 @@ cacheTtl = 300
 # after a larger one was read. Changes are looked up this many milliseconds before the given state.
 # An id may then be reported twice, which RFC 8620 5.2 allows.
 safetyWindow = 2000
+# Most ids in one /changes response. A larger maxChanges from the client, or none, is capped to this
+# (equal to maxObjectsInGet, so the ids always fit a following /get)
+maxChanges = 1500
+# Most journal entries read for one /changes response. A long run of changes to a few ids is answered
+# with an intermediate state instead of a scan of the whole run
+scanLimit = 10000
 
 [eventSource]
 # ping interval bounds in seconds (RFC 8620 7.3: the minimum must not be above 30, the maximum not below 300)
