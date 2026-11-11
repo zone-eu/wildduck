@@ -190,11 +190,12 @@ scenarios:
     seed: [lmtp]
     given: "A stream is open with types=*."
     when: "A message is delivered over LMTP."
-    then: "The event lists Email, Mailbox, Thread and EmailDelivery."
+    then: "The event lists Email, Mailbox, Thread and EmailDelivery, and from phase 4 also Quota, because the delivery changed the storage usage."
     sources:
       - "james:EventSourceContract#allTypesShouldBeSupported"
       - "cyrus:JMAPCore/eventsource"
       - "stalwart:core/event_source.rs"
+    notes: "Phase 4 (4.8): Quota is a push type and its state follows storageUsed, which every delivery changes."
   - id: ESRC-014
     title: "No event is sent when only types outside the filter changed"
     method: "EventSource"

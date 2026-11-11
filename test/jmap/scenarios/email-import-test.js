@@ -491,6 +491,34 @@ describe('Email/import', function () {
         expect(Buffer.compare(await h.download(ctx.client, created.blobId), content)).to.equal(0);
     });
 
+    scenario('EIMP-026', async () => {
+        const content = message('Built with Blob/upload').toString();
+        const using = [jmap.URN.core, jmap.URN.mail, jmap.URN.blob];
+        const [[, uploaded], [, imported]] = await ctx.client.call(
+            [
+                ['Blob/upload', { accountId: ctx.client.accountId, create: { b1: { data: [{ 'data:asText': content }] } } }, 'u'],
+                ['Email/import', { accountId: ctx.client.accountId, emails: { e1: { blobId: '#b1', mailboxIds: { [boxes.inbox]: true } } } }, 'i']
+            ],
+            using
+        );
+        expect(uploaded.created.b1.id).to.be.a('string');
+        expect(imported.notCreated).to.equal(null);
+        expect(imported.created.e1.id).to.match(EMAIL_ID);
+        expect(imported.created.e1.size).to.equal(Buffer.byteLength(content));
+
+        const [[name, failed]] = await ctx.client.call(
+            [['Email/import', { accountId: ctx.client.accountId, emails: { e2: { blobId: '#nope', mailboxIds: { [boxes.inbox]: true } } } }, 'i']],
+            using
+        );
+        if (name === 'error') {
+            expect(failed.type).to.equal('invalidResultReference');
+        } else {
+            expect(failed.created).to.equal(null);
+            expect(failed.notCreated.e2.type).to.equal('invalidProperties');
+            expect(failed.notCreated.e2.properties).to.deep.equal(['blobId']);
+        }
+    });
+
     describe('with a small message size limit', () => {
         let instance;
         const LIMIT = 2048;

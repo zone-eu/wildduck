@@ -33,6 +33,12 @@ uploadQuota = 209715200
 uploadTtl = 86400
 # largest message Email/import stores, in bytes (default: the message size limit of MessageHandler, 64 MB)
 #maxSizeMessage = 67108864
+# RFC 9404 Blob/upload: largest blob one creation may build (it is assembled in memory) and most data
+# sources per creation (at least 64)
+#maxSizeBlobSet = 10485760
+#maxDataSources = 64
+# most octets one Blob/get call reads (default: the larger of maxSizeUpload and the message size limit)
+#maxSizeBlobGet = 67108864
 
 [auth]
 # Basic credentials that verified are remembered for this many seconds, so a client sending the

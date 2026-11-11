@@ -700,6 +700,20 @@ describe('Email/parse', function () {
         });
     });
 
+    scenario('EPAR-032', async () => {
+        const using = [jmap.URN.core, jmap.URN.mail, jmap.URN.blob];
+        const [[, uploaded]] = await ctx.client.call(
+            [['Blob/upload', { accountId: ctx.client.accountId, create: { b1: { data: [{ 'data:asText': simpleMessage().toString() }] } } }, 'u']],
+            using
+        );
+        const blobId = uploaded.created.b1.id;
+        expect(blobId).to.be.a('string');
+        const res = await parse(ctx.client, [blobId], { properties: ['subject', 'bodyStructure'] });
+        expect(Object.keys(res.parsed)).to.deep.equal([blobId]);
+        expect(res.parsed[blobId].subject).to.equal('Parse me');
+        expect(res.parsed[blobId].bodyStructure.type).to.equal('text/plain');
+    });
+
     scenario('EPAR-031', async () => {
         expect(await parseError(ctx.client, { accountId: 'uffffffffffffffffffffffff', blobIds: [] })).to.equal('accountNotFound');
         expect(await parseError(ctx.client, { blobIds: [] }, [jmap.URN.core])).to.equal('unknownMethod');
