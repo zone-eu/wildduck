@@ -84,14 +84,15 @@ npm run test:jmap:catalogue  # validate the catalogue and the expectation files,
 
 The harness lives in `harness/` and is loaded with `require('../harness')`:
 
-| Module             | Gives                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `scenario(id, fn)` | Registers the Mocha test for a catalogue scenario; the title is the id plus the catalogue title. Unknown or duplicate ids fail at load time, withdrawn scenarios are registered as pending |
-| `accounts`         | `createUser`, `mailboxes`, `createAsp`, `createToken`; every user created is deleted after the run                                                                                         |
-| `seed`             | `deliver` (LMTP), `imap` and `withImap` (imapflow sessions), `db` (MongoDB of the test server)                                                                                             |
-| `api`              | The REST API of the test server                                                                                                                                                            |
-| `fixtures`         | `buildMessage` (nodemailer MailComposer), `readFixture`, `listFixtures` over WildDuck's own fixture directories                                                                            |
-| `clock`            | `waitFor` for asynchronous effects, `delay`                                                                                                                                                |
+| Module             | Gives                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scenario(id, fn)` | Registers the Mocha test for a catalogue scenario; the title is the id plus the catalogue title. Unknown or duplicate ids fail at load time, withdrawn scenarios are registered as pending        |
+| `accounts`         | `createUser`, `mailboxes`, `createAsp`, `createToken`; every user created is deleted after the run                                                                                                |
+| `seed`             | `deliver` (LMTP), `imap` and `withImap` (imapflow sessions), `db` (MongoDB of the test server)                                                                                                    |
+| `api`              | The REST API of the test server                                                                                                                                                                   |
+| `fixtures`         | `buildMessage` (nodemailer MailComposer), `readFixture`, `listFixtures` over WildDuck's own fixture directories                                                                                   |
+| `clock`            | `waitFor` for asynchronous effects, `delay`                                                                                                                                                       |
+| `outbound`         | The outbound queue of the test server (`entries`, `message`, `lock`, `remove`) and a stand in for ZoneMTA: `deliver` hands a queued message to local recipients over LMTP, optionally DKIM signed |
 
 `hooks.js` (root hooks) closes connections and removes test users; `reporter.js` writes per test results to the file named by `JMAP_RESULTS`.
 

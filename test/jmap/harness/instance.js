@@ -42,7 +42,7 @@ async function connect() {
  * Starts a JMAP service instance.
  *
  * @param {Function|Object} [overrides] [jmap] options over the test configuration, or a function of the port answering them
- * @param {Object} [hooks] {database: function(db) answering the database handle the instance uses}
+ * @param {Object} [hooks] {database, senderDb: functions of the real handle answering the database handle the instance uses}
  * @returns {Promise<{app, port, url: String}|{app: false, port}>} app is false when the options disable the service
  */
 async function startInstance(overrides = {}, hooks = {}) {
@@ -51,15 +51,18 @@ async function startInstance(overrides = {}, hooks = {}) {
     const extra = typeof overrides === 'function' ? overrides(port) : overrides;
     const options = Object.assign({}, config.jmap, { enabled: true, port, host: '127.0.0.1' }, extra);
 
-    const database = db.database;
+    const { database, senderDb } = db;
     if (hooks.database) {
         db.database = hooks.database(database);
+    }
+    if (hooks.senderDb) {
+        db.senderDb = hooks.senderDb(senderDb);
     }
     let app;
     try {
         app = await start(options);
     } finally {
-        db.database = database;
+        Object.assign(db, { database, senderDb });
     }
     if (app) {
         running.add(app);

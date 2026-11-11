@@ -275,6 +275,24 @@
             "ids": ["ECHG-023", "ECHG-033", "ECHG-036", "ECHG-055", "ECHG-059", "ECHG-107", "ECHG-108"]
         },
         {
+            "package": "3.1 to 3.6",
+            "select": [
+                {
+                    "prefix": "SUB",
+                    "phase": 3
+                }
+            ],
+            "ids": ["CORE-014", "ESET-087"]
+        },
+        {
+            "package": "Milestone 3",
+            "select": [
+                {
+                    "phase": 3
+                }
+            ]
+        },
+        {
             "package": "Phase 2 core",
             "select": [
                 {

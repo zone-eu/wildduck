@@ -560,7 +560,7 @@ scenarios:
     sources:
       - "wildduck:lib/dkim-handler.js"
       - "wildduck:lib/maildropper.js"
-    notes: "Signing happens in zonemta-wildduck, so this needs the full rig. It proves that JMAP submissions enter the same pipeline as REST submissions."
+    notes: "Signing happens in zonemta-wildduck. The test environment runs no ZoneMTA: the test rig takes the queued message as the MTA does, looks up the key registered for the From domain through the REST API and signs with it as zonemta-wildduck would, then verifies the received copy against the registered public key. It proves that JMAP submissions enter the same pipeline as REST submissions."
 
   - id: SUB-036
     title: "Do not alter the stored Email when it is submitted"
@@ -619,10 +619,10 @@ scenarios:
     seed: [jmap, db]
     given: "A sendable Email that has already been submitted once (submission S1)."
     when: "It is submitted again, in a new request and also twice within one EmailSubmission/set call under two creation ids."
-    then: "Each create succeeds with its own id, the queue holds one message per submission, and EmailSubmission/query with emailIds [that id] lists all of them. The recipient receives one copy per submission."
+    then: "Each create succeeds with its own id, the queue holds one message per submission, and EmailSubmission/query with emailIds [that id] lists all of them. The MTA delivers one copy per submission; a recipient hosted on WildDuck stores the first one only, as inbound delivery drops a copy with the same Message-ID and Date in the same mailbox."
     sources:
       - "rfc:8621 7"
-    notes: "The RFC has no uniqueness rule. Clients avoid resending by moving the draft with onSuccessUpdateEmail."
+    notes: "The RFC has no uniqueness rule. Clients avoid resending by moving the draft with onSuccessUpdateEmail. Corrected 2026-11-11: one copy per submission reaches the recipient's server, but WildDuck's inbound duplicate check (filter-handler, msgid and hdate) keeps a single one for a local recipient; that is a property of the receiving side, not of the submission."
 
   - id: SUB-040
     title: "Process several creates independently"
@@ -796,7 +796,7 @@ scenarios:
     then: "The submission is created. The queued message has a Date header close to sendAt and a Message-ID, added by the server, while the stored Email is unchanged and still reports sentAt null."
     sources:
       - "rfc:8621 7.5"
-    notes: "Open decision. The RFC lets the server add header fields during delivery, and it also allows invalidEmail with properties [sentAt]. Adding is the usual submission server behaviour. Pick one and keep this scenario in line."
+    notes: "Decided 2026-11-11: the server adds the fields (Maildropper adds Date and Message-ID to the queued copy when they are missing), the usual submission server behaviour that RFC 8621 7 allows. The stored Email is not changed."
 
   - id: SUB-051
     title: "Reject a message without recipients"
@@ -893,7 +893,7 @@ scenarios:
     sources:
       - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8"
       - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8_mismatch"
-    notes: "Open decision, depends on whether the ZoneMTA path can deliver SMTPUTF8 mail. WildDuck itself stores unicode addresses."
+    notes: "Decided 2026-11-11: both paths give invalidRecipients. Envelope addresses need an ASCII dot-atom local part (only the domain may be internationalised, it is queued in its A-label form), and SMTPUTF8 is not advertised."
 
   - id: SUB-057
     title: "Reject more recipients than allowed per message"
@@ -978,7 +978,7 @@ scenarios:
     phase: 3
     applies: adapted
     seed: [jmap, api, db]
-    given: "A user whose sending has been blocked by an administrator while the session is still authenticated (for example suspended after the auth cache was filled, or a sending block flag)."
+    given: "A user whose sending has been blocked by an administrator while the session is still authenticated: the smtp scope is in disabledScopes (PUT /users/:id), or the account was disabled or suspended after the credentials were cached."
     when: "A valid draft is submitted with an Accept-Language header."
     then: "notCreated has type forbiddenToSend, optionally with a description string meant for the user, newState equals oldState and nothing is queued."
     sources:
@@ -986,7 +986,7 @@ scenarios:
       - "james:EmailSubmissionSetExtraValidationContract"
       - "rfc:8621 7.5"
       - "rfc:8621 7.5.1"
-    notes: "WildDuck has no separate may not send switch today. Disabled and suspended users are already refused at authentication, so this needs either a race window or a new flag to be testable. Localisation of the description is optional."
+    notes: "Decided 2026-11-11: the account is read again on every submission. A disabled or suspended account, or one whose disabledScopes lists smtp (the existing switch that stops a user from sending over SMTP), answers forbiddenToSend with a description. Localisation of the description is not done."
 
   - id: SUB-063
     title: "Keep queue and submission record consistent on failure"
@@ -1066,14 +1066,14 @@ scenarios:
     notes: "Cyrus reports invalidProperties for the bad From. invalidEmail with properties [from] is the RFC 8621 error for an Email that is invalid in some way."
 
   - id: SUB-068
-    title: "Reject SMTP parameters while submissionExtensions is empty"
+    title: "Reject SMTP parameters other than the hold parameters"
     method: EmailSubmission/set
     spec: "RFC 8621 1.3.2"
     level: wd
     phase: 3
     applies: adapted
     seed: [jmap]
-    given: "A valid draft. The capability advertises no submission extensions."
+    given: "A valid draft. The capability advertises FUTURERELEASE as its only submission extension."
     when: "Separate creates with mailFrom.parameters holding SIZE, BODY 8BITMIME, SMTPUTF8 null, RET FULL, ENVID, AUTH or an unknown name, and with an rcptTo parameters object holding NOTIFY, ORCPT or an unknown name."
     then: "Each gives notCreated of type invalidProperties naming envelope, and nothing is queued. Only the hold parameters of SUB-091 and SUB-092 on mailFrom are accepted."
     sources:
@@ -1323,7 +1323,7 @@ scenarios:
       - "james:EmailSubmissionSetMethodContract#emailSubmissionSetShouldSetCorrectlyHasAttachmentPropertyOnMessageInSentMailbox"
       - "wildduck:lib/api/submit.js"
       - "wildduck:lib/maildropper.js"
-    notes: "Plan section 4.7, verified: zonemta-wildduck uploads to Sent only for mail it receives over SMTP, and Maildropper inserts bypass that hook."
+    notes: "Plan section 4.7, verified: zonemta-wildduck uploads to Sent only for mail it receives over SMTP, and Maildropper inserts bypass that hook. The test environment runs no ZoneMTA; the test rig takes the queued message the way the MTA does and removes the queue entries."
 
   - id: SUB-084
     title: "Show the implicit update in Email/changes and Mailbox counters"
@@ -1549,7 +1549,7 @@ scenarios:
     sources:
       - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldUntilIsInThePast"
       - "wildduck:lib/api/submit.js"
-    notes: "James rejects a past time. The WildDuck queue replaces past send times with now, and sendAt must then be the creation time per RFC 8621 7. Open decision between the two."
+    notes: "James rejects a past time. Decided 2026-11-11: as the WildDuck queue and the REST API do, a past send time means now, and sendAt is the creation time per RFC 8621 7."
 
   - id: SUB-098
     title: "Reject HOLDFOR together with HOLDUNTIL"
@@ -1746,13 +1746,13 @@ scenarios:
     applies: yes
     seed: [jmap]
     given: "A submission Y belonging to another user."
-    when: "EmailSubmission/set update with a random id, with Y, and with the key #s1 for a submission created under s1 in the same call."
-    then: "Each key is in notUpdated with type notFound. The submission of the other user is untouched and the one created in the call is sent normally."
+    when: "EmailSubmission/set update with a random id, with Y, with an unresolved creation reference #nosuch, and with the key #s1 (an empty patch) for a submission created under s1 in the same call."
+    then: "The random id, Y and #nosuch are in notUpdated with type notFound. The submission of the other user is untouched. #s1 resolves to the submission created in the call, which is in updated under its id, stays pending and is queued normally."
     sources:
       - "james:EmailSubmissionSetMethodContract#cancelingAnUnknownSubmissionShouldBeReportedAsNotUpdated"
       - "james:EmailSubmissionSetMethodContract#cancelingASubmissionCreatedInTheSameCallShouldBeReportedAsCannotUnsend"
       - "rfc:8620 5.3"
-    notes: "James reports cannotUnsend for the creation reference. Update keys are ids, not creation references, so notFound is expected."
+    notes: "Corrected 2026-11-11: RFC 8620 3.3 lets a creation id reference stand wherever an id is expected, and every /set of WildDuck resolves it in update keys (see the Mailbox/set scenario that renames a mailbox created in the same call). James reports cannotUnsend for the creation reference."
 
   - id: SUB-111
     title: "Destroying a pending submission removes the record but not the delivery"
@@ -1796,11 +1796,12 @@ scenarios:
     applies: yes
     seed: [jmap]
     given: "A submission Y of another user."
-    when: "EmailSubmission/set destroy [randomId, Y, #s1] where s1 is created in the same call."
-    then: "All three are in notDestroyed with type notFound, Y still exists for its owner and s1 is created and sent."
+    when: "EmailSubmission/set destroy [randomId, Y, #nosuch, #s1] where s1 is created in the same call."
+    then: "randomId, Y and #nosuch are in notDestroyed with type notFound and Y still exists for its owner. #s1 resolves to the submission created in the call, which is in destroyed under its id; its message stays queued (destroying a submission does not affect the delivery)."
     sources:
       - "james:EmailSubmissionSetMethodContract#destroyingASubmissionCreatedInTheSameCallShouldBeForbidden"
       - "rfc:8620 5.3"
+    notes: "Corrected 2026-11-11: creation id references resolve in destroy as in update (RFC 8620 3.3), see SUB-110."
 
   - id: SUB-114
     title: "Reflect a queue deletion made through the REST API"
@@ -1939,7 +1940,7 @@ scenarios:
     sources:
       - "rfc:8621 7"
       - "cyrus:JMAPEmailSubmission/emailsubmission_query_long"
-    notes: "The RFC allows the server to destroy submissions any time after sending. The retention value is a WildDuck setting to define. Tombstones stay at least 30 days."
+    notes: "The RFC allows the server to destroy submissions any time after sending. Final and canceled submissions are removed jmap.submission.retention seconds (default 7 days) after their send time, when the user's submissions are next read, with a tombstone; a TTL index removes records of users who stopped using JMAP later. Tombstones stay at least 30 days."
 
   - id: SUB-123
     title: "Return no changes for the current state"
@@ -1988,7 +1989,7 @@ scenarios:
     sources:
       - "stalwart:mail/submission.rs"
       - "rfc:8621 7"
-    notes: "The JMAP worker has to observe the queue (poll or change stream), ZoneMTA does not write to the submissions store."
+    notes: "ZoneMTA does not write to the submissions store. Pending submissions follow the queue when they are read, and a poller (jmap.submission.pollInterval, one worker per interval through a Redis lock) checks due pending submissions against the queue and notifies the user, so the event stream learns about the transition without a JMAP call."
 
   - id: SUB-126
     title: "Answer cannotCalculateChanges for unknown or expired states and page with maxChanges"
@@ -2213,7 +2214,7 @@ scenarios:
       - "cyrus:JMAPEmailSubmission/emailsubmission_query"
       - "rfc:8621 7.4"
       - "rfc:8620 5.6"
-    notes: "Open question. The exact owned change log would make a real queryChanges cheap for this small type, but the plan does not list it. The scenario fixes the minimal conforming behaviour, as Cyrus does. If real support is added, canCalculateChanges must become true in SUB-127."
+    notes: "Decided 2026-11-11: query results of this type are not cached, so queryChanges answers cannotCalculateChanges, as Cyrus does. If real support is added, canCalculateChanges must become true in SUB-127."
 
   - id: SUB-141
     title: "Push an EmailSubmission state change"

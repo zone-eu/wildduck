@@ -9,5 +9,6 @@ const seed = require('./seed');
 const fixtures = require('./fixtures');
 const clock = require('./clock');
 const jmap = require('./client');
+const outbound = require('./outbound');
 
-module.exports = { scenario, api, API_URL, accounts, seed, fixtures, clock, jmap };
+module.exports = { scenario, api, API_URL, accounts, seed, fixtures, clock, jmap, outbound };

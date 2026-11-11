@@ -5,10 +5,12 @@
 
 const accounts = require('./accounts');
 const seed = require('./seed');
+const outbound = require('./outbound');
 
 exports.mochaHooks = {
     async afterAll() {
         await accounts.cleanup();
         await seed.close();
+        await outbound.close();
     }
 };
