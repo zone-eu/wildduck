@@ -48,6 +48,7 @@ module.exports = function (grunt) {
     ];
     const unitTests = [
         'test/apn-client-test.js',
+        'test/autoreply-recipient-test.js',
         'test/imap-notifier-apn-test.js',
         'test/xapplepushservice-validation-test.js',
         'test/certs-test.js',
