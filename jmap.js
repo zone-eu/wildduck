@@ -29,6 +29,7 @@ const { settingsOf } = require('./lib/jmap/types/submission');
 const { PushService } = require('./lib/jmap/push/delivery');
 const { VapidKeys } = require('./lib/jmap/push/vapid');
 const { pushSettings } = require('./lib/jmap/push/settings');
+const queryCache = require('./lib/jmap/query-cache');
 
 // audit and mail action log lines of the handlers, as the other services write them
 function createLoggelf() {
@@ -143,7 +144,9 @@ function start(options, done) {
             tokenLifetime: config.api.accessControl.tokenLifetime,
             serverFactory: factory
         };
-        // Web Push (PushSubscription), see lib/jmap/push/delivery.js; invalid settings stop the start here
+        // invalid query cache or Web Push settings stop the start here
+        queryCache.checkSettings(appOptions);
+        // Web Push (PushSubscription), see lib/jmap/push/delivery.js
         const settings = pushSettings(appOptions);
         const deps = createDeps();
         if (settings.enabled) {

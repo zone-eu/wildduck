@@ -1,10 +1,14 @@
-/* eslint no-unused-expressions: 0 */
+/* eslint no-unused-expressions: 0, prefer-arrow-callback: 0 */
+/* globals before: false, after: false */
 'use strict';
 
 const crypto = require('crypto');
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
-const { diff, canonical, queryState, parseQueryState, store, load } = require('../../../lib/jmap/query-cache');
+const Redis = require('ioredis');
+const config = require('@zone-eu/wild-config');
+const redisUrl = require('../../../lib/redis-url');
+const { diff, canonical, queryState, parseQueryState, store, load, checkSettings } = require('../../../lib/jmap/query-cache');
 
 /** Applies changes the way RFC 8620 5.6 tells a client to: removed first, then added by ascending index */
 function apply(list, changes) {
@@ -27,23 +31,14 @@ function random(seed) {
 
 const id = n => n.toString(16).padStart(24, '0');
 
-/** A Redis stand in with the commands store() and load() use */
-function fakeRedis() {
-    const data = new Map();
-    return {
-        data,
-        strlen: async key => (data.has(key) ? data.get(key).length : 0),
-        expire: async () => 1,
-        set: async (key, value) => data.set(key, Buffer.from(value)),
-        getBuffer: async key => data.get(key) || null
-    };
-}
-
-const contextFor = (accountId, redis) => ({
+const contextFor = (accountId, redis, queryCache = {}) => ({
     account: { id: accountId, user: new ObjectId() },
-    options: { accessSecret: 'secret', queryCache: { ttl: 60, maxIds: 5 } },
+    options: { accessSecret: 'secret', queryCache: Object.assign({ ttl: 60, maxIds: 5 }, queryCache) },
     deps: { redis }
 });
+
+// a query state of the test, 41 characters like a real one
+const stateOf = n => `q${id(n)}${n.toString(16).padStart(16, '0')}`;
 
 describe('JMAP query cache', () => {
     describe('diff', () => {
@@ -131,24 +126,101 @@ describe('JMAP query cache', () => {
         });
     });
 
-    describe('store and load', () => {
+    describe('settings', () => {
+        it('refuses a byte budget below one full list and a memory limit above maxIds', () => {
+            expect(() => checkSettings({ queryCache: { maxIds: 10000, maxBytes: 1000 } })).to.throw(/maxBytes/);
+            expect(() => checkSettings({ queryCache: { maxIds: 100 }, query: { memoryLimit: 101 } })).to.throw(/memoryLimit/);
+            expect(() => checkSettings({ queryCache: { maxIds: 100 }, query: { memoryLimit: 100 } })).to.not.throw();
+            expect(() => checkSettings({})).to.not.throw();
+        });
+    });
+
+    describe('store and load (Redis)', function () {
+        let redis;
+        const users = [];
+
+        before(async function () {
+            redis = new Redis(
+                Object.assign({}, typeof config.dbs.redis === 'string' ? redisUrl(config.dbs.redis) : config.dbs.redis, {
+                    lazyConnect: true,
+                    maxRetriesPerRequest: 1,
+                    retryStrategy: () => null
+                })
+            );
+            try {
+                await redis.connect();
+            } catch {
+                // eslint-disable-next-line no-invalid-this
+                this.skip();
+            }
+        });
+
+        after(async () => {
+            if (redis && redis.status === 'ready') {
+                for (const user of users) {
+                    await redis.del(`jmap:qc:${user}`, `jmap:qco:${user}`);
+                }
+                await redis.quit();
+            }
+        });
+
+        const fresh = (queryCache = {}) => {
+            const context = contextFor('u1', redis, queryCache);
+            users.push(context.account.user.toString());
+            return context;
+        };
+
         it('keeps the longer of two lists of the same state', async () => {
-            const redis = fakeRedis();
-            const context = contextFor('u1', redis);
-            await store(context, 'q1', { ids: [id(1), id(2), id(3)], complete: false });
-            await store(context, 'q1', { ids: [id(1)], complete: false });
-            expect(await load(context, 'q1')).to.deep.equal({ ids: [id(1), id(2), id(3)], complete: false });
-            await store(context, 'q1', { ids: [id(1), id(2), id(3)], complete: true });
-            expect(await load(context, 'q1')).to.deep.equal({ ids: [id(1), id(2), id(3)], complete: true });
-            await store(context, 'q1', { ids: [], complete: false });
-            expect((await load(context, 'q1')).complete).to.be.true;
+            const context = fresh();
+            await store(context, stateOf(1), { ids: [id(1), id(2), id(3)], complete: false });
+            await store(context, stateOf(1), { ids: [id(1)], complete: false });
+            expect(await load(context, stateOf(1))).to.deep.equal({ ids: [id(1), id(2), id(3)], complete: false });
+            await store(context, stateOf(1), { ids: [id(1), id(2), id(3)], complete: true });
+            expect(await load(context, stateOf(1))).to.deep.equal({ ids: [id(1), id(2), id(3)], complete: true });
+            await store(context, stateOf(1), { ids: [], complete: false });
+            expect((await load(context, stateOf(1))).complete).to.be.true;
+            expect(await load(context, stateOf(2))).to.equal(null);
         });
 
         it('does not keep a list longer than maxIds', async () => {
-            const redis = fakeRedis();
-            const context = contextFor('u1', redis);
-            await store(context, 'q2', { ids: Array.from({ length: 6 }, (item, i) => id(i)), complete: true });
-            expect(await load(context, 'q2')).to.equal(null);
+            const context = fresh();
+            await store(context, stateOf(2), { ids: Array.from({ length: 6 }, (item, i) => id(i)), complete: true });
+            expect(await load(context, stateOf(2))).to.equal(null);
+        });
+
+        it('drops the oldest states of a user past the byte budget', async () => {
+            // a list of 5 ids takes 1 + 60 + 41 bytes, three of them fit in 320
+            const context = fresh({ maxBytes: 320 });
+            const list = n => ({ ids: Array.from({ length: 5 }, (item, i) => id(n * 10 + i)), complete: true });
+            for (let n = 1; n <= 5; n++) {
+                await store(context, stateOf(n), list(n));
+            }
+            for (let n = 1; n <= 5; n++) {
+                expect(await load(context, stateOf(n)), `state ${n}`).to.deep.equal(n <= 2 ? null : list(n));
+            }
+            const user = context.account.user.toString();
+            expect(Number(await redis.hget(`jmap:qc:${user}`, '#'))).to.equal(3 * 102);
+            expect(await redis.zcard(`jmap:qco:${user}`)).to.equal(3);
+            expect(await redis.ttl(`jmap:qc:${user}`)).to.be.within(1, 60);
+        });
+
+        it('drops the oldest states of a user past the entry budget', async () => {
+            const context = fresh({ maxEntries: 2 });
+            for (let n = 1; n <= 4; n++) {
+                await store(context, stateOf(n), { ids: [id(n)], complete: true });
+            }
+            expect(await load(context, stateOf(2))).to.equal(null);
+            expect(await load(context, stateOf(3))).to.deep.equal({ ids: [id(3)], complete: true });
+            expect(await load(context, stateOf(4))).to.deep.equal({ ids: [id(4)], complete: true });
+        });
+
+        it('keeps the lists of other users apart', async () => {
+            const first = fresh({ maxEntries: 1 });
+            const second = fresh({ maxEntries: 1 });
+            await store(first, stateOf(7), { ids: [id(7)], complete: true });
+            await store(second, stateOf(8), { ids: [id(8)], complete: true });
+            expect(await load(first, stateOf(7))).to.deep.equal({ ids: [id(7)], complete: true });
+            expect(await load(second, stateOf(7))).to.equal(null);
         });
     });
 });

@@ -72,8 +72,13 @@ memoryLimit = 10000
 # Result ids of queries are kept under their query state for /queryChanges (RFC 8620 5.6), this many
 # seconds. A state whose ids are gone answers cannotCalculateChanges and the client queries again
 ttl = 600
-# Most ids kept per query state. A query window that ends past it answers canCalculateChanges false
+# Most ids kept per query state. A query window that ends past it, or starts more than 1000 entries in,
+# answers canCalculateChanges false. [jmap.query] memoryLimit must not be higher
 maxIds = 10000
+# All query states of a user share one Redis hash: at most this many bytes (12 per id, at least one full
+# list of maxIds) and this many states; storing more drops the states stored longest ago
+maxBytes = 1048576
+maxEntries = 200
 
 [eventSource]
 # ping interval bounds in seconds (RFC 8620 7.3: the minimum must not be above 30, the maximum not below 300)

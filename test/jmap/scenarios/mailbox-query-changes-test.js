@@ -172,7 +172,7 @@ describe('Mailbox/queryChanges (mailbox.yaml)', () => {
         const before = await mquery(client, {});
         const redis = new Redis(typeof config.dbs.redis === 'string' ? redisUrl(config.dbs.redis) : config.dbs.redis);
         try {
-            expect(await redis.del(`jmap:qc:${user.id}:${before.queryState}`)).to.equal(1);
+            expect(await redis.hdel(`jmap:qc:${user.id}`, before.queryState)).to.equal(1);
         } finally {
             redis.disconnect();
         }

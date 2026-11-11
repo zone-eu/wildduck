@@ -148,7 +148,7 @@ describe('Email/queryChanges (email-query.yaml)', () => {
             // journal retention, which is far longer) the state can not be followed any more
             const redis = new Redis(typeof config.dbs.redis === 'string' ? redisUrl(config.dbs.redis) : config.dbs.redis);
             try {
-                expect(await redis.del(`jmap:qc:${ctx.user.id}:${q1}`)).to.equal(1);
+                expect(await redis.hdel(`jmap:qc:${ctx.user.id}`, q1)).to.equal(1);
             } finally {
                 redis.disconnect();
             }
