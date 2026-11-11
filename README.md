@@ -18,6 +18,15 @@ WildDuck uses a distributed database (sharded + replicated MongoDB) as a backend
 
 WildDuck tries to follow Gmail in product design. If there's a decision to be made then usually the answer is to do whatever Gmail has done.
 
+## Protocols
+
+- **IMAP4rev1** with IDLE, CONDSTORE, MOVE, UTF8=ACCEPT, OBJECTID and other extensions
+- **POP3**
+- **JMAP** for mail, contacts and calendars ([RFC 8620](https://www.rfc-editor.org/rfc/rfc8620), [RFC 8621](https://www.rfc-editor.org/rfc/rfc8621), [RFC 9610](https://www.rfc-editor.org/rfc/rfc9610), the calendars draft without scheduling), disabled by default. See [JMAP service](docs/in-depth/jmap.md)
+- **REST API** for management and webmail clients
+
+See [protocol support](docs/in-depth/protocol-support.md) for the full list of extensions and known differences.
+
 ## Links
 
 - [Website](https://wildduck.email)

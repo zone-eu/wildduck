@@ -18,6 +18,7 @@
 -   In Depth
     -   [Operating WildDuck](in-depth/operating-wildduck.md)
     -   [Read-only MCP service](in-depth/mcp.md)
+    -   [JMAP service](in-depth/jmap.md)
     -   [Default values](in-depth/default-values.md)
     -   [E-Mail Protocol support](in-depth/protocol-support.md)
     -   [Connection Management](in-depth/connection-management.md)
