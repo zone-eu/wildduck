@@ -1337,6 +1337,12 @@ describe('Calendar recurrence', function () {
                 count: 100000
             });
             expect(withinBudget(() => expandEvent(setPos, { from: utc('2026-01-01T00:00:00Z'), to: utc('2026-01-02T00:00:00Z') }))).to.equal('limit');
+            // without count the rule jumps to the window, but every chunk evaluates a whole day of slots
+            const setPosOpen = event('2000-01-01T00:00:00', { frequency: 'daily', byHour: hours, byMinute: sixty, bySecond: sixty, bySetPosition: [-1] });
+            const year = { timeZone: 'Europe/Tallinn', from: utc('2026-01-01T00:00:00Z'), to: utc('2027-01-01T00:00:00Z') };
+            expect(withinBudget(() => expandEvent(Object.assign({}, setPosOpen, { timeZone: 'Europe/Tallinn' }), year), 500)).to.equal('limit');
+            const minuteSlots = event('2000-01-01T00:00:00', { frequency: 'daily', byHour: hours, byMinute: sixty, bySetPosition: [-1] });
+            expect(withinBudget(() => expandEvent(minuteSlots, year), 500)).to.equal(365);
             const yearly = event('1900-01-01T00:00:00', {
                 frequency: 'yearly',
                 byDay: DAYS.map(day => ({ day })),
