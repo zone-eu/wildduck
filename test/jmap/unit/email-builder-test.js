@@ -45,6 +45,11 @@ describe('JMAP email builder', () => {
         expect(structure.type).to.equal('text/plain');
     });
 
+    it('ignores keys an EmailBodyValue does not define', async () => {
+        const { text } = await build({ textBody: [{ partId: 'b', type: 'text/plain' }], bodyValues: { b: { value: 'Test body.', charset: 'utf-8' } } });
+        expect(text).to.include('Test body.');
+    });
+
     it('round trips the convenience properties', async () => {
         const input = {
             from: [{ name: 'Jõgi Ämber', email: 'a@example.com' }],
