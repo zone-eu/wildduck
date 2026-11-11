@@ -222,6 +222,43 @@
         {
             "package": "2.13",
             "ids": ["WDS-007", "WDS-008"]
+        },
+        {
+            "package": "2.2",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 2
+                }
+            ]
+        },
+        {
+            "package": "2.7",
+            "select": [
+                {
+                    "prefix": "EIMP",
+                    "phase": 2
+                }
+            ],
+            "ids": ["ECHG-109", "EDLV-012", "BLOB-034"]
+        },
+        {
+            "package": "2.8",
+            "select": [
+                {
+                    "prefix": "EPAR",
+                    "phase": 2
+                }
+            ]
+        },
+        {
+            "package": "2.9",
+            "select": [
+                {
+                    "prefix": "ECPY",
+                    "phase": 2
+                }
+            ]
         }
     ]
 }

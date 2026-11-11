@@ -385,18 +385,18 @@ Each work package ends with the end of package steps of section 2.2. Scenario id
 ### Phase 2: writes
 
 - [x] **2.1 Upload endpoint.** `BLOB` phase 2 (20).
-- [ ] **2.2 Mailbox/set.** Create, update, destroy, `onDestroyRemoveEmails`, `ifInState`, visibility over IMAP. `MBX` phase 2 (91).
+- [x] **2.2 Mailbox/set.** Create, update, destroy, `onDestroyRemoveEmails`, `ifInState`, visibility over IMAP. `MBX` phase 2 (91).
 - [ ] **2.3 PatchObject and Email/set update.** `lib/jmap/patch.js` with unit and property tests; keywords, labels, moves judged on the resulting object, immutable properties. `ESET` update scenarios.
 - [ ] **2.4 Email/set destroy.** Archive behaviour, counts, state. `ESET` destroy scenarios, `ECHG` phase 2.
 - [ ] **2.5 MIME builder.** `lib/jmap/email-builder.js` over nodemailer's MimeNode: arbitrary bodyStructure, parts by blob id, per part headers, header forms, generated Message-ID and Date, injection safe. Unit tests and a build then parse round trip property test.
 - [ ] **2.6 Email/set create.** Through the existing store path (quota, encryption, journaling). Remaining `ESET` phase 2 (238 in total), `WDX-007`, `WDX-008`, `WDX-009`.
-- [ ] **2.7 Email/import.** `EIMP` phase 2 (37).
-- [ ] **2.8 Email/parse.** `EPAR` phase 2 (31).
-- [ ] **2.9 Copy methods.** Email/copy and Blob/copy with the RFC error order. `ECPY` (6), `BLOB` copy scenarios.
+- [x] **2.7 Email/import.** `EIMP` phase 2 (37).
+- [x] **2.8 Email/parse.** `EPAR` phase 2 (31).
+- [x] **2.9 Copy methods.** Email/copy and Blob/copy with the RFC error order. `ECPY` (6), `BLOB` copy scenarios.
 - [x] **2.10 Owned change log.** `lib/jmap/changelog.js`, `jmapchanges` collection, tombstone expiry. Unit tests.
 - [x] **2.11 Identity.** `jmapidentities`, Identity/get, set and changes; address changes through the REST API feed the change log. `IDN` (57).
-- [ ] **2.12 VacationResponse.** Over `autoreplies`, round trip with the REST API, end to end replies. `VAC` (48).
-- [ ] **2.13 Account lifecycle.** User deletion and restore cover the JMAP collections. `WDS-007`, `WDS-008`.
+- [x] **2.12 VacationResponse.** Over `autoreplies`, round trip with the REST API, end to end replies. `VAC` (48).
+- [x] **2.13 Account lifecycle.** User deletion and restore cover the JMAP collections. `WDS-007`, `WDS-008`.
 - [ ] **2.14 External suite runners.** `scripts/jmap/run-jmapio.js`, the Fastmail adapter and container, `jmap-compliance.yml`. First full runs; every difference from the expectation files is either fixed in the server or corrected in the file with a reason.
 - [ ] **Milestone 2.** All 559 phase 2 scenarios pass; jmapio 262 of 309 as expected; Fastmail 112 of 173. Interop round with Ltt.rs, Bulwark Webmail and Cypht.
 
@@ -505,11 +505,12 @@ Rollback: disabling the service is enough. The schema additions (new fields, new
 
 ## 10. Progress log
 
-| Date       | Work package    | Notes                                                                                                                                                                                                                                                                                                                            |
-| ---------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-11 | Plan            | Plan written; branch `jmap` created; portfolio and plan not yet committed                                                                                                                                                                                                                                                        |
-| 2026-11-11 | 0.1             | Portfolio committed; catalogue and expectations reconciled with the decisions (12 interim scenarios withdrawn, EmailDelivery, rename, quota, queryChanges, VAPID, account id); feasibility report and PDF revised; baseline `npm test`: 4,818 passing, 0 failing                                                                 |
-| 2026-11-11 | 0.2 to 0.12     | Phase 0 committed and pushed: stable roots, journal origins and mailbox settings, lazy anchors, configurable journal retention, temporary uploads, `jmap` scope; 28 WDP scenarios pass. 0.13 waits for production measurements                                                                                                   |
-| 2026-11-11 | 1.1 to 1.18     | Phase 1 implemented, then the scenario tests written by area in parallel worktrees (core, mailbox, thread/snippet/blob, Email/get, Email/changes, Email/query, push) and every bug they found fixed. 939 required scenarios pass, coverage gate green                                                                            |
-| 2026-11-11 | Review          | `/simplify` (reuse, simplification, efficiency, altitude) and `/security-review` over phases 0 and 1: one visibility rule for messages, one mailbox loader per request, fewer reads per request and per pushed event, task queue without a pause per task, WebAuthn ends password only sessions. No exploitable security finding |
-| 2026-11-11 | 2.1, 2.10, 2.11 | Upload endpoint (17 BLOB scenarios), owned change log, Identity (57 IDN scenarios, REST address changes reconciled and pushed). PatchObject (2.3) and the MIME builder (2.5) exist with unit tests, their methods follow                                                                                                         |
+| Date       | Work package                | Notes                                                                                                                                                                                                                                                                                                                            |
+| ---------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Plan                        | Plan written; branch `jmap` created; portfolio and plan not yet committed                                                                                                                                                                                                                                                        |
+| 2026-11-11 | 0.1                         | Portfolio committed; catalogue and expectations reconciled with the decisions (12 interim scenarios withdrawn, EmailDelivery, rename, quota, queryChanges, VAPID, account id); feasibility report and PDF revised; baseline `npm test`: 4,818 passing, 0 failing                                                                 |
+| 2026-11-11 | 0.2 to 0.12                 | Phase 0 committed and pushed: stable roots, journal origins and mailbox settings, lazy anchors, configurable journal retention, temporary uploads, `jmap` scope; 28 WDP scenarios pass. 0.13 waits for production measurements                                                                                                   |
+| 2026-11-11 | 1.1 to 1.18                 | Phase 1 implemented, then the scenario tests written by area in parallel worktrees (core, mailbox, thread/snippet/blob, Email/get, Email/changes, Email/query, push) and every bug they found fixed. 939 required scenarios pass, coverage gate green                                                                            |
+| 2026-11-11 | Review                      | `/simplify` (reuse, simplification, efficiency, altitude) and `/security-review` over phases 0 and 1: one visibility rule for messages, one mailbox loader per request, fewer reads per request and per pushed event, task queue without a pause per task, WebAuthn ends password only sessions. No exploitable security finding |
+| 2026-11-11 | 2.1, 2.10, 2.11             | Upload endpoint (17 BLOB scenarios), owned change log, Identity (57 IDN scenarios, REST address changes reconciled and pushed). PatchObject (2.3) and the MIME builder (2.5) exist with unit tests, their methods follow                                                                                                         |
+| 2026-11-11 | 2.2, 2.7 to 2.9, 2.12, 2.13 | Mailbox/set (91 MBX), Email/import, Email/parse, Email/copy (EIMP, EPAR, ECPY), VacationResponse (48 VAC) and JMAP data removal on user deletion, built in parallel worktrees. Fixed on the way: REST mailbox update scoped to the user, mailbox limit off by one, autoreplies only for mail naming the user (RFC 3834)          |
