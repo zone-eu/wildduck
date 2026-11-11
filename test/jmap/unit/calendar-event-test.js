@@ -324,6 +324,30 @@ describe('Calendar alert triggers', () => {
         expect(alerts.triggersBetween(event, [], T, next)).to.deep.equal([]);
     });
 
+    it('bounds the search when no trigger comes for a long time', () => {
+        const acked = (offset, extra) => Object.assign(alert(offset), { acknowledged: '2199-12-31T00:00:00Z' }, extra);
+        const base = { start: '2026-11-12T00:00:00', duration: 'PT1S', recurrenceRule: { frequency: 'secondly' } };
+        const now = Date.parse('2026-11-12T00:00:00Z');
+        // all acknowledged: the search starts at the acknowledgement
+        const event = Object.assign({}, base, { alerts: { a: acked('PT0S') } });
+        expect(alerts.nextTrigger(event, [], now)).to.equal(Date.parse('2199-12-31T00:00:01Z'));
+        // an override hides that, and many far apart offsets: a bounded search, then no next look
+        const cases = [
+            Object.assign({}, event, { recurrenceOverrides: { '2026-11-12T00:00:05': { title: 'x', 'alerts/a/acknowledged': '2199-12-31T00:00:00Z' } } }),
+            Object.assign({}, event, {
+                recurrenceOverrides: { '2026-11-12T00:00:05': { title: 'x' } },
+                useDefaultAlerts: false,
+                alerts: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`a${i}`, acked(`-P${i * 37}D`)]))
+            })
+        ];
+        for (const entry of cases) {
+            const started = Date.now();
+            const next = alerts.nextTrigger(entry, [], now);
+            expect(Date.now() - started).to.be.below(500);
+            expect(next === null || next >= now + 3600000).to.equal(true);
+        }
+    });
+
     it('answers no trigger for a counted rule that ended', () => {
         const event = Object.assign({}, at, {
             start: '2026-01-01T00:00:00',

@@ -776,5 +776,40 @@ describe('Calendar alerts (CALR)', function () {
             expect(Date.now() - started).to.be.below(5000);
             expect((await storedEvent(ctx)).alertAt.getTime()).to.equal(T + 23 * DAY);
         });
+
+        it('an event whose triggers are all acknowledged far ahead is claimed and costs a bounded search', async () => {
+            const ctx = await h.setupUser();
+            // a secondly rule whose only offset alert is acknowledged in 2199, and an absolute alert due at T
+            const values = atT({
+                duration: 'PT1S',
+                recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'secondly' },
+                alerts: { a: offsetAlert('PT0S', { acknowledged: '2199-12-31T00:00:00Z' }), soon: absoluteAlert(T) }
+            });
+            let started = Date.now();
+            await h.createEvent(ctx, values);
+            expect(Date.now() - started).to.be.below(2000);
+            expect((await storedEvent(ctx)).alertAt.getTime()).to.equal(T);
+            started = Date.now();
+            const fired = await tick(ctx, T);
+            expect(Date.now() - started).to.be.below(2000);
+            expect(fired.map(entry => entry.alertId)).to.deep.equal(['soon']);
+            // claimed: no longer due at T, and not before the acknowledgement of the offset alert
+            const stored = await storedEvent(ctx);
+            expect(stored.alertAt === null || stored.alertAt.getTime() > T + 3600 * 1000).to.equal(true);
+            expect(await tick(ctx, T + MINUTE)).to.deep.equal([]);
+        });
+
+        it('a CalendarAlert is not pushed to a subscription whose account lost the jmap scope', async () => {
+            const ctx = await h.setupUser();
+            const box = ph.push.endpoint(true);
+            await ph.verified(ctx.client, box, { types: ['CalendarAlert'] });
+            await h.createEvent(ctx, atT({ alerts: { a1: offsetAlert('PT0S') } }));
+            await api('PUT', `/users/${ctx.user.id}`, { disabledScopes: ['jmap'] });
+            const before = box.requests.length;
+            const fired = await tick(ctx, T);
+            expect(fired.map(entry => [entry.alertId, entry.delivered])).to.deep.equal([['a1', true]]);
+            await clock.delay(3 * QUIET);
+            expect(box.requests.slice(before).map(entry => box.json(entry)['@type'])).to.not.include('CalendarAlert');
+        });
     });
 });

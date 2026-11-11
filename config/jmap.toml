@@ -143,6 +143,9 @@ maxExpandedQueryDuration = "P366D"
 defaultName = "Calendar"
 # largest stored event, in octets of JSON
 maxEventSize = 262144
+# milliseconds the recurrence expansions of one CalendarEvent/query may take in all; past it the
+# query answers cannotCalculateOccurrences
+maxQueryExpansionTime = 1000
 
 [alerts]
 # Calendar alerts (lib/calendar/alerts.js): one JMAP worker at a time looks for due alerts every

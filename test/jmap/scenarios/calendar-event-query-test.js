@@ -6,6 +6,8 @@
 
 const { expect } = require('chai');
 const { scenario, jmap } = require('../harness');
+const config = require('@zone-eu/wild-config');
+const instance = require('../harness/instance');
 const h = require('./calendar-event-helpers');
 
 const { WEEKLY, JANUARY } = h;
@@ -926,6 +928,26 @@ describe('CalendarEvent/query and /queryChanges (CEQ)', function () {
             expect(expanded.canCalculateChanges).to.equal(false);
             await h.expectError(changesOf(ctx, { sinceQueryState: expanded.queryState, filter: JANUARY }), 'cannotCalculateChanges');
             expect((await h.evQuery(ctx, { filter: JANUARY })).canCalculateChanges).to.equal(true);
+        });
+    });
+
+    describe('expansion budget', () => {
+        it('a query stops once the recurrence expansions used up their time', async () => {
+            const spent = await instance.startInstance({
+                calendars: Object.assign({}, config.jmap.calendars, { maxQueryExpansionTime: 0 }),
+                alerts: { enabled: false }
+            });
+            try {
+                const ctx = await h.setupUser({}, spent.url);
+                const single = await h.createEvent(ctx, utc('Single', '2026-01-10T10:00:00', 'PT1H'));
+                // events that need no expansion still answer
+                expect(await ids(ctx, { filter: JANUARY })).to.deep.equal([single.id]);
+                await h.createEvent(ctx, WEEKLY);
+                await h.expectError(h.evQuery(ctx, { filter: JANUARY }), 'cannotCalculateOccurrences');
+                await h.expectError(h.evQuery(ctx, { filter: JANUARY, expandRecurrences: true }), 'cannotCalculateOccurrences');
+            } finally {
+                await instance.stopInstance(spent.app);
+            }
         });
     });
 });
