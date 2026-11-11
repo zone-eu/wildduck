@@ -17,6 +17,16 @@ batchSize = 1000
 # delay between batches in milliseconds. Set to 0 to disable throttling
 throttleMs = 100
 
+[database.messagesRootRepair]
+# Makes message roots usable as JMAP Email ids for every user ahead of time: fills missing roots and
+# gives legacy IMAP copies a root of their own. Optional, the JMAP service repairs each user on first
+# use. Walks every user, so it is off by default
+enabled = false
+# delay after each repaired user in milliseconds. Set to 0 to disable throttling
+throttleMs = 100
+# how long a shared root must persist before it is treated as a legacy copy and not as a move in progress
+settleMs = 2000
+
 [users]
 # global users db migrations settings
 
