@@ -44,6 +44,9 @@ async function imap(user) {
         tls: { rejectUnauthorized: false },
         logger: false
     });
+    // a session a test leaves open may time out while later tests run; without a listener its error would
+    // be thrown into whichever test runs at that moment
+    client.on('error', () => client.close());
     await client.connect();
     imapClients.add(client);
     client.on('close', () => imapClients.delete(client));
