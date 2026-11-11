@@ -70,7 +70,11 @@ class JmapClient {
         if (!this.accountId) {
             await this.session();
         }
-        const calls = methodCalls.map(([name, args, callId]) => [name, args && args.accountId === true ? Object.assign({}, args, { accountId: this.accountId }) : args, callId]);
+        const calls = methodCalls.map(([name, args, callId]) => [
+            name,
+            args && args.accountId === true ? Object.assign({}, args, { accountId: this.accountId }) : args,
+            callId
+        ]);
         const res = await this.request({ using, methodCalls: calls });
         if (res.status !== 200) {
             throw new Error(`API answered ${res.status}: ${res.body}`);

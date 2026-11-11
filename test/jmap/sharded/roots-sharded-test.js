@@ -88,11 +88,7 @@ describe('message roots on a sharded cluster', function () {
     it('separates a shared root across shards and fills missing roots', async () => {
         const root = new ObjectId();
         const legacy = { _id: new ObjectId(), user, mailbox: first, uid: 2 };
-        await messages.insertMany([
-            { _id: root, root, user, mailbox: first, uid: 3 },
-            { _id: new ObjectId(), root, user, mailbox: second, uid: 3 },
-            legacy
-        ]);
+        await messages.insertMany([{ _id: root, root, user, mailbox: first, uid: 3 }, { _id: new ObjectId(), root, user, mailbox: second, uid: 3 }, legacy]);
 
         const result = await repairUserRoots(db, user, { settleMs: 10 });
         expect(result.separated).to.equal(1);
