@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WildDuck is a scalable, no-SPOF IMAP/POP3 mail server built with Node.js. It uses MongoDB for storage (with sharding/replication support), Redis for pubsub/caching, and provides a comprehensive REST API for management.
+WildDuck is a scalable, no-SPOF IMAP/POP3 mail server built with Node.js, with an optional JMAP service (mail, contacts, calendars). It uses MongoDB for storage (with sharding/replication support), Redis for pubsub/caching, and provides a comprehensive REST API for management.
 
 **Dual Role**: WildDuck serves as both a standalone application AND a library. External mail components (Haraka, ZoneMTA) import WildDuck's handlers via `@zone-eu/wildduck/lib/*` to share the same database and business logic.
 
@@ -28,6 +28,10 @@ npm start
 
 # Regenerate the OpenAPI specification (docs/api/openapidocs.json)
 npm run generate-api-docs
+
+# JMAP: scenario tests against a fresh test server, then the catalogue coverage gate
+npm run test:jmap
+npm run test:jmap:coverage
 ```
 
 ### Running Individual Tests
@@ -38,6 +42,12 @@ NODE_ENV=test ./node_modules/.bin/mocha imap-core/test/imap-parser-unit.js
 
 # API tests (requires server running separately: node server.js)
 NODE_ENV=test ./node_modules/.bin/mocha test/api-test.js
+
+# JMAP unit test (no server needed)
+NODE_ENV=test npx mocha test/jmap/unit/patch-test.js
+
+# One JMAP scenario file (requires NODE_ENV=test node server.js running separately)
+NODE_ENV=test npx mocha --require test/jmap/harness/hooks.js --timeout 30000 --exit test/jmap/scenarios/core-test.js
 ```
 
 ## Architecture
@@ -53,6 +63,7 @@ NODE_ENV=test ./node_modules/.bin/mocha test/api-test.js
 - `tasks.js` - MongoDB-based task queue processor
 - `webhooks.js` - Webhook delivery service (BullMQ)
 - `indexer.js` - ElasticSearch indexing service (BullMQ)
+- `jmap.js` - JMAP service (Fastify, own port, started by `worker.js` when `[jmap] enabled`)
 
 ### Core Handlers (lib/)
 
@@ -207,9 +218,27 @@ server.onAuth = require('./lib/handlers/on-auth')(server, userHandler);
 
 Key handler files: `on-auth.js`, `on-fetch.js`, `on-store.js`, `on-copy.js`, `on-move.js`, `on-append.js`, `on-create.js`, `on-delete.js`, `on-list.js`, `on-lsub.js`, `on-open.js`, `on-rename.js`, `on-search.js`, `on-status.js`, `on-expunge.js`, `on-subscribe.js`, `on-unsubscribe.js`, `on-get-quota.js`, `on-get-quota-root.js`, `on-xapplepushservice.js`
 
+### JMAP Service (`jmap.js`, `lib/jmap/`)
+
+Optional JMAP server (RFC 8620, 8621, 9404, 9425, 9610, Web Push RFC 8030/8291/8292, calendars draft without scheduling), off by default (`config/jmap.toml`, `[jmap] enabled`). User docs: `docs/in-depth/jmap.md`; work plan and progress log: `docs/jmap/implementation-plan.md`.
+
+- `jmap.js` builds the handlers (`createDeps`), starts the Fastify app (`lib/jmap/server.js`), the submission poller, the calendar alert scheduler and Web Push delivery
+- `lib/jmap/server.js` - routes, auth hook, problem details, concurrency slots, access log. `request.js` - envelope validation, `using` gating, sequential method dispatch. `references.js`, `patch.js`, `json.js` (strict I-JSON)
+- `lib/jmap/types/` - one module per data type, listed in `types/index.js` (the registry). A module exports `{capability, methods: {'Type/method': async (args, context) => result}, accountCapability?, pushTypes?, pushStates?}`; a capability is advertised once a module declares it. Extra HTTP routes (download, upload, eventsource) are in `lib/jmap/routes/`
+- `lib/jmap/push/` - Web Push (`delivery.js` BullMQ queue `jmap_push`, `webpush.js` RFC 8291 + SSRF checks, `vapid.js`, `subscriptions.js`)
+- Shared, outside `lib/jmap/`: `lib/contact-handler.js`, `lib/calendar-handler.js`, `lib/calendar/` (events, recurrence over `rrule-temporal`, alerts), `lib/schemas/jscontact.js`, `lib/schemas/jscalendar.js`, `lib/message-roots.js`, `lib/journal-state.js`, `lib/object-ids.js` (IMAP OBJECTID)
+
+**Ids** (`lib/jmap/ids.js`): letter prefix plus ObjectId hex. Email id is `M` + message `root`, which survives moves (a move makes a new `_id`); IMAP COPY gives a fresh root. Lookups by root go through `lib/message-roots.js` (`by_root` index, legacy docs without root read as `_id` until `ensureUserRoots` ran for the user).
+
+**State, mail types** (`lib/jmap/state.js`, `lib/journal-state.js`): Email, Thread and Mailbox share one state, the newest `journal` entry id of the user kept as a forward only anchor in `jmapstate`, plus an HMAC of the account. `/changes` folds journal entries per `root` (EXISTS created, EXPUNGE destroyed, EXPUNGE+EXISTS of one root is a move = updated). History reaches back `const:journal:time`.
+
+**State, owned types** (`lib/jmap/changelog.js`): Identity, EmailSubmission, AddressBook, ContactCard, Calendar, CalendarEvent, ParticipantIdentity number changes with a per user, per type sequence in `jmapstate`; objects carry `modSeq`, destroyed ones leave tombstones in `jmapchanges`. Writers outside the JMAP service (REST address, autoreply and address register changes) report through `identity-sync.js`, `vacation-sync.js`, `contacts-sync.js` (`owned-sync.js`: only when `[jmap] enabled` and the user has a `jmapstate` document).
+
+**Shared code rules**: every mail write goes through the existing handlers (`MessageHandler`, `MailboxHandler`, `StorageHandler`, `Maildropper`) so IMAP, REST and JMAP stay consistent. Changes under `lib/` outside `lib/jmap/` must keep the callback/promise APIs and tolerate missing new fields (plugins use these handlers).
+
 ## Background Job Systems
 
-WildDuck uses **three distinct job systems**:
+WildDuck uses **three distinct job systems** (plus the JMAP `jmap_push` BullMQ queue, see the JMAP section):
 
 ### 1. MongoDB Task Queue (`tasks.js`, `lib/task-handler.js`)
 
@@ -258,7 +287,9 @@ Redis-based queues for ElasticSearch synchronization:
 
 **Outgoing Mail**: `zone-queue` (ZoneMTA queue for outbound messages, forwards, autoreplies)
 
-**GridFS Buckets**: `audit.files`, `storage.files`, `attachments.files`
+**JMAP** (indexes gated by `feature: jmap` in `indexes.yaml`): `jmapstate`, `jmapchanges`, `jmapidentities`, `jmapsubmissions`, `jmappush`, `jmapparticipants`, `addressbooks`, `contacts`, `contactmedia`, `calendars`, `calendarevents`
+
+**GridFS Buckets**: `audit.files`, `storage.files` (also JMAP temporary uploads, `metadata.expires`), `attachments.files`
 
 ## Redis Usage
 
@@ -410,7 +441,7 @@ Other `config` keys: `allowUnknown`, `charset: false`, `preValidate`,
 Uses TOML configuration via `@zone-eu/wild-config`. Files in `config/`:
 - `default.toml` - Base configuration
 - `development.toml` / `test.toml` - Environment overrides
-- Separate configs: `dbs.toml`, `imap.toml`, `pop3.toml`, `api.toml`, `tls.toml`, `lmtp.toml`
+- Separate configs: `dbs.toml`, `imap.toml`, `pop3.toml`, `api.toml`, `tls.toml`, `lmtp.toml`, `jmap.toml`, `migrations.toml`
 
 Environment variables can override config values.
 
@@ -448,7 +479,9 @@ The default Grunt task runs this sequence:
 | `imap` | `imap-core/test/**/*-test.js` | Yes |
 | `imap-unit` | Parser, compiler, indexer, search tests | No |
 | `pop3` | `test/pop3-*-test.js` | No |
-| `api` | `test/**/*-test.js` | Yes |
+| `api` | `test/**/*-test.js` (minus JMAP, POP3 and unit files) | Yes |
+| `unit` | listed unit files, including `test/jmap/unit/*-test.js` | No |
+| `mocha-jmap` | `test/jmap/scenarios/**/*-test.js` (`test/jmap/.mocharc.js`) | Yes |
 
 **`grunt proto`** runs only `imap-unit` + `pop3` (no server needed, fast).
 
@@ -459,6 +492,7 @@ The default Grunt task runs this sequence:
 - API port: 8080
 - IMAP port: 9993
 - LMTP port: 2424
+- JMAP port: 8091 (enabled, `safetyWindow = 0` so change lists are exact, short poll and push delays)
 
 ### Test Locations
 
@@ -468,6 +502,17 @@ The default Grunt task runs this sequence:
 - Unit tests: `imap-core/test/*-unit.js`, `test/filtering-tools-test.js`
 - Fixtures: `test/fixtures/`, `imap-core/test/fixtures/`
 - Global hooks: `test/_globals-test.js` (collects test metadata for coverage report)
+- JMAP: `test/jmap/` (see below)
+
+### JMAP Tests (`test/jmap/`)
+
+- `catalogue/*.yaml` - the scenario catalogue (about 2,500 scenarios, ids like `EGET-012`, never renumbered; withdrawn ones keep the id with `applies: no`). Validate with `npm run test:jmap:catalogue`
+- `scenarios/<area>-test.js` - one `scenario('ID', async ctx => ...)` per catalogue id (`harness/scenario.js`); an unknown or duplicate id fails at load time. Each test creates its own users and seeds with the mechanism the catalogue names (LMTP, IMAP, REST API, database, JMAP); do not replace IMAP or REST seeding with JMAP calls
+- `harness/` - `client.js` (raw JMAP over `fetch`, Bearer and Basic), `accounts.js`, `seed.js`, `api.js`, `fixtures.js`, `clock.js`, `outbound.js` (ZoneMTA stand in), `push.js` (local push service), `sse.js`, `instance.js` (extra in process JMAP instances with other config)
+- `unit/` - pure module tests, run in the `unit` target
+- `tools/check-coverage.js` - `npm run test:jmap:coverage`: every scenario of a work package listed in `progress.json` must have a passing test
+- `external/` - expectation files for jmapio/jmap-test-suite and fastmail/JMAP-TestSuite (pinned commits, never vendored); run with `npm run test:jmap:jmapio` and `npm run test:jmap:fastmail` (`scripts/jmap/run-*.js`, Fastmail in a container). A `never` test that passes is a failure too. CI: `.github/workflows/jmap-compliance.yml`
+- `sharded/` (`npm run test:jmap:sharded`, docker compose two shard cluster), `bench/`
 
 ### Test Naming Convention
 
