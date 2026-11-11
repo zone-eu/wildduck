@@ -598,6 +598,54 @@ indexes:
               user: 1
               modSeq: 1
 
+    - collection: jmapsubmissions
+      feature: jmap
+      index:
+          # EmailSubmission/changes, a range scan on the change sequence; also the per user listing
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: jmapsubmissions
+      feature: jmap
+      index:
+          # pending submissions of a user (checked against the queue) and the cleanup of old ones
+          name: user_status_sendat
+          key:
+              user: 1
+              undoStatus: 1
+              sendAt: 1
+
+    - collection: jmapsubmissions
+      feature: jmap
+      index:
+          # the submission of a queued message, when the REST API deletes or reschedules it
+          name: user_queueid
+          key:
+              user: 1
+              queueId: 1
+
+    - collection: jmapsubmissions
+      feature: jmap
+      index:
+          # the poller: due pending submissions of all users, least recently checked first
+          name: pending_checked
+          key:
+              checked: 1
+          partialFilterExpression:
+              undoStatus: pending
+
+    - collection: jmapsubmissions
+      feature: jmap
+      index:
+          name: submission_autoexpire
+          # a backstop for records of users who stopped using JMAP; normally the cleanup removes them
+          # long before, with a tombstone
+          expireAfterSeconds: 0
+          key:
+              purgeAt: 1
+
     - collection: jmapchanges
       feature: jmap
       index:

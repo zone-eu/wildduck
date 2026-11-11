@@ -33,6 +33,10 @@ port = 2424
 enabled = true
 port = 8091
 
+[jmap.submission]
+# EmailSubmission scenarios observe the transition to final through the event stream
+pollInterval = 1
+
 [jmap.changes]
 # the test server runs a single process, exact change lists keep the scenario assertions strict
 safetyWindow = 0

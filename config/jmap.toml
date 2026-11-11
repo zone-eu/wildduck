@@ -65,3 +65,17 @@ maxDuration = 1800
 # request over the limit is refused with HTTP 429 and this Retry-After value in seconds
 maxStreams = 15
 retryAfter = 30
+
+[submission]
+# EmailSubmission (RFC 8621 7). Longest delay of a delayed send (FUTURERELEASE HOLDFOR and HOLDUNTIL)
+# in seconds, advertised as maxDelayedSend; 0 turns delayed send off. Defaults to sender.maxQueueTime
+#maxDelayedSend = 2592000
+# Sent and canceled submissions are removed this many seconds after their send time (the messages
+# themselves are not affected)
+retention = 604800
+# Largest message that can be submitted, in bytes (default: limits.maxSizeMessage, else 64 MB)
+#maxSize = 67108864
+# Seconds between two checks of a due, still pending submission against the outbound queue, so
+# clients are told when delivery started. 0 turns the check off (submissions are then updated when
+# they are read)
+pollInterval = 15

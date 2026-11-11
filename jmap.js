@@ -18,11 +18,14 @@ const MailboxHandler = require('./lib/mailbox-handler');
 const { SettingsHandler } = require('./lib/settings-handler');
 const StorageHandler = require('./lib/storage-handler');
 const AutoreplyHandler = require('./lib/autoreply-handler');
+const Maildropper = require('./lib/maildropper');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const ImapNotifier = require('./lib/imap-notifier');
 const Lock = require('ioredfour');
 const { createApp } = require('./lib/jmap/server');
 const types = require('./lib/jmap/types');
+const { startPoller } = require('./lib/jmap/submission-queue');
+const { settingsOf } = require('./lib/jmap/types/submission');
 
 // audit and mail action log lines of the handlers, as the other services write them
 function createLoggelf() {
@@ -71,6 +74,15 @@ function createDeps() {
         autoreplyHandler,
         notifier,
         storageHandler,
+        // the outbound queue EmailSubmission hands messages to, as the REST submit endpoint does
+        maildropper: new Maildropper({
+            db: { database: db.database, senderDb: db.senderDb },
+            zone: config.sender.zone,
+            collection: config.sender.collection,
+            gfs: config.sender.gfs,
+            maxQueueTime: config.sender.maxQueueTime,
+            loopSecret: config.sender.loopSecret
+        }),
         database: db.database,
         users: db.users,
         gridfs: db.gridfs,
@@ -120,13 +132,17 @@ function start(options, done) {
     let app;
     try {
         const factory = serverFactory(options);
-        app = createApp(createDeps(), {
+        const deps = createDeps();
+        app = createApp(deps, {
             ...options,
             accessSecret: config.api.accessControl.secret,
             roles: config.api.roles,
             tokenLifetime: config.api.accessControl.tokenLifetime,
             serverFactory: factory
         });
+        // pending EmailSubmissions follow the outbound queue, see lib/jmap/submission-queue.js
+        const stopPoller = startPoller(deps, settingsOf(options).pollInterval);
+        app.addHook('onClose', async () => stopPoller());
     } catch (err) {
         return setImmediate(() => done(err));
     }
