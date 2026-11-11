@@ -11,7 +11,7 @@ on:
     workflow_dispatch:
 
 env:
-    JMAP_GATE_PHASE: 2
+    JMAP_GATE_PHASE: 4
 
 jobs:
     jmapio:
@@ -48,7 +48,7 @@ jobs:
                   NODE_ENV=test node server.js > server.log 2>&1 &
                   for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8091/.well-known/jmap && break; sleep 1; done
             - name: Run jmapio/jmap-test-suite
-              run: node scripts/jmap/run-jmapio.js --phase "$JMAP_GATE_PHASE" --api http://127.0.0.1:8080 --jmap http://127.0.0.1:8091 --workdir "$RUNNER_TEMP/jmapio" --report jmapio-report.json
+              run: node scripts/jmap/run-jmapio.js --phase "$JMAP_GATE_PHASE" --api http://127.0.0.1:8080 --jmap http://127.0.0.1:8091 --workdir "$RUNNER_TEMP/jmapio" --report jmapio-report.json --accept-skip 'smee.io is unreachable'
             - name: Keep the report
               if: always()
               uses: actions/upload-artifact@v4

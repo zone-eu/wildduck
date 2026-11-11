@@ -6,6 +6,7 @@
 //
 //   node scripts/jmap/run-jmapio.js --phase 2 [--jmap http://127.0.0.1:8091] [--api http://127.0.0.1:8080]
 //       [--token <REST API access token>] [--workdir <dir>] [--report <file>] [--filter 'email/*']
+//       [--accept-skip 'smee.io is unreachable'] (a skip_when condition the run was deliberately set up with)
 //
 // The suite is cloned at the pinned commit into the work directory (never into this repository: it has
 // no licence). Two throwaway users are created through the REST API for the run and deleted afterwards.
@@ -77,7 +78,7 @@ async function createUser(args, role) {
  * The gate (README.md): every pass (or phased opinion) entry up to the phase passes, every never entry
  * does not pass, the id lists agree, and the run was not fatal.
  */
-function gate(expectations, report, phase, filter) {
+function gate(expectations, report, phase, filter, acceptedSkips = []) {
     const results = new Map((report.results || []).map(result => [result.testId, result]));
     const matches = id => !filter || new RegExp('^' + filter.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$').test(id);
     const problems = [];
@@ -91,7 +92,8 @@ function gate(expectations, report, phase, filter) {
         }
         counts[result.status] = (counts[result.status] || 0) + 1;
         const gated = (entry.expect === 'pass' || (entry.expect === 'opinion' && entry.phase !== undefined)) && entry.phase <= phase;
-        if (gated && result.status !== 'pass') {
+        const acceptedSkip = result.status === 'skip' && entry.skip_when && acceptedSkips.includes(entry.skip_when);
+        if (gated && result.status !== 'pass' && !acceptedSkip) {
             problems.push(
                 `${entry.id}: expected to pass from phase ${entry.phase}, ${result.status}${result.error ? ` (${String(result.error).slice(0, 160)})` : ''}`
             );
@@ -114,7 +116,8 @@ async function main() {
     const args = parseArgs(process.argv.slice(2));
     const expectations = yaml.load(fs.readFileSync(EXPECTATIONS, 'utf8'));
     const suite = prepareSuite(args.workdir, expectations.commit);
-    const report = args.report || path.join(args.workdir, `report-phase${args.phase}.json`);
+    // absolute: the suite runs in its own directory and writes the report relative to it
+    const report = path.resolve(args.report || path.join(args.workdir, `report-phase${args.phase}.json`));
     const configPath = path.join(args.workdir, 'config.json');
 
     const users = [await createUser(args, 'primary'), await createUser(args, 'secondary')];
@@ -150,7 +153,13 @@ async function main() {
         console.error('jmapio: fatal error, no usable report');
         process.exit(2);
     }
-    const { problems, early, counts } = gate(expectations, JSON.parse(fs.readFileSync(report, 'utf8')), args.phase, args.filter);
+    const { problems, early, counts } = gate(
+        expectations,
+        JSON.parse(fs.readFileSync(report, 'utf8')),
+        args.phase,
+        args.filter,
+        [].concat(args['accept-skip'] || [])
+    );
     console.log(`jmapio phase ${args.phase}: ${counts.pass} passed, ${counts.fail || 0} failed, ${counts.skip || 0} skipped; report ${report}`);
     if (early.length) {
         console.log(`passing before their phase (${early.length}): ${early.join(', ')}`);
