@@ -689,9 +689,9 @@ describe('ContactCard/query (contacts.yaml)', function () {
             const { queryState } = await call(c, 'ContactCard/query', {});
             const redis = new Redis(typeof config.dbs.redis === 'string' ? redisUrl(config.dbs.redis) : config.dbs.redis);
             try {
-                const keys = await redis.keys(`jmap:qc:*:${queryState}`);
-                expect(keys).to.have.length(1);
-                await redis.del(keys);
+                // the cached lists of a user are fields of one hash, keyed by query state
+                const accountId = (await call(c, 'ContactCard/get', { ids: [] })).accountId;
+                expect(await redis.hdel(`jmap:qc:${accountId.slice(1)}`, queryState)).to.equal(1);
             } finally {
                 redis.disconnect();
             }
