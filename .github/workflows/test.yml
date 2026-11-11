@@ -64,13 +64,26 @@ jobs:
             - name: Validate the JMAP test catalogue
               run: node test/jmap/tools/check-catalogue.js
             - name: Run tests
-              run: npm run runtest
+              # the full output also goes to a file: the job log view stops at very long lines (the fuzz tests
+              # log megabyte long URLs), which hides everything after them
+              run: |
+                  set -o pipefail
+                  npm run runtest 2>&1 | tee test-output.log
               env:
                   APPCONF_dbs_redis: redis://127.0.0.1:6379/1
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
                   JMAP_RESULTS: 1
-                  # the test server logs every protocol line at the default level, which made the job log
-                  # pass the size GitHub keeps and hid the test results
-                  APPCONF_log_level: warn
+            - name: Summary of the test run
+              if: always()
+              run: grep -aE '^ *[0-9]+ (passing|failing|pending)|^Running "|Aborted|^ *[0-9]+\) ' test-output.log | sed 's/\x1b\[[0-9;]*m//g' | head -200 || true
+            - name: Keep the test output
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: test-output-${{ matrix.node }}
+                  path: |
+                      test-output.log
+                      test/jmap/.results/
+                  retention-days: 7
             - name: Check JMAP catalogue coverage
               run: node test/jmap/tools/check-coverage.js
