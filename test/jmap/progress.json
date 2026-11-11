@@ -210,6 +210,18 @@
                     "prefix": "IDN"
                 }
             ]
+        },
+        {
+            "package": "2.12",
+            "select": [
+                {
+                    "prefix": "VAC"
+                }
+            ]
+        },
+        {
+            "package": "2.13",
+            "ids": ["WDS-007", "WDS-008"]
         }
     ]
 }

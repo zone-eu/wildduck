@@ -1,4 +1,4 @@
-/* eslint no-unused-expressions: 0 */
+/* eslint no-unused-expressions: 0, no-invalid-this: 0 */
 /* globals before: false, after: false */
 'use strict';
 
@@ -368,5 +368,99 @@ describe('JMAP service (wildduck.yaml)', () => {
         });
         expect(later.json.methodResponses[1][1].ids).to.have.length(1);
         await instance.stopInstance(slow.app);
+    });
+
+    describe('account lifecycle', function () {
+        this.timeout(60000);
+        const USING = [URN.core, URN.mail, URN.submission, URN.vacationresponse];
+
+        // the JMAP owned documents of a user, by collection
+        async function jmapDocuments(userId) {
+            const db = await seed.db();
+            const user = new seed.ObjectId(userId);
+            return {
+                jmapstate: await db.collection('jmapstate').countDocuments({ _id: user }),
+                jmapidentities: await db.collection('jmapidentities').countDocuments({ user }),
+                jmapchanges: await db.collection('jmapchanges').countDocuments({ user }),
+                uploads: await db.collection('storage.files').countDocuments({ 'metadata.user': user, 'metadata.expires': { $exists: true } })
+            };
+        }
+
+        scenario('WDS-007', async () => {
+            const user = await accounts.createUser();
+            const token = await accounts.createToken(user);
+            const client = forUser(user);
+            await client.session();
+            const upload = await client.raw(`/jmap/upload/${client.accountId}/`, {
+                method: 'POST',
+                body: 'uploaded blob',
+                headers: { 'Content-Type': 'text/plain' }
+            });
+            expect(upload.status).to.equal(201);
+            // a signature on the main identity, and an extra identity destroyed again (a tombstone)
+            const [main] = (await client.method('Identity/get', {}, USING)).list;
+            await client.method('Identity/set', { update: { [main.id]: { textSignature: 'Regards' } } }, USING);
+            const created = await client.method('Identity/set', { create: { extra: { email: user.address, name: 'Extra' } } }, USING);
+            await client.method('Identity/set', { destroy: [created.created.extra.id] }, USING);
+            await client.method('VacationResponse/set', { update: { singleton: { isEnabled: true, textBody: 'away' } } }, USING);
+            const before = await jmapDocuments(user.id);
+            for (const [collection, count] of Object.entries(before)) {
+                expect(count, collection).to.be.above(0);
+            }
+
+            await accounts.deleteUser(user.id);
+            const db = await seed.db();
+            // the user-delete task removes the placeholder of the deleted user last
+            await clock.waitFor(async () => !(await db.collection('deletedusers').findOne({ _id: new seed.ObjectId(user.id) })), { timeout: 30000 });
+            expect(await jmapDocuments(user.id)).to.deep.equal({ jmapstate: 0, jmapidentities: 0, jmapchanges: 0, uploads: 0 });
+
+            expect((await new JmapClient(`Bearer ${token}`).raw('/jmap/session')).status).to.equal(401);
+            expect((await forUser(user).raw('/jmap/session')).status).to.equal(401);
+        });
+
+        scenario('WDS-008', async () => {
+            const user = await accounts.createUser();
+            await seed.deliver(user.address, await fixtures.buildMessage({ to: user.address }));
+            let client = forUser(user);
+            const { ids } = await client.method('Email/query', {}, USING);
+            expect(ids).to.have.length(1);
+            const { state } = await client.method('Email/get', { ids: [] }, USING);
+            const identityState = (await client.method('Identity/get', {}, USING)).state;
+
+            const deleteAfter = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+            await api('DELETE', `/users/${user.id}?deleteAfter=${encodeURIComponent(deleteAfter)}`);
+            expect((await forUser(user).raw('/jmap/session')).status).to.equal(401);
+            await api('POST', `/users/${user.id}/restore`, {});
+
+            client = forUser(user);
+            expect((await client.method('Email/query', {}, USING)).ids).to.deep.equal(ids);
+            expect((await client.method('Email/get', { ids, properties: ['id'] }, USING)).list).to.deep.equal([{ id: ids[0] }]);
+
+            // since the state from before the deletion: no change happened in between
+            const changesSince = async () => {
+                try {
+                    return await client.method('Email/changes', { sinceState: state }, USING);
+                } catch (err) {
+                    expect(err.type).to.equal('cannotCalculateChanges');
+                    return null;
+                }
+            };
+            let changes = await changesSince();
+            if (changes) {
+                expect([changes.created, changes.updated, changes.destroyed]).to.deep.equal([[], [], []]);
+            }
+            const identityChanges = await client.method('Identity/changes', { sinceState: identityState }, USING);
+            expect(identityChanges.destroyed).to.deep.equal([]);
+
+            // a change after the restore is reported against the old state
+            await seed.deliver(user.address, await fixtures.buildMessage({ to: user.address }));
+            const after = (await client.method('Email/query', {}, USING)).ids;
+            expect(after).to.have.length(2);
+            changes = await changesSince();
+            if (changes) {
+                expect(changes.created).to.deep.equal(after.filter(id => !ids.includes(id)));
+                expect(changes.destroyed).to.deep.equal([]);
+            }
+        });
     });
 });
