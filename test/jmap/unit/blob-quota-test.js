@@ -120,7 +120,8 @@ describe('Blob range reads', () => {
         const chunk = Buffer.alloc(65536, 0x61);
         const res = await readSlice(Readable.from(Array.from({ length: 64 }, () => chunk)), 64 * 65536 - 10, 10, false);
         expect(res.content.length).to.equal(10);
-        expect(res.content.buffer.byteLength).to.be.at.most(65536);
+        // the backing memory is about one chunk (allocators may round up), never the 4 MB before the offset
+        expect(res.content.buffer.byteLength).to.be.below(2 * 65536);
     });
 });
 
