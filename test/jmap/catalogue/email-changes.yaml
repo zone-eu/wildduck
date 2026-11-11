@@ -1,0 +1,1629 @@
+area: email-changes
+title: "Email/changes and state strings"
+description: "State strings for Email (shared with Thread and Mailbox) and the Email/changes method: every origin of change, coalescing, maxChanges paging, errors, concurrency and large change sets. In the scenarios S0 is the state returned by Email/get before the described change and S1 the state after it."
+scenarios:
+  - id: ECHG-001
+    title: "Email/get returns a state string"
+    method: "Email/get"
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "A fresh account with only the default mailboxes."
+    when: "Email/get with ids set to an empty array."
+    then: "The response has a state property that is a non empty JSON string, list is empty and notFound is empty."
+    sources:
+      - "rfc:8620 5.1"
+      - "jmap-perl:t/set-state-consistent.t"
+  - id: ECHG-002
+    title: "State is identical on repeated calls when nothing changed"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "An account with three messages appended over IMAP, then no further activity."
+    when: "Email/get with ids null is called three times, with Email/query, Email/changes and Thread/get calls in between."
+    then: "All three responses carry the same state string. Read only methods never change the state."
+    sources:
+      - "rfc:8620 5.2"
+      - "fastmail:t/Email/changes/no-changes.t"
+      - "legacy-proxy:test/unit/shared.spec.ts"
+  - id: ECHG-003
+    title: "Email, Thread and Mailbox share one state string"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "An account with a few messages."
+    when: "One request with Email/get (ids empty), Thread/get (ids empty) and Mailbox/get (ids null)."
+    then: "The three state values are the same string."
+    sources:
+      - "wildduck:brief State and changes"
+      - "wildduck:plan 5.2"
+  - id: ECHG-004
+    title: "Email/changes from the current state returns no changes"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "An account with messages. S0 is read with Email/get."
+    when: "Email/changes with sinceState S0."
+    then: "oldState is S0, newState is S0, hasMoreChanges is false, created, updated and destroyed are empty arrays."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnNoChangesWhenNoNewerState"
+      - "cyrus:JMAPEmail/email_changes"
+      - "jmapio:email/changes-no-changes"
+      - "fastmail:t/Email/changes/no-changes.t"
+      - "legacy-proxy:test/unit/shared.spec.ts"
+  - id: ECHG-005
+    title: "Email/changes response carries all required properties with the right types"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "One message was appended after S0."
+    when: "Email/changes with sinceState S0."
+    then: "The response has exactly accountId (the account id used), oldState (string, equal to S0), newState (string), hasMoreChanges (boolean) and created, updated, destroyed (arrays of Email ids, each id M plus 24 hex characters)."
+    sources:
+      - "jmapio:email/changes-response-structure"
+      - "rfc:8620 5.2"
+  - id: ECHG-006
+    title: "State changes when an Email is created and oldState differs from newState"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read, then one message is appended over IMAP."
+    when: "Email/get (ids empty) and Email/changes with sinceState S0 in one request."
+    then: "Email/get state S1 differs from S0. Email/changes returns oldState S0 and newState S1."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnDifferentStateThanOldState"
+      - "rfc:8620 5.2"
+  - id: ECHG-007
+    title: "newState of a complete Email/changes equals the current Email/get state"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "Several changes were made after S0."
+    when: "Email/changes with sinceState S0 and no maxChanges, followed by Email/get with ids empty in the same request."
+    then: "hasMoreChanges is false and newState equals the state returned by Email/get."
+    sources:
+      - "jmap-perl:t/set-state-consistent.t"
+      - "rfc:8620 5.2"
+  - id: ECHG-008
+    title: "Calling Email/changes again with the returned newState yields nothing"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "One message was appended after S0 and Email/changes since S0 returned newState S1."
+    when: "Email/changes with sinceState S1."
+    then: "All three lists are empty, hasMoreChanges is false, newState is S1."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldEventuallyReturnNoChanges"
+      - "rfc:8620 5.2"
+  - id: ECHG-009
+    title: "An account without any journal entry gets a stable state on first use"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [db]
+    given: "A user that existed before JMAP was enabled, with no state anchor document and no journal entries."
+    when: "Email/get with ids empty twice, then Email/changes with the returned state."
+    then: "Both calls return the same non empty state (the anchor is minted once, not per call) and Email/changes returns no changes."
+    sources:
+      - "wildduck:plan 5.2"
+  - id: ECHG-010
+    title: "State does not change when old journal entries expire"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, time, db]
+    given: "S0 is read after some changes. The journal retention then passes (or all journal entries of the user are removed from the journal collection) with no new change."
+    when: "Email/get with ids empty."
+    then: "state is still S0."
+    sources:
+      - "wildduck:plan 5.2"
+      - "wildduck:brief State and changes"
+    notes: "The state is a persisted per user anchor, not the newest journal row."
+  - id: ECHG-011
+    title: "A sinceState equal to the current state stays usable after the journal has expired"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, time, db]
+    given: "S0 is read. Nothing changes for longer than the journal retention, so S0 is older than the retention window and the journal holds no entries for the user."
+    when: "Email/changes with sinceState S0."
+    then: "The answer is an empty change set with newState S0 and hasMoreChanges false, not cannotCalculateChanges."
+    sources:
+      - "wildduck:plan 5.2"
+    notes: "A sinceState equal to the anchor is answered without touching the journal."
+  - id: ECHG-012
+    title: "State survives a restart of the server processes"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read after some changes."
+    when: "All WildDuck processes are restarted, then Email/get (ids empty) and Email/changes with sinceState S0."
+    then: "state is S0 and Email/changes returns no changes. Nothing in the state depends on process memory or start time."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-013
+    title: "Changes in another account do not change the state"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "Users A and B. S0 is the Email state of A."
+    when: "A message is delivered to B, then Email/get (ids empty) for A."
+    then: "A still has state S0."
+    sources:
+      - "rfc:8620 5.2"
+  - id: ECHG-014
+    title: "Account changes that do not touch mail data leave the Email state alone"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "S0 is read."
+    when: "The user name, quota and password are updated through the REST API and an application password is created, then Email/get (ids empty)."
+    then: "state is still S0."
+    sources:
+      - "wildduck:plan 5.2"
+  - id: ECHG-015
+    title: "A change that touches only mailboxes advances the shared state but lists no Email ids"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "S0 is read. A new empty mailbox is created through the REST API."
+    when: "Email/changes with sinceState S0."
+    then: "newState differs from S0 and equals the current Mailbox/get state, hasMoreChanges is false and created, updated and destroyed are all empty."
+    sources:
+      - "wildduck:brief State and changes"
+      - "rfc:8620 5.2"
+    notes: "Follows from the shared state string. Clients must accept an empty change set with a new state."
+  - id: ECHG-016
+    title: "Email/changes, Thread/changes and Mailbox/changes accept the same sinceState and agree on newState"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. A message is appended and another is flagged after S0."
+    when: "One request with Email/changes, Thread/changes and Mailbox/changes, all with sinceState S0 and no maxChanges."
+    then: "All three succeed, return oldState S0 and the same newState, and hasMoreChanges is false in each."
+    sources:
+      - "wildduck:brief State and changes"
+      - "jmap-perl:t/set-state-consistent.t"
+  - id: ECHG-017
+    title: "A state taken from Thread/get or Mailbox/get works as sinceState for Email/changes"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "ST is the state from Thread/get and SM the state from Mailbox/get. One message is appended afterwards."
+    when: "Email/changes with sinceState ST, then with sinceState SM."
+    then: "Both calls return the appended id in created."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-018
+    title: "A message delivered over LMTP is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "S0 is read. One message is delivered to the user over LMTP."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id, updated and destroyed are empty. Email/get for that id returns the message with mailboxIds pointing at INBOX."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnCreatedChanges"
+      - "cyrus:JMAPEmail/email_changes"
+      - "fastmail:t/Email/changes/changes.t"
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-019
+    title: "A message delivered through the SMTP front end is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [smtp]
+    given: "S0 is read. One message is accepted by the inbound SMTP server (Haraka with the WildDuck plugin, which stores through FilterHandler.storeMessage)."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly the id of the stored message, the other lists are empty."
+    sources:
+      - "wildduck:plan 3"
+      - "rfc:8621 4.3"
+  - id: ECHG-020
+    title: "A message added with IMAP APPEND is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. A message is appended to a user mailbox over IMAP."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id, the other lists are empty, and Email/get shows the mailbox it was appended to."
+    sources:
+      - "cyrus:JMAPEmail/email_changes"
+      - "cyrus:JMAPEmail/email_changes_cads"
+      - "rfc:8621 4.3"
+  - id: ECHG-021
+    title: "A message uploaded through the REST API is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "S0 is read. A message is stored with POST /users/:user/mailboxes/:mailbox/messages."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id, the other lists are empty."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-022
+    title: "A sent copy stored by the REST API submit is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "S0 is read. A message is submitted through the REST API submit endpoint with the sent copy upload enabled."
+    when: "Email/changes with sinceState S0."
+    then: "created holds the id of the copy in the Sent mailbox."
+    sources:
+      - "wildduck:plan 4.7"
+  - id: ECHG-023
+    title: "An Email created by another JMAP session is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "Session 1 reads S0. Session 2 (other credentials, same user) creates one Email with Email/set and one with Email/import."
+    when: "Session 1 calls Email/changes with sinceState S0."
+    then: "created holds both new ids, which equal the ids returned to session 2."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnCreatedChanges"
+      - "jmapio:email/changes-after-create-and-destroy"
+      - "fastmail:t/Email/changes/changes.t"
+  - id: ECHG-024
+    title: "Several new messages are each listed once in created"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap, lmtp]
+    given: "S0 is read. Five messages are appended over IMAP to two mailboxes and three are delivered over LMTP."
+    when: "Email/changes with sinceState S0."
+    then: "created holds eight distinct ids, the other lists are empty."
+    sources:
+      - "cyrus:JMAPEmail/email_changes"
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-025
+    title: "Ids from Email/changes can be fed to Email/get through a result reference"
+    method: "Email/changes"
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Two messages are appended and one existing message is flagged."
+    when: "One request: Email/changes since S0 as call c1, Email/get with #ids referencing c1 path /created, Email/get with #ids referencing c1 path /updated."
+    then: "The first Email/get returns the two new Emails, the second the flagged one, notFound is empty in both."
+    sources:
+      - "rfc:8620 3.7"
+      - "rfc:8621 4.3"
+  - id: ECHG-026
+    title: "A message appended with the Deleted flag never shows up"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "S0 is read. A message is appended over IMAP with the \\Deleted flag already set."
+    when: "Email/changes with sinceState S0."
+    then: "The message id is in none of the three lists. newState may differ from S0."
+    sources:
+      - "wildduck:brief Emails"
+    notes: "Messages flagged Deleted are invisible to JMAP everywhere."
+  - id: ECHG-027
+    title: "Setting the Seen flag over IMAP is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message with id E exists. S0 is read. IMAP STORE +FLAGS (\\Seen) is run on it."
+    when: "Email/changes with sinceState S0, then Email/get for E with property keywords."
+    then: "updated is exactly [E], the other lists are empty. keywords contains $seen."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnUpdatedChangesWhenAddFlags"
+      - "cyrus:JMAPEmail/email_changes"
+      - "jmapio:email/changes-after-keyword-change"
+      - "fastmail:t/Email/changes/changes.t"
+  - id: ECHG-028
+    title: "Each kind of flag change over IMAP is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E exists. The test is repeated for \\Flagged, \\Answered, \\Draft, $Forwarded, $MDNSent and a custom keyword such as project_x."
+    when: "S0 is read, IMAP STORE +FLAGS with the flag is run on E, then Email/changes with sinceState S0."
+    then: "For every flag, updated is exactly [E] and Email/get shows the matching lowercase keyword ($flagged, $answered, $draft, $forwarded, $mdnsent, project_x)."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnUpdatedChangesWhenAddFlags"
+      - "rfc:8621 4.3"
+      - "wildduck:brief Emails"
+  - id: ECHG-029
+    title: "Removing a flag over IMAP is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E has \\Seen and \\Flagged. S0 is read. IMAP STORE -FLAGS (\\Flagged) is run."
+    when: "Email/changes with sinceState S0."
+    then: "updated is exactly [E], the other lists are empty, and Email/get no longer lists $flagged."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnUpdatedChangesWhenRemoveFlags"
+  - id: ECHG-030
+    title: "Replacing the whole flag set with IMAP STORE FLAGS is reported as updated once"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E has \\Seen. S0 is read. IMAP STORE FLAGS (\\Flagged \\Answered) is run."
+    when: "Email/changes with sinceState S0."
+    then: "updated is exactly [E] with a single entry, and keywords are exactly $flagged and $answered."
+    sources:
+      - "rfc:8621 4.3"
+  - id: ECHG-031
+    title: "An IMAP STORE that changes nothing does not change the state"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E already has \\Seen. S0 is read. IMAP STORE +FLAGS (\\Seen) is run again."
+    when: "Email/get (ids empty) and Email/changes with sinceState S0."
+    then: "state is still S0 and the change set is empty."
+    sources:
+      - "wildduck:brief State and changes"
+    notes: "Verify that on-store writes no journal entry for a no-op. If it does, the state may advance but E must still not be missed or the test relaxed to an optional updated entry."
+  - id: ECHG-032
+    title: "A flag change through the REST API is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A message E exists. S0 is read. PUT /users/:user/mailboxes/:mailbox/messages sets seen true and flagged true for it."
+    when: "Email/changes with sinceState S0."
+    then: "updated is exactly [E]."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-033
+    title: "A keyword change made by another JMAP session is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "Session 1 reads S0. Session 2 patches keywords/$flagged to true on Email E with Email/set."
+    when: "Session 1 calls Email/changes with sinceState S0."
+    then: "updated is exactly [E], and newState equals the newState session 2 got from Email/set."
+    sources:
+      - "jmapio:email/changes-after-keyword-change"
+      - "fastmail:t/Email/changes/changes.t"
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnUpdatedChangesWhenAddFlags"
+  - id: ECHG-034
+    title: "An IMAP MOVE is reported as updated with the same id"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E is in INBOX. S0 is read. IMAP MOVE (or UID MOVE) moves it to Archive."
+    when: "Email/changes with sinceState S0, then Email/get for E with property mailboxIds."
+    then: "updated is exactly [E], created and destroyed are empty. Email/get finds E and mailboxIds holds only the Archive id."
+    sources:
+      - "james:EmailChangesMethodContract#shouldReturnUpdatedWhenMessageMove"
+      - "jmap-perl:t/imap-move.t"
+      - "stalwart:mail/changes.rs"
+      - "wildduck:plan 5.1"
+    notes: "Needs the phase 0 change that records root in journal entries so EXPUNGE plus EXISTS with the same root folds into updated. Stalwart models a move as destroyed plus created, which WildDuck must not do."
+  - id: ECHG-035
+    title: "A move through the REST API is reported as updated with the same id"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "A message E is in INBOX. S0 is read. The REST API message update call moves it with moveTo to another mailbox."
+    when: "Email/changes with sinceState S0."
+    then: "updated is exactly [E], created and destroyed are empty, and Email/get shows the new mailbox."
+    sources:
+      - "wildduck:brief State and changes"
+      - "wildduck:plan 5.1"
+  - id: ECHG-036
+    title: "A mailbox change made with Email/set in another session is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "Session 1 reads S0. Session 2 replaces mailboxIds of E with another mailbox through Email/set."
+    when: "Session 1 calls Email/changes with sinceState S0."
+    then: "updated is exactly [E], created and destroyed are empty."
+    sources:
+      - "james:EmailChangesMethodContract#shouldReturnUpdatedWhenMessageMove"
+      - "rfc:8621 4.3"
+  - id: ECHG-037
+    title: "A POP3 session that deletes a message is reported as updated because the message moves to Trash"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E is in INBOX. S0 is read. A POP3 session issues DELE for it and QUIT."
+    when: "Email/changes with sinceState S0, then Email/get for E."
+    then: "updated is exactly [E], created and destroyed are empty. E is now in the Trash mailbox and has $seen."
+    sources:
+      - "wildduck:brief State and changes"
+    notes: "pop3.js moves deleted messages to Trash and marks them seen. Seeding needs a POP3 client; the seed list has no pop3 value."
+  - id: ECHG-038
+    title: "A POP3 retrieval that marks messages as seen is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "An unread message E is in INBOX. S0 is read. A POP3 session issues RETR for it and QUIT."
+    when: "Email/changes with sinceState S0."
+    then: "updated is exactly [E] and E has $seen."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-039
+    title: "An IMAP COPY creates a new Email id and leaves the original untouched"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E is in INBOX. S0 is read. IMAP COPY copies it to Archive."
+    when: "Email/changes with sinceState S0, then Email/get for the created id."
+    then: "created holds exactly one id that differs from E. E is in neither updated nor destroyed. The new Email is in Archive and has the same blob content, size and receivedAt as E."
+    sources:
+      - "wildduck:brief Ids"
+      - "cyrus:JMAPEmail/email_copy_state"
+    notes: "Depends on the phase 0 change that gives a copy a fresh root."
+  - id: ECHG-040
+    title: "Adding and removing a label through the REST API is reported as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A label L exists and a message E has no labels. S0 is read. The REST API adds L to E."
+    when: "Email/changes with sinceState S0, then the label is removed again and Email/changes is called with the new state."
+    then: "Both calls return updated exactly [E]. After the first, keywords of E contains $wdlabel$ followed by the 24 hex label id, after the second it does not."
+    sources:
+      - "wildduck:brief Emails"
+      - "tmail:LabelChangesMethodContract"
+  - id: ECHG-041
+    title: "Deleting a label through the REST API reports every Email that carried it as updated"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "Label L is set on Emails E1, E2 and E3. S0 is read. The label is deleted through the REST API."
+    when: "Email/changes with sinceState S0."
+    then: "updated contains E1, E2 and E3 and none of them still lists the label keyword."
+    sources:
+      - "wildduck:brief Emails"
+    notes: "Open: confirm that label deletion journals a change per message. If labels are stripped lazily the keyword must disappear from Email/get at once and the ids must still be reported."
+  - id: ECHG-042
+    title: "A bulk IMAP STORE lists every affected Email once"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A mailbox holds 50 messages. S0 is read. IMAP STORE 1:* +FLAGS (\\Seen) is run."
+    when: "Email/changes with sinceState S0."
+    then: "updated holds the 50 ids without duplicates, the other lists are empty."
+    sources:
+      - "rfc:8621 4.3"
+      - "cyrus:JMAPEmail/email_changes_maxchanges_duplicate_modseqs"
+  - id: ECHG-043
+    title: "Several updates to one Email inside the window give one updated entry"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E exists. S0 is read. Over IMAP it is flagged, unflagged, marked seen and moved to another mailbox."
+    when: "Email/changes with sinceState S0."
+    then: "updated is exactly [E] with a single entry, created and destroyed are empty."
+    sources:
+      - "stalwart:mail/changes.rs"
+      - "rfc:8620 5.2"
+  - id: ECHG-044
+    title: "A message moved away and back inside the window is at most updated"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E is in INBOX. S0 is read. IMAP MOVE takes it to Archive and a second MOVE brings it back to INBOX."
+    when: "Email/changes with sinceState S0."
+    then: "E is in updated and in neither created nor destroyed. Email/get finds it in INBOX."
+    sources:
+      - "wildduck:plan 5.2"
+      - "jmap-perl:t/imap-move.t"
+  - id: ECHG-045
+    title: "Renaming a mailbox does not report its Emails"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A mailbox Work holds three messages. S0 is read. IMAP RENAME renames it to Projects."
+    when: "Email/changes with sinceState S0."
+    then: "All three lists are empty and newState differs from S0. The mailboxIds of the three Emails are unchanged because the mailbox id is stable."
+    sources:
+      - "wildduck:brief Mailboxes"
+  - id: ECHG-046
+    title: "IMAP EXPUNGE is reported as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E exists. S0 is read. Over IMAP it gets \\Deleted and the mailbox is expunged."
+    when: "Email/changes with sinceState S0, then Email/get for E."
+    then: "destroyed is exactly [E], created and updated are empty. Email/get lists E in notFound."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnDestroyedChanges"
+      - "cyrus:JMAPEmail/email_changes"
+      - "cyrus:JMAPEmail/email_changes_cads"
+      - "fastmail:t/Email/changes/changes.t"
+  - id: ECHG-047
+    title: "Setting the Deleted flag over IMAP is reported as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E exists. S0 is read. IMAP STORE +FLAGS (\\Deleted) is run without EXPUNGE."
+    when: "Email/changes with sinceState S0, then Email/get for E."
+    then: "destroyed is exactly [E], updated is empty. Email/get lists E in notFound."
+    sources:
+      - "wildduck:brief Emails"
+      - "rfc:8621 4.1.1"
+  - id: ECHG-048
+    title: "Clearing the Deleted flag over IMAP is reported as created with the old id"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E carries \\Deleted and is invisible to JMAP. S0 is read. IMAP STORE -FLAGS (\\Deleted) is run."
+    when: "Email/changes with sinceState S0, then Email/get for E."
+    then: "created is exactly [E] (the id it had before it was flagged), the other lists are empty, and Email/get returns it."
+    sources:
+      - "wildduck:brief Emails"
+  - id: ECHG-049
+    title: "Expunging a message that was already flagged Deleted before the window lists nothing"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E got \\Deleted and Email/changes already reported it as destroyed, giving state S0. IMAP EXPUNGE then removes it."
+    when: "Email/changes with sinceState S0."
+    then: "E is in none of the lists (a second destroyed entry is tolerated, created and updated entries are not). newState may differ from S0."
+    sources:
+      - "wildduck:brief Emails"
+  - id: ECHG-050
+    title: "Setting and clearing the Deleted flag inside one window does not report a destroy"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E exists. S0 is read. \\Deleted is set and then cleared over IMAP."
+    when: "Email/changes with sinceState S0."
+    then: "E is in neither destroyed nor created. It may be listed in updated. Email/get returns it."
+    sources:
+      - "wildduck:brief Emails"
+      - "rfc:8620 5.2"
+  - id: ECHG-051
+    title: "Flag changes and moves of a message flagged Deleted are not reported"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E carries \\Deleted. S0 is read. Over IMAP it gets \\Flagged and is moved to another mailbox, still carrying \\Deleted."
+    when: "Email/changes with sinceState S0."
+    then: "E is in neither created nor updated. A repeated destroyed entry is tolerated."
+    sources:
+      - "wildduck:brief Emails"
+  - id: ECHG-052
+    title: "Deleting a message through the REST API is reported as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A message E exists. S0 is read. DELETE /users/:user/mailboxes/:mailbox/messages/:message removes it (it goes to the archive)."
+    when: "Email/changes with sinceState S0."
+    then: "destroyed is exactly [E], the other lists are empty, and Email/get lists E in notFound."
+    sources:
+      - "wildduck:brief Emails"
+  - id: ECHG-053
+    title: "Restoring a message from the archive is reported as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "A message E was deleted through the REST API and reported as destroyed. S0 is read. POST /users/:user/archived/messages/:message/restore brings it back."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id, the other lists are empty, and Email/get returns the restored message in the mailbox it was restored to."
+    sources:
+      - "wildduck:brief Emails"
+    notes: "Open: whether the restored Email keeps id E (the archive keeps root) or gets a new id. Keeping E is preferable and the test should pin whichever is decided."
+  - id: ECHG-054
+    title: "A bulk restore task reports every restored message as created"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "Five messages were deleted. S0 is read. POST /users/:user/archived/restore with a date range covering them is run and the restore task completes."
+    when: "Email/changes with sinceState S0."
+    then: "created holds five ids, the other lists are empty."
+    sources:
+      - "wildduck:brief Emails"
+  - id: ECHG-055
+    title: "An Email destroyed by another JMAP session is reported as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "Session 1 reads S0. Session 2 destroys Email E with Email/set."
+    when: "Session 1 calls Email/changes with sinceState S0."
+    then: "destroyed is exactly [E], the other lists are empty."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnDestroyedChanges"
+      - "jmapio:email/changes-after-create-and-destroy"
+      - "fastmail:t/Email/changes/changes.t"
+  - id: ECHG-056
+    title: "Messages removed by retention expiry are reported as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, time, db]
+    given: "A mailbox has a retention time and holds two messages whose expiry time is set to the past. S0 is read. The background expiry task runs."
+    when: "Email/changes with sinceState S0."
+    then: "destroyed holds both ids, the other lists are empty, and Mailbox counts drop accordingly."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-057
+    title: "Deleting a mailbox over IMAP reports all its messages as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A mailbox Temp holds four messages. S0 is read. IMAP DELETE removes the mailbox."
+    when: "Email/changes with sinceState S0, then Email/get for the four ids."
+    then: "destroyed holds the four ids at once, without waiting for the background garbage collection, and Email/get lists all four in notFound."
+    sources:
+      - "wildduck:brief State and changes"
+      - "wildduck:plan 3"
+    notes: "Mailbox deletion only marks messages for later collection. The messages must be invisible and reported as destroyed as soon as the mailbox is gone."
+  - id: ECHG-058
+    title: "Deleting a mailbox through the REST API reports all its messages as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A mailbox holds three messages. S0 is read. DELETE /users/:user/mailboxes/:mailbox removes it."
+    when: "Email/changes and Mailbox/changes with sinceState S0."
+    then: "Email/changes destroyed holds the three ids. Mailbox/changes destroyed holds the mailbox id. Both report the same newState."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-059
+    title: "Mailbox/set destroy with onDestroyRemoveEmails reports the Emails as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "A mailbox holds two Emails. S0 is read. Another session destroys it with Mailbox/set and onDestroyRemoveEmails true."
+    when: "Email/changes with sinceState S0."
+    then: "destroyed holds both ids."
+    sources:
+      - "rfc:8621 2.5"
+      - "rfc:8621 4.3"
+  - id: ECHG-060
+    title: "Emptying a mailbox through the REST API reports every message as destroyed"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "Trash holds 30 messages. S0 is read. DELETE /users/:user/mailboxes/:mailbox/messages empties it and the clear-folder task completes."
+    when: "Email/changes with sinceState S0."
+    then: "destroyed holds the 30 ids without duplicates."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-061
+    title: "Replacing a draft over IMAP gives one created and one destroyed id"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A draft D1 is in Drafts. S0 is read. An IMAP client saves a new version: APPEND of D2, then \\Deleted and EXPUNGE of D1."
+    when: "Email/changes with sinceState S0."
+    then: "created is exactly [D2 id], destroyed is exactly [D1 id], updated is empty."
+    sources:
+      - "rfc:8621 4.3"
+      - "wildduck:brief Ids"
+  - id: ECHG-062
+    title: "A manual move done as COPY plus EXPUNGE gives a new id and a destroyed id"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message E is in INBOX. S0 is read. An IMAP client without MOVE copies it to Archive, flags the original \\Deleted and expunges."
+    when: "Email/changes with sinceState S0."
+    then: "created holds one new id, destroyed is exactly [E]. The two are not folded into updated because a copy has its own id."
+    sources:
+      - "wildduck:brief Ids"
+      - "jmap-perl:t/imap-move.t"
+  - id: ECHG-063
+    title: "Changes inside a hidden mailbox are not reported"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api, imap]
+    given: "A mailbox is marked hidden through the REST API. S0 is read. A message is appended to it and flagged."
+    when: "Email/changes with sinceState S0."
+    then: "No id from the hidden mailbox is in any list."
+    sources:
+      - "wildduck:brief Mailboxes"
+    notes: "Open: the brief only says hidden mailboxes are not exposed. Confirm that their Emails are invisible too, and that moving a message from a hidden to a visible mailbox reports created and the reverse destroyed."
+  - id: ECHG-064
+    title: "A filter that files a delivery into another mailbox yields one created id"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter moves mail from a given sender to mailbox Lists. S0 is read. A matching message is delivered."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id and updated is empty. Email/get shows mailboxIds with only Lists."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-065
+    title: "A filter that sets flags on delivery yields created only"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter marks matching mail as seen and flagged. S0 is read. A matching message is delivered."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id, updated is empty, and the Email has $seen and $flagged."
+    sources:
+      - "wildduck:brief State and changes"
+      - "rfc:8620 5.2"
+  - id: ECHG-066
+    title: "A filter that discards a delivery leaves state and changes untouched"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter with the delete action matches a sender. S0 is read. A matching message is delivered and dropped."
+    when: "Email/get (ids empty) and Email/changes with sinceState S0."
+    then: "state is S0 and all lists are empty."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-067
+    title: "A delivery classified as spam is reported as created in Junk"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter with the spam action matches a sender. S0 is read. A matching message is delivered."
+    when: "Email/changes with sinceState S0."
+    then: "created holds one id and that Email is in the mailbox with role junk."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-068
+    title: "One delivery to a user with a forwarding filter stores exactly one Email"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter forwards matching mail to an external address and keeps the local copy. S0 is read. A matching message is delivered."
+    when: "Email/changes with sinceState S0."
+    then: "created holds exactly one id. The queued forward does not appear as an Email."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: ECHG-069
+    title: "An Email created and destroyed inside the window is omitted"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. A message is appended over IMAP, then flagged \\Deleted and expunged."
+    when: "Email/changes with sinceState S0."
+    then: "The id is in none of the lists. newState differs from S0."
+    sources:
+      - "cyrus:JMAPEmail/email_changes_cads"
+      - "stalwart:mail/changes.rs"
+      - "legacy-proxy:test/unit/gmail-history.spec.ts"
+      - "rfc:8620 5.2"
+    notes: "The RFC also allows listing it in destroyed only, or in both created and destroyed. WildDuck drops entries that have both EXISTS and EXPUNGE in the window."
+  - id: ECHG-070
+    title: "An Email created and then updated inside the window is only in created"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. A message is appended over IMAP and then flagged \\Flagged."
+    when: "Email/changes with sinceState S0."
+    then: "The id is in created and not in updated."
+    sources:
+      - "stalwart:mail/changes.rs"
+      - "rfc:8620 5.2"
+  - id: ECHG-071
+    title: "An Email created and then moved inside the window is only in created"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "S0 is read. A message is delivered to INBOX and then moved to Archive over IMAP."
+    when: "Email/changes with sinceState S0."
+    then: "The id is in created only, once, and Email/get shows Archive."
+    sources:
+      - "rfc:8620 5.2"
+      - "wildduck:plan 5.2"
+  - id: ECHG-072
+    title: "An Email updated and then destroyed inside the window is only in destroyed"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A message E exists. S0 is read. It is flagged, moved to another mailbox and then expunged."
+    when: "Email/changes with sinceState S0."
+    then: "E is in destroyed and not in updated or created."
+    sources:
+      - "stalwart:mail/changes.rs"
+      - "rfc:8620 5.2"
+  - id: ECHG-073
+    title: "An id never appears in more than one list"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. A mix of appends, flag changes, moves, copies, deletes and undeletes is applied to ten messages, several of them touched more than once."
+    when: "Email/changes with sinceState S0."
+    then: "The three lists are pairwise disjoint and no list contains a duplicate."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldNotReturnDuplicatedIdsAccrossCreatedUpdatedOrDestroyed"
+      - "legacy-proxy:test/unit/gmail-history.spec.ts"
+      - "rfc:8620 5.2"
+  - id: ECHG-074
+    title: "Created, updated and destroyed are reported together in one response"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "Messages E1 and E2 exist. S0 is read. A new message E3 is appended, E1 is flagged and E2 is expunged."
+    when: "Email/changes with sinceState S0."
+    then: "created is [E3], updated is [E1], destroyed is [E2]."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnAllTypeOfChanges"
+      - "cyrus:JMAPEmail/email_changes"
+      - "fastmail:t/Email/changes/changes.t"
+  - id: ECHG-075
+    title: "Changes computed from any earlier state give the net difference to now"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "States S0 to S5 are recorded while five change batches are applied (create three, update one, destroy one, move one, create and destroy one)."
+    when: "Email/changes without maxChanges is called with each of S0 to S5."
+    then: "For every Si the lists equal the net effect of the batches after Si, using the coalescing rules, and newState is S5 each time."
+    sources:
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-076
+    title: "An Email destroyed before the window and never recreated is not reported again"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "E was expunged and that was already seen by the client, giving S0. Another message is then flagged."
+    when: "Email/changes with sinceState S0."
+    then: "destroyed is empty and updated holds only the flagged message."
+    sources:
+      - "rfc:8620 5.2"
+  - id: ECHG-077
+    title: "maxChanges at or above the number of changes returns everything"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Five messages are appended."
+    when: "Email/changes with sinceState S0 and maxChanges 5, then again with maxChanges 50."
+    then: "Both calls return the five ids in created, hasMoreChanges false and newState equal to the current state."
+    sources:
+      - "james:EmailChangesMethodContract#maxChangesShouldBeTakenIntoAccount"
+      - "rfc:8620 5.2"
+  - id: ECHG-078
+    title: "More changes than maxChanges sets hasMoreChanges and returns an intermediate state"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Five messages are appended one by one, the current state is S5."
+    when: "Email/changes with sinceState S0 and maxChanges 2."
+    then: "The three lists hold at most two ids in total, hasMoreChanges is true, and newState differs from both S0 and S5. The answer is not cannotCalculateChanges."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldReturnHasMoreChangesWhenTrue"
+      - "cyrus:JMAPEmail/email_changes"
+      - "fastmail:t/Email/changes/max-changes-has-more-changes.t"
+      - "jmap-perl:t/changes-paging.t"
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-079
+    title: "Following hasMoreChanges to the end gives the same set as one unpaged call"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Seven messages are appended, two older ones flagged and one expunged."
+    when: "Email/changes is called in a loop with maxChanges 3, each time with the previous newState, until hasMoreChanges is false. One call without maxChanges is made from S0."
+    then: "Every page holds at most three ids. Applying the pages in order to a client cache gives the same final sets of created, updated and destroyed as the unpaged call, and the last newState equals the Email/get state."
+    sources:
+      - "stalwart:mail/changes.rs"
+      - "jmap-perl:t/changes-paging.t"
+      - "fastmail:t/Email/changes/max-changes-has-more-changes.t"
+      - "cyrus:JMAPEmail/email_changes"
+  - id: ECHG-080
+    title: "The maxChanges matrix: every limit from 1 to 8 converges from every earlier state"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "States are recorded across eight change batches of mixed creates, updates, destroys and moves."
+    when: "For each recorded state and each maxChanges from 1 to 8, Email/changes is followed until hasMoreChanges is false."
+    then: "No page exceeds maxChanges ids, every chain ends with the current state, and the accumulated result matches the unpaged result from that state."
+    sources:
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-081
+    title: "maxChanges counts ids across all three lists together"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Two messages are appended, two are flagged and two are expunged."
+    when: "Email/changes with sinceState S0 and maxChanges 4."
+    then: "The lengths of created, updated and destroyed add up to at most four and hasMoreChanges is true."
+    sources:
+      - "rfc:8620 5.2"
+      - "james:EmailChangesMethodContract#maxChangesShouldBeTakenIntoAccount"
+  - id: ECHG-082
+    title: "Every page of a paged run makes progress"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. One message is flagged and unflagged 20 times, then three other messages are appended."
+    when: "Email/changes is followed with maxChanges 1 from S0."
+    then: "Each response with hasMoreChanges true has a newState different from its sinceState, the run ends after a bounded number of calls, and the result is one updated id and three created ids. Journal rows that fold into one id count once."
+    sources:
+      - "jmap-perl:t/changes-paging.t"
+  - id: ECHG-083
+    title: "An intermediate newState is a regular state usable later and by the sibling types"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Six messages are appended. Email/changes with maxChanges 2 returned intermediate state SI."
+    when: "After more changes are made, Email/changes, Thread/changes and Mailbox/changes are each called with sinceState SI."
+    then: "All three succeed and return the changes after SI, including the later ones."
+    sources:
+      - "wildduck:plan 5.2"
+    notes: "Intermediate states are earlier journal ids, so they behave like any issued state."
+  - id: ECHG-084
+    title: "A bulk operation larger than maxChanges is paged instead of rejected"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "S0 is read. One IMAP STORE 1:* flags 20 messages in a single command."
+    when: "Email/changes with sinceState S0 and maxChanges 1, followed to the end."
+    then: "Each page returns one id with hasMoreChanges true until all 20 ids were returned. cannotCalculateChanges is not returned."
+    sources:
+      - "james:EmailChangesMethodContract#shouldFailWithCannotCalculateChangesWhenSingleChangeIsTooLarge"
+      - "cyrus:JMAPEmail/email_changes_maxchanges_too_small_duplicate_modseqs"
+      - "cyrus:JMAPEmail/email_changes_maxchanges_duplicate_modseqs"
+      - "legacy-proxy:test/unit/gmail-history.spec.ts"
+    notes: "James and Cyrus answer cannotCalculateChanges when one atomic change group exceeds maxChanges. The WildDuck journal has one entry per message, so an intermediate state exists between any two entries."
+  - id: ECHG-085
+    title: "A move is never split across two pages"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "S0 is read. Three messages are moved from INBOX to Archive with one IMAP MOVE command."
+    when: "Email/changes with sinceState S0 and maxChanges 1, followed to the end."
+    then: "Each of the three ids is reported as updated. No page lists any of them as destroyed or created, and Email/get finds each id after every page."
+    sources:
+      - "wildduck:plan 5.2"
+    notes: "The EXPUNGE and EXISTS entries of one move must fall on the same side of any intermediate state."
+  - id: ECHG-086
+    title: "Paging stays correct when create and destroy of one id fall on different pages"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Message X is appended, three other messages are flagged, then X is expunged."
+    when: "Email/changes with sinceState S0 and maxChanges 1, followed to the end."
+    then: "X is either absent from every page, or listed as created on one page and as destroyed on a later page. It is never left as created only, so a client applying the pages ends without X."
+    sources:
+      - "rfc:8620 5.2"
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-087
+    title: "Paged results return older changes first"
+    method: "Email/changes"
+    spec: "RFC 8621 4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "S0 is read. Messages E1, E2 and E3 are appended in that order with other activity in between."
+    when: "Email/changes with sinceState S0 and maxChanges 1, three times in a chain."
+    then: "The pages return E1, then E2, then E3."
+    sources:
+      - "rfc:8621 4.3"
+      - "wildduck:plan 5.2"
+    notes: "RFC 8621 4.3 recommends newer changes first. WildDuck uses earlier journal ids as intermediate states, so it pages oldest first. This is allowed (the server chooses how to divide changes)."
+  - id: ECHG-088
+    title: "Changes made while a client is paging are picked up by the same chain"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Four messages are appended. The client fetched the first page with maxChanges 2."
+    when: "Two more messages are appended, then the client continues the chain with maxChanges 2 until hasMoreChanges is false."
+    then: "The chain returns all six ids and ends at the current Email/get state."
+    sources:
+      - "rfc:8620 5.2"
+  - id: ECHG-089
+    title: "Without maxChanges the server applies its own cap"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "The server default for changes per response is configured to 100 for the test. S0 is read. 150 messages are appended."
+    when: "Email/changes with sinceState S0 and no maxChanges, then again with maxChanges null."
+    then: "Both return at most 100 ids, hasMoreChanges true and an intermediate newState. Following the chain returns the remaining ids."
+    sources:
+      - "rfc:8620 5.2"
+    notes: "Open: the default cap value. Suggested: the same number as maxObjectsInGet so a following Email/get by reference never exceeds its limit."
+  - id: ECHG-090
+    title: "A maxChanges above the server cap is accepted and capped"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: may
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "The server cap is 100. S0 is read. 150 messages are appended."
+    when: "Email/changes with sinceState S0 and maxChanges 9007199254740991."
+    then: "The call succeeds, returns at most 100 ids and hasMoreChanges true. It is not rejected."
+    sources:
+      - "rfc:8620 5.2"
+  - id: ECHG-091
+    title: "maxChanges 0 is rejected"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "Any account, S0 read."
+    when: "Email/changes with sinceState S0 and maxChanges 0."
+    then: "A method level error of type invalidArguments, HTTP status 200."
+    sources:
+      - "rfc:8620 5.2"
+      - "james:EmailChangesMethodContract#maxChangesShouldBeTakenIntoAccount"
+  - id: ECHG-092
+    title: "A maxChanges that is not a positive integer is rejected"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "Any account, S0 read."
+    when: "Email/changes with sinceState S0 and maxChanges set in turn to -1, 1.5, the string \"5\", true, an array and 9007199254740993."
+    then: "Each call answers invalidArguments. No call is treated as unlimited."
+    sources:
+      - "rfc:8620 5.2"
+      - "rfc:8620 1.3"
+  - id: ECHG-093
+    title: "Paging works the same for Thread/changes on the shared state"
+    method: "Thread/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Five messages in five new threads are appended."
+    when: "Thread/changes with sinceState S0 and maxChanges 2, followed to the end."
+    then: "Each page holds at most two thread ids, hasMoreChanges is true until the last page, the five thread ids are all returned, and the final newState equals the Email/get state."
+    sources:
+      - "cyrus:JMAPEmail/thread_changes_maxchanges_duplicate_modseqs"
+      - "fastmail:t/Thread/changes/max-changes-has-more-changes.t"
+      - "jmap-perl:t/changes-paging.t"
+  - id: ECHG-094
+    title: "A flag change advances the Thread state without listing the thread"
+    method: "Thread/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A thread T with two messages exists. S0 is read. One of its messages gets \\Seen over IMAP."
+    when: "Thread/changes with sinceState S0."
+    then: "newState differs from S0 (shared state) and created, updated and destroyed are empty, because the emailIds of T did not change."
+    sources:
+      - "wildduck:brief State and changes"
+      - "rfc:8621 3"
+    notes: "Listing T as updated would also be legal but wasteful. The thread file owns the content rules."
+  - id: ECHG-095
+    title: "A paged Email/changes and a paged Thread/changes may be interleaved"
+    method: "Thread/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Six messages in six threads are appended."
+    when: "Email/changes and Thread/changes are each followed from S0 with maxChanges 2, alternating calls, each chain using only its own newState values."
+    then: "Both chains end at the same final state and return six Email ids and six Thread ids."
+    sources:
+      - "wildduck:plan 5.2"
+  - id: ECHG-096
+    title: "A newState can be chained inside one request with a result reference"
+    method: "Email/changes"
+    spec: "RFC 8620 3.7"
+    level: may
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. Four messages are appended."
+    when: "One request: Email/changes since S0 with maxChanges 2 as c1, then Email/changes with #sinceState referencing c1 path /newState and maxChanges 2."
+    then: "The second call returns the remaining two ids and hasMoreChanges false."
+    sources:
+      - "rfc:8620 3.7"
+  - id: ECHG-097
+    title: "A sinceState older than the journal retention answers cannotCalculateChanges"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap, time]
+    given: "Journal retention is set to a short value for the test. S0 is read, the retention passes, then a message is appended."
+    when: "Email/changes with sinceState S0."
+    then: "A method level error of type cannotCalculateChanges. The client can recover by reading Email/get state again."
+    sources:
+      - "fastmail:t/Email/changes/cannot-calculate-changes.t"
+      - "cyrus:JMAPEmail/email_changes"
+      - "legacy-proxy:test/unit/change-log.spec.ts"
+      - "legacy-proxy:test/unit/shared.spec.ts"
+      - "rfc:8620 5.2"
+      - "wildduck:plan 5.2"
+  - id: ECHG-098
+    title: "A sinceState close to the retention limit is refused before entries can be missing"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, time]
+    given: "Retention R and safety margin M are configured. S0 is read, then changes continue."
+    when: "Email/changes with sinceState S0 is called when S0 is older than R minus M but younger than R, and in a second run when S0 is younger than R minus M."
+    then: "The first call answers cannotCalculateChanges, the second returns the full change set. A partial change set is never returned."
+    sources:
+      - "wildduck:plan 5.2"
+  - id: ECHG-099
+    title: "A sinceState that is not a string is rejected"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "Any account."
+    when: "Email/changes with sinceState set in turn to the number 1, null, an object, and with sinceState left out."
+    then: "Each call answers invalidArguments."
+    sources:
+      - "cyrus:JMAPEmail/email_changes_since_state_type"
+      - "rfc:8620 5.2"
+  - id: ECHG-100
+    title: "A malformed sinceState string answers cannotCalculateChanges"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "Any account."
+    when: "Email/changes with sinceState set in turn to \"bogus\", \"0\", the empty string, a 5000 character string and a string with control characters."
+    then: "Each call answers cannotCalculateChanges, never serverFail and never an empty change set."
+    sources:
+      - "cyrus:JMAPEmail/email_changes_since_state_type"
+      - "cyrus:JMAPEmail/email_changes"
+      - "legacy-proxy:test/unit/states.spec.ts"
+      - "james:EmailChangesMethodContract#emailChangesShouldFailWhenStateNotFound"
+    notes: "invalidArguments would also be defensible. cannotCalculateChanges is chosen because every client already recovers from it with a full resync."
+  - id: ECHG-101
+    title: "A well formed sinceState that lies in the future answers cannotCalculateChanges"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "S0 is the current state."
+    when: "Email/changes with a sinceState of the right format whose embedded position is later than S0."
+    then: "cannotCalculateChanges. The call must not return an empty change set with newState S0."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldFailWhenStateNotFound"
+      - "rfc:8620 5.2"
+  - id: ECHG-102
+    title: "A sinceState issued for another account answers cannotCalculateChanges"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "Users A and B both have recent changes. SB is the Email state of B."
+    when: "User A calls Email/changes with its own accountId and sinceState SB."
+    then: "cannotCalculateChanges. No id of B is returned and no partial list for A is returned."
+    sources:
+      - "wildduck:brief State and changes"
+      - "rfc:8620 5.2"
+    notes: "Open: a bare journal id cannot be told apart from a foreign one. The state string has to be bound to the account (prefix or keyed hash) for this to be testable; otherwise the outcome is a plain diff of the account own journal from that point, which is harmless but not what a test can pin down."
+  - id: ECHG-103
+    title: "An unknown accountId answers accountNotFound"
+    method: "Email/changes"
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "User A is authenticated. User B exists."
+    when: "Email/changes with accountId set to an id that does not exist, then to the id of user B, with any sinceState."
+    then: "Both calls answer accountNotFound. Nothing about B is disclosed."
+    sources:
+      - "james:EmailChangesMethodContract#emailChangesShouldFailWhenAccountIdNotFound"
+      - "rfc:8620 3.6.2"
+  - id: ECHG-104
+    title: "A missing accountId is rejected"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "Any account."
+    when: "Email/changes with only sinceState, and again with accountId null."
+    then: "Both calls answer invalidArguments."
+    sources:
+      - "cyrus:JMAPCore/core_accountid_required"
+      - "rfc:8620 5.2"
+  - id: ECHG-105
+    title: "An old sinceState is refused even when only one recent change exists"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap, time]
+    given: "S0 is read. Nothing happens for longer than the retention. Then one message is appended."
+    when: "Email/changes with sinceState S0."
+    then: "cannotCalculateChanges, because S0 is neither the current state nor inside the retention window."
+    sources:
+      - "wildduck:plan 5.2"
+    notes: "Strictly the change could be computed, but the server cannot prove nothing expired in between. Pairs with the scenario where S0 is still the current state and is accepted."
+  - id: ECHG-106
+    title: "After cannotCalculateChanges a fresh state works"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap, time]
+    given: "A client got cannotCalculateChanges for an expired state."
+    when: "It calls Email/get (ids empty) to read the state S1, a message is appended, and it calls Email/changes with sinceState S1."
+    then: "The call succeeds and created holds the new id."
+    sources:
+      - "fastmail:t/Email/changes/cannot-calculate-changes.t"
+      - "rfc:8620 5.2"
+  - id: ECHG-107
+    title: "Email/set oldState and newState line up with Email/changes"
+    method: "Email/set"
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "S0 is read with Email/get."
+    when: "Email/set updates a keyword on E. Then Email/changes is called with the oldState and again with the newState of that response."
+    then: "oldState equals S0. Email/changes since oldState returns updated [E] and the same newState. Email/changes since newState returns nothing."
+    sources:
+      - "jmap-perl:t/set-state-consistent.t"
+      - "cyrus:JMAPEmail/misc_set_oldstate"
+      - "rfc:8620 5.3"
+  - id: ECHG-108
+    title: "An Email/set that changes nothing leaves the state alone"
+    method: "Email/set"
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "S0 is read."
+    when: "Email/set with no create, update or destroy, and a second Email/set whose only update fails with notFound."
+    then: "Both responses have oldState S0 and newState S0, and Email/get still returns S0."
+    sources:
+      - "jmap-perl:t/set-state-consistent.t"
+      - "rfc:8620 5.3"
+  - id: ECHG-109
+    title: "Email/import and Email/copy style creations advance the state seen by Email/changes"
+    method: "Email/import"
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "S0 is read. A message blob is uploaded."
+    when: "Email/import stores it, then Email/changes with sinceState S0."
+    then: "The import response has oldState S0 and a different newState, and Email/changes returns the imported id in created with the same newState."
+    sources:
+      - "cyrus:JMAPEmail/email_import_state"
+      - "cyrus:JMAPEmail/email_copy_state"
+      - "stalwart:mail/get.rs"
+  - id: ECHG-110
+    title: "Changes committed by several processes at once are all reported"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap, api, lmtp]
+    given: "The server runs with several worker processes. S0 is read. In parallel, 10 IMAP connections append and flag messages, the REST API moves messages and LMTP delivers messages, 200 changes in total."
+    when: "After all writers finished, Email/changes is followed from S0 to the end."
+    then: "Every created, changed or removed id is present in the accumulated result. None is missing."
+    sources:
+      - "wildduck:plan 5.2"
+      - "rfc:8620 5.2"
+  - id: ECHG-111
+    title: "Polling during concurrent writes never misses an id, though it may repeat one"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, api, lmtp]
+    given: "Several worker processes write changes for one user for ten seconds while a client polls Email/changes every 200 ms, always from the last newState."
+    when: "After the writers stop the client polls once more."
+    then: "The union of all polled lists covers every id that was created, updated or destroyed. An id may be reported as updated in two consecutive polls, and an id reported as created is never reported as created a second time unless it was destroyed in between."
+    sources:
+      - "wildduck:plan 5.2"
+      - "wildduck:brief State and changes"
+    notes: "Journal ids come from different processes, so an entry with a smaller id can commit after a larger one was handed out as state. The plan resolves sinceState with a safety window and dedupes. Open: the window makes exact list assertions in other scenarios depend on timing unless the already reported entries are filtered; tests should wait longer than the window between seeding and reading S0, or the design must guarantee no re-report for quiescent accounts."
+  - id: ECHG-112
+    title: "Two requests reading the state during a write see either the old or the new state"
+    method: "Email/get"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "S0 is read. One message is appended while 20 parallel Email/get (ids empty) calls are in flight."
+    when: "After the append, Email/changes is called with each state value that was observed."
+    then: "Only two distinct states were observed (S0 and S1). Email/changes from S0 returns the new id, from S1 nothing."
+    sources:
+      - "wildduck:plan 5.2"
+  - id: ECHG-113
+    title: "A large number of created Emails is paged completely"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap, db]
+    given: "S0 is read. 10000 messages are added to one mailbox."
+    when: "Email/changes is followed from S0 with maxChanges 500."
+    then: "Twenty pages or more are returned, none above 500 ids, the union is exactly the 10000 new ids without duplicates, and the final newState equals the Email/get state."
+    sources:
+      - "jmap-perl:t/changes-paging.t"
+      - "rfc:8620 5.2"
+  - id: ECHG-114
+    title: "A large flag change and a large expunge are reported completely"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A mailbox holds 5000 messages. S0 is read. IMAP STORE 1:* +FLAGS (\\Seen) runs, S1 is read, then all are flagged \\Deleted and expunged."
+    when: "Email/changes is followed to the end from S0 and from S1."
+    then: "From S1 the result is 5000 destroyed ids. From S0 the result is the same 5000 ids in destroyed only (updated then destroyed coalesces), with nothing in updated at the end of the chain."
+    sources:
+      - "rfc:8620 5.2"
+      - "stalwart:mail/changes.rs"
+  - id: ECHG-115
+    title: "Email/changes over a long journal answers within the request limits"
+    method: "Email/changes"
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [db]
+    given: "The journal holds 200000 entries for the user after S0, most of them repeated flag changes on the same 1000 messages."
+    when: "Email/changes with sinceState S0 and maxChanges 100."
+    then: "The call returns at most 100 ids with hasMoreChanges true without scanning the whole journal: the number of journal documents read is bounded by a configured scan limit, and the intermediate newState reflects where the scan stopped."
+    sources:
+      - "wildduck:plan 5.2"
+      - "wildduck:plan 5.5"

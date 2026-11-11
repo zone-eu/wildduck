@@ -1,0 +1,753 @@
+area: vacation
+title: "VacationResponse"
+description: "RFC 8621 section 8: the VacationResponse singleton (get, set, state), its two way mapping to the WildDuck autoreply document and REST endpoints, and the end to end automatic reply behaviour including the RFC 3834 safeguards."
+scenarios:
+  - id: VAC-001
+    title: "Advertise the vacationresponse capability in the session and the account"
+    method: Session
+    spec: "RFC 8621 1.3.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with JMAP enabled."
+    when: "GET the session resource with valid credentials."
+    then: "capabilities contains the key urn:ietf:params:jmap:vacationresponse with an empty object as value, and accounts[accountId].accountCapabilities contains the same key with an empty object."
+    sources:
+      - "rfc:8621 1.3.3"
+      - "james:SessionRoutesContract"
+      - "stalwart:principal/get.rs"
+
+  - id: VAC-002
+    title: "Reject VacationResponse methods when the capability is not in using"
+    method: VacationResponse/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "Call VacationResponse/get, then VacationResponse/set, with using listing only core and mail (and once with only core)."
+    then: "Each call answers with an error invocation of type unknownMethod and the same method call id. HTTP status is 200."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnUnknownMethodWhenOmittingOneCapability"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnUnknownMethodWhenMissingAllCapability"
+      - "james:VacationResponseSetMethodContract#vacationSetShouldReturnUnknownMethodWhenMissingOneCapability"
+      - "james:VacationResponseSetMethodContract#vacationSetShouldReturnUnknownMethodWhenMissingAllCapabilities"
+
+  - id: VAC-003
+    title: "Return the singleton with defaults when no autoreply was ever set"
+    method: VacationResponse/get
+    spec: "RFC 8621 8.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A fresh user without a document in the autoreplies collection."
+    when: "VacationResponse/get with ids null."
+    then: "list has exactly one object with id singleton, isEnabled false, and fromDate, toDate, subject, textBody and htmlBody all null. notFound is an empty array, state is a non empty string and accountId is echoed."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldBeDisabledByDefault"
+      - "cyrus:JMAPVacationResponse/vacation_get_none"
+      - "jmapio:vacation/get-singleton-null-ids"
+      - "jmapio:vacation/get-singleton-properties"
+      - "fastmail:t/VacationResponse/get/basic.t"
+
+  - id: VAC-004
+    title: "Fetch the singleton by its id"
+    method: VacationResponse/get
+    spec: "RFC 8621 8.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "VacationResponse/get with ids [singleton]."
+    then: "list contains one object whose id is the literal string singleton, notFound is empty."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnValidResponseWhenSingletonId"
+      - "jmapio:vacation/get-singleton"
+      - "fastmail:t/VacationResponse/get/basic.t"
+
+  - id: VAC-005
+    title: "Report any id other than singleton as notFound"
+    method: VacationResponse/get
+    spec: "RFC 8621 8.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "VacationResponse/get with ids [randomId], and again with ids [singleton, randomId]."
+    then: "First call: list is empty and notFound is [randomId]. Second call: list has the singleton and notFound is [randomId]. No method level error."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnNotFoundWhenIdNotSingleton"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnSingletonAndNotFoundIds"
+      - "jmapio:vacation/get-not-found-invalid-id"
+
+  - id: VAC-006
+    title: "Return an empty list for an empty ids array and reject a malformed id"
+    method: VacationResponse/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "VacationResponse/get with ids [], then with ids containing an empty string."
+    then: "ids [] gives list [] and notFound []. An empty string is not a valid Id (RFC 8620 1.2), so the second call answers invalidArguments."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnEmptyListWhenEmptyIdsArray"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldFailWhenEmptyId"
+      - "rfc:8620 1.2"
+
+  - id: VAC-007
+    title: "Honour the properties argument and always include id"
+    method: VacationResponse/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A VacationResponse with subject and textBody set."
+    when: "VacationResponse/get with properties [isEnabled, subject], with properties [], with properties [subject] and with properties null."
+    then: "The first returns exactly id, isEnabled and subject. The empty list returns only id. [subject] returns id and subject. null returns all seven properties."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnOnlyRequestedProperties"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnIdWhenNoPropertiesRequested"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldAlwaysReturnIdEvenIfNotRequestedInProperties"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnAllPropertiesWhenNull"
+
+  - id: VAC-008
+    title: "Reject an unknown property name in VacationResponse/get"
+    method: VacationResponse/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "VacationResponse/get with properties [isEnabled, bogus]."
+    then: "The method answers with an error of type invalidArguments, no list is returned."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnInvalidArgumentsErrorWhenInvalidProperty"
+
+  - id: VAC-009
+    title: "Reject a foreign or unknown accountId for get and set"
+    method: VacationResponse/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Two users A and B, the request is authenticated as A."
+    when: "VacationResponse/get and VacationResponse/set with accountId of B, and with a random accountId."
+    then: "Each call answers with an error of type accountNotFound. The autoreply of B is not read or changed (verify through GET /users/B/autoreply)."
+    sources:
+      - "james:VacationResponseGetMethodContract#vacationResponseGetShouldFailWhenWrongAccountId"
+      - "james:VacationResponseSetMethodContract#vacationResponseSetShouldFailWhenWrongAccountId"
+      - "fastmail:t/VacationResponse/foreign-account.t"
+
+  - id: VAC-010
+    title: "Enable the vacation response with all properties and read it back"
+    method: VacationResponse/set
+    spec: "RFC 8621 8.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "VacationResponse/set update singleton with isEnabled true, fromDate, toDate, subject, textBody and htmlBody, followed by VacationResponse/get."
+    then: "updated has the key singleton (value null or an object without client set properties), notUpdated is absent or empty, newState differs from oldState, and get returns every value exactly as sent with dates in UTCDate form."
+    sources:
+      - "james:VacationResponseSetMethodContract#updateShouldSucceed"
+      - "james:VacationResponseGetMethodContract#vacationResponseShouldReturnStoredValue"
+      - "cyrus:JMAPVacationResponse/vacation_set"
+      - "jmapio:vacation/set-enable-vacation"
+      - "fastmail:t/VacationResponse/set/basic.t"
+      - "stalwart:mail/vacation_response.rs"
+
+  - id: VAC-011
+    title: "Enable with only isEnabled and keep everything else null"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "VacationResponse/set update singleton with only isEnabled true, then get."
+    then: "The update succeeds. get returns isEnabled true and null for fromDate, toDate, subject, textBody and htmlBody."
+    sources:
+      - "stalwart:mail/vacation_response.rs"
+      - "rfc:8621 8"
+
+  - id: VAC-012
+    title: "Disable the vacation response without losing its content"
+    method: VacationResponse/set
+    spec: "RFC 8621 8.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An enabled VacationResponse with subject, textBody and dates."
+    when: "VacationResponse/set update singleton with isEnabled false, then get."
+    then: "isEnabled is false and subject, textBody, htmlBody, fromDate and toDate keep their previous values."
+    sources:
+      - "jmapio:vacation/set-disable-vacation"
+      - "cyrus:JMAPVacationResponse/vacation_set"
+      - "legacy-proxy:test/unit/vacation.spec.ts"
+
+  - id: VAC-013
+    title: "Apply a partial update without touching other properties"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A VacationResponse with isEnabled true, subject S1, textBody T1 and htmlBody H1."
+    when: "VacationResponse/set update singleton with only subject S2."
+    then: "get returns subject S2 while isEnabled, textBody, htmlBody, fromDate and toDate are unchanged."
+    sources:
+      - "james:VacationResponseSetMethodContract#partialUpdateShouldSucceed"
+      - "james:VacationResponseSetMethodContract#partialUpdateShouldNotAffectOtherFields"
+
+  - id: VAC-014
+    title: "Set and clear the date window"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "Update singleton with fromDate 2030-01-01T00:00:00Z and toDate 2030-01-15T00:00:00Z, get, then update with fromDate null and toDate null, get."
+    then: "The first get returns both dates as sent. The second get returns null for both, and the stored autoreply has no start and no end restriction."
+    sources:
+      - "jmapio:vacation/set-dates"
+      - "rfc:8621 8"
+
+  - id: VAC-015
+    title: "Accept only one of fromDate and toDate"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "Update singleton with fromDate set and toDate null, then in a second call with fromDate null and toDate set."
+    then: "Both updates succeed and get returns the single date and null for the other one."
+    sources:
+      - "rfc:8621 8"
+
+  - id: VAC-016
+    title: "Reject fromDate later than toDate"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A VacationResponse with known values."
+    when: "Update singleton with fromDate 2030-02-01T00:00:00Z and toDate 2030-01-01T00:00:00Z. Repeat with only toDate set to a value earlier than the stored fromDate."
+    then: "notUpdated.singleton has type invalidProperties with properties naming fromDate and toDate (or the one that was sent), and the stored object is unchanged in both cases. State does not change."
+    sources:
+      - "james:VacationResponseSetMethodContract#updateShouldFailWhenFromDateIsMoreRecentThanToDate"
+    notes: "The RFC does not spell this out, the window would simply be empty. James rejects it and that is the friendlier behaviour. The check must use the merged object, not only the patch."
+
+  - id: VAC-017
+    title: "Reject values of the wrong type or format"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "Separate updates of singleton with fromDate set to a non date string, fromDate with a non UTC offset (2030-01-01T00:00:00+02:00), isEnabled set to a string, isEnabled null, and subject set to a number."
+    then: "Each gives notUpdated.singleton of type invalidProperties with the offending property in properties. Nothing is stored."
+    sources:
+      - "james:VacationResponseSetMethodContract#updateShouldFailWhenInvalidDate"
+      - "rfc:8620 1.4"
+
+  - id: VAC-018
+    title: "Reject unknown properties and a changed id in the patch"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "Update singleton with an unknown property, then with id set to another value. Also update with id set to singleton together with subject."
+    then: "The unknown property and the changed id give notUpdated.singleton of type invalidProperties naming the property. Sending id with its current value singleton is accepted and the subject is updated."
+    sources:
+      - "james:VacationResponseSetMethodContract#updateShouldFailWhenIdIsPresent"
+      - "rfc:8620 5.3"
+    notes: "James rejects any id in the patch. RFC 8620 5.3 allows server set properties in an update when the value matches the current one."
+
+  - id: VAC-019
+    title: "Treat an empty patch and an empty update map as no operations"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A VacationResponse with known values and state S."
+    when: "VacationResponse/set with update {singleton: {}}, then VacationResponse/set with update {}."
+    then: "The first lists singleton in updated, the second has no updated entries. In both the stored values are unchanged and newState equals oldState equals S."
+    sources:
+      - "james:VacationResponseSetMethodContract#updateShouldNoopWhenEmptyPatchObject"
+      - "james:VacationResponseSetMethodContract#updateShouldNoopWhenEmptyMap"
+
+  - id: VAC-020
+    title: "Report updates of ids other than singleton as notFound"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "VacationResponse/set with update {singleton: {subject: A}, other: {subject: B}}."
+    then: "updated contains singleton, notUpdated.other has type notFound, and the stored subject is A."
+    sources:
+      - "james:VacationResponseSetMethodContract#updateShouldFailWhenInvalidKey"
+      - "james:VacationResponseSetMethodContract#updateShouldFailWhenMultiplePatchObjects"
+      - "cyrus:JMAPVacationResponse/vacation_set"
+    notes: "James fails the whole method with invalidArguments. The standard /set contract reports per id errors, which is what WildDuck must do."
+
+  - id: VAC-021
+    title: "Reject create with the singleton SetError"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "VacationResponse/set with create {c1: {isEnabled: true, textBody: hello}}."
+    then: "notCreated.c1 has type singleton, created is absent or empty, state is unchanged and the autoreply stays disabled."
+    sources:
+      - "james:VacationResponseSetMethodContract#createShouldFail"
+      - "cyrus:JMAPVacationResponse/vacation_set"
+      - "jmapio:vacation/set-cannot-create"
+      - "fastmail:t/VacationResponse/set/basic.t"
+      - "rfc:8620 5.3"
+
+  - id: VAC-022
+    title: "Reject destroy with the singleton SetError"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An enabled VacationResponse."
+    when: "VacationResponse/set with destroy [singleton], and with destroy [otherId]."
+    then: "notDestroyed.singleton has type singleton and the object is unchanged and still enabled. notDestroyed.otherId has type notFound."
+    sources:
+      - "james:VacationResponseSetMethodContract#destroyShouldFail"
+      - "jmapio:vacation/set-cannot-destroy"
+      - "fastmail:t/VacationResponse/set/basic.t"
+
+  - id: VAC-023
+    title: "Change the state on every effective update and only then"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "State S1 from VacationResponse/get."
+    when: "Update subject, read state S2 from get. Call get again. Send a rejected update (invalid date) and get again."
+    then: "S2 differs from S1 and equals newState of the set response. The repeated get and the get after the rejected update still return S2, and the rejected set has newState equal to oldState."
+    sources:
+      - "rfc:8620 5.1"
+      - "rfc:8620 5.3"
+    notes: "The autoreply document has no modification marker today. The plan derives the state from a hash of the document or a new updated field."
+
+  - id: VAC-024
+    title: "Enforce ifInState on VacationResponse/set"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Current state S2 and an older state S1."
+    when: "VacationResponse/set with ifInState S1 and an update, then the same with ifInState S2."
+    then: "The first answers with an error of type stateMismatch and changes nothing. The second succeeds."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: VAC-025
+    title: "Store an html body and return it unchanged"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "Update singleton with htmlBody set to an HTML fragment containing markup and non ASCII characters, textBody null, then get."
+    then: "htmlBody is returned exactly as sent and textBody is null."
+    sources:
+      - "jmapio:vacation/set-html-body"
+      - "james:VacationIntegrationTest#jmapVacationShouldHaveSupportForHtmlMail"
+
+  - id: VAC-026
+    title: "Enforce the WildDuck size limits for subject and bodies"
+    method: VacationResponse/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "A user with defaults."
+    when: "Update singleton with a subject longer than 2 KB, then with a textBody longer than 128 KB, then with an htmlBody longer than 128 KB."
+    then: "Each gives notUpdated.singleton of type invalidProperties naming the property, and nothing is stored. Values at the limit are accepted."
+    sources:
+      - "wildduck:lib/api/autoreply.js"
+    notes: "Limits come from the REST schema (subject 2 * 1024, text and html 128 * 1024 characters)."
+
+  - id: VAC-027
+    title: "Keep quotes, backslashes and line breaks in subject and body intact"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with defaults."
+    when: "Update singleton with a subject and textBody containing double quotes, backslashes, semicolons, CRLF sequences and text that looks like a mail header line, then get."
+    then: "The values are returned byte for byte. A later triggered reply carries the text in the body only and has no injected header (see VAC-038)."
+    sources:
+      - "cyrus:JMAPVacationResponse/vacation_set_sieve_injection"
+      - "legacy-proxy:test/unit/vacation.spec.ts"
+    notes: "Cyrus and the legacy proxy test Sieve script injection. WildDuck has no Sieve, the equivalent risk is header injection through the subject when the reply is composed."
+
+  - id: VAC-028
+    title: "Show an autoreply configured through the REST API"
+    method: VacationResponse/get
+    spec: "RFC 8621 8.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "PUT /users/:user/autoreply with status true, subject, text, html, start and end."
+    when: "VacationResponse/get."
+    then: "isEnabled is true, subject, textBody and htmlBody equal subject, text and html, and fromDate and toDate equal start and end as UTCDate values."
+    sources:
+      - "wildduck:lib/api/autoreply.js"
+
+  - id: VAC-029
+    title: "Map empty REST values to null"
+    method: VacationResponse/get
+    spec: "RFC 8621 8"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "PUT /users/:user/autoreply with status true, text set, subject and html empty strings, start false and end false."
+    when: "VacationResponse/get."
+    then: "subject, htmlBody, fromDate and toDate are null (not empty strings or false), textBody has the text and isEnabled is true."
+    sources:
+      - "wildduck:lib/api/autoreply.js"
+    notes: "The REST API reports unset text fields as empty strings and disables a boundary with false."
+
+  - id: VAC-030
+    title: "Make a JMAP update visible through the REST API"
+    method: VacationResponse/set
+    spec: "RFC 8621 8.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A user with defaults."
+    when: "VacationResponse/set update singleton with isEnabled true, subject, textBody, htmlBody, fromDate and toDate, then GET /users/:user/autoreply and GET /users/:user."
+    then: "The REST autoreply shows status true and the same subject, text, html, start and end. The user document reports autoreply true, so delivery actually consults the autoreply."
+    sources:
+      - "wildduck:lib/api/autoreply.js"
+      - "wildduck:lib/filter-handler.js"
+    notes: "The filter handler skips the autoreply lookup unless users.autoreply is set, so the JMAP update must maintain that flag exactly like the REST endpoint."
+
+  - id: VAC-031
+    title: "Preserve the REST only From name across JMAP updates"
+    method: VacationResponse/set
+    spec: "RFC 8621 8.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api, jmap]
+    given: "PUT /users/:user/autoreply with name set to a display name and a subject."
+    when: "VacationResponse/set update singleton with a new subject and textBody, then GET /users/:user/autoreply."
+    then: "The REST response still has the same name, with the new subject and text."
+    sources:
+      - "wildduck:lib/api/autoreply.js"
+    notes: "The autoreply name field has no VacationResponse property."
+
+  - id: VAC-032
+    title: "Reflect REST changes and deletion in the state"
+    method: VacationResponse/get
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api, jmap]
+    given: "An enabled VacationResponse with state S1."
+    when: "PUT /users/:user/autoreply with a new subject, get (state S2), then DELETE /users/:user/autoreply and get again (state S3)."
+    then: "S1, S2 and S3 are pairwise different. After the DELETE the object is back to the defaults of VAC-003 and is still present with id singleton."
+    sources:
+      - "wildduck:lib/api/autoreply.js"
+
+  - id: VAC-033
+    title: "Push a VacationResponse state change"
+    method: EventSource
+    spec: "RFC 8620 7.1"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap, api]
+    given: "An open EventSource connection with types set to VacationResponse (or all types)."
+    when: "The vacation response is changed through VacationResponse/set, and later through the REST API."
+    then: "A state event arrives for each change whose changed map has accountId with a VacationResponse entry equal to the state then returned by VacationResponse/get."
+    sources:
+      - "rfc:8620 7.1"
+
+  - id: VAC-034
+    title: "Send a reply to a message arriving while the response is enabled"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B enabled a VacationResponse with subject S and textBody T, no dates."
+    when: "A message from sender A addressed to B in the To header is delivered to B."
+    then: "The message is stored in the INBOX of B and exactly one reply is queued: envelope recipient A, To header A, From header the address of B the message was delivered to, the text part equal to T. When A is a local user, the reply appears in the INBOX of A."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldGenerateAReplyWhenActive"
+      - "james:VacationRelayIntegrationTest#forwardingAnEmailShouldWork"
+      - "stalwart:mail/vacation_response.rs"
+      - "wildduck:lib/autoreply.js"
+    notes: "In the WildDuck test setup the reply is asserted on the outbound queue entry (interface autoreplies) unless an MTA is part of the test rig."
+
+  - id: VAC-035
+    title: "Send no reply while the response is disabled"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has subject and textBody stored but isEnabled false (never enabled, and separately enabled then disabled again)."
+    when: "A message from A is delivered to B."
+    then: "The message is stored and no reply is queued."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldNotGenerateAReplyWhenInactive"
+      - "rfc:8621 8"
+
+  - id: VAC-036
+    title: "Reply only inside the fromDate and toDate window"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db, time]
+    given: "User B enabled a response. Three configurations: fromDate one day in the future, toDate one day in the past, fromDate in the past with toDate in the future."
+    when: "A message from a new sender is delivered to B under each configuration."
+    then: "No reply is queued for the first two configurations, one reply is queued for the third. With fromDate null and toDate in the future, and with fromDate in the past and toDate null, a reply is queued as well."
+    sources:
+      - "stalwart:mail/vacation_response.rs"
+      - "rfc:8621 8"
+      - "wildduck:lib/filter-handler.js"
+
+  - id: VAC-037
+    title: "Reply only once per sender within the autoreply interval"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db, time]
+    given: "User B has an enabled response. The interval const:autoreply:interval is at its default of 4 hours (or shortened for the test)."
+    when: "Sender A delivers two messages to B, sender C delivers one, and A delivers a third message after the interval has passed."
+    then: "A gets one reply for the first two messages, C gets its own reply, and A gets a second reply only for the message after the interval."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldNotSendNotificationTwice"
+      - "stalwart:mail/vacation_response.rs"
+      - "wildduck:lib/autoreply.js"
+
+  - id: VAC-038
+    title: "Keep the per sender suppression when the response is edited"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response and sender A already received a reply."
+    when: "B changes subject and textBody through VacationResponse/set and A sends another message within the interval."
+    then: "No second reply is queued for A. A sender that has not been answered yet receives the new text and no injected headers from the subject of VAC-027."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldSendNotificationTwiceWhenVacationReset"
+      - "wildduck:lib/autoreply.js"
+    notes: "James resets the notification registry when the response is modified and replies again. WildDuck keys the suppression on the autoreply document id, which survives an update, so the stricter behaviour is expected. Open question whether a reset on change is wanted."
+
+  - id: VAC-039
+    title: "Never reply to automatic, bulk or list mail"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response."
+    when: "Separate messages from distinct senders are delivered with: Auto-Submitted auto-generated, Auto-Submitted auto-replied, Precedence bulk, Precedence list, Precedence junk, a List-Unsubscribe header, X-Auto-Response-Suppress OOF. A control message carries Auto-Submitted no."
+    then: "None of the seven messages produces a reply. The control message does."
+    sources:
+      - "rfc:8621 8"
+      - "wildduck:lib/autoreply.js"
+
+  - id: VAC-040
+    title: "Never reply to bounces and system senders"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response."
+    when: "Messages are delivered with an empty envelope sender, with envelope sender MAILER-DAEMON@example.com, and with envelope senders no-reply@example.com and noreply@example.com."
+    then: "All messages are stored and no reply is queued for any of them."
+    sources:
+      - "stalwart:mail/vacation_response.rs"
+      - "wildduck:lib/autoreply.js"
+
+  - id: VAC-041
+    title: "Do not reply to mail classified as spam"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response."
+    when: "A message is delivered that the filter marks as spam (for example by a user filter or the spam header rule) and lands in Junk."
+    then: "No reply is queued."
+    sources:
+      - "wildduck:lib/filter-handler.js"
+
+  - id: VAC-042
+    title: "Do not reply when the user is not an explicit recipient"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response."
+    when: "A message is delivered to B by envelope only: none of the addresses of B appears in To, Cc, Bcc or the Resent recipient headers."
+    then: "No reply is queued."
+    sources:
+      - "rfc:8621 8"
+    notes: "RFC 3834 personal responder rule. WildDuck does not check this today (lib/autoreply.js only looks at the sender and the automatic mail headers), so this is a gap to close or to waive explicitly."
+
+  - id: VAC-043
+    title: "Mark the reply as automatic and thread it to the original"
+    method: VacationResponse/set
+    spec: "RFC 8621 8 (RFC 3834)"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response. A message with a Message-ID and a References header is delivered from A."
+    when: "The queued reply is inspected."
+    then: "It has Auto-Submitted auto-replied, In-Reply-To equal to the Message-ID of the original, References containing the original References followed or preceded by that Message-ID, and an empty envelope sender so that it cannot itself cause a bounce loop."
+    sources:
+      - "wildduck:lib/autoreply.js"
+      - "rfc:8621 8"
+
+  - id: VAC-044
+    title: "Use the configured subject for the reply"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response with subject set to Out of office, including a variant with non ASCII characters."
+    when: "A message with the subject Hello is delivered from A and the reply is inspected."
+    then: "The decoded Subject of the reply is the configured subject prefixed with the fixed marker used by WildDuck (Auto: Out of office). The non ASCII subject is correctly encoded and decodes to the same text."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldGenerateAReplyWhenActive"
+      - "stalwart:mail/vacation_response.rs"
+      - "wildduck:lib/autoreply.js"
+    notes: "The RFC says the subject is the one that will be used. WildDuck prepends Auto: to every autoreply subject today. Open question whether the JMAP path should drop the prefix."
+
+  - id: VAC-045
+    title: "Generate a subject when none is configured"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B has an enabled response with subject null and a textBody."
+    when: "A message with the subject Hello is delivered from A."
+    then: "The reply has a non empty server generated subject that refers to the original, in WildDuck Auto: Re: Hello."
+    sources:
+      - "rfc:8621 8"
+      - "wildduck:lib/autoreply.js"
+
+  - id: VAC-046
+    title: "Send text and html bodies as configured"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "Three configurations of an enabled response: textBody only, htmlBody only, both."
+    when: "A message from a new sender is delivered under each configuration and the reply MIME structure is inspected."
+    then: "Text only gives a text/plain reply with the text. Both gives multipart/alternative with a text/plain part equal to textBody and a text/html part equal to htmlBody. Html only gives a reply containing the html, either alone or with a plain text part generated from it."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldHaveSupportForHtmlMail"
+      - "rfc:8621 8"
+
+  - id: VAC-047
+    title: "Send a default body when neither textBody nor htmlBody is set"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp, db]
+    given: "User B enabled the response with only isEnabled true."
+    when: "A message from A is delivered."
+    then: "A reply is still queued, with a non empty generated subject. The body is a server default or empty, the reply is a valid MIME message."
+    sources:
+      - "james:VacationIntegrationTest#jmapVacationShouldGenerateAReplyEvenWhenNoText"
+      - "stalwart:mail/vacation_response.rs"
+      - "rfc:8621 8"
+    notes: "WildDuck sends an empty body today. The RFC says an appropriate default body should be generated."
+
+  - id: VAC-048
+    title: "Leave the automatic reply out of the user's mailboxes and submissions"
+    method: VacationResponse/set
+    spec: "RFC 8621 8"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, lmtp]
+    given: "User B has an enabled response and a known Email state."
+    when: "A message from A triggers a reply."
+    then: "Email/changes for B reports only the incoming message as created. No copy of the reply appears in Sent, and from phase 3 on EmailSubmission/query for B does not list the reply. The triggering message lists the reply queue id in its outbound property in the REST API."
+    sources:
+      - "wildduck:lib/autoreply.js"
+      - "wildduck:lib/filter-handler.js"

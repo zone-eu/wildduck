@@ -1,0 +1,712 @@
+area: email-import-copy
+title: "Email/import and Email/copy"
+description: "Email/import (RFC 8621 4.8) from uploaded blobs and from message parts, with mailbox, keyword, receivedAt, quota and content edge cases and IMAP visibility. Email/copy (RFC 8621 4.7) only moves data between accounts, so in a single account server every call must fail with the right error."
+scenarios:
+  - id: EIMP-001
+    title: "Import an uploaded message"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A valid RFC 5322 message (headers, text body, CRLF line endings) uploaded through the upload endpoint as blob B; the INBOX id."
+    when: "Email/import with emails {\"i1\": {\"blobId\": B, \"mailboxIds\": {\"<INBOX>\": true}}}."
+    then: "created.i1 has id (M plus 24 hex), blobId, threadId and size equal to the upload size; notCreated is null. Email/get returns the subject, from and body of the message with mailboxIds INBOX."
+    sources:
+      - "james:EmailImportContract#importShouldAddTheMailInTheMailbox"
+      - "cyrus:JMAPEmail/email_import"
+      - "jmapio:email/import-valid-message"
+      - "jmapio:email/import-sets-mailbox"
+      - "fastmail:t/Email/import/good-imports.t"
+      - "stalwart:mail/get.rs"
+      - "rfc:8621 4.8"
+
+  - id: EIMP-002
+    title: "Response shape of Email/import"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B and Email state S0."
+    when: "Email/import of B into INBOX."
+    then: "The response name is Email/import with accountId, oldState S0, a different newState, created as a map by creation id and notCreated null. Email/get state equals newState and Email/changes sinceState S0 lists the new id in created."
+    sources:
+      - "james:EmailImportContract#importShouldDisplayOldAndNewState"
+      - "cyrus:JMAPEmail/email_import_state"
+      - "jmapio:email/import-state-changes"
+      - "stalwart:mail/get.rs"
+
+  - id: EIMP-003
+    title: "Import several messages in one call"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Three uploaded message blobs."
+    when: "Email/import with three creation ids into INBOX and Archive."
+    then: "created has three entries with distinct ids; each email is in the mailbox named for it and Mailbox/get totalEmails grew accordingly."
+    sources:
+      - "james:EmailImportContract#importShouldAddTheMailsInTheMailbox"
+      - "jmapio:email/import-multiple"
+      - "fastmail:t/Email/import/good-imports.t"
+
+  - id: EIMP-004
+    title: "One import fails and another succeeds"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A valid message blob B and an unknown blob id X."
+    when: "Email/import with emails {\"ok\": {blobId B, INBOX}, \"bad\": {blobId X, INBOX}}."
+    then: "created has ok, notCreated has bad with invalidProperties; the good email is in INBOX and the state changed."
+    sources:
+      - "fastmail:t/Email/import/one-fails-another-succeeds.t"
+      - "rfc:8621 4.8"
+
+  - id: EIMP-005
+    title: "Missing or malformed emails argument"
+    method: Email/import
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Nothing special."
+    when: "Email/import without emails; with emails as an array; with emails {\"a\": \"string\"}; with an unknown extra argument."
+    then: "Each answers [\"error\", {\"type\": \"invalidArguments\"}] (the string valued entry may instead be reported per creation id as invalidProperties). Nothing is imported."
+    sources:
+      - "fastmail:t/Email/import/bad-values.t"
+      - "cyrus:JMAPEmail/email_import_error"
+      - "rfc:8620 3.6.2"
+
+  - id: EIMP-006
+    title: "Capability and account errors"
+    method: Email/import
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Nothing special."
+    when: "Email/import (a) with using lacking urn:ietf:params:jmap:mail, (b) with an unknown accountId, (c) without accountId."
+    then: "(a) unknownMethod, (b) accountNotFound, (c) invalidArguments."
+    sources:
+      - "james:EmailImportContract#importShouldReturnUnknownMethodWhenMissingMailCapability"
+      - "james:EmailImportContract#importShouldReturnUnknownMethodWhenMissingCoreCapability"
+      - "james:EmailImportContract#importShouldFailWhenInvalidAccountId"
+      - "fastmail:t/Email/foreign-account.t"
+
+  - id: EIMP-007
+    title: "mailboxIds is required and must name one existing mailbox"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Imports with mailboxIds missing, {}, null, {\"<unknown id>\": true}, {\"<INBOX>\": false} and [\"<INBOX>\"]."
+    then: "Each gives notCreated with invalidProperties and properties [\"mailboxIds\"]."
+    sources:
+      - "james:EmailImportContract#importShouldFailWhenNoMailboxes"
+      - "fastmail:t/Email/import/bad-values.t"
+      - "cyrus:JMAPEmail/email_import_no_keywords"
+      - "rfc:8621 4.8"
+
+  - id: EIMP-008
+    title: "Import into two mailboxes is rejected"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An uploaded message blob B; mailboxes INBOX and Archive."
+    when: "Email/import with mailboxIds {\"<INBOX>\": true, \"<Archive>\": true}."
+    then: "notCreated has type tooManyMailboxes (invalidProperties with properties [\"mailboxIds\"] is tolerated by generic clients, WildDuck answers tooManyMailboxes). No message appears in either mailbox."
+    sources:
+      - "james:EmailImportContract#importShouldFailWhenTooManyMailboxes"
+      - "fastmail:t/Email/import/good-imports.t"
+      - "wildduck:brief: maxMailboxesPerEmail is 1"
+    notes: "RFC 8621 4.8 defines only invalidProperties for bad mailboxIds; tooManyMailboxes is defined for Email/set. Using it here is a WildDuck choice shared with James. The Fastmail multiple mailboxes subtest cannot pass."
+
+  - id: EIMP-009
+    title: "Import into a mailbox created in the same request"
+    method: Email/import
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "One request: Mailbox/set create {\"mb\": {name: \"Imported\"}}, then Email/import with mailboxIds {\"#mb\": true}."
+    then: "The email is created in the new mailbox."
+    sources:
+      - "cyrus:JMAPEmail/email_import_mailboxid_by_role"
+      - "rfc:8620 5.3"
+
+  - id: EIMP-010
+    title: "Keywords default to none"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Two imports, one without keywords and one with \"keywords\": {}."
+    then: "Both are created with keywords {} and count as unread; IMAP shows no flags."
+    sources:
+      - "james:EmailImportContract#importShouldSucceedWhenNoKeyword"
+      - "james:EmailImportContract#importShouldSucceedWhenEmptyKeyword"
+      - "cyrus:JMAPEmail/email_import_no_keywords"
+      - "fastmail:t/Email/import/good-imports.t"
+
+  - id: EIMP-011
+    title: "Keywords given on import become IMAP flags"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Import with keywords {\"$seen\": true, \"$flagged\": true, \"$forwarded\": true, \"Imported\": true}."
+    then: "Email/get keywords are {\"$seen\", \"$flagged\", \"$forwarded\", \"imported\"} all true and lowercase; IMAP FETCH FLAGS shows \\Seen, \\Flagged, $Forwarded and the custom keyword."
+    sources:
+      - "jmapio:email/import-sets-keywords"
+      - "cyrus:JMAPEmail/email_import"
+      - "fastmail:t/Email/import/good-imports.t"
+      - "stalwart:mail/get.rs"
+
+  - id: EIMP-012
+    title: "Invalid keywords are rejected"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Imports with keywords {\"$seen\": false}, {\"bad keyword\": true}, [\"$seen\"], \"x\" and {\"$deleted\": true}."
+    then: "Each gives invalidProperties with properties [\"keywords\"]; nothing is imported."
+    sources:
+      - "fastmail:t/Email/import/bad-values.t"
+      - "rfc:8621 4.8"
+      - "wildduck:hidden flags cannot be set"
+
+  - id: EIMP-013
+    title: "Import a draft into Drafts with $draft"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B; the Drafts mailbox."
+    when: "Import with mailboxIds Drafts and keywords {\"$draft\": true}."
+    then: "Created; IMAP shows \\Draft, the REST API shows draft true and the message is not counted in unreadEmails."
+    sources:
+      - "cyrus:JMAPEmail/email_import"
+      - "rfc:8621 4.1.1"
+
+  - id: EIMP-014
+    title: "An explicit receivedAt becomes the IMAP INTERNALDATE"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B whose Date header is in 2020."
+    when: "Import with \"receivedAt\": \"2018-03-04T05:06:07Z\"."
+    then: "Email/get receivedAt is that value while sentAt still reflects the Date header; IMAP FETCH INTERNALDATE shows 04-Mar-2018 05:06:07 +0000."
+    sources:
+      - "jmapio:email/import-sets-received-at"
+      - "cyrus:JMAPEmail/email_import_received_at"
+      - "fastmail:t/Email/import/good-imports.t"
+
+  - id: EIMP-015
+    title: "receivedAt defaults to the most recent Received header"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A message blob with two Received headers, the topmost dated 2019-01-02T03:04:05Z."
+    when: "Import without receivedAt."
+    then: "Email/get receivedAt is 2019-01-02T03:04:05Z and IMAP INTERNALDATE agrees."
+    sources:
+      - "cyrus:JMAPEmail/email_import_received_at"
+      - "rfc:8621 4.8"
+    notes: "RFC 8621 4.8 states this as the default value of the property."
+
+  - id: EIMP-016
+    title: "receivedAt defaults to the import time when there is no Received header"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A message blob without Received headers and with an old Date header."
+    when: "Import without receivedAt."
+    then: "receivedAt is within a few seconds of the request time, not the Date header."
+    sources:
+      - "james:EmailImportContract#importShouldSucceedWhenNoReceivedAt"
+      - "fastmail:t/Email/import/good-imports.t"
+      - "rfc:8621 4.8"
+
+  - id: EIMP-017
+    title: "A receivedAt that is not a UTCDate is rejected"
+    method: Email/import
+    spec: "RFC 8620 1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Imports with receivedAt \"2018-03-04T05:06:07+01:00\", \"not a date\" and 12345."
+    then: "Each gives invalidProperties with properties [\"receivedAt\"]."
+    sources:
+      - "fastmail:t/Email/import/bad-values.t"
+      - "rfc:8620 1.4"
+
+  - id: EIMP-018
+    title: "An unknown, malformed or missing blobId is invalidProperties"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The INBOX id."
+    when: "Imports with a well formed unknown blobId, with \"blobId\": \"not a blob!\", with \"blobId\": 5 and without blobId."
+    then: "Each gives notCreated with type invalidProperties and properties [\"blobId\"]."
+    sources:
+      - "james:EmailImportContract#importShouldFailWhenBlobNotFound"
+      - "cyrus:JMAPEmail/email_import_error"
+      - "jmapio:email/import-not-found-blob"
+      - "fastmail:t/Email/import/bad-values.t"
+      - "rfc:8621 4.8"
+    notes: "Email/import has no blobNotFound error: RFC 8621 4.8 requires invalidProperties when the blob id is not found. blobNotFound belongs to Email/set create and Email/parse."
+
+  - id: EIMP-019
+    title: "Another user's blob or an expired upload cannot be imported"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, api, time]
+    given: "A blob uploaded by another user; an own upload that has expired."
+    when: "Import each of them."
+    then: "Both give invalidProperties with properties [\"blobId\"]; nothing is imported and nothing about the other user is revealed."
+    sources:
+      - "james:EmailImportContract#importShouldFailWhenBlobNotOwned"
+      - "rfc:8620 6"
+
+  - id: EIMP-020
+    title: "A blob that is not a message gives invalidEmail"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: may
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Uploaded blobs: a PNG image, a zero length blob, and 1 kB of random binary data."
+    when: "Import each."
+    then: "Each gives notCreated with type invalidEmail; nothing is stored and the state does not change."
+    sources:
+      - "cyrus:JMAPEmail/email_import_zerobyte"
+      - "jmapio:email/import-invalid-blob"
+      - "fastmail:t/Email/import/invalid-email.t"
+      - "stalwart:changelog: Email/import rejects non-message blobs"
+      - "rfc:8621 4.8"
+    notes: "WildDuck should define the minimum: at least one syntactically valid header line before the body. Plain text without any header is treated as not a message."
+
+  - id: EIMP-021
+    title: "Unknown properties in an EmailImport object are rejected"
+    method: Email/import
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Import with an extra property \"subject\": \"x\" and with \"id\": \"M1\"."
+    then: "invalidProperties listing the extra property."
+    sources:
+      - "fastmail:t/Email/import/bad-values.t"
+      - "rfc:8620 5.3"
+
+  - id: EIMP-022
+    title: "Import from a message/rfc822 attachment of another email"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "An email E in INBOX with an attached message (type message/rfc822) whose part blobId PB comes from Email/get."
+    when: "Email/import with blobId PB into Archive."
+    then: "A new Email is created whose subject, headers and body are those of the attached message and whose size equals the size of the attachment part."
+    sources:
+      - "stalwart:mail/parse.rs"
+      - "rfc:8620 6"
+      - "cyrus:JMAPEmail/email_import"
+
+  - id: EIMP-023
+    title: "Import the blob of an existing email creates an independent copy"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "An email E in INBOX with blobId EB and keyword $seen."
+    when: "Email/import with blobId EB into Archive with no keywords."
+    then: "A new Email with a different id is created in Archive with identical bytes and no keywords; E is unchanged. No alreadyExists error."
+    sources:
+      - "cyrus:JMAPEmail/email_import_singlecopy"
+      - "rfc:8621 4.8"
+      - "wildduck:brief: ids are not content derived"
+    notes: "This is the same account substitute for Email/copy and for adding an email to a second mailbox."
+
+  - id: EIMP-024
+    title: "The same upload imported twice gives two emails"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Email/import with two creation ids both using B and the same mailbox; then a second identical call."
+    then: "Four emails with four distinct ids exist, never alreadyExists. Setting a keyword on one does not change the others."
+    sources:
+      - "rfc:8621 4.8"
+      - "wildduck:brief: alreadyExists is never returned"
+      - "cyrus:JMAPEmail/email_import_singlecopy"
+
+  - id: EIMP-025
+    title: "Blobs stay downloadable and unchanged after import"
+    method: Email/import
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A CRLF clean message uploaded as blob B."
+    when: "Import B, then download B and created.blobId."
+    then: "Both downloads return the uploaded bytes. created.blobId differs from B only in id, and created.size equals the byte count."
+    sources:
+      - "fastmail:t/Email/import/download-after-import.t"
+      - "rfc:8620 6"
+
+  - id: EIMP-026
+    title: "Import a blob created by Blob/upload in the same request"
+    method: Email/import
+    spec: "RFC 9404 4.1"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "One request: Blob/upload create {\"b1\": {data: [{\"data:asText\": <message text>}]}}, then Email/import with blobId \"#b1\"."
+    then: "The email is created. With an unknown reference \"#nope\" the import fails for that creation id with invalidProperties (blobId) or the call answers invalidResultReference."
+    sources:
+      - "stalwart:core/blob.rs"
+      - "rfc:9404 4.1"
+
+  - id: EIMP-027
+    title: "A message over the size limit gives tooLarge"
+    method: Email/import
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap, db]
+    given: "A message blob larger than the configured maximum message size (lower the limit in the test configuration so the upload itself is allowed)."
+    when: "Import it."
+    then: "notCreated has type tooLarge; nothing is stored."
+    sources:
+      - "rfc:8620 5.3"
+      - "rfc:8621 1.3.1"
+    notes: "If maxSizeUpload is never larger than the message limit this cannot be reached through the upload endpoint; keep the test for the part blob path and for configuration drift."
+
+  - id: EIMP-028
+    title: "An import that would exceed the quota gives overQuota"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, api]
+    given: "A user with less free quota than the size of uploaded message blob B."
+    when: "Import B; then free space and import again."
+    then: "First notCreated is overQuota with storageUsed unchanged; the retry succeeds."
+    sources:
+      - "james:EmailImportContract#importShouldEnforceQuotas"
+      - "stalwart:system/quota.rs"
+      - "rfc:8621 4.8"
+
+  - id: EIMP-029
+    title: "A very large message imports correctly"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A message just under the maximum message size with a large base64 attachment, uploaded as one blob."
+    when: "Import it, then Email/get with bodyStructure and download the blob."
+    then: "Created within the request timeout; size equals the upload size, the download is byte identical, the attachment part decodes to the original file, and IMAP RFC822.SIZE matches."
+    sources:
+      - "jmapio:binary/upload-large-data"
+      - "wildduck:64 MB message limit"
+
+  - id: EIMP-030
+    title: "More imports than maxObjectsInSet give requestTooLarge"
+    method: Email/import
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Session maxObjectsInSet is N."
+    when: "Email/import with N+1 entries."
+    then: "The call answers requestTooLarge and nothing is imported."
+    sources:
+      - "rfc:8620 5.3"
+    notes: "RFC 8621 4.8 does not name a limit for Email/import; applying maxObjectsInSet is a WildDuck decision."
+
+  - id: EIMP-031
+    title: "ifInState is honoured"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B; current state S0 and an older state S_old."
+    when: "Import with ifInState S0; then import with ifInState S_old."
+    then: "The first is created. The second answers [\"error\", {\"type\": \"stateMismatch\"}] and imports nothing."
+    sources:
+      - "cyrus:JMAPEmail/email_import_state"
+      - "rfc:8621 4.8"
+
+  - id: EIMP-032
+    title: "A failed import does not change the state"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "State S0."
+    when: "Email/import where every entry fails (unknown blob, bad mailbox)."
+    then: "oldState and newState both equal S0 and created is null."
+    sources:
+      - "rfc:8621 4.8"
+      - "wildduck:state must not change when nothing changed"
+
+  - id: EIMP-033
+    title: "An imported message joins an existing thread"
+    method: Email/import
+    spec: "RFC 8621 3"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap, jmap]
+    given: "An email in INBOX with Message-ID <a@example.com> and subject \"Topic\" in thread T."
+    when: "Import a message with In-Reply-To <a@example.com> and subject \"Re: Topic\"; import another with the same reference and an unrelated subject."
+    then: "The first has threadId T and Thread/get T lists both, ordered by receivedAt. The second gets a new thread. Mailbox totalThreads reflects this."
+    sources:
+      - "stalwart:mail/thread_get.rs"
+      - "stalwart:mail/thread_merge.rs"
+      - "wildduck:brief: threading rule"
+
+  - id: EIMP-034
+    title: "An imported message is byte identical over IMAP"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An IMAP session for the user; an uploaded CRLF clean message blob B with a known receivedAt and keywords in the import."
+    when: "Import, then IMAP FETCH (RFC822.SIZE INTERNALDATE FLAGS BODY.PEEK[]) of the new message; also read it through the REST API."
+    then: "BODY[] equals the uploaded bytes, RFC822.SIZE equals created.size, INTERNALDATE equals receivedAt, FLAGS match the keywords, and the REST API shows the same subject and flags. An idling IMAP session saw EXISTS."
+    sources:
+      - "wildduck:brief: the same message must look the same through IMAP and JMAP"
+      - "cyrus:JMAPEmail/email_import"
+
+  - id: EIMP-035
+    title: "Messages with internationalised headers are imported"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A message blob with raw UTF-8 in Subject, in a display name and in an address local part (RFC 6532)."
+    when: "Import it and Email/get subject, from and to."
+    then: "Created (not invalidEmail); the properties return the Unicode text and the stored bytes are unchanged."
+    sources:
+      - "rfc:8621 4.8"
+      - "cyrus:JMAPEmail/email_import_issue2918"
+
+  - id: EIMP-036
+    title: "A message with bare LF line endings is imported consistently"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: may
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "A message blob using LF only line endings."
+    when: "Import it; download created.blobId; IMAP FETCH RFC822.SIZE and BODY[]."
+    then: "Created. created.size, the downloaded blob and the IMAP view agree with each other. If the server stored the message with CRLF, created.blobId content differs from the upload and size is the stored size; the upload blob still downloads with LF."
+    sources:
+      - "rfc:8621 4.8"
+      - "cyrus:JMAPEmail/email_import_issue3122"
+      - "wildduck:MessageHandler.add normalisation"
+    notes: "Open question: confirm whether MessageHandler.add stores bare LF as is. Either is allowed, the three views must agree."
+
+  - id: EIMP-037
+    title: "A message containing NUL octets is fixed or rejected, never half stored"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: may
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "A message blob with NUL octets in a header value and in the body."
+    when: "Import it."
+    then: "Either created (with the stored message described by created.blobId and size, readable over IMAP without breaking the session) or notCreated with invalidEmail. Never serverFail, never a message that IMAP FETCH cannot return."
+    sources:
+      - "rfc:8621 4.8"
+      - "cyrus:JMAPEmail/email_import_issue2918"
+
+  - id: EIMP-038
+    title: "Messages with 8 bit and binary MIME parts are preserved"
+    method: Email/import
+    spec: "RFC 8621 4.8"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A message blob with an 8bit text part in ISO-8859-1 and a part with Content-Transfer-Encoding binary."
+    when: "Import it, then download created.blobId and the part blobs."
+    then: "The message blob is byte identical to the upload; Email/get decodes the text using the declared charset and the binary part downloads exactly."
+    sources:
+      - "cyrus:JMAPEmail/email_import_encoded_contenttype"
+      - "cyrus:JMAPEmail/email_import_has_attachment"
+      - "rfc:8621 4.8"
+
+  - id: ECPY-001
+    title: "Email/copy with equal account ids is invalidArguments"
+    method: Email/copy
+    spec: "RFC 8620 5.4"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in the only account A of the user."
+    when: "Email/copy with fromAccountId A, accountId A and create {\"c\": {\"id\": M1, \"mailboxIds\": {\"<Archive>\": true}}}."
+    then: "The call answers [\"error\", {\"type\": \"invalidArguments\"}], HTTP 200; no copy is made and the state is unchanged."
+    sources:
+      - "jmapio:email/copy-same-account-error"
+      - "jmapio:rfc-clarifications"
+      - "rfc:8620 5.4"
+    notes: "RFC 8620 5.4: accountId MUST be different to fromAccountId. Clients wanting a copy in the same account use Email/import with the blobId."
+
+  - id: ECPY-002
+    title: "Email/copy from an unknown or foreign account is fromAccountNotFound"
+    method: Email/copy
+    spec: "RFC 8620 5.4"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "User A with account A; another user B exists on the server."
+    when: "As A, Email/copy with accountId A and fromAccountId \"unknown\"; again with fromAccountId set to the id of B."
+    then: "Both answer [\"error\", {\"type\": \"fromAccountNotFound\"}], indistinguishable from each other; nothing is created."
+    sources:
+      - "cyrus:JMAPEmail/email_copy_from_inaccessible_account"
+      - "jmapio:email/copy-cross-account"
+      - "fastmail:t/Email/copy/basic.t"
+      - "rfc:8620 5.4"
+    notes: "The cross account success cases of Cyrus, Stalwart, jmapio and Fastmail (copy, onSuccessDestroyOriginal, overrides, quota) need a second accessible account and do not apply."
+
+  - id: ECPY-003
+    title: "Email/copy into an unknown account is accountNotFound"
+    method: Email/copy
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "User A; another user B exists."
+    when: "As A, Email/copy with fromAccountId A and accountId \"unknown\"; again with accountId set to the id of B."
+    then: "Both answer accountNotFound; nothing is written to B."
+    sources:
+      - "fastmail:t/Email/foreign-account.t"
+      - "rfc:8620 3.6.2"
+
+  - id: ECPY-004
+    title: "Email/copy argument validation"
+    method: Email/copy
+    spec: "RFC 8620 5.4"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "Nothing special."
+    when: "Email/copy without fromAccountId, with fromAccountId 5, without create, and with create as an array."
+    then: "Each answers invalidArguments."
+    sources:
+      - "cyrus:JMAPEmail/email_copy_from_inaccessible_account"
+      - "cyrus:JMAPEmail/email_copy_no_mailboxids"
+      - "rfc:8620 3.6.2"
+
+  - id: ECPY-005
+    title: "onSuccessDestroyOriginal never destroys anything when the copy fails"
+    method: Email/copy
+    spec: "RFC 8620 5.4"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in account A."
+    when: "Email/copy with fromAccountId A, accountId A, onSuccessDestroyOriginal true and create referencing M1."
+    then: "The response holds a single error invocation (invalidArguments) and no implicit Email/set response; M1 still exists."
+    sources:
+      - "rfc:8620 5.4"
+      - "fastmail:t/Email/copy/basic.t"
+      - "stalwart:mail/copy.rs"
+
+  - id: ECPY-006
+    title: "Email/copy is known to the dispatcher and needs the mail capability"
+    method: Email/copy
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "Nothing special."
+    when: "A request using only the core capability that calls Email/copy; a request using core and mail that calls it with valid looking arguments for two unknown accounts."
+    then: "The first answers unknownMethod. The second answers accountNotFound or fromAccountNotFound, not unknownMethod and not serverFail."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "jmapio:email/copy-not-found"
+    notes: "When both account ids are unknown either error is acceptable; pick accountNotFound first since accountId is validated for every method."

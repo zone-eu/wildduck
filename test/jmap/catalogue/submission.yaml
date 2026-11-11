@@ -1,0 +1,2231 @@
+area: submission
+title: "EmailSubmission"
+description: "RFC 8621 section 7: sending through EmailSubmission/set (envelope handling, validation errors, the implicit Email/set of onSuccessUpdateEmail and onSuccessDestroyEmail, delayed send, undo), the EmailSubmission get, changes, query and queryChanges methods, and what the WildDuck outbound queue and the recipient actually see."
+scenarios:
+  - id: SUB-001
+    title: "Advertise the submission capability with maxDelayedSend and submissionExtensions"
+    method: Session
+    spec: "RFC 8621 1.3.2"
+    level: must
+    phase: 3
+    applies: "yes"
+    seed: [none]
+    given: "A user on a server with the default maxQueueTime of 30 days."
+    when: "GET the session resource."
+    then: "capabilities has urn:ietf:params:jmap:submission with an empty object. accountCapabilities for the account has the same key with maxDelayedSend 2592000 (an UnsignedInt, seconds, derived from maxQueueTime) and submissionExtensions {\"FUTURERELEASE\": [\"2592000\"]} with no other key."
+    sources:
+      - "rfc:8621 1.3.2"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#serverShouldBeAdvertisedFutureReleaseExtension"
+      - "james:SessionRoutesContract"
+      - "stalwart:principal/get.rs"
+    notes: "Decided 2026-11-11: delayed send uses the FUTURERELEASE hold parameters, so the extension is advertised with maxDelayedSend as its argument."
+
+  - id: SUB-002
+    title: "Answer unknownMethod for EmailSubmission methods before phase 3"
+    method: EmailSubmission/set
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 2
+    applies: "no"
+    seed: [none]
+    given: "A phase 2 server: the submission capability is advertised because Identity needs it, EmailSubmission is not implemented yet."
+    when: "EmailSubmission/get, /set, /query, /changes and /queryChanges are called with the submission capability in using."
+    then: "Each answers with an error invocation of type unknownMethod, nothing is queued, and the account capability reports maxDelayedSend 0."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "rfc:8621 1.3.2"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the EmailSubmission scenarios."
+
+  - id: SUB-003
+    title: "Require the submission capability in using"
+    method: EmailSubmission/set
+    spec: "RFC 8620 3.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft and an identity."
+    when: "EmailSubmission/set create, and EmailSubmission/get, /query and /changes, with using listing only core and mail."
+    then: "Each answers with an error of type unknownMethod and no message is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectMissingCapability"
+      - "rfc:8620 3.3"
+
+  - id: SUB-004
+    title: "Reject a foreign or unknown accountId on every EmailSubmission method"
+    method: EmailSubmission/set
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Users A and B, authenticated as A. B has a draft and an identity."
+    when: "EmailSubmission/set create with accountId of B referencing the draft and identity of B, and EmailSubmission/get, /query, /changes with the accountId of B and with a random accountId."
+    then: "Each answers with an error of type accountNotFound. Nothing is queued for B."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectOtherAccountIds"
+      - "fastmail:t/EmailSubmission/foreign-account.t"
+
+  - id: SUB-005
+    title: "Send a draft with a minimal create"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft Email with From equal to the main address, one To recipient, a Date and a text body. The identity M of the main address."
+    when: "EmailSubmission/set create {s1: {identityId: M, emailId: draftId}}."
+    then: "created.s1 has a non empty id that follows the Id rules and starts with a letter, notCreated is absent or empty, newState differs from oldState, and exactly one message is placed in the outbound queue for the To address."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldReturnSuccess"
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldAcceptIdentityId"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set"
+      - "stalwart:mail/submission.rs"
+      - "jmapio:submission/set-create-submission"
+      - "rfc:8621 7.5"
+
+  - id: SUB-006
+    title: "Return the server set properties in the created object"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft and an identity, envelope omitted."
+    when: "EmailSubmission/set create with identityId and emailId only."
+    then: "created.s1 contains id and the properties the server set and the client did not send: threadId, sendAt, undoStatus, deliveryStatus, dsnBlobIds, mdnBlobIds and the generated envelope. Their values equal a following EmailSubmission/get."
+    sources:
+      - "rfc:8620 5.3"
+      - "jmapio:submission/set-submission-properties"
+
+  - id: SUB-007
+    title: "Expose all EmailSubmission properties through get"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A submission just created for a draft with one recipient."
+    when: "EmailSubmission/get with its id and properties null."
+    then: "The object has exactly id, identityId, emailId, threadId, envelope, sendAt, undoStatus, deliveryStatus, dsnBlobIds and mdnBlobIds. identityId and emailId equal the values sent, sendAt is a UTCDate, undoStatus is one of pending, final, canceled, and dsnBlobIds and mdnBlobIds are arrays."
+    sources:
+      - "jmapio:submission/get-response-structure"
+      - "jmapio:submission/set-submission-properties"
+      - "fastmail:t/EmailSubmission/get/basic.t"
+      - "stalwart:mail/submission.rs"
+
+  - id: SUB-008
+    title: "Set threadId to the thread of the referenced Email"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft that is a reply inside an existing thread T."
+    when: "The draft is submitted and the submission fetched."
+    then: "threadId equals the threadId of the Email (T), and stays T after the Email is moved to Sent."
+    sources:
+      - "rfc:8621 7"
+
+  - id: SUB-009
+    title: "Set sendAt to the creation time for an immediate send"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft whose Date header is several days old."
+    when: "It is submitted without hold parameters and the submission is fetched."
+    then: "sendAt is within a few seconds of the request time, in UTCDate form with Z, and is unrelated to the Date header or receivedAt of the Email."
+    sources:
+      - "rfc:8621 7"
+
+  - id: SUB-010
+    title: "Start with undoStatus pending and move to final when delivery starts"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: adapted
+    seed: [jmap, db, time]
+    given: "A submission whose queue entries are not yet locked by the MTA."
+    when: "EmailSubmission/get right after creation, and again after the MTA has locked or delivered at least one queue entry."
+    then: "undoStatus is pending first and final afterwards. It never goes back from final to pending."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7"
+      - "wildduck:lib/maildropper.js"
+    notes: "In tests without a running ZoneMTA the transition is simulated by locking or removing the entries in the queue collection."
+
+  - id: SUB-011
+    title: "Report a limited deliveryStatus per recipient"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: may
+    phase: 3
+    applies: adapted
+    seed: [jmap, db, time]
+    given: "A submission to two recipients."
+    when: "EmailSubmission/get while both are queued, and again after the queue entries are gone."
+    then: "deliveryStatus is a map with exactly the two rcptTo addresses as keys. While queued each value has delivered queued and displayed unknown, afterwards delivered unknown and displayed unknown. smtpReply is always a string, a synthetic one in the form of a 3 digit code, a space, an enhanced status code, a space and text."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7"
+    notes: "WildDuck has no per recipient outcome after hand over to ZoneMTA, so yes and no are never reported. Returning null for the whole property would also be allowed by the RFC, the plan chose queued then unknown."
+
+  - id: SUB-012
+    title: "Return empty dsnBlobIds and mdnBlobIds"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, lmtp]
+    given: "A submission. Later a DSN (multipart/report) for it is delivered to the sender's INBOX."
+    when: "EmailSubmission/get before and after the DSN arrives."
+    then: "dsnBlobIds and mdnBlobIds are empty arrays, never null, in both cases. The DSN is a normal Email in the INBOX."
+    sources:
+      - "rfc:8621 7"
+    notes: "No correlation of DSNs or MDNs to submissions is planned."
+
+  - id: SUB-013
+    title: "Generate the envelope from the message headers and persist it"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft with From a@example.com (the identity address), To t@example.net, Cc c@example.net and Bcc b@example.net."
+    when: "It is submitted without envelope (and in a second run with envelope null), then EmailSubmission/get."
+    then: "envelope.mailFrom.email is a@example.com with parameters null or absent, and envelope.rcptTo holds exactly the three recipient addresses, each without parameters. The queue entry has the same sender and recipients."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#envelopeShouldBeOptional"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_persists_reconstructed_envelope"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_issue2285"
+      - "rfc:8621 7"
+
+  - id: SUB-014
+    title: "Deduplicate recipients gathered from To, Cc and Bcc"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft whose To lists x@example.net twice, Cc lists X@Example.NET and Bcc lists x@example.net again plus y@example.net."
+    when: "It is submitted without envelope."
+    then: "envelope.rcptTo has two entries (x and y), the queue has one delivery for each, and the recipient x receives one copy."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "james:EmailSubmissionSetMethodContract#recipientShouldBeCaseInsensitive"
+      - "rfc:8621 7"
+    notes: "The domain is compared case insensitively. WildDuck also treats the local part case insensitively when normalising addresses."
+
+  - id: SUB-015
+    title: "Expand group syntax when collecting recipients"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: should
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "A message appended over IMAP whose To header is a group (Team, containing two addresses) and whose Cc is an empty group."
+    when: "It is submitted without envelope."
+    then: "envelope.rcptTo holds the two member addresses. The group name is not treated as an address."
+    sources:
+      - "rfc:8621 7"
+      - "rfc:8621 4.1.2.3"
+
+  - id: SUB-016
+    title: "Derive mailFrom from the Sender header when present"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "The user owns a@example.com and b@example.com. The user also owns *@wild.example. One draft has From a@example.com and Sender a@example.com, another has From x@wild.example and Sender y@wild.example."
+    when: "Each is submitted without envelope using the matching identity."
+    then: "envelope.mailFrom.email is the Sender address (a@example.com, respectively y@wild.example), with no parameters."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#mimeSenderShouldAcceptAliases"
+      - "james:EmailSubmissionSetSenderHeaderValidationContract#setShouldAcceptTheLoggedInUserAsSender"
+      - "rfc:8621 7"
+
+  - id: SUB-017
+    title: "Fall back to the identity email when the derived mailFrom is not covered by the identity"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "The user owns a@example.com and b@example.com. A draft has From a@example.com and Sender b@example.com."
+    when: "It is submitted without envelope using the identity of a@example.com."
+    then: "The submission is created and envelope.mailFrom.email is a@example.com, the email of the identity, not the Sender address."
+    sources:
+      - "rfc:8621 7"
+      - "james:EmailSubmissionSetSenderHeaderValidationContract#setShouldRejectAnAliasOfTheLoggedInUserAsSender"
+    notes: "James has an optional strict mode that rejects this. The RFC rule is to substitute the identity address."
+
+  - id: SUB-018
+    title: "Reject a message with several From addresses or several From headers"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: should
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "Messages appended over IMAP: one with two addresses in From (the second being another user's address), one with two From header fields, one with two Sender header fields."
+    when: "Each is submitted without envelope."
+    then: "Each gives notCreated of type invalidEmail with properties naming from (or sender). Nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectOtherUserHiddenAfterAnAngleAddressInFromMimeField"
+      - "james:EmailSubmissionSetSenderHeaderValidationContract#setShouldRejectAnotherAddressFollowingTheLoggedInUserInSender"
+      - "rfc:8621 7"
+
+  - id: SUB-019
+    title: "Deliver to the explicit envelope recipients instead of the header recipients"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp]
+    given: "A draft with To t@example.net. Local users R1 and R2."
+    when: "It is submitted with envelope {mailFrom: {email: own address}, rcptTo: [{email: R1}, {email: R2}]}."
+    then: "The queue holds deliveries for R1 and R2 only. R1 and R2 receive the message, whose To header still reads t@example.net, and nothing is sent to t@example.net. EmailSubmission/get returns the envelope as given."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_with_envelope"
+      - "stalwart:mail/submission.rs"
+      - "jmapio:submission/set-create-with-envelope"
+      - "rfc:8621 7.5"
+
+  - id: SUB-020
+    title: "Deduplicate and normalise an explicit rcptTo list"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A sendable draft."
+    when: "It is submitted with rcptTo listing the same address three times, once in different case."
+    then: "The submission is created and the queue holds a single delivery for that address."
+    sources:
+      - "stalwart:mail/submission.rs"
+
+  - id: SUB-021
+    title: "Validate the shape of the envelope object"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft."
+    when: "Separate creates with envelope as a string, envelope without mailFrom, envelope without rcptTo, mailFrom as a string, rcptTo as an object, an rcptTo entry without email, and an unknown key inside envelope or an Address."
+    then: "Each gives notCreated of type invalidProperties with properties naming envelope. Nothing is queued. parameters null, parameters absent and parameters as an empty object are all accepted."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectExtraProperties"
+      - "rfc:8621 7"
+
+  - id: SUB-022
+    title: "Require identityId"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft."
+    when: "EmailSubmission/set create with emailId only, and with identityId null."
+    then: "notCreated has type invalidProperties with properties [identityId], nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectMissingIdentityIdWhenCompatibilityIsDisabled"
+      - "james:EmailSubmissionSetMethodContract#setShouldAcceptMissingIdentityId"
+      - "stalwart:mail/submission.rs"
+    notes: "James accepts a missing identityId by default for old clients. WildDuck follows the RFC, where the property is not optional."
+
+  - id: SUB-023
+    title: "Reject an identityId that cannot be found"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft. Another user B has identity Z. The user destroyed their own extra identity X earlier."
+    when: "Separate creates with identityId set to a random id, a string with characters outside the Id alphabet, Z, and X."
+    then: "Each gives notCreated of type invalidProperties with properties [identityId]. Nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectUnknownIdentityId"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectUnparsableIdentityId"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectIdentityIdOfOtherUsers"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+
+  - id: SUB-024
+    title: "Reject an emailId that cannot be found"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, imap]
+    given: "A valid identity. Another user B has an Email E. The user has an Email D that was destroyed and an Email F flagged Deleted over IMAP."
+    when: "Separate creates without emailId, and with emailId set to a random well formed id, a malformed id, E, D and F."
+    then: "Each gives notCreated of type invalidProperties with properties [emailId]. Nothing is queued and the message of B is not read."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectMessageNotFound"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectUnparsableEmailId"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectMessageOfOtherUsers"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+    notes: "Messages flagged Deleted over IMAP are invisible to JMAP, so they cannot be submitted either."
+
+  - id: SUB-025
+    title: "Reject unknown and server set properties on create"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft and an identity."
+    when: "Separate creates that add an unknown property, id, threadId (even the correct one is fine, a wrong one is not), sendAt, undoStatus canceled, deliveryStatus, dsnBlobIds or mdnBlobIds with values."
+    then: "Each gives notCreated of type invalidProperties naming the property. Nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectExtraProperties"
+      - "rfc:8620 5.3"
+    notes: "James answers invalidArguments for the whole method on an extra property. A per object invalidProperties SetError is the RFC 8620 form."
+
+  - id: SUB-026
+    title: "Accept the creation id of an Email created earlier in the same request"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [none]
+    given: "An identity M and the Drafts mailbox id."
+    when: "One request with Email/set create {m1: draft in Drafts} followed by EmailSubmission/set create {s1: {identityId: M, emailId: #m1}}."
+    then: "The Email is created, the submission is created with emailId equal to the real id of m1, and the message is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCanBeChainedAfterEmailSet"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_creationid"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_issue2285"
+      - "rfc:8620 5.3"
+
+  - id: SUB-027
+    title: "Reject a creation reference that does not resolve"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [none]
+    given: "A request in which the Email/set create of m1 fails (for example invalid mailboxIds), or no m1 exists at all."
+    when: "The following EmailSubmission/set create uses emailId #m1."
+    then: "notCreated.s1 has type invalidProperties with properties [emailId]. Nothing is queued."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: SUB-028
+    title: "Accept the creation id of an Identity created earlier in the same request"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft with From a@example.com, an owned address."
+    when: "One request with Identity/set create {i1: {email: a@example.com}} followed by EmailSubmission/set create with identityId #i1."
+    then: "The submission is created and its identityId is the real id of i1."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldAcceptCustomIdentityId"
+      - "rfc:8620 5.3"
+
+  - id: SUB-029
+    title: "Deliver a message between two local users end to end"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "Local users A and B. A has a draft from A to B with a subject, a text body, an html alternative and one attachment."
+    when: "A submits the draft and the outbound queue is processed by the MTA of the test rig."
+    then: "B finds exactly one new Email in the INBOX through Email/query and Email/get (and through IMAP) with the same From, To, Subject, Message-ID, text, html and attachment content. Email/changes and EmailDelivery push fire for B."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldSendMailSuccessfully"
+      - "stalwart:mail/submission.rs"
+      - "jmapio:submission/set-create-submission"
+      - "fastmail:t/EmailSubmission/get/basic.t"
+    notes: "Needs ZoneMTA with zonemta-wildduck plus an inbound path (Haraka or LMTP) in the test rig. Where that is not available, the same assertions are made on the queued message in the zone-queue collection."
+
+  - id: SUB-030
+    title: "Send a message to oneself"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "User A with a draft from A to A."
+    when: "A submits it and delivery completes."
+    then: "A new, separate Email with a different id arrives in the INBOX of A. The draft itself is unchanged unless onSuccessUpdateEmail was given."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldSendMailSuccessfullyToSelf"
+
+  - id: SUB-031
+    title: "Deliver to every To and Cc recipient"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "Local users A, B and C. A has a draft with To B and Cc C."
+    when: "A submits it without envelope."
+    then: "B and C each receive one copy with identical To and Cc headers."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldSendMailSuccessfullyToBothRecipients"
+
+  - id: SUB-032
+    title: "Strip the Bcc header on delivery while still delivering to Bcc recipients"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "Local users A, B and C. A has a draft with To B and Bcc C."
+    when: "A submits it without envelope."
+    then: "B and C both receive the message. Neither received copy, nor the queued message, contains a Bcc header field or the address of C anywhere in the headers. The Email of A still has its bcc property."
+    sources:
+      - "legacy-proxy:test/unit/submission-bcc.spec.ts"
+      - "rfc:8621 7.5"
+      - "wildduck:lib/maildropper.js"
+
+  - id: SUB-033
+    title: "Remove a folded or trailing Bcc header without damaging the message"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [imap, db]
+    given: "Messages appended over IMAP: one with a Bcc header folded over three lines, one where Bcc is the last header before the blank line, one with two Bcc header fields, one with a body line that starts with the text Bcc and a colon."
+    when: "Each is submitted and the queued message is inspected."
+    then: "All Bcc header fields are gone including continuation lines, the header block is still terminated by one empty line, every other header and the body are byte identical to the original, and the body line is untouched."
+    sources:
+      - "legacy-proxy:test/unit/submission-bcc.spec.ts"
+      - "rfc:8621 7.5"
+
+  - id: SUB-034
+    title: "Keep the submitted message otherwise intact for the recipient"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "A draft with a non ASCII display name in From, an encoded Subject, custom X headers, Reply-To, In-Reply-To and References, and a multipart/mixed structure with an inline image and an attachment."
+    when: "It is submitted to a local user and the received copy is compared with the draft through Email/get on both sides."
+    then: "From, Sender, Reply-To, To, Cc, Subject, Date, Message-ID, In-Reply-To, References and the custom headers are equal, bodyStructure is equal part for part with identical decoded content, and only trace headers (Received and similar) were added."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCreateShouldSendMailSuccessfullyWithNamedFrom"
+      - "james:EmailSubmissionSetMethodContract#setShouldAcceptANonAsciiDisplayNameInFromMimeField"
+      - "legacy-proxy:test/unit/submission-bcc.spec.ts"
+    notes: "The legacy proxy swaps the Message-ID on send. WildDuck must keep it so that the Sent copy and the delivered copy thread together."
+
+  - id: SUB-035
+    title: "DKIM sign the delivered message where a key is configured"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api, smtp, time]
+    given: "A DKIM key registered through POST /dkim for the domain of the sender address. A second sender domain has no key."
+    when: "A message is submitted from each domain to a local user through the full outbound path."
+    then: "The first received copy carries a DKIM-Signature with d equal to the sender domain and the configured selector, and the signature verifies against the registered public key. The second copy has no signature for its domain."
+    sources:
+      - "wildduck:lib/dkim-handler.js"
+      - "wildduck:lib/maildropper.js"
+    notes: "Signing happens in zonemta-wildduck, so this needs the full rig. It proves that JMAP submissions enter the same pipeline as REST submissions."
+
+  - id: SUB-036
+    title: "Do not alter the stored Email when it is submitted"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft with Bcc, known blobId, size, keywords and mailboxIds, and the current Email state."
+    when: "It is submitted without onSuccessUpdateEmail or onSuccessDestroyEmail."
+    then: "Email/get returns the same blobId, size, keywords (still with $draft), mailboxIds (still Drafts) and bcc. The Email state is unchanged and Email/changes is empty. No Sent copy exists."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#implicitSetShouldNotBeAttemptedWhenNotSpecified"
+      - "rfc:8621 7.5"
+      - "wildduck:lib/api/submit.js"
+    notes: "The REST submit endpoint stores a Sent copy and deletes the draft by itself. The JMAP path must do neither."
+
+  - id: SUB-037
+    title: "Allow sending an Email that is not a draft"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "A message in the Sent mailbox (or any other mailbox) without the $draft keyword, with From equal to an owned address and valid recipients."
+    when: "It is submitted with the matching identity."
+    then: "The submission is created and the message is queued. Neither the missing $draft keyword nor the mailbox role matters."
+    sources:
+      - "rfc:8621 7"
+
+  - id: SUB-038
+    title: "Refuse to redirect a received message whose From is not the user's"
+    method: EmailSubmission/set
+    spec: "RFC 8621 9.6"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [lmtp]
+    given: "A message received from an external sender in the INBOX."
+    when: "It is submitted with the main identity and an explicit envelope with mailFrom the main address and rcptTo another address."
+    then: "notCreated has type forbiddenFrom and nothing is queued."
+    sources:
+      - "rfc:8621 9.6"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectOtherUserUsageInFromMimeField"
+    notes: "RFC 8621 9.6 lets a server allow exact redirects as an exception. WildDuck does not: the outbound pipeline would DKIM sign or fail DMARC for a foreign From. Forwarding is done by composing a new message."
+
+  - id: SUB-039
+    title: "Create independent submissions when the same Email is sent twice"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A sendable Email that has already been submitted once (submission S1)."
+    when: "It is submitted again, in a new request and also twice within one EmailSubmission/set call under two creation ids."
+    then: "Each create succeeds with its own id, the queue holds one message per submission, and EmailSubmission/query with emailIds [that id] lists all of them. The recipient receives one copy per submission."
+    sources:
+      - "rfc:8621 7"
+    notes: "The RFC has no uniqueness rule. Clients avoid resending by moving the draft with onSuccessUpdateEmail."
+
+  - id: SUB-040
+    title: "Process several creates independently"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "Two drafts: D1 is sendable, D2 has no recipients."
+    when: "One EmailSubmission/set with create {s1: D1, s2: D2}."
+    then: "created has s1 only, notCreated.s2 has type noRecipients, exactly one message is queued and newState differs from oldState."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: SUB-041
+    title: "Reject a message whose From does not correspond to the identity"
+    method: EmailSubmission/set
+    spec: "RFC 8621 9.6"
+    level: should
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "The user owns a@example.com and b@example.com. A draft has From b@example.com."
+    when: "It is submitted with the identity of a@example.com, then with the identity of b@example.com."
+    then: "The first gives notCreated of type forbiddenFrom and queues nothing. The second is created."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#mimeFromShouldAcceptAliases"
+      - "rfc:8621 9.6"
+      - "rfc:8621 7.5"
+
+  - id: SUB-042
+    title: "Reject another user's address in the From header with forbiddenFrom"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "User A with a draft whose From is the address of user B (or an external address), with and without an explicit envelope whose mailFrom is the address of A."
+    when: "A submits it with the main identity."
+    then: "notCreated has type forbiddenFrom in both variants, nothing is queued, and the From is not silently rewritten to the main address."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectOtherUserUsageInFromMimeField"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectForbiddenFromWithImplicitEnvelope"
+      - "stalwart:mail/submission.rs"
+      - "wildduck:lib/api/submit.js"
+    notes: "The REST submit code rewrites a disallowed From to the main address (validateFromAddress). JMAP must reject instead, so the check happens before the shared handler is called."
+
+  - id: SUB-043
+    title: "Reject another user's address in the Sender header"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "User A with a message whose From is an own address and whose Sender is the address of user B."
+    when: "A submits it, without envelope and with an explicit valid envelope."
+    then: "notCreated has type forbiddenFrom with properties [sender]. When both From and Sender are foreign, properties lists from and sender, each once."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectOtherUserUsageInSenderMimeField"
+      - "james:EmailSubmissionSetMethodContract#setShouldReportBothForbiddenHeaders"
+      - "james:EmailSubmissionSetMethodContract#setShouldReportBothHeadersWhenForbiddenAddressIsRepeated"
+      - "james:EmailSubmissionSetSenderHeaderValidationContract#setShouldAcceptMailsWithoutSender"
+
+  - id: SUB-044
+    title: "Allow any address of the domain with a wildcard identity"
+    method: EmailSubmission/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "The user owns *@wild.example and has the wildcard identity W."
+    when: "Drafts with From anything@wild.example, From ANY@WILD.EXAMPLE, From x@sub.wild.example and From x@other.example are submitted with identityId W."
+    then: "The first two are created with mailFrom equal to the From address. The last two give notCreated of type forbiddenFrom."
+    sources:
+      - "rfc:8621 6"
+      - "james:IdentityGetContract#getIdentityShouldReturnDomainAliases"
+
+  - id: SUB-045
+    title: "Reject an explicit mailFrom the user may not use"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "User A with a valid draft (From an own address)."
+    when: "It is submitted with envelope.mailFrom.email set to the address of user B, and to an external address."
+    then: "notCreated has type forbiddenMailFrom and nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectOtherUserUsageInFromEnvelopeField"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+      - "rfc:8621 9.6"
+    notes: "Stalwart reports forbiddenFrom for an envelope mismatch. The RFC has a separate error for the envelope address."
+
+  - id: SUB-046
+    title: "Accept an explicit mailFrom that is another address of the user"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "The user owns a@example.com and b@example.com, has a fromWhitelist entry ext@partner.example and owns *@wild.example. A draft has From a@example.com."
+    when: "It is submitted with the identity of a@example.com and mailFrom b@example.com, then ext@partner.example, then bounce@wild.example."
+    then: "All three are created and the queue entry sender is the given mailFrom."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#envelopeFromShouldAcceptAliases"
+      - "wildduck:lib/api/submit.js"
+
+  - id: SUB-047
+    title: "Reject an empty mailFrom"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap]
+    given: "A valid draft."
+    when: "It is submitted with envelope.mailFrom.email set to the empty string."
+    then: "notCreated has type forbiddenMailFrom and nothing is queued."
+    sources:
+      - "rfc:8621 7"
+    notes: "The RFC lets a server allow the null return path. WildDuck reserves it for system generated mail such as autoreplies."
+
+  - id: SUB-048
+    title: "Prefer the header error when both From and mailFrom are forbidden"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft whose From is another user's address."
+    when: "It is submitted with an envelope whose mailFrom is also another user's address."
+    then: "notCreated has the single type forbiddenFrom."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldPreferForbiddenHeaderOverForbiddenEnvelope"
+
+  - id: SUB-049
+    title: "Reject a message without a From header"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "Messages appended over IMAP without From: one bare, one with a valid Sender header, one with an empty From value."
+    when: "Each is submitted, with and without an explicit valid envelope."
+    then: "Each gives notCreated of type invalidEmail with properties [from]. Nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectWhenMissingFromMimeField"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectMissingFromWithImplicitEnvelope"
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectMissingFromEvenWhenSenderIsPresent"
+      - "rfc:8621 7.5"
+
+  - id: SUB-050
+    title: "Add a Date header on delivery when the message has none"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [imap, db]
+    given: "A message appended over IMAP with From and To but without a Date header (and one without Message-ID)."
+    when: "It is submitted and the queued message is inspected."
+    then: "The submission is created. The queued message has a Date header close to sendAt and a Message-ID, added by the server, while the stored Email is unchanged and still reports sentAt null."
+    sources:
+      - "rfc:8621 7.5"
+    notes: "Open decision. The RFC lets the server add header fields during delivery, and it also allows invalidEmail with properties [sentAt]. Adding is the usual submission server behaviour. Pick one and keep this scenario in line."
+
+  - id: SUB-051
+    title: "Reject a message without recipients"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft with From but without To, Cc and Bcc."
+    when: "It is submitted without envelope, and separately with an envelope whose rcptTo is an empty array."
+    then: "Both give notCreated of type noRecipients, nothing is queued and the state is unchanged."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldRejectNoRecipients"
+      - "stalwart:mail/submission.rs"
+      - "jmapio:submission/set-no-recipients-error"
+      - "rfc:8621 7.5"
+
+  - id: SUB-052
+    title: "Reject invalid recipient addresses and list them"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A valid draft."
+    when: "It is submitted with rcptTo [good@example.net, rcpt1@localhost@localhost, no-at-sign]."
+    then: "notCreated has type invalidRecipients with an invalidRecipients array holding exactly the two bad values as the client sent them. Nothing is queued, not even for the valid recipient."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_bad_rcpt"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_fail_some_recipients"
+      - "james:EmailSubmissionSetValidateRcptContract#setShouldRejectTheWholeSubmissionWhenASingleRecipientIsInvalid"
+      - "rfc:8621 7.5"
+
+  - id: SUB-053
+    title: "Reject invalid recipients found in the message headers"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "A message appended over IMAP whose To header holds one valid address and one that is not a valid mailbox (an unquoted local part with a space, or a missing domain)."
+    when: "It is submitted without envelope."
+    then: "notCreated has type invalidRecipients listing the bad address, and nothing is queued."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_envelope_reconstruction_injection"
+      - "rfc:8621 7.5"
+
+  - id: SUB-054
+    title: "Accept unknown recipients of local and remote domains"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, db]
+    given: "A valid draft."
+    when: "It is submitted to a syntactically valid address at a remote domain, and to an address at a locally hosted domain that has no mailbox."
+    then: "Both submissions are created and queued. Non existence is reported later by a bounce in the INBOX, not by invalidRecipients."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldAcceptUnknownLocalRecipientWhenRecipientValidationIsDisabled"
+      - "james:EmailSubmissionSetValidateRcptContract#setShouldAcceptRecipientOfARemoteDomain"
+      - "james:EmailSubmissionSetValidateRcptContract#setShouldRejectRecipientOfALocalDomainWithoutMailboxNorMapping"
+    notes: "James can optionally validate local recipients at submission time. WildDuck queues without resolving recipients, as the REST submit endpoint does."
+
+  - id: SUB-055
+    title: "Handle internationalised recipient domains"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A valid draft."
+    when: "It is submitted with an rcptTo address whose domain is given in unicode form, then with a domain label that is not a valid IDN (for example a label starting with a hyphen or containing a forbidden code point)."
+    then: "The first is created and the queue entry targets the same domain (unicode or its punycode form). The second gives notCreated of type invalidRecipients listing the address."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8_bad_idn_domain"
+
+  - id: SUB-056
+    title: "Decide non ASCII local parts consistently"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, db]
+    given: "A valid draft and a recipient address with a non ASCII local part."
+    when: "It is submitted with that recipient, by header and by explicit rcptTo."
+    then: "Either both are created and the queue entry keeps the address unchanged in UTF-8, or both give invalidRecipients listing the address. The result must not differ between the header path and the envelope path, and submissionExtensions must not claim SMTPUTF8 unless the first is true."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8_mismatch"
+    notes: "Open decision, depends on whether the ZoneMTA path can deliver SMTPUTF8 mail. WildDuck itself stores unicode addresses."
+
+  - id: SUB-057
+    title: "Reject more recipients than allowed per message"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "The per message limit const:max:rcpt_to at its default of 400 (or lowered through the settings API). A draft with one more distinct recipient than the limit across To, Cc and Bcc."
+    when: "It is submitted without envelope, and a valid draft is submitted with an explicit rcptTo list that is one over the limit. A third draft has exactly the limit."
+    then: "The first two give notCreated of type tooManyRecipients with maxRecipients equal to the limit as an UnsignedInt, and nothing is queued. The third is created."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_too_many_recipients"
+      - "rfc:8621 7.5"
+      - "wildduck:lib/api/submit.js"
+
+  - id: SUB-058
+    title: "Count recipients after deduplication"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A per message limit of N and a draft listing N distinct addresses, several of them repeated in Cc and Bcc."
+    when: "It is submitted without envelope."
+    then: "The submission is created, the duplicates do not count towards the limit."
+    sources:
+      - "rfc:8621 7"
+
+  - id: SUB-059
+    title: "Enforce the per user daily recipient limit"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, api, db]
+    given: "A user whose recipients limit is set to 5 through the REST API and who has already sent to 4 recipients in the current 24 hour window."
+    when: "A draft with 2 recipients is submitted, then a draft with 1 recipient, then another with 1 recipient."
+    then: "The first gives notCreated of type rateLimit and queues nothing and does not consume allowance. The second is created. The third gives rateLimit again. No submission object exists for the rejected ones."
+    sources:
+      - "wildduck:lib/api/submit.js"
+      - "rfc:8620 5.3"
+    notes: "Maps the REST RateLimitedError. rateLimit is a standard create SetError in RFC 8620 5.3. forbiddenToSend with a description would be the other defensible mapping, the plan names both."
+
+  - id: SUB-060
+    title: "Share the recipient counter with the REST API and SMTP submission"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A user with a recipients limit of 3."
+    when: "One message with 2 recipients is sent through POST /users/:user/submit, then a draft with 2 recipients is submitted over JMAP, then a draft with 1 recipient."
+    then: "The JMAP submission with 2 recipients is rejected with rateLimit and the one with 1 recipient is created. Afterwards GET /users/:user reports 3 recipients used in limits.recipients."
+    sources:
+      - "wildduck:lib/api/submit.js"
+
+  - id: SUB-061
+    title: "Reject a message larger than the server can send with tooLarge"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [imap]
+    given: "A maximum message size configured for sending (lowered for the test) and an Email in the mailbox that is larger than it."
+    when: "The Email is submitted."
+    then: "notCreated has type tooLarge with maxSize equal to the configured limit in octets as an UnsignedInt, and nothing is queued. An Email just under the limit is accepted."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_message_too_large"
+      - "rfc:8621 7.5"
+
+  - id: SUB-062
+    title: "Answer forbiddenToSend when the user may not send at all"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: adapted
+    seed: [jmap, api, db]
+    given: "A user whose sending has been blocked by an administrator while the session is still authenticated (for example suspended after the auth cache was filled, or a sending block flag)."
+    when: "A valid draft is submitted with an Accept-Language header."
+    then: "notCreated has type forbiddenToSend, optionally with a description string meant for the user, newState equals oldState and nothing is queued."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_smtp_rejection"
+      - "james:EmailSubmissionSetExtraValidationContract"
+      - "rfc:8621 7.5"
+      - "rfc:8621 7.5.1"
+    notes: "WildDuck has no separate may not send switch today. Disabled and suspended users are already refused at authentication, so this needs either a race window or a new flag to be testable. Localisation of the description is optional."
+
+  - id: SUB-063
+    title: "Keep queue and submission record consistent on failure"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "State S and a valid draft. Fault injection makes either the queue insert or the submissions store insert fail."
+    when: "The draft is submitted."
+    then: "The create is reported in notCreated (type serverFail or forbiddenToSend), no message stays in the queue, no submission object exists, EmailSubmission/query is unchanged, EmailSubmission/changes since S is empty and onSuccess actions are not run."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_rejected_not_stored"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_unstorable_not_sent"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_smtp_drop"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_unopenable_submbox"
+
+  - id: SUB-064
+    title: "Leave nothing behind for any rejected create"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "State S."
+    when: "Creates are rejected with each of invalidProperties, invalidEmail, noRecipients, invalidRecipients, tooManyRecipients, forbiddenFrom and forbiddenMailFrom."
+    then: "After each one newState equals S, EmailSubmission/query returns the same ids as before, the queue collection has no new entry and the recipient counter is unchanged."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_rejected_not_stored"
+      - "rfc:8620 5.3"
+
+  - id: SUB-065
+    title: "Enforce ifInState before sending anything"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "EmailSubmission state S2 and an older state S1."
+    when: "EmailSubmission/set with ifInState S1 and a valid create plus onSuccessUpdateEmail."
+    then: "The method answers with an error of type stateMismatch, nothing is queued, and no implicit Email/set response follows."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: SUB-066
+    title: "Reject CR, LF and angle brackets in envelope addresses"
+    method: EmailSubmission/set
+    spec: "RFC 8621 9.4"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A valid draft."
+    when: "Separate creates put each of these into mailFrom.email and then into an rcptTo email: an address followed by a closing angle bracket, CR LF and a further SMTP command; an unquoted local part containing a closing angle bracket; an unquoted local part containing a space; an address containing a NUL byte; an address wrapped in angle brackets."
+    then: "A bad mailFrom gives notCreated of type invalidProperties naming envelope. A bad rcptTo gives invalidRecipients whose invalidRecipients array echoes the value exactly as sent. Nothing is queued and no queue entry ever contains a line break in an envelope address."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_envelope_injection"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_bad_rcpt"
+      - "rfc:8621 7"
+
+  - id: SUB-067
+    title: "Reject envelope injection through reconstructed header addresses"
+    method: EmailSubmission/set
+    spec: "RFC 8621 9.4"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [imap, db]
+    given: "Messages appended over IMAP with crafted headers: a From with an unquoted local part containing a space, a From whose quoted local part contains a closing angle bracket followed by SMTP parameter text, the same two constructs in To, and a header value with an encoded word that decodes to CR LF plus a second address."
+    when: "Each is submitted without envelope."
+    then: "A bad From gives notCreated of type invalidEmail with properties [from], a bad recipient gives invalidRecipients. No submission is created with an envelope address containing spaces, angle brackets or line breaks, and encoded words are never decoded into addresses."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_envelope_reconstruction_injection"
+    notes: "Cyrus reports invalidProperties for the bad From. invalidEmail with properties [from] is the RFC 8621 error for an Email that is invalid in some way."
+
+  - id: SUB-068
+    title: "Reject SMTP parameters while submissionExtensions is empty"
+    method: EmailSubmission/set
+    spec: "RFC 8621 1.3.2"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap]
+    given: "A valid draft. The capability advertises no submission extensions."
+    when: "Separate creates with mailFrom.parameters holding SIZE, BODY 8BITMIME, SMTPUTF8 null, RET FULL, ENVID, AUTH or an unknown name, and with an rcptTo parameters object holding NOTIFY, ORCPT or an unknown name."
+    then: "Each gives notCreated of type invalidProperties naming envelope, and nothing is queued. Only the hold parameters of SUB-091 and SUB-092 on mailFrom are accepted."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailShouldBeRejectedWhenContainsInvalidParameterName"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailShouldNotBeSentWhenParamNameIsInvalid"
+      - "rfc:8621 1.3.2"
+      - "rfc:8621 7"
+    notes: "The queue does not pass DSN or SIZE parameters to ZoneMTA (plan section 4.7). Silently dropping them would mislead clients that asked for a DSN."
+
+  - id: SUB-069
+    title: "Reject malformed parameter names and values"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A valid draft."
+    when: "Separate creates with mailFrom.parameters whose key contains a space, an equals sign or CR LF, whose value is a number, an array or an object, or whose value contains CR LF."
+    then: "Each gives notCreated of type invalidProperties naming envelope. Nothing is queued."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_bad_futurerelease"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_envelope_injection"
+      - "rfc:8621 7"
+
+  - id: SUB-070
+    title: "Run an implicit Email/set for onSuccessUpdateEmail"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft D in Drafts with the $draft keyword, the Sent mailbox id and an identity."
+    when: "EmailSubmission/set with create {s1: ...} and onSuccessUpdateEmail {#s1: {mailboxIds/draftsId: null, mailboxIds/sentId: true, keywords/$draft: null}}, call id c1."
+    then: "methodResponses has two entries for c1 in this order: EmailSubmission/set with created.s1, then Email/set whose updated has the key D and which carries accountId, oldState and newState. Email/get then shows D only in Sent, without $draft and with the same id."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#onSuccessUpdateEmailShouldTriggerAnImplicitEmailSetCall"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_creationid"
+      - "stalwart:mail/submission.rs"
+      - "jmapio:submission/set-on-success-update-email"
+      - "rfc:8621 7.5"
+      - "rfc:8621 7.5.1"
+
+  - id: SUB-071
+    title: "Place the implicit Email/set response directly after its EmailSubmission/set"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft D."
+    when: "A request with three calls: Mailbox/get (c0), EmailSubmission/set with onSuccessUpdateEmail (c1), Email/get for D (c2)."
+    then: "methodResponses has four entries in the order Mailbox/get c0, EmailSubmission/set c1, Email/set c1, Email/get c2. The Email/get already sees the result of the implicit update."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_creationid"
+      - "rfc:8621 7.5"
+
+  - id: SUB-072
+    title: "Make no implicit Email/set call when neither argument is given"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft."
+    when: "EmailSubmission/set with a successful create and onSuccessUpdateEmail and onSuccessDestroyEmail omitted, then both null, then an empty object and an empty array."
+    then: "Each time methodResponses has exactly one entry for the call, the EmailSubmission/set response."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#implicitSetShouldNotBeAttemptedWhenNotSpecified"
+      - "rfc:8621 7.5"
+
+  - id: SUB-073
+    title: "Make no implicit Email/set call when nothing succeeded"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A draft without recipients."
+    when: "EmailSubmission/set create {s1: ...} with onSuccessUpdateEmail {#s1: move to Sent}, and in a second run with onSuccessDestroyEmail [#s1]."
+    then: "notCreated.s1 has type noRecipients, there is no Email/set response, and the draft is still in Drafts with $draft and has not been destroyed."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#onSuccessUpdateEmailShouldNotInvokedWhenEmailSubmissionNotCreated"
+      - "james:EmailSubmissionSetMethodContract#onSuccessDestroyEmailShouldNotInvokedWhenEmailSubmissionNotCreated"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+
+  - id: SUB-074
+    title: "Apply onSuccess actions only to the submissions that succeeded"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Drafts D1 (sendable) and D2 (no recipients)."
+    when: "EmailSubmission/set create {s1: D1, s2: D2} with onSuccessUpdateEmail for both #s1 and #s2."
+    then: "One Email/set response follows whose updated has D1 only. D2 is neither in updated nor in notUpdated and is unchanged."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+
+  - id: SUB-075
+    title: "Destroy the Email with onSuccessDestroyEmail"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A sendable draft D."
+    when: "EmailSubmission/set create {s1: D} with onSuccessDestroyEmail [#s1]."
+    then: "An Email/set response follows with destroyed [D]. Email/get reports D as notFound, the message is still queued and delivered, and the submission keeps emailId D and its threadId."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#onSuccessDestroyEmailShouldTriggerAnImplicitEmailSetCall"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_onsuccessdestroy"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_issue2285"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+    notes: "In WildDuck the destroyed draft goes to the archive like any Email/set destroy and can be restored through the REST API for 25 days."
+
+  - id: SUB-076
+    title: "Combine updates and destroys in one implicit Email/set"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Two sendable drafts D1 and D2."
+    when: "EmailSubmission/set create {s1: D1, s2: D2} with onSuccessUpdateEmail {#s1: move to Sent} and onSuccessDestroyEmail [#s2]."
+    then: "Exactly one Email/set response follows, with D1 in updated and D2 in destroyed."
+    sources:
+      - "rfc:8621 7.5"
+
+  - id: SUB-077
+    title: "Reject an onSuccess key that references an unknown creation id"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A sendable draft."
+    when: "EmailSubmission/set create {s1: ...} with onSuccessUpdateEmail {#other: patch}, and in a second run with onSuccessDestroyEmail [#other]."
+    then: "The method answers with an error of type invalidArguments before anything is processed: no submission is created, nothing is queued and there is no Email/set response."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldFailWhenOnSuccessUpdateEmailDoesNotReferenceACreationWithinThisCall"
+      - "james:EmailSubmissionSetMethodContract#setShouldFailWhenOnSuccessDestroyEmailDoesNotReferenceACreationWithinThisCall"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_onsuccess_invalid_subids"
+    notes: "Validating the arguments first matters: otherwise the mail is sent and the draft silently stays in Drafts. Cyrus uses invalidProperties as the method error type, James invalidArguments."
+
+  - id: SUB-078
+    title: "Reject an onSuccess key that is neither a creation reference nor a submission touched by the call"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A sendable draft, and an existing submission X that the call does not update or destroy."
+    when: "EmailSubmission/set create {s1: ...} with onSuccessUpdateEmail keyed s1 (the creation id without the hash sign), keyed by a random id, and keyed by X. Also with onSuccessUpdateEmail as an array, a patch value that is not an object, and onSuccessDestroyEmail as a string."
+    then: "Each answers with a method error of type invalidArguments, nothing is queued and no Email is changed."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#setShouldFailWhenOnSuccessUpdateEmailMissesTheCreationIdSharp"
+      - "james:EmailSubmissionSetMethodContract#setShouldFailWhenOnSuccessDestroyEmailMissesTheCreationIdSharp"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_onsuccess_invalid_subids"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_onsuccess_not_using"
+
+  - id: SUB-079
+    title: "Accept a creation reference of maximum length"
+    method: EmailSubmission/set
+    spec: "RFC 8620 1.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft and a creation id of 255 characters from the Id alphabet."
+    when: "EmailSubmission/set create with that creation id, referenced with a hash sign in onSuccessUpdateEmail, and in a second run in onSuccessDestroyEmail."
+    then: "The submission is created under that key and the implicit Email/set is performed."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#onSuccessUpdateEmailShouldAcceptAMaximumLengthCreationReference"
+      - "james:EmailSubmissionSetMethodContract#onSuccessDestroyEmailShouldAcceptAMaximumLengthCreationReference"
+
+  - id: SUB-080
+    title: "Keep the submission when the implicit Email/set fails"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A sendable draft D."
+    when: "EmailSubmission/set create {s1: D} with onSuccessUpdateEmail {#s1: {mailboxIds/unknownMailboxId: true, mailboxIds/draftsId: null}}."
+    then: "created.s1 is present and the message is queued. The Email/set response lists D in notUpdated with type invalidProperties, and D is unchanged in Drafts."
+    sources:
+      - "rfc:8621 7.5"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_scheduled_send_fail"
+
+  - id: SUB-081
+    title: "Report tooManyMailboxes when the patch adds Sent without removing Drafts"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap]
+    given: "A sendable draft D in Drafts."
+    when: "EmailSubmission/set create {s1: D} with onSuccessUpdateEmail {#s1: {mailboxIds/sentId: true, keywords/$draft: null}}."
+    then: "The submission is created and sent. The Email/set response has D in notUpdated with type tooManyMailboxes, and D stays in Drafts with $draft because the patch is applied atomically."
+    sources:
+      - "rfc:8621 4.6"
+      - "wildduck:lib/message-handler.js"
+    notes: "maxMailboxesPerEmail is 1. Clients that follow the RFC example remove the Drafts id in the same patch and are not affected."
+
+  - id: SUB-082
+    title: "Accept a whole property replacement in the onSuccess patch"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft D with keywords $draft and $seen."
+    when: "EmailSubmission/set create {s1: D} with onSuccessUpdateEmail {#s1: {mailboxIds: {sentId: true}, keywords: {$seen: true}}}."
+    then: "The Email/set response has D in updated. D is in Sent only, its keywords are exactly $seen, and its id, blobId, threadId and receivedAt are unchanged."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_creationid"
+      - "stalwart:mail/submission.rs"
+
+  - id: SUB-083
+    title: "End up with exactly one copy in Sent"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "A sendable draft D, Sent and Drafts with known totalEmails."
+    when: "D is submitted with onSuccessUpdateEmail moving it to Sent, and the outbound queue is fully processed by ZoneMTA with uploadSentMessages enabled."
+    then: "Sent has one more Email, which is D itself, and Drafts has one less. No second copy appears in Sent later, checked over JMAP and IMAP after delivery completed. The Sent copy still has its Bcc header and reports hasAttachment as the draft did."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetShouldSetCorrectlyHasAttachmentPropertyOnMessageInSentMailbox"
+      - "wildduck:lib/api/submit.js"
+      - "wildduck:lib/maildropper.js"
+    notes: "Plan section 4.7, verified: zonemta-wildduck uploads to Sent only for mail it receives over SMTP, and Maildropper inserts bypass that hook."
+
+  - id: SUB-084
+    title: "Show the implicit update in Email/changes and Mailbox counters"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Email state E1 and Mailbox counts for Drafts and Sent before submitting draft D with onSuccessUpdateEmail (move to Sent, clear $draft)."
+    when: "Email/changes and Mailbox/changes since E1, and Mailbox/get."
+    then: "The implicit Email/set oldState is E1 and its newState equals the current Email state. Email/changes lists D as updated, not destroyed plus created. Mailbox/changes lists Drafts and Sent as updated, with totalEmails moved by one each."
+    sources:
+      - "rfc:8621 7.5.1"
+      - "rfc:8620 5.2"
+
+  - id: SUB-085
+    title: "Keep EmailSubmission and Email states separate"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "EmailSubmission state S1 and Email state E1."
+    when: "A submission is created with onSuccessUpdateEmail, then an unrelated Email keyword is changed."
+    then: "The EmailSubmission/set response reports oldState S1 and a new submission state S2, the implicit Email/set reports Email states. The later keyword change moves the Email state only, EmailSubmission/get still returns S2."
+    sources:
+      - "rfc:8621 7.5.1"
+
+  - id: SUB-086
+    title: "Run onSuccess actions for a submission updated in the call"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, time]
+    given: "A pending delayed submission X whose Email D was moved to Sent."
+    when: "EmailSubmission/set update {X: {undoStatus: canceled}} with onSuccessUpdateEmail {X: {mailboxIds: {draftsId: true}, keywords/$draft: true}}."
+    then: "updated has X, and an Email/set response follows with D in updated. D is back in Drafts with $draft."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+
+  - id: SUB-087
+    title: "Skip onSuccess actions for a submission whose update failed"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A submission X with undoStatus final whose Email D is in Sent."
+    when: "EmailSubmission/set update {X: {undoStatus: canceled}} with onSuccessUpdateEmail {X: move D to Drafts}."
+    then: "notUpdated.X has type cannotUnsend, there is no Email/set response and D stays in Sent."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+
+  - id: SUB-088
+    title: "Run onSuccessDestroyEmail for a submission destroyed in the call"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A submission X with undoStatus final whose Email D still exists."
+    when: "EmailSubmission/set destroy [X] with onSuccessDestroyEmail [X]."
+    then: "destroyed has X, and an Email/set response follows with destroyed [D]. If D had been destroyed before, the implicit Email/set reports it in notDestroyed with type notFound and the submission is destroyed all the same."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7.5"
+
+  - id: SUB-089
+    title: "Make the new submission id usable later in the same request"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft."
+    when: "One request with EmailSubmission/set create {s1: ...} followed by EmailSubmission/get with ids [#s1]."
+    then: "The get returns the object just created, with the same id as created.s1.id."
+    sources:
+      - "rfc:8620 5.3"
+      - "rfc:8620 3.3"
+
+  - id: SUB-090
+    title: "Compose, send and file a message in a single request"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [none]
+    given: "Mailbox ids of Drafts and Sent and an identity."
+    when: "One request: Email/set create {m1: draft in Drafts with $draft}, EmailSubmission/set create {s1: {emailId: #m1, identityId}} with onSuccessUpdateEmail {#s1: move to Sent, clear $draft}, Email/get ids [#m1] properties [mailboxIds, keywords]."
+    then: "Four responses come back (Email/set, EmailSubmission/set, implicit Email/set, Email/get). The final Email/get shows the message in Sent only, without $draft, and one message is queued."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_creationid"
+      - "james:EmailSubmissionSetMethodContract#emailSubmissionSetCanBeChainedAfterEmailSet"
+      - "jmapio:submission/set-on-success-update-email"
+
+  - id: SUB-091
+    title: "Delay sending with the HOLDFOR parameter"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A valid draft and maxDelayedSend greater than 3600."
+    when: "It is submitted with envelope.mailFrom.parameters {holdfor: 3600 as a string} and explicit rcptTo."
+    then: "The submission is created with sendAt equal to the creation time plus 3600 seconds (within a few seconds), undoStatus pending, and the queue entry is scheduled for sendAt. The parameter name is matched case insensitively (HOLDFOR works too)."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldSubmitedMailSuccessfullyWithHoldFor"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#responseShouldContainSendAtPropertyWhenUseHoldFor"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_futurerelease"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7"
+    notes: "See SUB-001 for the advertising question. The stored envelope keeps the parameter as given."
+
+  - id: SUB-092
+    title: "Delay sending with the HOLDUNTIL parameter"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A valid draft."
+    when: "It is submitted with mailFrom.parameters {holduntil: a UTC date-time two hours ahead}."
+    then: "The submission is created with sendAt equal to that instant exactly, undoStatus pending, and the queue entry is scheduled for it."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldSubmitedMailSuccessfullyWithHoldUntil"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#responseShouldContainSendAtPropertyWhenUseHoldUntil"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7"
+
+  - id: SUB-093
+    title: "Hold a delayed message until sendAt and deliver it afterwards"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "A delayed submission from A to local user B with sendAt a short time ahead (or a controlled clock)."
+    when: "The INBOX of B is checked before sendAt and again after it."
+    then: "Before sendAt B has not received the message and undoStatus is pending. After sendAt the message arrives exactly once, undoStatus becomes final, and the submission is reported as updated by EmailSubmission/changes."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldDelayEmailWithHoldFor"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldDeliverEmailWhenHoldForExpired"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldDelayEmailWithHoldUntil"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldDeliverEmailWhenHoldUntilExpired"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_futurerelease"
+
+  - id: SUB-094
+    title: "Send immediately for a zero hold"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A valid draft."
+    when: "It is submitted with holdfor 0."
+    then: "The submission is created, sendAt is the creation time and the queue entry is due immediately."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldDeliveryEmailWhenHoldForIsZero"
+      - "james:EmailSubmissionSetMethodContract#zeroHoldForShouldBeAcceptedWhenDelayedSendsAreNotSupported"
+
+  - id: SUB-095
+    title: "Reject a hold beyond maxDelayedSend"
+    method: EmailSubmission/set
+    spec: "RFC 8621 1.3.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "maxDelayedSend M from the account capability."
+    when: "Separate creates with holdfor M plus 1, with holduntil more than M seconds ahead, with holdfor exactly M, and with holduntil just inside M."
+    then: "The first two give notCreated of type invalidProperties naming envelope and queue nothing. The last two are created."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldForGreaterThanSupportedValue"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldUntilTooFar"
+      - "rfc:8621 1.3.2"
+
+  - id: SUB-096
+    title: "Reject malformed hold values"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A valid draft."
+    when: "Separate creates with holdfor set to a negative number, an empty string, a blank, 30a, null, and holduntil set to an empty string, null, an array, a non date string, and a date-time without the Z zone."
+    then: "Each gives notCreated of type invalidProperties naming envelope. Nothing is queued."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_bad_futurerelease"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldForIsNegative"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldForIsNotANumber"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldUntilIsNotADateTime"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailShouldBeSentImmediatelyWhenHoldForIsNull"
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailShouldBeSentImmediatelyWhenHoldUntilIsNull"
+    notes: "James sends immediately when the value is null, Cyrus rejects. Both hold parameters require a value, so rejecting is expected here."
+
+  - id: SUB-097
+    title: "Treat a HOLDUNTIL in the past as an immediate send"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, db]
+    given: "A valid draft."
+    when: "It is submitted with holduntil one hour in the past."
+    then: "The submission is created, sendAt is the creation time (not the past instant) and the queue entry is due immediately."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedEmailWhenHoldUntilIsInThePast"
+      - "wildduck:lib/api/submit.js"
+    notes: "James rejects a past time. The WildDuck queue replaces past send times with now, and sendAt must then be the creation time per RFC 8621 7. Open decision between the two."
+
+  - id: SUB-098
+    title: "Reject HOLDFOR together with HOLDUNTIL"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A valid draft."
+    when: "It is submitted with mailFrom.parameters holding both holdfor and holduntil."
+    then: "notCreated has type invalidProperties naming envelope, nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailSubmissionSetCreateShouldBeRejectedWhenMailContainsBothHoldForAndHoldUntil"
+
+  - id: SUB-099
+    title: "Reject hold parameters on recipients"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A valid draft."
+    when: "It is submitted with holdfor or holduntil inside the parameters of an rcptTo entry."
+    then: "notCreated has type invalidProperties naming envelope, nothing is queued."
+    sources:
+      - "james:EmailSubmissionSetMethodFutureReleaseContract#emailShouldBeRejectedWhenRcptToContainsDelayMailParameters"
+
+  - id: SUB-100
+    title: "Reject hold parameters when delayed send is switched off"
+    method: EmailSubmission/set
+    spec: "RFC 8621 1.3.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A server configured with delayed send disabled, so maxDelayedSend is 0."
+    when: "A valid draft is submitted with holdfor 60, then with a future holduntil, then with holdfor 0."
+    then: "The first two give notCreated of type invalidProperties naming envelope. holdfor 0 is accepted and sent immediately."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#holdForShouldBeRejectedWhenDelayedSendsAreNotSupported"
+      - "james:EmailSubmissionSetMethodContract#holdUntilShouldBeRejectedWhenDelayedSendsAreNotSupported"
+      - "james:EmailSubmissionSetMethodContract#zeroHoldForShouldBeAcceptedWhenDelayedSendsAreNotSupported"
+      - "rfc:8621 1.3.2"
+
+  - id: SUB-101
+    title: "Run onSuccess actions at submission time for a delayed send"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, time]
+    given: "A valid draft D."
+    when: "It is submitted with holdfor 3600 and onSuccessUpdateEmail moving it to Sent."
+    then: "The implicit Email/set is in the same response and D is in Sent at once, long before sendAt. Nothing further is changed on D when the message is released."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_cancel_creation"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_scheduled_send_no_move"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_scheduled_send_null_onsend"
+      - "rfc:8621 7.5"
+    notes: "Cyrus has vendor extensions that defer the move to send time. They are not part of RFC 8621 and not planned."
+
+  - id: SUB-102
+    title: "Send the content as it was when the submission was created"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "A delayed submission X for Email D to local user B."
+    when: "Before sendAt, D is moved, gets other keywords, and is finally destroyed through Email/set. Then sendAt passes."
+    then: "B receives the message unchanged at sendAt. X still has emailId D and its threadId, Email/get for D reports notFound, and X was not canceled."
+    sources:
+      - "rfc:8621 7.5"
+      - "cyrus:JMAPEmailSubmission/futurerelease_fail_onsend_reconstruct"
+    notes: "Holds because Maildropper stores its own copy of the message in the queue."
+
+  - id: SUB-103
+    title: "Do not charge queued delayed messages to the mail storage quota"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "storageUsed of the user from GET /users/:user before submitting."
+    when: "A draft is submitted with a long hold and then destroyed with onSuccessDestroyEmail."
+    then: "storageUsed drops by the size of the draft and is not increased by the queued copy."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_futurerelease_quota_storage"
+
+  - id: SUB-104
+    title: "Cancel a pending submission"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "A delayed submission X to local user B with undoStatus pending."
+    when: "EmailSubmission/set update {X: {undoStatus: canceled}}, then wait past sendAt."
+    then: "updated has X and newState changed. EmailSubmission/get shows undoStatus canceled, the queue no longer holds the message, and B never receives it."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_cancel_creation"
+      - "rfc:8621 7"
+      - "wildduck:lib/maildropper.js"
+
+  - id: SUB-105
+    title: "Answer cannotUnsend once the submission is final"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A submission X whose queue entries have been locked or delivered, undoStatus final."
+    when: "EmailSubmission/set update {X: {undoStatus: canceled}}."
+    then: "notUpdated.X has type cannotUnsend, undoStatus stays final and the state is unchanged."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_update_readonly"
+      - "james:EmailSubmissionSetMethodContract#cancelingASubmissionCreatedInTheSameCallShouldBeReportedAsCannotUnsend"
+      - "rfc:8621 7.5"
+
+  - id: SUB-106
+    title: "Answer cannotUnsend when delivery has started for some recipients"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, db]
+    given: "A submission X to two recipient domains, read as pending a moment ago. The queue entry for one domain is now locked by the MTA, the other is not."
+    when: "EmailSubmission/set update {X: {undoStatus: canceled}}."
+    then: "notUpdated.X has type cannotUnsend. No queue entry is removed, so the second recipient still gets the message, and X now reads undoStatus final."
+    sources:
+      - "rfc:8621 7"
+      - "wildduck:lib/maildropper.js"
+    notes: "canceled promises that no recipient got the message. removeFromQueue deletes only unlocked entries, so the JMAP layer must check for locked entries first and must not do a partial removal."
+
+  - id: SUB-107
+    title: "Allow canceling an immediate submission while it is still pending"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A submission X created without a hold, the MTA has not picked it up (queue consumer stopped in the test)."
+    when: "EmailSubmission/set update {X: {undoStatus: canceled}}."
+    then: "updated has X, undoStatus is canceled and the queue entry is gone."
+    sources:
+      - "rfc:8621 7"
+
+  - id: SUB-108
+    title: "Reject updates of anything other than undoStatus to canceled"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A pending submission X."
+    when: "Separate updates of X with identityId, emailId, envelope, sendAt, threadId, deliveryStatus or an unknown property changed, and with undoStatus set to final, to pending and to a random string."
+    then: "Each gives notUpdated.X of type invalidProperties naming the property, and X is unchanged. An update that repeats the current value of an immutable property is accepted as a no operation."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_update_readonly"
+      - "rfc:8621 7"
+      - "rfc:8620 5.3"
+
+  - id: SUB-109
+    title: "Do not revive a canceled submission"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A canceled submission X."
+    when: "EmailSubmission/set update {X: {undoStatus: pending}}, then update {X: {undoStatus: canceled}}."
+    then: "The first gives notUpdated.X of type invalidProperties and nothing is queued. The second succeeds as a no operation with X in updated and no state change."
+    sources:
+      - "rfc:8621 7"
+
+  - id: SUB-110
+    title: "Report unknown ids on update as notFound"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A submission Y belonging to another user."
+    when: "EmailSubmission/set update with a random id, with Y, and with the key #s1 for a submission created under s1 in the same call."
+    then: "Each key is in notUpdated with type notFound. The submission of the other user is untouched and the one created in the call is sent normally."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#cancelingAnUnknownSubmissionShouldBeReportedAsNotUpdated"
+      - "james:EmailSubmissionSetMethodContract#cancelingASubmissionCreatedInTheSameCallShouldBeReportedAsCannotUnsend"
+      - "rfc:8620 5.3"
+    notes: "James reports cannotUnsend for the creation reference. Update keys are ids, not creation references, so notFound is expected."
+
+  - id: SUB-111
+    title: "Destroying a pending submission removes the record but not the delivery"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, smtp, time]
+    given: "A delayed submission X to local user B, undoStatus pending."
+    when: "EmailSubmission/set destroy [X], then wait past sendAt."
+    then: "destroyed has X and EmailSubmission/get reports it notFound. The message stays in the queue and B receives it at sendAt."
+    sources:
+      - "rfc:8621 7.5"
+      - "james:EmailSubmissionSetMethodContract#destroyShouldBeReportedAsNotDestroyed"
+    notes: "Conflict with the brief, which says destroying while pending removes the message from the queue. RFC 8621 7.5 says destroying a submission MUST NOT affect the deliveries it represents. If the team prefers not to lose the handle on a pending message, the allowed alternative is to refuse the destroy of a pending submission with forbidden. Either way destroy must not cancel."
+
+  - id: SUB-112
+    title: "Destroy final and canceled submissions"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A final submission X1 and a canceled submission X2."
+    when: "EmailSubmission/set destroy [X1, X2]."
+    then: "Both are in destroyed, EmailSubmission/get reports them notFound, EmailSubmission/query no longer lists them, and the Emails they referenced are untouched."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "james:EmailSubmissionSetMethodContract#destroyShouldBeReportedAsNotDestroyed"
+      - "rfc:8621 7.5"
+    notes: "James never destroys because it stores nothing."
+
+  - id: SUB-113
+    title: "Report unknown ids on destroy as notFound"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A submission Y of another user."
+    when: "EmailSubmission/set destroy [randomId, Y, #s1] where s1 is created in the same call."
+    then: "All three are in notDestroyed with type notFound, Y still exists for its owner and s1 is created and sent."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#destroyingASubmissionCreatedInTheSameCallShouldBeForbidden"
+      - "rfc:8620 5.3"
+
+  - id: SUB-114
+    title: "Reflect a queue deletion made through the REST API"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A pending delayed submission X with state S1. Its queue id is known from the outbound property of the Email in the REST API."
+    when: "DELETE /users/:user/outbound/:queueId, then EmailSubmission/get and EmailSubmission/changes since S1."
+    then: "X has undoStatus canceled and is listed in updated."
+    sources:
+      - "wildduck:lib/api/messages.js"
+      - "wildduck:lib/maildropper.js"
+
+  - id: SUB-115
+    title: "Reflect a reschedule made through the REST API"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap, api]
+    given: "A pending delayed submission X with state S1."
+    when: "PUT /users/:user/outbound/:queueId with a new sendTime, then EmailSubmission/get and EmailSubmission/changes since S1."
+    then: "sendAt of X is the new time, the time the server will release the message, and X is listed in updated. A reschedule beyond maxDelayedSend is refused by the REST API as today."
+    sources:
+      - "wildduck:lib/api/messages.js"
+      - "rfc:8621 7"
+    notes: "sendAt is immutable for JMAP clients but server set, and must stay truthful about the release time."
+
+  - id: SUB-116
+    title: "Expose the queue entry of a JMAP submission in the REST API"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A draft D submitted with a hold and moved to Sent through onSuccessUpdateEmail."
+    when: "GET /users/:user/mailboxes/:sent/messages/:id for D."
+    then: "The response has an outbound array with one entry for the queued message, with its queue id and recipients, exactly as for a message sent through the REST submit endpoint. The id can be used with the outbound endpoints of SUB-114 and SUB-115."
+    sources:
+      - "wildduck:lib/api/messages.js"
+      - "wildduck:lib/api/submit.js"
+
+  - id: SUB-117
+    title: "Do not create submission objects for mail sent outside JMAP"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [api, lmtp]
+    given: "EmailSubmission state S and a known query result."
+    when: "A message is sent through POST /users/:user/submit, a forward target relays an incoming message and an autoreply is generated."
+    then: "EmailSubmission/query returns the same ids, EmailSubmission/get returns state S and EmailSubmission/changes since S is empty."
+    sources:
+      - "wildduck:lib/api/submit.js"
+      - "wildduck:lib/autoreply.js"
+    notes: "The submissions store is written only by the JMAP worker (plan section 4.7)."
+
+  - id: SUB-118
+    title: "Fetch submissions by id and report unknown ids"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7.1"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Submissions X1 and X2 of the user, a submission Y of another user."
+    when: "EmailSubmission/get with ids [X1, randomId, Y]."
+    then: "list has X1 only, notFound has randomId and Y, state is a non empty string and accountId is echoed."
+    sources:
+      - "jmapio:submission/get-not-found"
+      - "fastmail:t/EmailSubmission/get/basic.t"
+      - "stalwart:mail/submission.rs"
+
+  - id: SUB-119
+    title: "Handle null and empty ids in EmailSubmission/get"
+    method: EmailSubmission/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A fresh account, then the same account with two submissions."
+    when: "EmailSubmission/get with ids null and with ids [] in both situations."
+    then: "Fresh account: both return list [] and notFound []. With two submissions: ids null returns both objects (up to maxObjectsInGet), ids [] returns an empty list."
+    sources:
+      - "jmapio:submission/get-empty"
+      - "fastmail:t/EmailSubmission/get/basic.t"
+      - "rfc:8620 5.1"
+
+  - id: SUB-120
+    title: "Honour properties in EmailSubmission/get"
+    method: EmailSubmission/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A submission X."
+    when: "EmailSubmission/get with properties [undoStatus, sendAt], with properties [], and with properties [undoStatus, bogus]."
+    then: "The first returns exactly id, undoStatus and sendAt. The second returns only id. The third answers invalidArguments."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_set_persists_reconstructed_envelope"
+      - "rfc:8620 5.1"
+
+  - id: SUB-121
+    title: "Keep identityId, emailId and threadId after the referenced objects are gone"
+    method: EmailSubmission/get
+    spec: "RFC 8621 7.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A final submission X made with an extra identity I for Email D."
+    when: "D is destroyed, I is destroyed (or its address is removed through the REST API), then EmailSubmission/get for X."
+    then: "X is still returned with the original identityId, emailId and threadId. Email/get for D, Thread/get for the thread when it has no other Email, and Identity/get for I each report notFound."
+    sources:
+      - "rfc:8621 7.5"
+
+  - id: SUB-122
+    title: "Expire old submission objects and report them as destroyed"
+    method: EmailSubmission/changes
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db, time]
+    given: "A final submission X older than the configured submission retention, a pending delayed submission P of the same age, and state S1."
+    when: "The cleanup job runs, then EmailSubmission/get and EmailSubmission/changes since S1."
+    then: "X is notFound and listed in destroyed. P is kept because it has not been sent yet."
+    sources:
+      - "rfc:8621 7"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_query_long"
+    notes: "The RFC allows the server to destroy submissions any time after sending. The retention value is a WildDuck setting to define. Tombstones stay at least 30 days."
+
+  - id: SUB-123
+    title: "Return no changes for the current state"
+    method: EmailSubmission/changes
+    spec: "RFC 8621 7.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "State S from EmailSubmission/get, on a fresh account and on one with submissions."
+    when: "EmailSubmission/changes with sinceState S."
+    then: "oldState and newState equal S, hasMoreChanges is false, created, updated and destroyed are empty arrays."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_changes"
+      - "jmapio:submission/changes-no-changes"
+      - "jmapio:submission/changes-response-structure"
+      - "fastmail:t/EmailSubmission/changes/basic.t"
+
+  - id: SUB-124
+    title: "Report created, updated and destroyed submissions exactly"
+    method: EmailSubmission/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, time]
+    given: "State S1 and an existing final submission X0."
+    when: "Create delayed submissions X1 and X2, cancel X2, destroy X0, then EmailSubmission/changes since S1. Then call it again with the state taken right after the creates."
+    then: "Since S1: created is [X1, X2] in any order, updated is empty, destroyed is [X0]. Since the later state: updated is [X2] and destroyed is [X0]. newState equals the state of EmailSubmission/get."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_changes"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8620 5.2"
+
+  - id: SUB-125
+    title: "Report the server side transition to final as an update"
+    method: EmailSubmission/changes
+    spec: "RFC 8621 7"
+    level: should
+    phase: 3
+    applies: yes
+    seed: [jmap, db, time]
+    given: "A pending submission X and state S1."
+    when: "The MTA starts delivery, then EmailSubmission/changes since S1 and EmailSubmission/get."
+    then: "X is in updated, undoStatus is final and deliveryStatus moved from queued to unknown. An EventSource client subscribed to EmailSubmission gets a state event."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7"
+    notes: "The JMAP worker has to observe the queue (poll or change stream), ZoneMTA does not write to the submissions store."
+
+  - id: SUB-126
+    title: "Answer cannotCalculateChanges for unknown or expired states and page with maxChanges"
+    method: EmailSubmission/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db, time]
+    given: "State S1 followed by five submissions."
+    when: "EmailSubmission/changes with a never issued state, with the Email state string, with a state older than the tombstone retention, and with sinceState S1 and maxChanges 2 repeated until done."
+    then: "The first three answer cannotCalculateChanges. Paging returns at most 2 ids per response with hasMoreChanges true until the last page, and the union is exactly the five ids."
+    sources:
+      - "rfc:8620 5.2"
+
+  - id: SUB-127
+    title: "Query all submissions and return the standard response"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A fresh account, then the same account with three submissions."
+    when: "EmailSubmission/query without filter and with calculateTotal true."
+    then: "Fresh: ids [], position 0, total 0. With data: ids has the three ids, total 3, position 0. Both responses carry accountId, a queryState string and canCalculateChanges as a boolean. Without calculateTotal the total property is absent."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_query"
+      - "jmapio:submission/query-all"
+      - "jmapio:submission/query-response-structure"
+      - "fastmail:t/EmailSubmission/query/basic.t"
+
+  - id: SUB-128
+    title: "Accept a null or empty filter and reject a malformed one"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Three submissions."
+    when: "EmailSubmission/query with filter null, with filter {}, with filter 1, with a condition using an unknown property, and with identityIds given as a string."
+    then: "null and the empty object return all three ids. The other three answer invalidArguments."
+    sources:
+      - "jmapio:submission/query-filter-null-accepted"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_query"
+      - "rfc:8621 7.3"
+
+  - id: SUB-129
+    title: "Filter by identityIds"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Submissions X1 and X2 made with identity I1 and X3 made with identity I2."
+    when: "EmailSubmission/query with filter identityIds [I1], then [I1, I2], then [unknownId], then []."
+    then: "The results are X1 and X2, then all three, then none, then none."
+    sources:
+      - "rfc:8621 7.3"
+
+  - id: SUB-130
+    title: "Filter by emailIds"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Email D1 submitted twice (X1, X2), Email D2 submitted once (X3). D2 has since been destroyed."
+    when: "EmailSubmission/query with filter emailIds [D1], then [D2]."
+    then: "The first returns X1 and X2. The second returns X3 even though the Email no longer exists."
+    sources:
+      - "rfc:8621 7.3"
+      - "rfc:8621 7.5"
+
+  - id: SUB-131
+    title: "Filter by threadIds"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Two submitted Emails in thread T1 (X1, X2) and one in thread T2 (X3)."
+    when: "EmailSubmission/query with filter threadIds [T1], then [T2, T1]."
+    then: "The first returns X1 and X2, the second all three."
+    sources:
+      - "rfc:8621 7.3"
+
+  - id: SUB-132
+    title: "Filter by undoStatus"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, db, time]
+    given: "One pending, one final and one canceled submission."
+    when: "EmailSubmission/query with filter undoStatus pending, final, canceled, and with an undefined value such as sent."
+    then: "Each of the three valid values returns exactly the matching id and agrees with undoStatus from EmailSubmission/get. The undefined value returns no ids or answers invalidArguments, consistently."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "jmapio:submission/query-filter-undo-status"
+      - "rfc:8621 7.3"
+
+  - id: SUB-133
+    title: "Filter by before and after on sendAt"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, time]
+    given: "Submissions with sendAt t1 (immediate), t2 (held one hour) and t3 (held one day)."
+    when: "EmailSubmission/query with filter before t2, after t2, and after t2 combined with before t3."
+    then: "before t2 returns only the t1 submission (strictly earlier). after t2 returns the t2 and t3 submissions (same or later). The combination returns only the t2 submission."
+    sources:
+      - "rfc:8621 7.3"
+
+  - id: SUB-134
+    title: "Combine conditions and FilterOperators"
+    method: EmailSubmission/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, time]
+    given: "Submissions that differ by identity, undoStatus and sendAt."
+    when: "EmailSubmission/query with one condition holding identityIds and undoStatus together, with an OR of two undoStatus conditions, and with a NOT around an identityIds condition."
+    then: "The single condition matches only submissions meeting both properties. OR returns the union and NOT the complement, each compared with a client side evaluation over EmailSubmission/get."
+    sources:
+      - "rfc:8621 7.3"
+      - "rfc:8620 5.5"
+
+  - id: SUB-135
+    title: "Sort by emailId, threadId and sentAt"
+    method: EmailSubmission/query
+    spec: "RFC 8621 7.3"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap, time]
+    given: "Five submissions over three Emails in two threads with different sendAt values."
+    when: "EmailSubmission/query sorted by emailId, by threadId and by sentAt, each ascending and descending, and by threadId then sentAt."
+    then: "Each result is ordered by the property value (ids as strings, sentAt by the sendAt instant), descending being the exact reverse where values are distinct. Ties keep a stable order across repeated calls."
+    sources:
+      - "rfc:8621 7.3"
+    notes: "RFC 8621 7.3 names the sort property sentAt although the object property is sendAt. WildDuck accepts sentAt as specified and treats sendAt as an alias."
+
+  - id: SUB-136
+    title: "Reject unsupported sort properties"
+    method: EmailSubmission/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Any submissions."
+    when: "EmailSubmission/query with sort on undoStatus, on a random property name, and with a Comparator that has no property."
+    then: "The first two answer with an error of type unsupportedSort, the malformed Comparator with invalidArguments."
+    sources:
+      - "rfc:8620 5.5"
+
+  - id: SUB-137
+    title: "Return a stable default order without sort"
+    method: EmailSubmission/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Ten submissions."
+    when: "EmailSubmission/query without sort, twice."
+    then: "Both calls return the same order, and paging over it with position and limit yields every id exactly once."
+    sources:
+      - "rfc:8620 5.5"
+
+  - id: SUB-138
+    title: "Page with position, limit and anchor"
+    method: EmailSubmission/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "Ten submissions sorted by sentAt ascending, ids q0 to q9."
+    when: "Queries with position 3 limit 4, position -2, position 50, limit 0, anchor q5 with anchorOffset -2 and limit 3, anchor set to an unknown id, and a negative limit."
+    then: "The results are q3 to q6 with position 3, q8 and q9 with position 8, an empty list, an empty list with total still 10 when requested, q3 to q5 with position 3, an error of type anchorNotFound, and invalidArguments."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_query_long"
+
+  - id: SUB-139
+    title: "Change queryState when the result could have changed"
+    method: EmailSubmission/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "queryState Q1 for a query without filter."
+    when: "The same query is repeated, then a submission is created and the query repeated again."
+    then: "The second call returns Q1 again. After the create the queryState is different and the new id is in the result."
+    sources:
+      - "rfc:8620 5.5"
+
+  - id: SUB-140
+    title: "Answer cannotCalculateChanges for EmailSubmission/queryChanges"
+    method: EmailSubmission/queryChanges
+    spec: "RFC 8621 7.4"
+    level: must
+    phase: 3
+    applies: adapted
+    seed: [jmap]
+    given: "A queryState Q1 from EmailSubmission/query, whose response had canCalculateChanges false."
+    when: "EmailSubmission/queryChanges with sinceQueryState Q1 and the same filter and sort, before and after a new submission is created. Also with a missing sinceQueryState."
+    then: "With a sinceQueryState the method answers with an error of type cannotCalculateChanges in both cases, never unknownMethod. Without sinceQueryState it answers invalidArguments."
+    sources:
+      - "cyrus:JMAPEmailSubmission/emailsubmission_querychanges"
+      - "cyrus:JMAPEmailSubmission/emailsubmission_query"
+      - "rfc:8621 7.4"
+      - "rfc:8620 5.6"
+    notes: "Open question. The exact owned change log would make a real queryChanges cheap for this small type, but the plan does not list it. The scenario fixes the minimal conforming behaviour, as Cyrus does. If real support is added, canCalculateChanges must become true in SUB-127."
+
+  - id: SUB-141
+    title: "Push an EmailSubmission state change"
+    method: EventSource
+    spec: "RFC 8620 7.1"
+    level: should
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "An open EventSource connection for all types."
+    when: "A submission is created with onSuccessUpdateEmail, and later canceled."
+    then: "After the create a state event carries new EmailSubmission, Email and Mailbox states for the account (in one or several events). After the cancel an event carries a new EmailSubmission state. EmailDelivery does not change for the sender."
+    sources:
+      - "rfc:8620 7.1"
+      - "rfc:8621 1.5"

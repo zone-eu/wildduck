@@ -1,0 +1,2959 @@
+area: email-get
+title: "Email/get"
+description: "RFC 8621 sections 4.1 and 4.2: the Email object as read through Email/get. Covers the /get basics, metadata properties, every header form and its decoding edge cases, the body model (bodyStructure, textBody, htmlBody, attachments, bodyValues), hasAttachment, preview, part blobs and consistency with IMAP for the same message."
+scenarios:
+  # ---------------------------------------------------------------- basics
+  - id: EGET-001
+    title: "Return an Email by id with the standard /get response shape"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message appended to INBOX over IMAP; its Email id is known from Email/query."
+    when: "Email/get with accountId and ids set to that one id, no other arguments."
+    then: "The response is an Email/get invocation with the same call id, containing accountId, a non empty string state, list with exactly one object whose id equals the requested id, and notFound as an empty array."
+    sources:
+      - "james:EmailGetMethodContract#existingEmailsShouldBeFound"
+      - "cyrus:JMAPEmail/email_get"
+      - "jmapio:email-get#get-by-id"
+      - "jmapio:email-get#get-state-returned"
+      - "stalwart:mail/get.rs"
+      - "rfc:8620 5.1"
+
+  - id: EGET-002
+    title: "Report a well formed but unknown id in notFound"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An account with no message whose id is M followed by 24 zero hex digits."
+    when: "Email/get with ids containing only that id."
+    then: "list is empty and notFound contains exactly that id. No method level error is returned."
+    sources:
+      - "james:EmailGetMethodContract#notExistingValidIdsShouldBeNotFound"
+      - "jmapio:email-get#get-not-found"
+      - "rfc:8620 5.1"
+
+  - id: EGET-003
+    title: "Report a syntactically invalid id in notFound instead of failing the call"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/get with ids ['invalid', 'M123', 'Mzzzzzzzzzzzzzzzzzzzzzzzz', a valid Mailbox id], all valid Id strings by RFC 8620 1.2 but none in Email id format."
+    then: "list is empty and notFound contains all four ids. No invalidArguments error and no server error."
+    sources:
+      - "james:EmailGetMethodContract#invalidIdsShouldBeNotFound"
+    notes: "The id format (M plus 24 hex) must be checked before building a MongoDB ObjectId so that a bad id can never throw."
+
+  - id: EGET-004
+    title: "Mix found and not found ids in one call"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Two existing messages and one unknown id."
+    when: "Email/get with ids [existing1, unknown, existing2]."
+    then: "list holds exactly the two existing Emails and notFound holds exactly the unknown id."
+    sources:
+      - "james:EmailGetMethodContract#foundAndNotFoundCanBeMixed"
+      - "james:EmailGetMethodContract#severalEmailCanBeRetrievedAtOnce"
+      - "jmapio:email-get#get-multiple-emails"
+
+  - id: EGET-005
+    title: "Return an id that is requested twice only once"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One existing message and one unknown id."
+    when: "Email/get with ids [existing, existing, unknown, unknown]."
+    then: "list contains the existing Email exactly once and notFound contains the unknown id exactly once."
+    sources:
+      - "james:EmailGetMethodContract#requestingTheSameIdTwiceReturnsItOnce"
+      - "james:EmailGetMethodContract#requestingTheSameNotFoundIdTwiceReturnsItOnce"
+
+  - id: EGET-006
+    title: "Accept an empty ids array"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "An account with at least one message."
+    when: "Email/get with ids []."
+    then: "list is [] and notFound is []; state is still returned."
+    sources:
+      - "james:EmailGetMethodContract#noIdsShouldBeAccepted"
+      - "fastmail:t/Email/get/no-ids.t"
+
+  - id: EGET-007
+    title: "Reject ids null or omitted because fetching all Emails is not supported"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "An account with a few messages."
+    when: "Email/get with ids null, and again with the ids argument left out."
+    then: "Both calls answer with an error invocation of type invalidArguments. No Email is returned."
+    sources:
+      - "james:EmailGetMethodContract#idsShouldBeMandatory"
+      - "rfc:8620 5.1"
+    notes: "RFC 8620 5.1 lets a data type decline 'return all' for null ids but names no error for it. James answers invalidArguments; requestTooLarge would also be defensible. Open question: confirm the error type."
+
+  - id: EGET-008
+    title: "Reject ids and properties of the wrong JSON type"
+    method: Email/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One existing message."
+    when: "Separate Email/get calls with ids as a string, ids as an array holding a number, properties as a string, and properties as an array holding null."
+    then: "Each call answers invalidArguments; other method calls in the same request still run."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "fastmail:t/Email/get/properties.t"
+
+  - id: EGET-009
+    title: "Answer accountNotFound for an unknown accountId"
+    method: Email/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "An authenticated user with one message."
+    when: "Email/get with accountId set to an id that is not the user's account (a random id, and the id of another existing user)."
+    then: "The method answers with error type accountNotFound in both cases; the HTTP status is 200."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldFailWhenWrongAccountId"
+      - "fastmail:t/Email/foreign-account.t"
+
+  - id: EGET-010
+    title: "Never return another user's Email by its id"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Users A and B; B has a message whose Email id is known."
+    when: "A calls Email/get on A's own accountId with B's Email id in ids."
+    then: "The id is listed in notFound and nothing about the message leaks."
+    sources:
+      - "james:EmailGetMethodContract#getShouldReturnNotFoundWhenNoRights"
+      - "james:EmailGetMethodContract#bobShouldNotBeAbleToAccessAndreMailboxWhenNotDelegated"
+      - "cyrus:JMAPEmail/email_get_shared"
+    notes: "The James and Cyrus sharing and delegation tests collapse to this one case because WildDuck has no sharing. The lookup must always be scoped by user, since the root id alone is not account bound."
+
+  - id: EGET-011
+    title: "Answer unknownMethod when the mail capability is not in using"
+    method: Email/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "A request whose using lists only urn:ietf:params:jmap:core (and a second one with using empty) calls Email/get."
+    then: "The method response is an error of type unknownMethod."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnUnknownMethodWhenMissingOneCapability"
+      - "james:EmailGetMethodContract#emailGetShouldReturnUnknownMethodWhenMissingAllCapabilities"
+
+  - id: EGET-012
+    title: "Use the RFC default property set when properties is omitted"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/alternative message with one attachment."
+    when: "Email/get with only ids."
+    then: "The Email has exactly these keys: id, blobId, threadId, mailboxIds, keywords, size, receivedAt, messageId, inReplyTo, references, sender, from, to, cc, bcc, replyTo, subject, sentAt, hasAttachment, preview, bodyValues, textBody, htmlBody, attachments. headers and bodyStructure are absent, bodyValues is {}."
+    sources:
+      - "james:EmailGetMethodContract#useDefaultPropertiesWhenNone"
+      - "fastmail:t/Email/get/properties.t"
+      - "stalwart:mail/get.rs"
+      - "rfc:8621 4.2"
+
+  - id: EGET-013
+    title: "Treat properties null the same as omitted"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message."
+    when: "Email/get with properties null."
+    then: "The returned key set equals the default set of EGET-012."
+    sources:
+      - "rfc:8621 4.2"
+
+  - id: EGET-014
+    title: "Return only the requested properties plus id"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message."
+    when: "Email/get with properties ['subject', 'size']."
+    then: "The Email has exactly the keys id, subject and size."
+    sources:
+      - "james:EmailGetMethodContract#propertiesShouldBeFiltered"
+      - "james:EmailGetMethodContract#idPropertyShouldAlwaysBeReturned"
+      - "jmapio:email-get#get-properties-filter"
+      - "fastmail:t/Email/get/properties.t"
+
+  - id: EGET-015
+    title: "Return only id for an empty properties array"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message."
+    when: "Email/get with properties []."
+    then: "The Email object is exactly {id}."
+    sources:
+      - "james:EmailGetMethodContract#emptyPropertiesDefaultsToId"
+      - "fastmail:t/Email/get/properties.t"
+
+  - id: EGET-016
+    title: "Reject an unknown property name"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message."
+    when: "Email/get with properties ['subject', 'invalid'], and again with ['Subject'] (wrong case) and ['deliveredTo'] (a Cyrus extension)."
+    then: "Each call answers invalidArguments and the description names the offending property; no partial list is returned."
+    sources:
+      - "james:EmailGetMethodContract#invalidPropertiesShouldFail"
+      - "cyrus:JMAPEmail/email_get_deliveredto"
+    notes: "Property names are case sensitive. Vendor properties of other servers (deliveredTo, isDeleted, imageSize, trustedSender, createdModseq, calendarEvents) are not offered."
+
+  - id: EGET-017
+    title: "Return every Email property when all are requested explicitly"
+    method: Email/get
+    spec: "RFC 8621 4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart message with headers From, To, Cc, Subject, Date, Message-ID."
+    when: "Email/get with properties listing the 24 defaults plus headers and bodyStructure."
+    then: "All 26 keys are present with the types of RFC 8621 4.1: headers is an array of {name, value}, bodyStructure is one EmailBodyPart, textBody, htmlBody and attachments are arrays, bodyValues is an object."
+    sources:
+      - "fastmail:t/Email/get/properties.t"
+      - "stalwart:mail/get.rs"
+      - "jmapio:email-get#get-metadata-properties"
+
+  - id: EGET-018
+    title: "Return the current Email state, identical to the one Email/changes reports"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message; state S1 read from Email/get."
+    when: "Email/get is called twice in a row, then a flag is set over IMAP and Email/get is called again."
+    then: "The first two calls return the same state S1 (reading does not change state). The third returns S2 different from S1, and Email/changes sinceState S1 answers newState S2."
+    sources:
+      - "james:EmailGetMethodContract#emailStateShouldBeTheLatestOne"
+      - "jmapio:email-get#get-state-returned"
+
+  - id: EGET-019
+    title: "Reject more ids than maxObjectsInGet with requestTooLarge"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The session advertises maxObjectsInGet N (test config sets a small N)."
+    when: "Email/get with N ids, then with N plus 1 ids (existing or not)."
+    then: "The call with N ids succeeds. The call with N plus 1 ids answers error type requestTooLarge and returns no Emails."
+    sources:
+      - "james:EmailGetMethodContract#shouldFailWhenReadFullLevelAndIdsSizeTooLarge"
+      - "james:EmailGetMethodContract#getEmailShouldSucceedWhenNotReadFullLevelAndExceedIdsSize"
+      - "rfc:8620 5.1"
+    notes: "James applies a smaller limit only when body properties are requested. WildDuck uses one limit for every property set; duplicates count before de-duplication."
+
+  - id: EGET-020
+    title: "Resolve ids through a result reference to Email/query"
+    method: Email/get
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three messages in INBOX."
+    when: "One request with Email/query (call id q) followed by Email/get whose '#ids' is {resultOf q, name Email/query, path /ids} and properties ['subject']."
+    then: "Email/get returns the three Emails named by the query result."
+    sources:
+      - "cyrus:JMAPEmail/email_get"
+      - "rfc:8621 4.2.1"
+
+  - id: EGET-021
+    title: "Use the WildDuck Email id format"
+    method: Email/get
+    spec: "RFC 8620 1.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Messages stored through IMAP APPEND and through LMTP delivery."
+    when: "Email/get for all of them with properties ['id', 'blobId', 'threadId', 'mailboxIds']."
+    then: "Every Email id matches M followed by 24 lowercase hex characters. blobId, threadId and the mailboxIds keys are 1 to 255 characters from A-Za-z0-9, hyphen and underscore, and start with a letter."
+    sources:
+      - "wildduck:brief ids"
+      - "rfc:8620 1.2"
+
+  - id: EGET-022
+    title: "Treat a message flagged Deleted over IMAP as not found"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose Email id is known; then STORE +FLAGS (\\Deleted) over IMAP without EXPUNGE."
+    when: "Email/get with that id."
+    then: "The id is in notFound and list is empty."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "cyrus:JMAPEmail/email_get_multimailboxes_expunged"
+
+  - id: EGET-023
+    title: "Make the Email visible again with the same id when Deleted is cleared"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The message of EGET-022, flagged \\Deleted."
+    when: "STORE -FLAGS (\\Deleted) over IMAP, then Email/get with the original id."
+    then: "The Email is returned under the same id with unchanged blobId, threadId, size and receivedAt; keywords does not contain any deleted marker."
+    sources:
+      - "wildduck:brief emails"
+
+  - id: EGET-024
+    title: "Report an expunged message as not found"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose Email id is known; it is flagged \\Deleted and expunged over IMAP (WildDuck archives it)."
+    when: "Email/get with that id."
+    then: "The id is in notFound. The archived copy is not reachable through JMAP."
+    sources:
+      - "cyrus:JMAPEmail/email_get_multimailboxes_expunged"
+      - "wildduck:brief emails"
+
+  - id: EGET-025
+    title: "Keep the Email id after an IMAP MOVE"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message in INBOX with known id, blobId and threadId."
+    when: "The message is moved to another mailbox with IMAP MOVE (new UID), then Email/get with the old id."
+    then: "The Email is found under the same id; blobId, threadId, size, receivedAt and keywords are unchanged; mailboxIds has exactly one key, the id of the target mailbox."
+    sources:
+      - "wildduck:brief ids"
+      - "rfc:8621 4.1.1"
+    notes: "Phase 0 prerequisite (stable ids on move). id, blobId and threadId are immutable per RFC 8621 4.1.1."
+
+  - id: EGET-026
+    title: "Keep the Email id after a move through the REST API"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "A message in INBOX with known Email id."
+    when: "The message is moved with the WildDuck REST API (PUT message with moveTo), then Email/get with the old id."
+    then: "Same assertions as EGET-025."
+    sources:
+      - "wildduck:brief ids"
+
+  - id: EGET-027
+    title: "Give an IMAP COPY its own Email id"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message in INBOX with known Email id E1; IMAP COPY puts a copy into mailbox Archive."
+    when: "Email/query for Archive gives E2; Email/get [E1, E2] with properties ['mailboxIds', 'blobId', 'size', 'messageId', 'threadId']."
+    then: "E2 differs from E1. E1 has only the INBOX id in mailboxIds and E2 only the Archive id. size and messageId are equal; each blobId downloads the same bytes."
+    sources:
+      - "cyrus:JMAPEmail/email_get_multimailboxes"
+      - "wildduck:brief ids"
+    notes: "RFC servers with content derived ids (Cyrus) show one Email in two mailboxes here. WildDuck has maxMailboxesPerEmail 1, so a copy is a second Email."
+
+  - id: EGET-028
+    title: "Give identical bytes stored twice two different Emails"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The same raw message appended twice to INBOX over IMAP."
+    when: "Email/get for both ids."
+    then: "Two Emails with different id and blobId and equal size, messageId and subject are returned."
+    sources:
+      - "wildduck:brief ids"
+
+  # ---------------------------------------------------------------- metadata
+  - id: EGET-029
+    title: "Return a blobId that downloads the exact raw message"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A known raw message with CRLF line endings appended over IMAP."
+    when: "Email/get with properties ['blobId', 'size'], then GET the download URL for that blobId."
+    then: "The download returns HTTP 200 and bytes identical to the appended message; their length equals size."
+    sources:
+      - "james:EmailGetMethodContract#blobIdPropertiesShouldBeReturned"
+      - "stalwart:mail/get.rs"
+      - "rfc:8621 4.1.1"
+    notes: "WildDuck rebuilds the message from the MIME tree (indexer.rebuild); the rebuilt bytes must equal the original for well formed input."
+
+  - id: EGET-030
+    title: "Return the threadId of the Thread that lists the Email"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message and a reply to it (In-Reply-To and References set, same normalised subject)."
+    when: "Email/get both with properties ['threadId'], then Thread/get with that threadId."
+    then: "Both Emails carry the same threadId and Thread/get lists both Email ids. An unrelated third message has a different threadId."
+    sources:
+      - "james:EmailGetMethodContract#threadIdPropertiesShouldBeReturned"
+      - "jmapio:email-get#get-thread-id-consistent"
+
+  - id: EGET-031
+    title: "Return mailboxIds with exactly one entry whose value is true"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "One message in INBOX and one in a nested mailbox A/B."
+    when: "Email/get both with properties ['mailboxIds']."
+    then: "Each mailboxIds object has exactly one key, the id Mailbox/get reports for INBOX and for A/B respectively, with the JSON value true."
+    sources:
+      - "james:EmailGetMethodContract#mailboxIdsPropertiesShouldBeReturned"
+      - "jmapio:email-get#get-mailbox-ids"
+      - "wildduck:brief emails"
+    notes: "Adapted: an Email is never in more than one mailbox in WildDuck."
+
+  - id: EGET-032
+    title: "Return an empty keywords object for a message without flags"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message appended over IMAP with no flags."
+    when: "Email/get with properties ['keywords']."
+    then: "keywords is {} (an object, not null and not absent). The IMAP \\Recent flag never appears."
+    sources:
+      - "cyrus:JMAPEmail/email_get_keywords"
+      - "rfc:8621 4.1.1"
+
+  - id: EGET-033
+    title: "Map IMAP system flags to the JMAP system keywords"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with IMAP flags \\Seen \\Flagged \\Draft \\Answered and $Forwarded."
+    when: "Email/get with properties ['keywords']."
+    then: "keywords is exactly {$seen: true, $flagged: true, $draft: true, $answered: true, $forwarded: true}. No key starts with a backslash."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSystemKeywords"
+      - "jmapio:email-get#get-keywords"
+      - "cyrus:JMAPEmail/email_get_keywords"
+      - "rfc:8621 4.1.1"
+
+  - id: EGET-034
+    title: "Return custom IMAP keywords in lowercase"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with IMAP keywords MyFlag, $MDNSent, $Junk, NonJunk and $Phishing stored with that capitalisation."
+    when: "Email/get with properties ['keywords']."
+    then: "keywords is {myflag: true, $mdnsent: true, $junk: true, nonjunk: true, $phishing: true}; every value is the boolean true."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnKeyword"
+      - "james:EmailGetMethodContract#emailGetShouldReturnSystemAndUserKeywordsIfExposed"
+      - "cyrus:JMAPEmail/email_get_keywords_case_insensitive"
+      - "rfc:8621 4.1.1"
+    notes: "James hides some flags (non exposed keywords); WildDuck exposes every stored flag except \\Deleted and \\Recent."
+
+  - id: EGET-035
+    title: "Never return two keywords that differ only by case"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, db]
+    given: "A message whose stored flags array holds both Foo and foo (legacy data written directly), plus \\seen in non canonical case."
+    when: "Email/get with properties ['keywords']."
+    then: "keywords has a single key foo and a single key $seen."
+    sources:
+      - "cyrus:JMAPEmail/email_get_keywords_case_insensitive"
+      - "wildduck:brief emails"
+
+  - id: EGET-036
+    title: "Expose WildDuck labels as wdlabel keywords"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "A label created through the REST API (24 hex id L) and applied to a message."
+    when: "Email/get with properties ['keywords'], and IMAP FETCH FLAGS for the same message."
+    then: "keywords contains the key $wdlabel$ followed by L in lowercase with value true, and the same token appears in the IMAP flags."
+    sources:
+      - "wildduck:brief emails"
+      - "tmail:labels contract"
+
+  - id: EGET-037
+    title: "Reflect a flag change made over IMAP on the next Email/get"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "An unread message; keywords is {}."
+    when: "STORE +FLAGS (\\Seen custom1) over IMAP, Email/get; then STORE -FLAGS (\\Seen), Email/get."
+    then: "The first get returns {$seen: true, custom1: true}, the second {custom1: true}. The Email id does not change."
+    sources:
+      - "cyrus:JMAPEmail/email_get_keywords"
+      - "wildduck:brief state"
+
+  - id: EGET-038
+    title: "Keep keywords independent between an Email and its IMAP copy"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message in INBOX and its IMAP COPY in Archive (two Emails); \\Seen is set only on the INBOX one, custom1 only on the copy."
+    when: "Email/get both with properties ['keywords']."
+    then: "The INBOX Email has {$seen: true}, the copy has {custom1: true}. Nothing is aggregated."
+    sources:
+      - "james:EmailGetMethodContract#shouldAggregateKeywordsAccrossMailbox"
+      - "cyrus:JMAPEmail/email_get_keywords"
+    notes: "James and Cyrus merge keywords across the mailboxes of one Email. In WildDuck each copy is its own Email."
+
+  - id: EGET-039
+    title: "Return size equal to RFC822.SIZE over IMAP"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Messages of several shapes: plain text, base64 attachment, 8 bit body, candidate fixtures imap-core/test/fixtures/nodemailer.eml and mimetorture.eml."
+    when: "Email/get with properties ['size', 'blobId'] and IMAP FETCH (RFC822.SIZE) for each."
+    then: "size is an unsigned integer equal to RFC822.SIZE and to the byte length of the blob download."
+    sources:
+      - "cyrus:JMAPEmail/email_get_size"
+      - "wildduck:brief emails"
+      - "rfc:8621 4.1.1"
+
+  - id: EGET-040
+    title: "Return receivedAt equal to the IMAP INTERNALDATE as a UTCDate"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message appended with an explicit internal date of 14-Jul-2020 10:11:12 +0200 and a Date header one day earlier."
+    when: "Email/get with properties ['receivedAt', 'sentAt'] and IMAP FETCH (INTERNALDATE)."
+    then: "receivedAt is exactly '2020-07-14T08:11:12Z' (UTC, Z suffix, no fractional zero padding issues) and denotes the same instant as INTERNALDATE. It differs from sentAt."
+    sources:
+      - "james:EmailGetMethodContract#receivedAtPropertyShouldBeReturned"
+      - "jmapio:email-get#get-received-at-is-utc-date"
+      - "wildduck:brief emails"
+
+  - id: EGET-041
+    title: "Set receivedAt to the delivery time for LMTP delivered mail"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "A message with a Date header in 2001 is delivered through LMTP at time T."
+    when: "Email/get with properties ['receivedAt']."
+    then: "receivedAt is within a few seconds of T and matches the pattern YYYY-MM-DDTHH:MM:SSZ."
+    sources:
+      - "rfc:8621 4.1.1"
+
+  - id: EGET-042
+    title: "Keep receivedAt, size and blobId unchanged by flag changes and moves"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with recorded receivedAt, size, blobId and threadId."
+    when: "Flags are changed and the message is moved twice over IMAP; Email/get after each step."
+    then: "receivedAt, size, blobId and threadId are identical in every response."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "wildduck:brief ids"
+
+  # ---------------------------------------------------------------- headers: list and raw access
+  - id: EGET-043
+    title: "Return headers as the ordered list of all top level header fields in Raw form"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose header block is, in order: Received, Received, From, To, SUBJECT (upper case name), X-Custom, Date, Message-ID."
+    when: "Email/get with properties ['headers']."
+    then: "headers has eight {name, value} items in message order. name keeps the capitalisation of the message (SUBJECT). value is the Raw form: it starts with the space after the colon and has no trailing CRLF. Both Received fields are present."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnUnparsedHeaders"
+      - "stalwart:mail/get.rs (headers.eml)"
+      - "rfc:8621 4.1.3"
+
+  - id: EGET-044
+    title: "Return the Raw form by default for header:Name"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with the line 'Subject:  Hello  World ' (two spaces after the colon, one trailing space) and 'X-Tight:nospace'."
+    when: "Email/get with properties ['header:Subject', 'header:Subject:asRaw', 'header:X-Tight']."
+    then: "header:Subject and header:Subject:asRaw are both '  Hello  World ' with every octet between the colon and the CRLF preserved. header:X-Tight is 'nospace' without a leading space."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificUnparsedHeaders"
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeadersAsRaw"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+      - "jmapio:email-get-headers#header-raw-form"
+      - "jmapio:email-get-headers#header-custom-header"
+
+  - id: EGET-045
+    title: "Keep folding in the Raw form of a folded header"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'X-Long: part one' CRLF SP 'part two' CRLF HTAB 'part three'."
+    when: "Email/get with properties ['header:X-Long', 'headers']."
+    then: "header:X-Long is ' part one\\r\\n part two\\r\\n\\tpart three' (inner CRLF and leading white space kept, final CRLF removed). The same value appears in the headers list."
+    sources:
+      - "james:EmailGetMethodContract#asRawShouldSupportSeveralHeaders"
+      - "rfc:8621 4.1.2.1"
+
+  - id: EGET-046
+    title: "Match header field names case insensitively and echo the requested capitalisation"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with the header 'X-Custom-Header: v'."
+    when: "Email/get with properties ['header:x-custom-header', 'header:X-CUSTOM-HEADER', 'header:X-Custom-Header:asText']."
+    then: "The Email has exactly those three property keys, spelled as requested, with values ' v', ' v' and 'v'."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificUnparsedHeadersWithInsensitiveCaseMatching"
+      - "jmapio:email-get-headers#header-case-insensitive"
+      - "rfc:8621 4.2"
+
+  - id: EGET-047
+    title: "Return null for an absent header and an empty array with the all suffix"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message without an X-Missing header."
+    when: "Email/get with properties ['header:X-Missing', 'header:X-Missing:asText', 'header:X-Missing:all', 'header:X-Missing:asAddresses:all']."
+    then: "The first two are null, the last two are []."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnNullWhenUnknownSpecificUnparsedHeaders"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+      - "rfc:8621 4.1.3"
+
+  - id: EGET-048
+    title: "Return the last instance when a header appears several times"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'X-Tra: foo' followed later by 'X-Tra: bar'."
+    when: "Email/get with properties ['header:X-Tra', 'header:X-Tra:asText']."
+    then: "The values are ' bar' and 'bar'."
+    sources:
+      - "cyrus:JMAPEmail/email_get_header_last_value"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+      - "rfc:8621 4.1.3"
+
+  - id: EGET-049
+    title: "Return every instance in message order with the all suffix"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'X-Tra: foo', 'X-Tra: bar' in that order and a single 'X-One: 1'."
+    when: "Email/get with properties ['header:X-Tra:all', 'header:X-Tra:asRaw:all', 'header:X-Tra:asText:all', 'header:X-One:all']."
+    then: "The values are [' foo', ' bar'], [' foo', ' bar'], ['foo', 'bar'] and [' 1']. The last element of an all array equals the value without the suffix."
+    sources:
+      - "cyrus:JMAPEmail/email_get_header_all"
+      - "james:EmailGetMethodContract#emailGetShouldSupportAllQualifierForSpecificHeader"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-050
+    title: "Reject the suffixes in the wrong order"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with an X-Tra header."
+    when: "Email/get with properties ['header:X-Tra:all:asText']."
+    then: "The call answers invalidArguments."
+    sources:
+      - "fastmail:t/Email/get/header-header-field-name.t"
+      - "rfc:8621 4.1.3"
+
+  - id: EGET-051
+    title: "Reject malformed header property names"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Any message."
+    when: "Separate Email/get calls with properties ['header:'], ['header:From:Subject'], ['header:X-A:asFoo'], ['header:X-A:astext'] (wrong case of the form), ['header:X A'] (space in the name), ['header:X-A:asText:all:all'] and ['Header:Subject']."
+    then: "Every call answers invalidArguments and names the property."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldRejectSpecificUnparsedHeadersWithColon"
+      - "james:EmailGetMethodContract#emailGetShouldRejectEmptySpecificUnparsedHeaders"
+      - "rfc:8621 4.1.3"
+    notes: "A field name is one or more printable ASCII characters (33 to 126) except colon. Form names are case sensitive (asText, asAddresses, asGroupedAddresses, asMessageIds, asDate, asURLs, asRaw)."
+
+  - id: EGET-052
+    title: "Serve several forms of the same and of different headers in one call"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with From, To, Subject, Date, Message-ID, List-Unsubscribe and X-Custom headers."
+    when: "Email/get with properties ['header:Subject', 'header:Subject:asText', 'header:From:asAddresses', 'header:From:asGroupedAddresses', 'header:Date:asDate', 'header:Message-ID:asMessageIds', 'header:List-Unsubscribe:asURLs', 'header:X-Custom:asText:all']."
+    then: "All eight properties are present, each typed by its form: string, string, EmailAddress array, EmailAddressGroup array, date string, string array, string array, array of strings."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldSupportDifferentSpecificHeadersTypeOnSameMessage"
+      - "rfc:8621 4.2.1"
+
+  # ---------------------------------------------------------------- headers: Text form
+  - id: EGET-053
+    title: "Unfold, trim leading spaces and decode in the Text form"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'Subject:   A folded' CRLF SP 'subject =?UTF-8?Q?caf=C3=A9?=' and 'X-Spam-Hits: SPAMA, SPAMB, SPAMC'."
+    when: "Email/get with properties ['header:Subject:asText', 'header:X-Spam-Hits:asRaw', 'header:X-Spam-Hits:asText']."
+    then: "header:Subject:asText is 'A folded subject café' (unfolded, no leading spaces, encoded word decoded, no CRLF). The X-Spam-Hits values are ' SPAMA, SPAMB, SPAMC' and 'SPAMA, SPAMB, SPAMC'."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeadersAsText"
+      - "cyrus:JMAPEmail/email_get_headers_multipart"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+      - "jmapio:email-get-headers#header-raw-access"
+
+  - id: EGET-054
+    title: "Allow the Text form on Subject, Comments, Keywords, List-Id and non RFC 5322 headers"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with Subject, Comments, Keywords, List-Id, X-Mood, Content-Type and Content-Transfer-Encoding headers."
+    when: "Email/get with header:{name}:asText for each of those seven names."
+    then: "The call succeeds and each value is the unfolded, trimmed string."
+    sources:
+      - "rfc:8621 4.1.2.2"
+      - "cyrus:JMAPEmail/email_get_encoded_message"
+
+  - id: EGET-055
+    title: "Reject the Text form on structured RFC 5322 and RFC 2369 headers"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message that has all the named headers."
+    when: "Separate Email/get calls requesting header:{name}:asText for From, To, Date, Message-ID, References, Received, Return-Path, Resent-To and List-Unsubscribe."
+    then: "Every call is rejected with invalidArguments, also when combined with the all suffix and also when the message lacks the header."
+    sources:
+      - "rfc:8621 4.2"
+      - "rfc:8621 4.1.2.2"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-056
+    title: "Convert the Text form to Unicode NFC while Raw stays untouched"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a raw UTF-8 header 'X-My-Header: ' followed by a decomposed string (e followed by U+0301) and a To address whose display name is decomposed the same way."
+    when: "Email/get with properties ['header:X-My-Header', 'header:X-My-Header:asText', 'header:to', 'to']."
+    then: "asText and to[0].name contain the precomposed character (U+00E9). The two Raw values still contain the decomposed sequence."
+    sources:
+      - "cyrus:JMAPEmail/email_get_header_nfc"
+      - "rfc:8621 4.1.2.2"
+
+  # ---------------------------------------------------------------- headers: Addresses form
+  - id: EGET-057
+    title: "Parse an address list into EmailAddress objects"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'To: Alice Example <alice@example.com>, bob@example.com, \"Carol, C.\" <carol@example.com>'."
+    when: "Email/get with properties ['header:To:asAddresses']."
+    then: "The value is [{name 'Alice Example', email 'alice@example.com'}, {name null, email 'bob@example.com'}, {name 'Carol, C.', email 'carol@example.com'}]. Each object has exactly the keys name and email."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeadersAsAddresses"
+      - "jmapio:email-get-headers#header-as-addresses"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+    notes: "WildDuck's internal {name, address} objects must be mapped to {name, email}, with an empty name becoming null."
+
+  - id: EGET-058
+    title: "Process quoted display names: remove quotes, decode quoted pairs, unfold and trim"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A From header whose display name is the quoted string with two leading spaces, an escaped double quote and an escaped backslash, folded over two lines: '\"  James \\\"Jim\\\" Smythe\\\\\"' CRLF SP '<james@example.com>'."
+    when: "Email/get with properties ['header:From:asAddresses']."
+    then: "The single entry has name 'James \"Jim\" Smythe\\' (no surrounding quotes, quoted pairs decoded, no leading or trailing white space) and email 'james@example.com'."
+    sources:
+      - "rfc:8621 4.1.2.3"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-059
+    title: "Use a trailing comment as the name when there is no display name"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'From: jane@example.com (Jane Doe)' and 'To: Real Name <x@example.com> (ignored comment)'."
+    when: "Email/get with properties ['from', 'to']."
+    then: "from is [{name 'Jane Doe', email 'jane@example.com'}]. to is [{name 'Real Name', email 'x@example.com'}], the comment is discarded when a display name exists."
+    sources:
+      - "rfc:8621 4.1.2.3"
+
+  - id: EGET-060
+    title: "Flatten groups in the Addresses form"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The address list of the RFC example in a To header: a quoted padded name James Smythe with james@example.com, then a group Friends holding jane@example.com and an encoded word name for john@example.com, closed by a semicolon."
+    when: "Email/get with properties ['header:To:asAddresses', 'to']."
+    then: "Both values are the three mailboxes in order: {James Smythe, james@example.com}, {null, jane@example.com}, {John Smîth decoded from the encoded word, john@example.com}. No entry represents the group."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeadersAsAddressesAndIgnoresGroup"
+      - "rfc:8621 4.1.2.3"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-061
+    title: "Allow the Addresses forms on the address headers, the Resent variants and unknown headers"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with From, Sender, Reply-To, To, Cc, Bcc, Resent-From, Resent-Sender, Resent-Reply-To, Resent-To, Resent-Cc, Resent-Bcc and X-Original-To, each holding one address."
+    when: "Email/get requesting header:{name}:asAddresses and header:{name}:asGroupedAddresses for all thirteen names."
+    then: "The call succeeds; every asAddresses value is a one element EmailAddress array and every asGroupedAddresses value a one element group array with name null."
+    sources:
+      - "rfc:8621 4.1.2.3"
+      - "rfc:8621 4.1.2.4"
+
+  - id: EGET-062
+    title: "Reject the Addresses and GroupedAddresses forms on headers that are not address lists"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message that has all the named headers."
+    when: "Separate Email/get calls requesting asAddresses and asGroupedAddresses for Subject, Date, Message-ID, In-Reply-To, References, Received, Comments, Keywords, List-Post and List-Id."
+    then: "Every call is rejected with invalidArguments."
+    sources:
+      - "rfc:8621 4.2"
+      - "rfc:8621 4.1.2.3"
+    notes: "List-Id is named explicitly only for the Text form; it is defined outside RFC 5322 and RFC 2369, so strictly it falls under 'any other header' for the other forms. Open question: WildDuck rejects it here for sanity, confirm."
+
+  - id: EGET-063
+    title: "Return an array of arrays for asAddresses with the all suffix"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with two Resent-To headers, the first with two addresses, the second with one."
+    when: "Email/get with properties ['header:Resent-To:asAddresses:all', 'header:Resent-To:asAddresses']."
+    then: "The all value is [[a1, a2], [a3]] in message order; the value without all is [a3]."
+    sources:
+      - "rfc:8621 4.1.3"
+
+  - id: EGET-064
+    title: "Parse unparsable address headers best effort without failing"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Messages with 'To: blahblah', 'To: <>', 'To: ,, ,', 'To:' (empty value), 'To: Name Only <', 'To: user@' and 'To: a@example.com, broken <, b@example.com'."
+    when: "Email/get with properties ['header:To:asAddresses', 'header:To:asGroupedAddresses', 'to'] for each."
+    then: "No call errors and every value is an array, never null. Empty and separator only values give []. Entries that are returned always have a string email (possibly without an at sign) and name string or null. The well formed a@example.com and b@example.com of the last message are both present."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnEmptyWhenCannotParseAsAddresses"
+      - "james:EmailGetMethodContract#emailGetShouldReturnEmptyWhenCannotParseAsGroupedAddresses"
+      - "rfc:8621 4.1.2.3"
+    notes: "James returns [] for 'blahblah'. The RFC allows an email value that is not an addr-spec. Open question: pin the exact WildDuck result for 'blahblah' ([] or one entry with email 'blahblah') once the parser is chosen."
+
+  # ---------------------------------------------------------------- headers: GroupedAddresses form
+  - id: EGET-065
+    title: "Preserve groups in the GroupedAddresses form"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The To header of EGET-060."
+    when: "Email/get with properties ['header:To:asGroupedAddresses']."
+    then: "The value is two groups: {name null, addresses [James Smythe]} and {name 'Friends', addresses [jane@example.com with name null, John Smîth]}."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnGroupedAddresses"
+      - "rfc:8621 4.1.2.4"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-066
+    title: "Collect ungrouped mailboxes under a single group with a null name"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'From: A <a@example.com>, b@example.com' and no group syntax."
+    when: "Email/get with properties ['header:From:asGroupedAddresses']."
+    then: "The value is [{name null, addresses [{A, a@example.com}, {null, b@example.com}]}]."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnAsGroupedAddressesWithoutGroupInfo"
+      - "jmapio:email-get-headers#header-as-grouped-addresses"
+
+  - id: EGET-067
+    title: "Keep the order of interleaved groups and loose mailboxes"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'To: a@example.com, G1: b@example.com;, c@example.com, d@example.com, G2: e@example.com;'."
+    when: "Email/get with properties ['header:To:asGroupedAddresses']."
+    then: "Four groups in order: {null, [a]}, {G1, [b]}, {null, [c, d]}, {G2, [e]}. Consecutive loose mailboxes share one null named group."
+    sources:
+      - "rfc:8621 4.1.2.4"
+
+  - id: EGET-068
+    title: "Return an empty group for a group without members"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'To: undisclosed-recipients:;'."
+    when: "Email/get with properties ['header:To:asGroupedAddresses', 'header:To:asAddresses', 'to']."
+    then: "The grouped value is [{name 'undisclosed-recipients', addresses []}]. The Addresses form and to are []."
+    sources:
+      - "rfc:8621 4.1.2.4"
+      - "rfc:5322 3.4"
+
+  - id: EGET-069
+    title: "Decode encoded words and quoted strings in a group name"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with an X-To header holding a group whose display name is the base64 encoded word for 'Grüppe' with member ann@example.com, and a second group whose name is the quoted string '\"  Team A \"'."
+    when: "Email/get with properties ['header:X-To:asGroupedAddresses']."
+    then: "The group names are 'Grüppe' and 'Team A'; the member is {name null, email 'ann@example.com'}."
+    sources:
+      - "cyrus:JMAPEmail/email_get_grouped_addresses_encoded_name"
+      - "rfc:8621 4.1.2.4"
+
+  # ---------------------------------------------------------------- headers: MessageIds form
+  - id: EGET-070
+    title: "Parse message ids without angle brackets"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'Message-ID: <id1@example.com>', 'In-Reply-To: <parent@example.com>' and 'References: <root@example.com> <parent@example.com>'."
+    when: "Email/get with properties ['header:Message-ID:asMessageIds', 'header:In-Reply-To:asMessageIds', 'header:References:asMessageIds', 'header:references']."
+    then: "The values are ['id1@example.com'], ['parent@example.com'], ['root@example.com', 'parent@example.com'] and the Raw string with brackets and leading space."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeaderAsMessageIds"
+      - "james:EmailGetMethodContract#emailGetSpecificHeaderAsMessageIdsShouldSupportMultipleIds"
+      - "cyrus:JMAPEmail/email_get_references"
+      - "jmapio:email-get-headers#header-as-message-ids"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-071
+    title: "Remove comments and folding white space between message ids"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'X-Refs: <a@example.com> (comment) <b@example.com>' and a References header folded so that a line break falls between two ids and one inside the white space before an id."
+    when: "Email/get with properties ['header:X-Refs:asMessageIds', 'references']."
+    then: "X-Refs gives ['a@example.com', 'b@example.com']. references lists every id of the folded header once, with no white space or brackets in any item."
+    sources:
+      - "cyrus:JMAPEmail/email_get_message_ids_parse"
+      - "cyrus:JMAPEmail/email_get_fixbrokenmessageids"
+      - "rfc:8621 4.1.2.5"
+
+  - id: EGET-072
+    title: "Return null when a header cannot be parsed as message ids"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'X-Bad: not a message id' and 'In-Reply-To: your mail of yesterday'."
+    when: "Email/get with properties ['header:X-Bad:asMessageIds', 'inReplyTo', 'header:X-Bad:asMessageIds:all']."
+    then: "The first two are null. The all value is [null]."
+    sources:
+      - "james:EmailGetMethodContract#emailGetAsMessageIdsHeaderShouldReturnNullWhenInvalidMessageIds"
+      - "cyrus:JMAPEmail/email_get_message_ids_parse"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-073
+    title: "Be lenient with partly invalid message id lists and a bare id"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.5"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'References: invalid   bloblah' CRLF SP '<3456@example.net>' and 'X-Bare: c@example.com' (no angle brackets)."
+    when: "Email/get with properties ['references', 'header:X-Bare:asMessageIds']."
+    then: "references is ['3456@example.net'] (the bracketed id survives the junk). X-Bare gives ['c@example.com']."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeaderWhenPartialInvalidMessageIds"
+      - "cyrus:JMAPEmail/email_get_message_ids_parse"
+    notes: "The RFC only says null if parsing fails. James and Cyrus both salvage ids; WildDuck follows them so that threading data stays visible."
+
+  - id: EGET-074
+    title: "Reject the MessageIds form on headers that do not hold message ids"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Any message."
+    when: "Separate Email/get calls requesting asMessageIds for From, To, Subject, Date, Received and List-Unsubscribe; and one call requesting it for Message-ID, In-Reply-To, References, Resent-Message-ID and X-Anything."
+    then: "The six separate calls answer invalidArguments. The combined call succeeds."
+    sources:
+      - "rfc:8621 4.1.2.5"
+      - "rfc:8621 4.2"
+
+  # ---------------------------------------------------------------- headers: Date form
+  - id: EGET-075
+    title: "Parse a Date header into an RFC 3339 date"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.6"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'Date: Thu, 22 Aug 2019 23:12:06 -0600'."
+    when: "Email/get with properties ['header:Date:asDate', 'sentAt']."
+    then: "Both values are the same RFC 3339 date-time string denoting the instant 2019-08-23T05:12:06Z. It carries either the original offset (2019-08-22T23:12:06-06:00) or Z; no milliseconds are required."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeaderAsDate"
+      - "cyrus:JMAPEmail/email_get_header_last_value"
+      - "jmapio:email-get-headers#header-as-date"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+    notes: "The type is Date, not UTCDate, so the sender's offset may be kept. Cyrus keeps it, James normalises to UTC. WildDuck stores hdate as a UTC Date, so keeping the offset means reparsing the raw header. Open question: decide and then pin the exact string."
+
+  - id: EGET-076
+    title: "Return null for a Date header that cannot be parsed"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.6"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Messages with 'Date: invalid', 'Date: 32 Foo 2020 25:61:00 +0000', 'Date:' (empty) and one with no Date header."
+    when: "Email/get with properties ['header:Date:asDate', 'sentAt', 'receivedAt'] for each."
+    then: "header:Date:asDate and sentAt are null in all four cases. receivedAt is still a valid UTCDate."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnNullWhenInvalidSpecificHeaderAsDate"
+      - "james:EmailGetMethodContract#sentAtPropertyShouldBeNullWhenMissing"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+    notes: "WildDuck falls back to the internal date for its stored hdate when the Date header is missing or broken. JMAP must not expose that fallback as sentAt."
+
+  - id: EGET-077
+    title: "Accept obsolete and sloppy date syntax"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.6"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Messages with the Date values '22 Aug 2019 23:12 GMT' (no weekday, no seconds), 'Thu, 22 Aug 19 23:12:06 EST' (two digit year, named zone), 'Thu, 22 Aug 2019 23:12:06 +0200 (CEST)' (comment) and a folded value with extra white space."
+    when: "Email/get with properties ['sentAt'] for each."
+    then: "The instants are 2019-08-22T23:12:00Z, 2019-08-23T04:12:06Z, 2019-08-22T21:12:06Z and the correct instant for the folded one; none is null."
+    sources:
+      - "rfc:5322 4.3"
+      - "rfc:8621 4.1.2.6"
+
+  - id: EGET-078
+    title: "Restrict the Date form to Date, Resent-Date and unknown headers"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with Date, Resent-Date and 'X-Tra: Thu, 22 Aug 2019 23:12:06 -0600'."
+    when: "One call with header:Date:asDate, header:Resent-Date:asDate and header:X-Tra:asDate; separate calls with header:From:asDate, header:Subject:asDate, header:Received:asDate and header:Message-ID:asDate."
+    then: "The first call succeeds with three dates. Each of the other four answers invalidArguments."
+    sources:
+      - "rfc:8621 4.2"
+      - "cyrus:JMAPEmail/email_get_header_last_value"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  # ---------------------------------------------------------------- headers: URLs form
+  - id: EGET-079
+    title: "Parse list headers into URL arrays"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'List-Unsubscribe: <mailto:unsub@example.com?subject=unsubscribe>, <https://example.com/unsub?id=1,2>' and 'List-Help: <https://example.com/help> (Web help)'."
+    when: "Email/get with properties ['header:List-Unsubscribe:asURLs', 'header:List-Help:asURLs']."
+    then: "The values are ['mailto:unsub@example.com?subject=unsubscribe', 'https://example.com/unsub?id=1,2'] and ['https://example.com/help']: no angle brackets, no comment, a comma inside brackets does not split the URL."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeaderAsURLs"
+      - "james:EmailGetMethodContract#emailGetShouldReturnSpecificHeaderAsURLsAndIgnoresComments"
+      - "jmapio:email-get-headers#header-as-urls"
+      - "fastmail:t/Email/get/header-header-field-name.t"
+
+  - id: EGET-080
+    title: "Return null when a header cannot be parsed as URLs"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'List-Help: Invalid' and 'List-Post: NO (posting not allowed on this list)'."
+    when: "Email/get with properties ['header:List-Help:asURLs', 'header:List-Post:asURLs']."
+    then: "Both values are null."
+    sources:
+      - "james:EmailGetMethodContract#emailGetShouldReturnNullWhenInvalidSpecificHeaderAsURLs"
+      - "rfc:2369 3.4"
+
+  - id: EGET-081
+    title: "Restrict the URLs form to the RFC 2369 list headers and unknown headers"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with all six List headers and 'X-Link: <https://example.com/x>'."
+    when: "One call requesting asURLs for List-Help, List-Unsubscribe, List-Subscribe, List-Post, List-Owner, List-Archive and X-Link; separate calls requesting it for Subject, From, Date and References."
+    then: "The first call succeeds with seven arrays. Each of the other four answers invalidArguments."
+    sources:
+      - "rfc:8621 4.1.2.7"
+      - "rfc:8621 4.2"
+
+  # ---------------------------------------------------------------- convenience properties
+  - id: EGET-082
+    title: "Return messageId, inReplyTo and references as message id arrays"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A reply with Message-ID, In-Reply-To and a three id References header."
+    when: "Email/get with properties ['messageId', 'inReplyTo', 'references', 'header:Message-ID:asMessageIds', 'header:In-Reply-To:asMessageIds', 'header:References:asMessageIds']."
+    then: "messageId is a one element array, inReplyTo a one element array, references a three element array in header order, all without angle brackets, and each equals its header: counterpart."
+    sources:
+      - "james:EmailGetMethodContract#messageIdPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#inReplyToPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#referencesPropertyShouldBeSupported"
+      - "jmapio:email-get-headers#header-message-id"
+      - "jmapio:email-get-headers#header-in-reply-to"
+      - "jmapio:email-get-headers#header-references"
+      - "cyrus:JMAPEmail/email_get_references"
+
+  - id: EGET-083
+    title: "Return from, to, cc, bcc, sender and replyTo as EmailAddress arrays"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with From (name and address), Sender (address only), Reply-To, To (two addresses), Cc and Bcc headers."
+    when: "Email/get with those six properties plus the six matching header:{name}:asAddresses properties."
+    then: "Each convenience property equals its header form. sender is [{name null, email}]. to has two entries in header order. bcc is returned because the header is stored in the message."
+    sources:
+      - "james:EmailGetMethodContract#fromPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#toPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#ccPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#bccPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#senderPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#senderPropertyShouldBeSupportedWhenNoName"
+      - "james:EmailGetMethodContract#senderPropertyShouldDisplayBothValues"
+      - "james:EmailGetMethodContract#replyToPropertyShouldBeSupported"
+      - "jmapio:email-get-headers#header-from"
+      - "jmapio:email-get-headers#header-to"
+      - "jmapio:email-get-headers#header-cc"
+      - "jmapio:email-get-headers#header-bcc"
+
+  - id: EGET-084
+    title: "Return subject as the Text form and sentAt as the Date form"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'Subject:  Weekly   report ' and a valid Date header."
+    when: "Email/get with properties ['subject', 'header:Subject:asText', 'sentAt', 'header:Date:asDate']."
+    then: "subject equals header:Subject:asText: leading spaces removed, inner spacing kept as in the header. sentAt equals header:Date:asDate."
+    sources:
+      - "james:EmailGetMethodContract#subjectPropertyShouldBeSupported"
+      - "james:EmailGetMethodContract#sentAtPropertyShouldBeSupported"
+      - "jmapio:email-get-headers#header-subject"
+      - "jmapio:email-get-headers#header-sent-at"
+    notes: "WildDuck's stored subject field is normalised for threading; the JMAP subject must be computed from the header, not from that field."
+
+  - id: EGET-085
+    title: "Return null for every convenience property whose header is missing"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose only header is 'X-Only: 1' followed by a short body."
+    when: "Email/get with properties ['messageId', 'inReplyTo', 'references', 'sender', 'from', 'to', 'cc', 'bcc', 'replyTo', 'subject', 'sentAt']."
+    then: "All eleven properties are present with the value null (not [] and not an empty string)."
+    sources:
+      - "james:EmailGetMethodContract#messageIdShouldReturnNullWhenNone"
+      - "james:EmailGetMethodContract#inReplyToShouldReturnNullWhenNone"
+      - "james:EmailGetMethodContract#referencesShouldReturnNullWhenNone"
+      - "james:EmailGetMethodContract#toPropertyShouldBeNullWhenMissing"
+      - "james:EmailGetMethodContract#ccPropertyShouldBeNullWhenMissing"
+      - "james:EmailGetMethodContract#bccPropertyShouldBeNullWhenMissing"
+      - "james:EmailGetMethodContract#fromPropertyShouldBeNullWhenMissing"
+      - "james:EmailGetMethodContract#replyToPropertyShouldBeNullWhenMissing"
+      - "james:EmailGetMethodContract#subjectPropertyShouldBeNullWhenMissing"
+      - "james:EmailGetMethodContract#senderPropertyShouldBeNullWhenMissing"
+      - "cyrus:JMAPEmail/email_parse_blob822_lenient"
+    notes: "WildDuck generates an internal msgid for messages without a Message-ID header. That generated value must not appear as messageId."
+
+  - id: EGET-086
+    title: "Return an empty string, not null, for a present but empty Subject"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with the header line 'Subject:' and nothing after the colon, and another with 'Subject:    ' (spaces only)."
+    when: "Email/get with properties ['subject', 'header:Subject']."
+    then: "subject is '' for both. header:Subject is '' and '    ' respectively."
+    sources:
+      - "jmapio:email-get-headers#header-subject-empty"
+      - "rfc:8621 4.1.2.2"
+
+  - id: EGET-087
+    title: "Use the last instance for convenience properties when a header is duplicated"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with two each of From, To, Cc, Bcc, Sender, Reply-To, Subject and Date headers with different values."
+    when: "Email/get with properties ['from', 'to', 'cc', 'bcc', 'sender', 'replyTo', 'subject', 'sentAt', 'header:To:asAddresses:all']."
+    then: "Each convenience property reflects only the second (last) header. The all form returns both To headers as two arrays; values are not merged."
+    sources:
+      - "james:EmailGetMethodContract#toPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#fromPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#ccPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#bccPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#senderPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#replyToPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#subjectPropertyShouldReturnLastWhenMultipleFields"
+      - "james:EmailGetMethodContract#sentAtPropertyShouldReturnLastWhenMultipleFields"
+    notes: "IMAP ENVELOPE and WildDuck's parsedHeader may pick the first instance or merge address headers. JMAP requires the last one."
+
+  # ---------------------------------------------------------------- header decoding edge cases
+  - id: EGET-088
+    title: "Decode Q and B encoded words in subject and address names"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a Subject made of a Q encoded UTF-8 word, From with a B encoded ISO-8859-1 display name, To, Cc, Bcc, Sender and Reply-To each with an encoded display name, and an X-Mood header holding a UTF-8 encoded smiley."
+    when: "Email/get with properties ['subject', 'from', 'to', 'cc', 'bcc', 'sender', 'replyTo', 'header:X-Mood:asText', 'header:Subject']."
+    then: "subject, header:X-Mood:asText and every name are the decoded Unicode strings. header:Subject (Raw) still shows the encoded word text."
+    sources:
+      - "james:EmailGetMethodContract#subjectPropertyShouldDecodeField"
+      - "james:EmailGetMethodContract#fromPropertyShouldDecodeField"
+      - "james:EmailGetMethodContract#toPropertyShouldDecodeField"
+      - "james:EmailGetMethodContract#ccPropertyShouldDecodeField"
+      - "james:EmailGetMethodContract#bccPropertyShouldDecodeField"
+      - "james:EmailGetMethodContract#senderPropertyShouldDecodeField"
+      - "james:EmailGetMethodContract#replyToPropertyShouldDecodeField"
+      - "cyrus:JMAPEmail/email_get_mimeencode"
+      - "jmapio:email-get-headers#header-intl-from-decoded"
+
+  - id: EGET-089
+    title: "Join adjacent encoded words and keep white space next to plain text"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The RFC 2047 section 8 style samples as X headers: two encoded words separated by a space, two separated by a fold, an encoded word followed by a plain word, and an encoded word that itself encodes a trailing space."
+    when: "Email/get with header:{name}:asText for each."
+    then: "White space between two encoded words is dropped ('ab'), white space between an encoded word and plain text is kept ('a b'), and an encoded space is kept."
+    sources:
+      - "cyrus:JMAPEmail/email_get_mimeencode"
+      - "rfc:2047 6.2"
+
+  - id: EGET-090
+    title: "Decode a multi byte character split across two encoded words"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A Subject of three folded UTF-8 Q encoded words where a four byte emoji is cut after its first byte at a word boundary."
+    when: "Email/get with properties ['subject']."
+    then: "subject is the full emoji sequence with no U+FFFD: adjacent words of the same charset are joined at byte level before charset decoding."
+    sources:
+      - "cyrus:JMAPEmail/email_get_brokenheader_split_codepoint"
+
+  - id: EGET-091
+    title: "Decode encoded words in legacy charsets"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Messages whose Subject is an encoded word in ISO-8859-1, ISO-8859-15, Windows-1252, KOI8-R, ISO-2022-JP, Shift_JIS, GB2312, Big5 and EUC-KR, with the charset label in mixed case."
+    when: "Email/get with properties ['subject'] for each."
+    then: "Each subject equals the expected Unicode text."
+    sources:
+      - "cyrus:JMAPEmail/email_get_mimeencode"
+      - "jmapio:email-get-body#body-non-utf8-charset"
+      - "rfc:8621 4.1.2.2"
+
+  - id: EGET-092
+    title: "Leave an encoded word with an unknown charset undecoded"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a Subject of the form '=?x-unknown-charset?Q?abc?= tail'."
+    when: "Email/get with properties ['subject', 'header:Subject:asText']."
+    then: "The call succeeds and both values contain the literal encoded word text followed by ' tail'. Nothing is thrown and nothing is silently dropped."
+    sources:
+      - "rfc:8621 4.1.2.2"
+    notes: "Only encoded sections with a known character set are decoded."
+
+  - id: EGET-093
+    title: "Do not decode text that looks like an encoded word but breaks RFC 2047 placement rules"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'X-A: foo=?UTF-8?Q?bar?=baz' (no white space around the token), 'X-B: =?UTF-8?Q?a b?=' (space inside the token) and a From display name given as a quoted string that contains an encoded word."
+    when: "Email/get with properties ['header:X-A:asText', 'header:X-B:asText', 'from']."
+    then: "X-A and X-B come back verbatim. For the quoted From name the value is a string and the call succeeds; WildDuck decodes it, as mail clients commonly produce this."
+    sources:
+      - "rfc:8621 4.1.2.2"
+      - "rfc:2047 5"
+    notes: "Strict RFC 2047 forbids encoded words inside quoted strings, yet real mail is full of them. Decoding inside quoted display names is a deliberate WildDuck leniency; flag if the team prefers strictness."
+
+  - id: EGET-094
+    title: "Drop NUL and control characters produced by decoding and replace undecodable bytes"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a Subject encoded word whose payload decodes to 'a', NUL, 'b', BEL, 'c', and an X header with a UTF-8 encoded word containing the invalid byte FF between 'x' and 'y'."
+    when: "Email/get with properties ['subject', 'header:X-Bad:asText']."
+    then: "subject is 'abc'. The X header value is 'x', U+FFFD, 'y'."
+    sources:
+      - "rfc:8621 4.1.2.2"
+
+  - id: EGET-095
+    title: "Return raw UTF-8 headers (RFC 6532) unchanged"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with unencoded UTF-8 in the Subject and in the From display name (Cyrillic text), and a UTF-8 local part in To."
+    when: "Email/get with properties ['subject', 'from', 'to', 'header:Subject', 'headers']."
+    then: "subject and from[0].name are the Cyrillic strings, to[0].email keeps the UTF-8 local part, and the Raw values contain the same characters with no replacement characters."
+    sources:
+      - "cyrus:JMAPEmail/email_get_8bit_headers"
+      - "rfc:8621 4.1.2.1"
+
+  - id: EGET-096
+    title: "Handle 8 bit headers that are not UTF-8"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with raw KOI8-R bytes in Subject and From, and one with raw ISO-8859-1 bytes in Subject, appended as binary."
+    when: "Email/get with properties ['subject', 'from', 'header:Subject', 'headers']."
+    then: "The call succeeds and the response is valid JSON. In the Raw values each invalid octet run is U+FFFD (or the text is decoded when the server detected the charset). from[0].email is intact. ASCII parts of the values are unchanged."
+    sources:
+      - "cyrus:JMAPEmail/email_get_8bit_headers"
+      - "jmapio:email-get-body#body-invalid-ascii-handling"
+      - "rfc:8621 4.1.2.1"
+    notes: "Cyrus detects the charset and returns readable Cyrillic. WildDuck may do the same later; the minimum is U+FFFD replacement and no failure."
+
+  - id: EGET-097
+    title: "Drop NUL octets from Raw header values"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message appended as a binary literal with 'X-Nul: a', NUL, 'b' in the header."
+    when: "Email/get with properties ['header:X-Nul', 'headers']."
+    then: "The value is ' ab' in both places and the JSON contains no escaped NUL character."
+    sources:
+      - "rfc:8621 4.1.2.1"
+    notes: "If IMAP APPEND refuses NUL, seed through LMTP or the database."
+
+  - id: EGET-098
+    title: "Unfold folded address and text headers in the parsed forms"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose To header has ten addresses folded over five lines, with a fold inside a quoted display name and a fold between a display name and its angle address, and a Subject folded three times with tabs."
+    when: "Email/get with properties ['to', 'subject']."
+    then: "to has ten entries with clean names (no CR, LF or tab) and exact addresses. subject contains no CR or LF; each fold becomes the white space that followed it."
+    sources:
+      - "rfc:5322 2.2.3"
+      - "rfc:8621 4.1.2.2"
+
+  - id: EGET-099
+    title: "Handle very long headers"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a References header of 500 message ids folded over many lines (about 20 KB), a To header with 400 addresses, and an unfolded X-Long line of 5000 characters (over the 998 limit)."
+    when: "Email/get with properties ['references', 'to', 'header:X-Long', 'header:X-Long:asText', 'headers']."
+    then: "references has 500 items, to has 400 items, both X-Long values are complete (5001 and 5000 characters). Nothing is truncated."
+    sources:
+      - "rfc:8621 4.1.3"
+      - "wildduck:consts recipients per message 400"
+
+  - id: EGET-100
+    title: "Parse obsolete address syntax"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'To: <@relay1.example,@relay2.example:user@example.com>' (source route), 'Cc: John Q. Public <jqp@example.com>' (unquoted dot in the phrase), 'Bcc: \"quoted local\"@example.com' and 'Reply-To: Mary Smith <mary@example.com> , , jdoe@example.org' (empty list members)."
+    when: "Email/get with properties ['to', 'cc', 'bcc', 'replyTo']."
+    then: "to is [{null, user@example.com}] with the route dropped. cc is [{John Q. Public, jqp@example.com}]. bcc keeps the quoted local part in email. replyTo has exactly two entries."
+    sources:
+      - "rfc:5322 4.4"
+      - "rfc:8621 4.1.2.3"
+
+  - id: EGET-101
+    title: "Return internationalised addresses as written in the message"
+    method: Email/get
+    spec: "RFC 8621 4.1.2.3"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with From 'J. Besteiro <jb@julián.example.com>' (UTF-8 domain) and To 'x@xn--julin-0qa.example.com' (A-label)."
+    when: "Email/get with properties ['from', 'to'] and IMAP FETCH ENVELOPE."
+    then: "from[0].email is 'jb@julián.example.com' and to[0].email is 'x@xn--julin-0qa.example.com': neither is converted. The same spellings appear in the IMAP ENVELOPE."
+    sources:
+      - "cyrus:JMAPEmail/email_get_utf8_domain"
+    notes: "Cyrus converts the U-label to punycode in JMAP. WildDuck returns the addr-spec as in the message so that IMAP and JMAP agree. Open question if the team prefers normalisation."
+
+  - id: EGET-102
+    title: "Skip malformed header lines without losing the others"
+    method: Email/get
+    spec: "RFC 8621 4.1.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose header block contains a line without a colon ('this is not a header') between Subject and To, a header with an empty name (': value') and a header with trailing white space before the colon ('X-Space : v')."
+    when: "Email/get with properties ['headers', 'subject', 'to', 'header:X-Space']."
+    then: "The call succeeds. subject and to are parsed correctly. Every returned headers item has a non empty name without a colon."
+    sources:
+      - "rfc:8621 4.1.2.3"
+      - "jmapio:email-get-body#body-invalid-ascii-handling"
+
+  - id: EGET-103
+    title: "Handle a message that has no headers or no body"
+    method: Email/get
+    spec: "RFC 8621 4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three messages: one that starts with an empty line followed by body text only, one with headers and no blank line or body, and one of zero length body after a single header."
+    when: "Email/get with the default properties plus headers and bodyStructure, fetchAllBodyValues true."
+    then: "All three are returned. The first has headers [] and all convenience properties null, with the text as its body value. The others have a text/plain bodyStructure of size 0, preview '' and an empty string body value."
+    sources:
+      - "james:EmailGetMethodContract#previewForSimpleEmailWithoutBody"
+      - "rfc:8621 4.1.4"
+
+  # ---------------------------------------------------------------- bodyStructure shapes
+  - id: EGET-104
+    title: "Describe a single part text/plain message"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 'Content-Type: text/plain; charset=utf-8' and a 7bit body of known length (candidate fixture imap-core/test/fixtures/simple.eml)."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments']."
+    then: "bodyStructure is one part with type 'text/plain', charset 'utf-8', a non null partId and blobId, size equal to the body length, and no subParts (null or absent). textBody and htmlBody each contain that same part; attachments is []."
+    sources:
+      - "james:EmailGetMethodContract#bodyStructureForSimpleMessage"
+      - "cyrus:JMAPEmail/email_get_body_plain"
+      - "stalwart:mail/get.rs (single_part.eml)"
+      - "jmapio:email-get-body#body-structure"
+      - "jmapio:email-get-body#body-text-body"
+
+  - id: EGET-105
+    title: "Return the default bodyProperties set"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message with a text part and an attachment."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'attachments'] and no bodyProperties."
+    then: "Every non multipart EmailBodyPart in the three properties has exactly the keys partId, blobId, size, name, type, charset, disposition, cid, language, location. headers is absent. In bodyStructure the multipart node additionally carries subParts so that the tree is reachable."
+    sources:
+      - "james:EmailGetMethodContract#bodyPropertiesShouldMatchSpecifiedDefaults"
+      - "fastmail:t/Email/get/body-properties.t"
+      - "rfc:8621 4.2"
+    notes: "The RFC default list does not name subParts, yet bodyStructure is useless without it. Cyrus, Stalwart and James all include subParts in bodyStructure by default. Open question, see EGET-131."
+
+  - id: EGET-106
+    title: "Describe an HTML only message and fall back to the HTML part in textBody"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A single part message with Content-Type text/html."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments']."
+    then: "bodyStructure.type is 'text/html'. textBody and htmlBody both contain that one part (same partId); attachments is []."
+    sources:
+      - "cyrus:JMAPEmail/email_get_body_html"
+      - "james:EmailGetMethodContract#textBodyValuesForHtmlMessage"
+      - "fastmail:t/Email/get/text-body.t"
+      - "fastmail:t/getMessages-htmlBody.t"
+
+  - id: EGET-107
+    title: "Describe multipart/alternative and split it between textBody and htmlBody"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/alternative message with a text/plain part followed by a text/html part (candidate fixture imap-core/test/fixtures/nodemailer.eml)."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments']."
+    then: "bodyStructure has type 'multipart/alternative', partId null, blobId null and two subParts. textBody is [the text/plain part], htmlBody is [the text/html part], attachments is []."
+    sources:
+      - "james:EmailGetMethodContract#bodyStructureForSimpleMultipart"
+      - "james:EmailGetMethodContract#textBodyForSimpleMultipart"
+      - "cyrus:JMAPEmail/email_get_body_both"
+      - "stalwart:mail/get.rs (multipart_alternative.eml)"
+      - "jmapio:email-get-body#body-html-body"
+      - "jmapio:email-get-body#body-multipart-alternative-text-and-html"
+      - "fastmail:t/Email/get/html-body.t"
+
+  - id: EGET-108
+    title: "Describe multipart/mixed with a text body and attachments"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message: text/plain, then application/pdf with 'Content-Disposition: attachment; filename=report.pdf' in base64, then text/csv as attachment."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments', 'hasAttachment']."
+    then: "bodyStructure is multipart/mixed with three subParts in order. textBody and htmlBody are [the text part]. attachments is [pdf, csv] in order, each with type, name, disposition 'attachment', a blobId and the decoded size. hasAttachment is true."
+    sources:
+      - "james:EmailGetMethodContract#attachmentsForSimpleMultipart"
+      - "stalwart:mail/get.rs (multipart_mixed.eml)"
+      - "jmapio:email-get-body#body-attachments"
+      - "fastmail:t/Email/get/attachments.t"
+      - "fastmail:t/Email/get/body-structure-and-attachments.t"
+
+  - id: EGET-109
+    title: "Describe multipart/related with inline images referenced by cid"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/related holding text/html (with an img src cid:logo@x) and image/png with 'Content-ID: <logo@x>' and 'Content-Disposition: inline'."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments', 'hasAttachment']."
+    then: "htmlBody and textBody are [the html part]: only the first child of a related can be a body part. attachments is [the image part] with cid 'logo@x' and disposition 'inline'. hasAttachment is false."
+    sources:
+      - "james:EmailGetMethodContract#attachmentValuesForInlinedMultipart"
+      - "james:EmailGetMethodContract#inlinedAttachmentMailShouldNotBeCountedAsHasAttachmentWhenEmailFullView"
+      - "stalwart:mail/get.rs (multipart_related.eml, multipart_cid.eml)"
+      - "jmapio:email-get-body#body-inline-attachment-cid"
+
+  - id: EGET-110
+    title: "Describe alternative containing related: HTML with images against a plain text version"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/alternative [text/plain, multipart/related [text/html, image/png inline with Content-ID]]."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments'], fetchHTMLBodyValues true."
+    then: "textBody is [plain], htmlBody is [html], attachments is [image]. bodyValues has only the html part."
+    sources:
+      - "james:EmailGetMethodContract#htmlBodyValuesForRelatedMultipartInsideAlternative"
+      - "stalwart:mail/get.rs (multipart_related.eml)"
+
+  - id: EGET-111
+    title: "Do not recurse into an attached message/rfc822 part"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text/plain, message/rfc822 whose inner message is itself multipart/mixed with its own attachment]."
+    when: "Email/get with properties ['bodyStructure', 'attachments', 'textBody', 'hasAttachment']."
+    then: "The message/rfc822 part is a leaf: non null partId and blobId, no subParts, size equal to the embedded message length. attachments is [that part] only; the inner message's parts appear nowhere. textBody is [the outer text part]. hasAttachment is true."
+    sources:
+      - "cyrus:JMAPEmail/email_get_attachedemails"
+      - "james:EmailGetMethodContract#shouldSupportAttachedMessageWithComplexMultipart"
+      - "stalwart:mail/get.rs (message_attachment.eml)"
+      - "rfc:8621 4.1.4"
+    notes: "IMAP BODYSTRUCTURE does recurse into message/rfc822 and WildDuck's mimeTree stores the nested tree. The JMAP model must stop at the message part; partIds of following siblings still follow the IMAP numbering."
+
+  - id: EGET-112
+    title: "Treat message/global like message/rfc822 and decode its transfer encoding"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Six messages, each multipart/mixed [text/plain, embedded message with an 8 bit UTF-8 Subject], the embedded part typed message/rfc822 or message/global and transfer encoded as 8bit, base64 or quoted-printable."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['partId', 'blobId', 'size', 'type', 'header:content-transfer-encoding:asText']; then download the part blob and IMAP FETCH BINARY[2]."
+    then: "For every variant the part is a leaf with the stated type, size equals the length of the decoded embedded message, the header property echoes the encoding, and the blob download and BINARY[2] both return the identical decoded message bytes."
+    sources:
+      - "cyrus:JMAPEmail/email_get_encoded_message"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-113
+    title: "Describe a multipart/signed message"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/signed (protocol application/pgp-signature) [multipart/alternative [text/plain, text/html], application/pgp-signature named signature.asc]. A second message uses application/pkcs7-signature (smime.p7s)."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments']."
+    then: "bodyStructure.type is 'multipart/signed' with two subParts. textBody is [plain], htmlBody is [html], attachments is [the signature part] with its type and name."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "wildduck:test/fixtures PGP keys"
+    notes: "Whether a lone signature part sets hasAttachment follows WildDuck's stored attachment flag, see EGET-168."
+
+  - id: EGET-114
+    title: "Describe a multipart/encrypted message and an at rest encrypted message"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "A PGP/MIME message: multipart/encrypted [application/pgp-encrypted, application/octet-stream]. Also a plain message delivered to a user with encryptMessages enabled (candidate keys under test/fixtures), which WildDuck stores as multipart/encrypted."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments', 'preview', 'bodyValues'], fetchAllBodyValues true; and IMAP FETCH BODYSTRUCTURE."
+    then: "Both show the multipart/encrypted tree as stored, matching IMAP. textBody and htmlBody are []. attachments lists the two leaf parts. bodyValues is {}. The call succeeds and the server does not attempt decryption."
+    sources:
+      - "wildduck:brief emails"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-115
+    title: "Describe a multipart/report delivery status notification"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/report (report-type delivery-status) [text/plain, message/delivery-status, message/rfc822 or text/rfc822-headers]. A second message is an MDN with message/disposition-notification."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments']."
+    then: "bodyStructure.type is 'multipart/report' with three leaf subParts. textBody and htmlBody are [the text/plain part]. attachments holds the status part and the returned message or headers part, in order, none with subParts."
+    sources:
+      - "james:EmailGetMethodContract#shouldInlineMDN"
+      - "rfc:8621 4.1.4"
+    notes: "James additionally shows the message/disposition-notification part inside textBody. WildDuck follows the RFC algorithm, where only text/plain, text/html and media types can be body parts."
+
+  - id: EGET-116
+    title: "Default child parts of multipart/digest to message/rfc822"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/related [a part with no Content-Type header, multipart/digest [a part with no Content-Type whose content is a complete message]]."
+    when: "Email/get with properties ['bodyStructure']."
+    then: "The first child has type 'text/plain' and charset 'us-ascii'. The digest child has type 'message/rfc822', charset null, is a leaf, and is listed in attachments when that property is requested."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bodypart_default_type"
+      - "cyrus:JMAPEmail/email_parse_digest"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-117
+    title: "Default to text/plain us-ascii when the message has no Content-Type"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with From, To, Subject and a body but no MIME-Version and no Content-Type header."
+    when: "Email/get with properties ['bodyStructure', 'textBody'], fetchTextBodyValues true."
+    then: "bodyStructure has type 'text/plain', charset 'us-ascii', disposition null, name null, cid null, language null, location null. The body value is the body text."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_contenttype_default"
+      - "cyrus:JMAPEmail/email_get_bodypart_default_type"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-118
+    title: "Normalise the type value: lowercase, no parameters, no comments"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Parts with 'Content-Type: TEXT/Plain (a comment); Charset=\"UTF-8\"; format=flowed', 'Content-Type: Application/PDF;name=a.pdf' and a folded Content-Type header."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['type', 'charset', 'header:Content-Type']."
+    then: "type values are 'text/plain' and 'application/pdf' with no parameters, comments or white space. charset is 'UTF-8' or 'utf-8' consistently. header:Content-Type is the untouched Raw value."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "cyrus:JMAPEmail/email_parse_charset"
+    notes: "The RFC does not demand lowercase; WildDuck lowercases type so that the body algorithm's comparisons work. Decide once whether charset is lowercased too and assert that."
+
+  - id: EGET-119
+    title: "Fall back to application/octet-stream for an invalid Content-Type"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/related message whose second part has 'Content-Type: image/not/valid', and single part messages with 'Content-Type: garbage' and 'Content-Type: text/html; charset=text/plain; charset=utf-8'."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'attachments']."
+    then: "The invalid types are reported as 'application/octet-stream' with charset null and the parts are attachments. The duplicated charset case keeps type 'text/html' and reports one charset without failing."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bodypart_type_invalid"
+      - "cyrus:JMAPEmail/email_parse_contenttype_default"
+
+  - id: EGET-120
+    title: "Reproduce the RFC 8621 example decomposition"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The structure of the RFC example: mixed [A text inline, mixed [alternative [mixed [B text, C jpeg inline, D text], related [E html, F jpeg]], G jpeg attachment, H application/x-excel, J message/rfc822], K text inline], each leaf tagged with an X-Body-Id header."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments'] and bodyProperties ['partId', 'type', 'disposition', 'header:X-Body-Id']."
+    then: "By X-Body-Id: textBody is [A, B, C, D, K], htmlBody is [A, E, K], attachments is [C, F, G, H, J]. bodyStructure mirrors the nesting exactly."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bodystructure"
+      - "james:EmailGetMethodContract#bodyStructureForComplexMultipart"
+      - "james:EmailGetMethodContract#textBodyForComplexMultipart"
+      - "james:EmailGetMethodContract#htmlBodyForComplexMultipart"
+      - "james:EmailGetMethodContract#attachmentsForComplexMultipart"
+      - "stalwart:mail/get.rs (rfc8621.eml)"
+      - "fastmail:t/Email/get/body-structure-and-attachments.t"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-121
+    title: "Handle deeply nested multiparts"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with 20 levels of nested multipart/mixed ending in a text/plain leaf, and the candidate fixture imap-core/test/fixtures/mimetorture.eml."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'attachments'] and IMAP FETCH BODYSTRUCTURE."
+    then: "The JMAP tree has the same depth and the same number and order of leaf parts as the IMAP BODYSTRUCTURE (not counting parts inside embedded messages). The innermost text leaf is in textBody. The call completes without stack or time problems."
+    sources:
+      - "wildduck:imap-core/test/fixtures/mimetorture.eml"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-122
+    title: "Handle a multipart with a missing closing boundary"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text/plain, application/octet-stream] where the message ends without the final boundary line (truncated mail)."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'attachments'], fetchTextBodyValues true."
+    then: "Both parts are reported; the text value is complete, the last part's content runs to the end of the message. No error."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "wildduck:imap-core/test/fixtures/indexer-cases.js"
+
+  - id: EGET-123
+    title: "Handle a multipart whose boundary parameter is missing or never appears"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One message with 'Content-Type: multipart/mixed' and no boundary parameter, one whose declared boundary does not occur in the body, and one multipart with only the closing boundary (zero parts)."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments', 'preview'] and IMAP FETCH BODYSTRUCTURE."
+    then: "No call fails. The result is consistent with what IMAP reports for the same message: either a multipart with subParts [] or a single leaf part. textBody, htmlBody and attachments are arrays and every leaf part has a partId and blobId that download."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "wildduck:imap-core/test/fixtures/mime-fuzz.js"
+
+  - id: EGET-124
+    title: "Parse parts separated by bare LF and parts without a blank line before the boundary"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/alternative message whose top headers use CRLF but whose parts use bare LF, the first part carrying 'X-Foo: bar'; and the fixture imap-core/test/fixtures/no_empty_line_between_text_boundary.eml."
+    when: "Email/get with properties ['bodyStructure', 'bodyValues'], bodyProperties ['partId', 'blobId', 'type', 'header:x-foo'], fetchAllBodyValues true."
+    then: "Two subParts text/plain and text/html are found. header:x-foo is ' bar' on the first and null on the second. The fixture message yields its parts as IMAP does."
+    sources:
+      - "cyrus:JMAPEmail/email_get_barelf_multipart"
+      - "wildduck:imap-core/test/fixtures/no_empty_line_between_text_boundary.eml"
+
+  # ---------------------------------------------------------------- EmailBodyPart properties
+  - id: EGET-125
+    title: "Give every non multipart part a unique partId and multiparts a null partId and blobId"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The message of EGET-120."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments'] and bodyProperties ['partId', 'blobId', 'type', 'subParts']."
+    then: "Every part with a multipart type has partId null and blobId null and a subParts array. Every other part has a string partId unique within the Email, a non null blobId, and subParts null or absent. The same part has the same partId and blobId in all four properties."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "stalwart:mail/get.rs"
+
+  - id: EGET-126
+    title: "Use the IMAP part path as partId"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A single part message and multipart/mixed [alternative [plain, html], pdf]."
+    when: "Email/get with properties ['bodyStructure'] and IMAP FETCH BODY[1], BODY[1.1], BODY[1.2], BODY[2]."
+    then: "The single part has partId '1'. The multipart leaves have partIds '1.1', '1.2' and '2', and the content IMAP returns for each section number is the encoded form of that JMAP part."
+    sources:
+      - "wildduck:jmap-report Email mapping (partId is the IMAP part path)"
+      - "cyrus:JMAPEmail/email_get_encoded_message"
+
+  - id: EGET-127
+    title: "Report size as the number of octets after transfer decoding"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A quoted-printable text part whose decoded content is 15 octets (encoded longer), a base64 attachment of 1000 decoded octets wrapped at 76 columns, and a 7bit part."
+    when: "Email/get with properties ['bodyStructure', 'size'] and a download of each part blob."
+    then: "The part sizes are 15, 1000 and the literal body length; each equals the length of the downloaded blob. The Email size is the full raw message size and is larger than the sum."
+    sources:
+      - "cyrus:JMAPEmail/email_get_size"
+      - "rfc:8621 4.1.4"
+    notes: "IMAP BODYSTRUCTURE reports the encoded size, so this number intentionally differs from IMAP. WildDuck does not store decoded sizes for every part; they are computed at index time or on first access."
+
+  - id: EGET-128
+    title: "Take name from the Content-Disposition filename, falling back to the Content-Type name"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Attachments with: only 'filename=\"f.xls\"' (folded before the value); only 'name=y.dat' on Content-Type; both name=y.dat and filename=z.dat; neither."
+    when: "Email/get with properties ['attachments'] and bodyProperties ['name', 'type']."
+    then: "The names are 'f.xls', 'y.dat', 'z.dat' (filename wins) and null."
+    sources:
+      - "cyrus:JMAPEmail/email_get_attachment_name"
+      - "fastmail:t/Email/get/attachments.t"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-129
+    title: "Decode RFC 2231 and RFC 2047 encoded file names"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Attachments named through: RFC 2231 continuations (name*0, name*1, name*2); a continuation folded over two lines; filename*=utf-8''percent encoded emoji; mixed filename*0* (encoded) plus filename*1 (quoted); an RFC 2047 Q encoded word in a quoted name parameter; an ISO-8859-1 2231 value with a language tag."
+    when: "Email/get with properties ['attachments'] and bodyProperties ['name']."
+    then: "Each name is the fully joined and decoded Unicode file name (for example 'loooooong.name', 'continue', the emoji followed by '.txt', 'Café.doc'). No name contains an asterisk section marker, a percent escape or an encoded word."
+    sources:
+      - "cyrus:JMAPEmail/email_get_attachment_name"
+      - "stalwart:mail/get.rs (text_attachments.eml)"
+      - "rfc:2231 4"
+
+  - id: EGET-130
+    title: "Read sloppy file name parameters leniently"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Attachments with: an unquoted RFC 2047 encoded word as the name value; 'name= foo ' with surrounding spaces; unquoted 'name=foo bar'; a raw UTF-8 emoji in an unquoted name; an escaped quote inside a quoted file name; an empty name value."
+    when: "Email/get with properties ['attachments'] and bodyProperties ['name']."
+    then: "The names are the decoded word, 'foo', 'foo bar', the emoji name, the name containing a literal double quote, and null for the empty value. No call fails."
+    sources:
+      - "cyrus:JMAPEmail/email_get_attachment_name"
+    notes: "Leniency mirrors Cyrus. The exact results depend on WildDuck's libmime parameter parser; the hard requirement is no failure and the same name as the REST API attachment listing shows."
+
+  - id: EGET-131
+    title: "Return only the requested bodyProperties"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message with text and one attachment."
+    when: "Email/get with properties ['bodyStructure', 'textBody', 'attachments'] and bodyProperties ['partId', 'type'], then with ['partId', 'type', 'subParts']."
+    then: "In the first call every part object in all three properties has exactly the keys partId and type, and bodyStructure is only the root multipart node. In the second call bodyStructure additionally has subParts whose items again have exactly partId, type and (for multiparts) subParts."
+    sources:
+      - "james:EmailGetMethodContract#bodyPropertiesFilteringShouldBeApplied"
+      - "fastmail:t/Email/get/body-properties.t"
+      - "jmapio:email-get-body#body-properties-filter"
+      - "rfc:8621 4.2"
+    notes: "Open question: whether subParts must be listed explicitly once bodyProperties is given (strict reading) or is always included in bodyStructure. The catalogue assumes the strict reading for an explicit list and implicit inclusion for the default, as Cyrus does."
+
+  - id: EGET-132
+    title: "Return empty part objects for an empty bodyProperties array"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message with text and one attachment."
+    when: "Email/get with properties ['textBody', 'attachments'] and bodyProperties []."
+    then: "textBody is [{}] and attachments is [{}]: the right number of parts, each an empty object."
+    sources:
+      - "james:EmailGetMethodContract#emptyBodyPropertiesShouldReturnEmptyObjects"
+      - "fastmail:t/Email/get/body-properties.t"
+
+  - id: EGET-133
+    title: "Reject unknown bodyProperties"
+    method: Email/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Any message."
+    when: "Separate Email/get calls with bodyProperties ['partId', 'invalid'], ['partId', 'id'] (an Email property, not a part property), ['imageSize'], ['header:Content-Type:asDate'] and bodyProperties given as a string."
+    then: "Every call answers invalidArguments, also when properties requests no body property at all."
+    sources:
+      - "james:EmailGetMethodContract#invalidBodyPropertiesShouldBeRejected"
+      - "cyrus:JMAPEmail/email_get_invalid_body_properties"
+    notes: "Valid names: partId, blobId, size, headers, name, type, charset, disposition, cid, language, location, subParts and header:* properties."
+
+  - id: EGET-134
+    title: "Return part headers and header properties on EmailBodyPart"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed whose text part has headers Content-Type, Content-Transfer-Encoding, X-Part: one in that order, and whose attachment has Content-Disposition and two X-Dup headers."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['partId', 'headers', 'header:X-Part', 'header:content-transfer-encoding:asText', 'header:X-Dup:all', 'header:X-None', 'subParts']."
+    then: "Each part's headers lists only that part's own header fields in order, in Raw form with original name capitalisation. The root part's headers are the top level message headers. header:X-Part is ' one' on the text part and null elsewhere, X-Dup:all has two values on the attachment and [] elsewhere, X-None is null everywhere."
+    sources:
+      - "james:EmailGetMethodContract#bodyStructureShouldSupportSpecificHeaders"
+      - "cyrus:JMAPEmail/email_get_barelf_multipart"
+      - "cyrus:JMAPEmail/email_get_encoded_message"
+      - "cyrus:JMAPEmail/email_get_bodystructure"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-135
+    title: "Report charset per the MIME defaults"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Parts with: 'text/plain; charset=ISO-8859-15'; 'text/html' without charset; no Content-Type at all; 'application/pdf'; 'application/json; charset=utf-8'; 'image/png'; a multipart container."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['type', 'charset', 'subParts']."
+    then: "charset is the given value for the first, 'us-ascii' for the second and third, null for application/pdf and image/png, 'utf-8' for the json part (parameter present), and null for the multipart."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_charset"
+      - "cyrus:JMAPEmail/email_parse_contenttype_default"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-136
+    title: "Report disposition without parameters, or null"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Parts with 'Content-Disposition: ATTACHMENT; filename=a.txt', 'Content-Disposition: inline (comment)', no disposition header, and an unknown value 'Content-Disposition: weird; x=y'."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['disposition', 'name', 'subParts']."
+    then: "disposition is 'attachment', 'inline', null and 'weird'. No parameter or comment text is included."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "cyrus:JMAPEmail/email_get_bodystructure"
+    notes: "Lowercasing is a WildDuck choice so that the comparison with 'attachment' in the body algorithm is reliable."
+
+  - id: EGET-137
+    title: "Report cid without angle brackets"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text without Content-ID, image with 'Content-Id: <1234567890@local>', image with '<1234567890>', image with a bare '1234567890', image with ' <a@b> (comment)']."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['partId', 'cid', 'subParts']."
+    then: "The cid values are null, '1234567890@local', '1234567890', '1234567890' and 'a@b'."
+    sources:
+      - "cyrus:JMAPEmail/email_get_cid"
+      - "stalwart:mail/get.rs (multipart_cid.eml)"
+      - "jmapio:email-get-body#body-inline-attachment-cid"
+
+  - id: EGET-138
+    title: "Report language and location from Content-Language and Content-Location"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Parts with 'Content-Language: en-US, de (German), fr', 'Content-Language: et', no Content-Language; and 'Content-Location: https://example.com/img/logo.png' (also folded), none."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['language', 'location', 'subParts']."
+    then: "language is ['en-US', 'de', 'fr'], ['et'] and null. location is the URI string without white space, and null when absent."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "stalwart:mail/get.rs"
+
+  - id: EGET-139
+    title: "Treat an unknown Content-Transfer-Encoding as no encoding for the blob"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A single part text/plain message with 'Content-Transfer-Encoding: foobar' and the body 'This is a test email.' CRLF."
+    when: "Email/get with properties ['bodyStructure', 'bodyValues'], fetchAllBodyValues true, and a download of the part blob."
+    then: "The part size and the blob bytes equal the literal body octets. The body value has isEncodingProblem true; its value is the undecoded text with LF line endings."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bogus_encoding"
+      - "rfc:8621 4.1.4"
+    notes: "Cyrus returns an empty value here. The RFC says the blob is treated as unencoded and the flag is set, so WildDuck returns the text."
+
+  # ---------------------------------------------------------------- textBody, htmlBody, attachments algorithm
+  - id: EGET-140
+    title: "Fall back across alternatives when only one text flavour exists"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Message 1: multipart/alternative with only a text/html child. Message 2: multipart/alternative with only a text/plain child. Message 3: multipart/mixed [alternative [html only], pdf attachment]."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments'], fetchTextBodyValues and fetchHTMLBodyValues true."
+    then: "Message 1: textBody and htmlBody are both [html]. Message 2: both are [plain]. Message 3: both are [html] and attachments is [pdf]. bodyValues holds the one text part in each case."
+    sources:
+      - "james:EmailGetMethodContract#htmlBodyValuesShouldFallBackToPlainTextWhenNoHtmlPart"
+      - "stalwart:mail/get.rs (text_body_missing.eml, text_body_missing_multipart.eml)"
+      - "fastmail:t/Email/get/text-body.t"
+      - "fastmail:t/Email/get/html-body.t"
+
+  - id: EGET-141
+    title: "Return empty body lists when the message has no displayable part"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A single part message of type application/zip, and a single part text/plain message with 'Content-Disposition: attachment; filename=notes.txt'."
+    when: "Email/get with the default properties."
+    then: "For both: textBody is [], htmlBody is [], attachments is [the part], hasAttachment is true, preview is a string (empty for the zip)."
+    sources:
+      - "cyrus:JMAPEmail/email_get_body_notext"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-142
+    title: "Show sequential text parts of a multipart/mixed as one body"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text/plain body, text/plain mailing list footer], neither with a file name or disposition."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments'], fetchTextBodyValues true."
+    then: "textBody and htmlBody are both [body, footer] in order; attachments is []; bodyValues has both parts."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "stalwart:mail/get.rs (multipart_mixed.eml)"
+
+  - id: EGET-143
+    title: "Treat a named text part that is not first as an attachment"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text/plain body, text/plain with 'Content-Type: text/plain; name=log.txt' and no disposition, text/html with disposition attachment]."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments']."
+    then: "textBody and htmlBody are [body]. attachments is [log.txt, the html attachment]."
+    sources:
+      - "stalwart:mail/get.rs (text_attachments.eml)"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-144
+    title: "Place inline media parts of a mixed message in both body lists and not in attachments"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text/plain, image/jpeg with disposition inline and a file name, audio/mpeg without disposition, video/mp4 with disposition attachment]."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments', 'hasAttachment']."
+    then: "textBody and htmlBody are [text, jpeg, audio]. attachments is [video] only. hasAttachment is true."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "cyrus:JMAPEmail/email_get_hasattachment"
+
+  - id: EGET-145
+    title: "List an inline image that is in only one of the body lists in attachments too"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/alternative [multipart/mixed [text/plain B, image/jpeg C inline, text/plain D], text/html E]."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments']."
+    then: "textBody is [B, C, D], htmlBody is [E], attachments is [C] because C is a media part that is not in both lists."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "cyrus:JMAPEmail/email_get_bodystructure"
+
+  - id: EGET-146
+    title: "Keep non plain, non html text parts out of the body lists"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "multipart/mixed [text/plain, text/calendar without disposition, text/x-markdown without disposition]; and a single part text/x-markdown message."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'attachments', 'bodyStructure', 'bodyValues'], fetchAllBodyValues true."
+    then: "First message: textBody is [plain]; attachments is [calendar, markdown]; bodyValues contains all three text parts. Second message: textBody and htmlBody are [], attachments is [the part], its body value is the markdown text with isEncodingProblem false."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bodyvalues_markdown"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-147
+    title: "List attachments depth first without subParts"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "mixed [text, mixed [pdf1, mixed [pdf2]], pdf3, message/rfc822]."
+    when: "Email/get with properties ['attachments'] and bodyProperties ['partId', 'type', 'name', 'subParts']."
+    then: "attachments is [pdf1, pdf2, pdf3, message] in that order. No item is a multipart and none has a non null subParts."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "james:EmailGetMethodContract#attachmentsForComplexMultipart"
+
+  # ---------------------------------------------------------------- bodyValues
+  - id: EGET-148
+    title: "Return an empty bodyValues object when no fetch flag is set"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/alternative message."
+    when: "Email/get with properties ['bodyValues', 'textBody', 'htmlBody'] and no fetch arguments; and again with all three fetch arguments explicitly false."
+    then: "bodyValues is {} in both responses."
+    sources:
+      - "james:EmailGetMethodContract#bodyValuesShouldBeEmptyWithoutFetch"
+      - "rfc:8621 4.2"
+
+  - id: EGET-149
+    title: "Fetch only textBody values with fetchTextBodyValues"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "mixed [alternative [text/plain P, text/html H], text/csv attachment T]."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'bodyValues'] and fetchTextBodyValues true."
+    then: "bodyValues has exactly one key, the partId of P, with {value: the plain text, isEncodingProblem false, isTruncated false}. H and T are absent."
+    sources:
+      - "james:EmailGetMethodContract#textBodyValuesForSimpleMultipart"
+      - "james:EmailGetMethodContract#textBodyValuesForAlternativeMessage"
+      - "james:EmailGetMethodContract#textBodyValuesForComplexMultipart"
+      - "jmapio:email-get-body#body-values-text"
+      - "fastmail:t/Email/get/fetch-text-body-values.t"
+
+  - id: EGET-150
+    title: "Fetch only htmlBody values with fetchHTMLBodyValues"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The message of EGET-149."
+    when: "Email/get with properties ['textBody', 'htmlBody', 'bodyValues'] and fetchHTMLBodyValues true."
+    then: "bodyValues has exactly the partId of H with the HTML source as value. P and T are absent."
+    sources:
+      - "james:EmailGetMethodContract#htmlBodyValuesForComplexMultipart"
+      - "jmapio:email-get-body#body-values-html"
+      - "fastmail:t/Email/get/fetch-html-body-values.t"
+
+  - id: EGET-151
+    title: "Combine fetchTextBodyValues and fetchHTMLBodyValues"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The message of EGET-149, and a single part text/plain message."
+    when: "Email/get with both flags true."
+    then: "For the multipart, bodyValues has exactly P and H. For the single part message it has one key (the part is in both lists and appears once)."
+    sources:
+      - "james:EmailGetMethodContract#textAndHtmlBodyValuesForComplexMultipart"
+      - "james:EmailGetMethodContract#textAndHtmlBodyValuesForSimpleMultipart"
+
+  - id: EGET-152
+    title: "Fetch every text part with fetchAllBodyValues"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "mixed [alternative [text/plain P, text/html H], text/csv attachment T, image/png I, message/rfc822 M with a text body]."
+    when: "Email/get with properties ['bodyStructure', 'bodyValues'] and fetchAllBodyValues true."
+    then: "bodyValues has exactly the partIds of P, H and T. The image, the embedded message and text inside the embedded message are not included. Every key equals a partId found in bodyStructure."
+    sources:
+      - "james:EmailGetMethodContract#allBodyValuesForSimpleMultipart"
+      - "james:EmailGetMethodContract#allBodyValuesForComplexMultipart"
+      - "cyrus:JMAPEmail/email_get_body_both"
+      - "jmapio:email-get-body#body-values-all"
+      - "fastmail:t/Email/get/fetch-all-body-values.t"
+
+  - id: EGET-153
+    title: "Honour fetch flags only when bodyValues is among the returned properties"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain message."
+    when: "Email/get with properties ['subject'] and fetchAllBodyValues true; then with properties ['bodyValues'] only (no textBody) and fetchTextBodyValues true."
+    then: "The first response has no bodyValues key. The second has bodyValues with the text part even though textBody itself was not requested."
+    sources:
+      - "rfc:8621 4.2"
+      - "cyrus:JMAPEmail/email_get_bodyvalues_crlf"
+
+  - id: EGET-154
+    title: "Reject fetch flags and maxBodyValueBytes of the wrong type"
+    method: Email/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain message."
+    when: "Separate Email/get calls with maxBodyValueBytes set to -5, 1.5, 'cat', '1', true, {} and [], and with fetchTextBodyValues set to 'yes' and to 1."
+    then: "Every call answers invalidArguments."
+    sources:
+      - "fastmail:t/Email/get/max-body-value-bytes.t"
+      - "rfc:8621 4.2"
+    notes: "The Fastmail suite also expects null to be rejected. WildDuck treats an explicit null like an omitted argument (default 0); flag if strictness is preferred."
+
+  - id: EGET-155
+    title: "Decode quoted-printable and base64 text parts"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A UTF-8 text/plain part in quoted-printable with soft line breaks and escaped non ASCII characters, and a UTF-8 text/html part in base64."
+    when: "Email/get with fetchAllBodyValues true."
+    then: "Each value is the decoded Unicode text: no '=' escapes, no soft breaks, no base64. isEncodingProblem and isTruncated are false."
+    sources:
+      - "cyrus:JMAPEmail/email_get_size"
+      - "cyrus:JMAPEmail/email_parse_encoding"
+      - "stalwart:mail/get.rs"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-156
+    title: "Convert legacy charsets to Unicode in body values"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Text parts in ISO-8859-1, Windows-1252 (with a euro sign), KOI8-R, ISO-2022-JP (quoted-printable and 7bit), Shift_JIS, EUC-KR, GB18030 and UTF-16 with BOM, each with the correct charset label."
+    when: "Email/get with properties ['bodyValues', 'preview'] and fetchAllBodyValues true."
+    then: "Every value equals the expected Unicode text, isEncodingProblem is false, and preview shows the same decoded text. The part's charset property still names the original charset and the blob download returns the original bytes."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bodyvalues_iso2022jp"
+      - "cyrus:JMAPEmail/email_get_iso2022jp_body"
+      - "jmapio:email-get-body#body-non-utf8-charset"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-157
+    title: "Normalise CRLF to LF in body values"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A quoted-printable text/plain part with the lines one, two, three separated by CRLF and no trailing line break; and a base64 text part whose decoded content contains CRLF pairs and a lone CR."
+    when: "Email/get with properties ['bodyValues', 'bodyStructure'] and fetchAllBodyValues true."
+    then: "The first value is exactly 'one', LF, 'two', LF, 'three'. In the second every CRLF is a single LF and no CRLF remains. The part size still counts the CRLF octets."
+    sources:
+      - "cyrus:JMAPEmail/email_get_bodyvalues_crlf"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-158
+    title: "Flag an unknown charset as an encoding problem"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "mixed [text/plain charset us-ascii 'hello', text/plain charset x-jmts-unknown 'world']."
+    when: "Email/get with properties ['bodyValues'] and fetchAllBodyValues true."
+    then: "The first value is 'hello' with isEncodingProblem false. The second has isEncodingProblem true and a string value (the ASCII text is still readable). The call does not fail."
+    sources:
+      - "cyrus:JMAPEmail/email_get_unknown_charset"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-159
+    title: "Replace malformed byte sequences and flag the problem"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain part labelled charset utf-8 whose 8bit body contains the invalid byte sequence C3 28 between 'a' and 'b'; a part labelled us-ascii that holds ISO-8859-1 bytes; a part labelled UTF-32 holding bytes that are not valid UTF-32."
+    when: "Email/get with properties ['textBody', 'bodyValues', 'preview'] and fetchTextBodyValues true."
+    then: "Each value is valid Unicode with U+FFFD in place of the bad sequence (or correctly decoded text if the server detected the real charset), isEncodingProblem is true, and the response is valid JSON. preview is a string without raw invalid bytes."
+    sources:
+      - "cyrus:JMAPEmail/email_get_detect_iso_8859_1"
+      - "cyrus:JMAPEmail/email_get_detect_utf32"
+      - "jmapio:email-get-body#body-invalid-ascii-handling"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-160
+    title: "Do not flag a correctly encoded replacement character"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A base64 UTF-8 text part whose content legitimately contains an emoji and the character U+FFFD."
+    when: "Email/get with properties ['bodyValues'] and fetchAllBodyValues true."
+    then: "The value contains the emoji and U+FFFD exactly as sent and isEncodingProblem is false."
+    sources:
+      - "cyrus:JMAPEmail/email_get_utf8body_base64_with_replacement_char"
+
+  - id: EGET-161
+    title: "Tolerate a charset name used as the transfer encoding and NUL bytes in a text body"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain part with 'Content-Transfer-Encoding: UTF-8' (a known client bug) and the body 'This is a test.'; and a quoted-printable text/html part containing an encoded NUL (=00) inside 'hello world'."
+    when: "Email/get with properties ['bodyValues'] and fetchAllBodyValues true."
+    then: "The first value is 'This is a test.' followed by LF. The second value contains no NUL character (the JSON has no escaped NUL) and reads 'hello world' inside the markup, with isEncodingProblem true."
+    sources:
+      - "cyrus:JMAPEmail/email_get_encoding_utf8"
+      - "cyrus:JMAPEmail/email_get_bodyvalues_nulbyte"
+
+  - id: EGET-162
+    title: "Truncate body values to maxBodyValueBytes and set isTruncated"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain ASCII part of 1000 octets and a second message with a 10 octet part."
+    when: "Email/get with fetchAllBodyValues true and maxBodyValueBytes 100; then 1000; then 1001; then 0; then omitted."
+    then: "With 100 the long value is exactly the first 100 characters and isTruncated is true, while the 10 octet value is complete with isTruncated false. With 1000, 1001, 0 and omitted the long value is complete and isTruncated is false."
+    sources:
+      - "james:EmailGetMethodContract#bodyValueShouldBeTruncatedIfNeeded"
+      - "cyrus:JMAPEmail/email_get_max_body_value_bytes_zero"
+      - "jmapio:email-get-body#body-max-body-value-bytes"
+      - "fastmail:t/Email/get/max-body-value-bytes.t"
+
+  - id: EGET-163
+    title: "Never truncate inside a UTF-8 code point"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A UTF-8 text part whose content is a three byte character, a two byte character and a one byte character (6 octets), and one starting with a four byte emoji."
+    when: "Email/get with fetchAllBodyValues true and maxBodyValueBytes 1 through 6 for the first, 1 through 4 for the second."
+    then: "For limits 1 and 2 the first value is '' with isTruncated true; 3 and 4 give the first character; 5 gives two characters; 6 gives all three with isTruncated false. The emoji value is '' for limits 1 to 3. Every returned value is valid UTF-8 no longer than the limit in octets."
+    sources:
+      - "cyrus:JMAPEmail/email_get_maxbodyvaluebytes_utf8"
+      - "fastmail:t/Email/get/max-body-value-bytes.t"
+      - "rfc:8621 4.2"
+
+  - id: EGET-164
+    title: "Count the limit on the decoded UTF-8 value, not on the stored bytes"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A base64 ISO-8859-1 text part of 50 characters, all of them non ASCII (50 octets decoded in Latin 1, 100 octets as UTF-8, about 68 octets base64), with CRLF line endings in another part."
+    when: "Email/get with fetchAllBodyValues true and maxBodyValueBytes 60."
+    then: "The value holds 30 characters (60 UTF-8 octets) and isTruncated is true. A part whose LF normalised UTF-8 value fits in the limit is not truncated even if its CRLF form would exceed it."
+    sources:
+      - "rfc:8621 4.2"
+
+  - id: EGET-165
+    title: "Avoid truncating inside an HTML tag"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/html part '<p>Hello <a href=\"https://example.com/a/long/link\">link</a> world</p>'."
+    when: "Email/get with fetchHTMLBodyValues true and maxBodyValueBytes set so the limit falls inside the anchor start tag."
+    then: "The value ends before the '<a' (or after the complete tag), never with a partial tag; it is no longer than the limit and isTruncated is true."
+    sources:
+      - "rfc:8621 4.2"
+
+  - id: EGET-166
+    title: "Serve large text parts that live in the attachment store"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message whose text/plain part is 400 KB (above WildDuck's 300 KB inline limit, so stored in the attachment bucket) and one whose text part is 100 KB (inline in the MIME tree)."
+    when: "Email/get with fetchTextBodyValues true, once without a limit and once with maxBodyValueBytes 1024."
+    then: "Without a limit both values are complete and byte for byte what was sent (after LF normalisation). With the limit both are 1024 octets with isTruncated true. preview is present for both."
+    sources:
+      - "wildduck:jmap-report Email mapping (bodyValues)"
+
+  # ---------------------------------------------------------------- hasAttachment
+  - id: EGET-167
+    title: "Set hasAttachment false for messages without downloadable parts"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain message, a multipart/alternative message, and a multipart/related message whose only extra part is an inline image referenced by cid."
+    when: "Email/get with properties ['hasAttachment', 'attachments']."
+    then: "hasAttachment is the boolean false for all three, although attachments of the third lists the inline image."
+    sources:
+      - "james:EmailGetMethodContract#hasAttachmentForSimpleEmail"
+      - "james:EmailGetMethodContract#hasAttachmentForMultipartWithoutAttachment"
+      - "james:EmailGetMethodContract#inlinedAttachmentMailShouldNotBeCountedAsHasAttachmentWhenEmailFullView"
+      - "jmapio:email-get#get-has-attachment-false"
+      - "fastmail:t/Email/get/has-attachment.t"
+
+  - id: EGET-168
+    title: "Set hasAttachment true when a part is offered for download"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Messages with: a pdf with disposition attachment; an image/jpeg with a name and no disposition placed between two text parts; an attached message/rfc822; an application/octet-stream without any disposition."
+    when: "Email/get with properties ['hasAttachment']; Email/query with filter hasAttachment true; the REST API message listing."
+    then: "hasAttachment is true for the pdf, the embedded message and the octet-stream. The query returns exactly the Emails whose hasAttachment is true and the REST API attachments flag agrees for every message."
+    sources:
+      - "james:EmailGetMethodContract#hasAttachmentForMultipartWithAttachment"
+      - "cyrus:JMAPEmail/email_get_hasattachment"
+      - "cyrus:JMAPEmail/email_get_attachment_name"
+      - "jmapio:email-get#get-has-attachment-true"
+      - "fastmail:t/Email/get/has-attachment.t"
+    notes: "hasAttachment maps to WildDuck's stored ha flag. Cyrus reports true for the unnamed inline looking jpeg between text parts; the RFC algorithm puts it in both body lists, so false is also defensible. The firm requirement is agreement between Email/get, the Email/query filter and the REST API. Signature parts of multipart/signed follow the same stored flag."
+
+  # ---------------------------------------------------------------- preview
+  - id: EGET-169
+    title: "Return a plain text preview of the body"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain message with the body 'A plain text email.'."
+    when: "Email/get with properties ['preview']."
+    then: "preview is the string 'A plain text email.' with no trailing line break."
+    sources:
+      - "james:EmailGetMethodContract#previewForSimpleEmail"
+      - "cyrus:JMAPEmail/email_get_preview"
+      - "jmapio:email-get#get-preview-is-text"
+      - "fastmail:t/previews.t"
+
+  - id: EGET-170
+    title: "Limit preview to 128 characters"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A text/plain message with a 5000 character body, and one whose body is 200 four byte emoji."
+    when: "Email/get with properties ['preview']."
+    then: "preview is a prefix of the white space collapsed body, at most 128 characters long (the RFC ceiling is 256), and is never cut inside a surrogate pair. It equals the intro value the REST API shows."
+    sources:
+      - "james:EmailGetMethodContract#previewShouldBeTruncatedForLongTextBodies"
+      - "wildduck:brief emails"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-171
+    title: "Collapse white space in preview"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain body with leading blank lines, tabs, runs of spaces and CRLF line breaks between short lines."
+    when: "Email/get with properties ['preview']."
+    then: "preview has no CR, LF or tab, no leading or trailing white space and no run of two or more spaces."
+    sources:
+      - "cyrus:JMAPEmail/email_get_iso2022jp_body"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-172
+    title: "Derive preview from HTML when there is no plain text part"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/html only message with the body 'hello<br><p>world</p>!' plus a style block, a script block, an HTML comment and the entities for ampersand and non breaking space."
+    when: "Email/get with properties ['preview']."
+    then: "preview contains the words hello, world and the exclamation mark separated by single spaces, a literal ampersand for the entity, and no angle bracket tags, style rules, script source or comment text."
+    sources:
+      - "cyrus:JMAPEmail/email_get_preview_html"
+      - "james:EmailGetMethodContract#previewForSimpleEmailWithHtmlBody"
+
+  - id: EGET-173
+    title: "Return an empty string preview when there is no text to show"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with an empty body, a single part application/pdf message, and a multipart/encrypted message."
+    when: "Email/get with properties ['preview']."
+    then: "preview is the empty string for each: a String, never null, never base64 or ciphertext."
+    sources:
+      - "james:EmailGetMethodContract#previewForSimpleEmailWithoutBody"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-174
+    title: "Decode transfer encoding and charset before building preview"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A base64 ISO-2022-JP text/plain message and a quoted-printable Windows-1252 message with accented characters."
+    when: "Email/get with properties ['preview']."
+    then: "preview is the readable Unicode text. It contains no base64, no '=XX' escapes and no escape sequences of the source charset."
+    sources:
+      - "cyrus:JMAPEmail/email_get_iso2022jp_body"
+      - "cyrus:JMAPEmail/email_get_detect_utf32"
+
+  # ---------------------------------------------------------------- part blobs
+  - id: EGET-175
+    title: "Download a part blob as decoded content"
+    method: Download
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "mixed [quoted-printable ISO-8859-1 text, base64 png of known bytes, 7bit csv]."
+    when: "Email/get with properties ['bodyStructure', 'attachments'], then GET the download URL for each part blobId."
+    then: "Each download is HTTP 200 with a body equal to the transfer decoded part: the original png bytes, the text in its original ISO-8859-1 bytes (not converted to UTF-8, CRLF kept), the csv as is. Each length equals the part size."
+    sources:
+      - "james:EmailGetMethodContract#shouldBeAbleToDownloadAttachmentBaseOnFastViewWithAttachmentsMetadataResult"
+      - "james:EmailGetMethodContract#shouldBeAbleToDownloadAttachmentBaseOnFastViewWithAttachmentsMetadataResultWithReadLevelFll"
+      - "jmapio:email-get-body#body-attachment-blob-id"
+      - "stalwart:mail/parse.rs"
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-176
+    title: "Use WildDuck blob id prefixes and keep part blob ids stable"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart message with nested parts (part paths 1.1, 1.2, 2)."
+    when: "Email/get with properties ['blobId', 'bodyStructure'] twice, with an IMAP MOVE of the message in between."
+    then: "The Email blobId and every part blobId are identical in both responses. All use only A-Za-z0-9, hyphen and underscore (the dot of a part path is encoded), the raw message blob id and the part blob ids are distinguishable by prefix, and all part blob ids of the Email are distinct."
+    sources:
+      - "wildduck:jmap-report blob id scheme"
+      - "rfc:8620 1.2"
+
+  - id: EGET-177
+    title: "Give the blob of an embedded message as the decoded message"
+    method: Download
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "mixed [text, message/rfc822 part sent base64 encoded]."
+    when: "Email/get with properties ['attachments'], then download the attachment blobId."
+    then: "The download is the embedded RFC 5322 message itself (starts with its header block), not base64 text; its length equals the part size."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_base64"
+      - "cyrus:JMAPEmail/email_get_encoded_message"
+      - "stalwart:mail/parse.rs (attachment_b64.eml)"
+
+  # ---------------------------------------------------------------- consistency with IMAP
+  - id: EGET-178
+    title: "Agree with IMAP BODYSTRUCTURE on the part tree"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Each candidate fixture under imap-core/test/fixtures (simple.eml, nodemailer.eml, fix1.eml, fix3.eml, fix4.eml, append.eml, mimetorture.eml) and test/fixtures/multipart-2.eml appended to a mailbox."
+    when: "Email/get with properties ['bodyStructure'] and bodyProperties ['partId', 'type', 'name', 'cid', 'disposition', 'subParts'], and IMAP FETCH BODYSTRUCTURE for the same message."
+    then: "Walking both trees in order gives the same nesting, the same media type and subtype (case insensitive), the same Content-ID and the same disposition for every part outside embedded messages. JMAP leaf partIds equal the IMAP section numbers."
+    sources:
+      - "wildduck:brief emails"
+      - "wildduck:imap-core/test/fixtures"
+
+  - id: EGET-179
+    title: "Agree with IMAP FETCH on part content"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart message with base64, quoted-printable and 8bit parts."
+    when: "For every leaf part: download the JMAP part blob and IMAP FETCH BINARY[section] (or BODY[section] decoded by the test)."
+    then: "The bytes are identical for every part. The raw message blob equals IMAP BODY[] byte for byte."
+    sources:
+      - "cyrus:JMAPEmail/email_get_encoded_message"
+      - "wildduck:brief emails"
+
+  - id: EGET-180
+    title: "Agree with IMAP ENVELOPE, FLAGS, INTERNALDATE and RFC822.SIZE"
+    method: Email/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Ten varied messages (fixtures plus LMTP deliveries), some with flags and labels."
+    when: "Email/get with the default properties and IMAP FETCH (ENVELOPE FLAGS INTERNALDATE RFC822.SIZE) for each."
+    then: "For every message: size equals RFC822.SIZE, receivedAt equals INTERNALDATE, the keyword set equals the lowercased IMAP flags with system flags mapped and without \\Recent, subject equals the decoded ENVELOPE subject, messageId and inReplyTo match, and from, to and cc list the same addresses."
+    sources:
+      - "wildduck:brief emails"
+      - "cyrus:JMAPEmail/email_get_utf8_domain"
+    notes: "Where a header is duplicated JMAP takes the last instance (EGET-087); the comparison uses messages without duplicated single instance headers."
+
+  # ---------------------------------------------------------------- large messages and batches
+  - id: EGET-181
+    title: "Read a large message without loading its attachments for fast properties"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message close to the configured maximum size with one 20 MB base64 attachment and a short text part."
+    when: "Email/get with only the fast properties (id, blobId, threadId, mailboxIds, keywords, size, receivedAt, messageId, inReplyTo, sender, from, to, cc, bcc, replyTo, subject, sentAt, hasAttachment, preview); then with bodyStructure and fetchAllBodyValues true."
+    then: "Both calls succeed. The first is answered from the message document alone (response time comparable to a small message). The second reports the attachment's decoded size, about three quarters of its encoded size, and returns only the short text in bodyValues."
+    sources:
+      - "rfc:8621 4.2"
+      - "james:EmailGetMethodContract#shouldUseFastViewWithAttachmentMetadataWhenSupportedBodyProperties"
+      - "james:EmailGetMethodContract#shouldUseFullViewReaderWhenFetchAllBodyProperties"
+
+  - id: EGET-182
+    title: "Handle a message with very many parts"
+    method: Email/get
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message with one text part and 200 small attachments."
+    when: "Email/get with properties ['bodyStructure', 'attachments', 'hasAttachment']."
+    then: "bodyStructure has 201 subParts, attachments has 200 items in order with distinct partIds and blobIds, hasAttachment is true."
+    sources:
+      - "rfc:8621 4.1.4"
+
+  - id: EGET-183
+    title: "Fetch full bodies for many Emails in one call"
+    method: Email/get
+    spec: "RFC 8621 4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "As many messages as maxObjectsInGet allows, of mixed shapes, in several mailboxes."
+    when: "One Email/get with all ids, the default properties plus bodyStructure, fetchAllBodyValues true and maxBodyValueBytes 256."
+    then: "Every id is in list exactly once, none in notFound, each Email carries its own body values (no cross contamination between Emails), and no value exceeds 256 octets."
+    sources:
+      - "james:EmailGetMethodContract#severalEmailCanBeRetrievedAtOnce"
+      - "stalwart:mail/get.rs"
+      - "wildduck:jmap-report maxObjectsInGet"
+
+  - id: EGET-184
+    title: "Return identical Email content for IMAP appended and LMTP delivered copies of the same message"
+    method: Email/get
+    spec: "RFC 8621 4.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, lmtp]
+    given: "The same raw multipart message stored once through IMAP APPEND and once through LMTP delivery."
+    when: "Email/get both with all body and header convenience properties and fetchAllBodyValues true."
+    then: "Apart from id, blobId, threadId, receivedAt, size and delivery added headers (Delivered-To, Return-Path, Received), the two Emails are equal: same structure, part sizes, names, body values, preview and hasAttachment."
+    sources:
+      - "wildduck:brief state"

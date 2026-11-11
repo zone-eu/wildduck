@@ -1,0 +1,3808 @@
+area: email-set
+title: "Email/set"
+description: "Email/set in full (RFC 8620 5.3 as applied to Email, RFC 8621 4.6): keyword and mailbox updates, patch rules, destroy with archiving, generic /set state and error semantics, creation through the MIME builder with header and body constraints, limits, and concurrency. Includes the cross protocol checks (IMAP and REST API) and the single mailbox adaptations WildDuck needs."
+scenarios:
+  - id: ESET-001
+    title: "Add a keyword with a keywords/<name> patch"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX with no flags, appended over IMAP."
+    when: "Email/set with update {M1: {\"keywords/$flagged\": true}}."
+    then: "HTTP 200, response is Email/set with updated containing key M1 (value null or an object), notUpdated null, created and destroyed null. A following Email/get returns keywords {\"$flagged\": true}."
+    sources:
+      - "james:EmailSetMethodContract#emailSetShouldPartiallyUpdateKeywords"
+      - "cyrus:JMAPEmail/email_set_flagged"
+      - "cyrus:JMAPEmail/email_set_patch"
+      - "jmapio:email/set-update-add-keyword"
+      - "fastmail:t/Email/set/update/email-keywords.t"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "stalwart:mail/set.rs"
+      - "rfc:8621 4.6"
+
+  - id: ESET-002
+    title: "Remove a keyword with a null patch value"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with flags \\Flagged and \\Seen set over IMAP."
+    when: "Email/set update {M1: {\"keywords/$flagged\": null}}."
+    then: "updated contains M1. Email/get returns keywords {\"$seen\": true}: only the patched keyword was removed."
+    sources:
+      - "james:EmailSetMethodContract#emailSetShouldPartiallyUpdateKeywords"
+      - "cyrus:JMAPEmail/email_set_patch"
+      - "jmapio:email/set-update-remove-keyword"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "stalwart:mail/set.rs"
+
+  - id: ESET-003
+    title: "Removing an absent keyword with a null patch is a successful no-op"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with no keywords."
+    when: "Email/set update {M1: {\"keywords/$flagged\": null}}."
+    then: "updated contains M1, notUpdated is null, keywords stay {}. The IMAP flags and MODSEQ of the message are unchanged."
+    sources:
+      - "rfc:8620 5.3"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+    notes: "RFC 8620 5.3: a null patch for a key not present in the parent is a no-op. Whether newState equals oldState for a pure no-op is covered by a separate scenario."
+
+  - id: ESET-004
+    title: "Replace the whole keywords object"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with keywords $seen and $flagged."
+    when: "Email/set update {M1: {\"keywords\": {\"$answered\": true, \"custom\": true}}}."
+    then: "updated contains M1. Email/get returns exactly {\"$answered\": true, \"custom\": true}: $seen and $flagged were removed."
+    sources:
+      - "james:EmailSetMethodContract#shouldResetKeywords"
+      - "james:EmailSetMethodContract#shouldResetKeywordsWhenNotDefault"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "jmapio:email/set-update-replace-keywords"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "stalwart:mail/set.rs"
+
+  - id: ESET-005
+    title: "Replace keywords with an empty object clears all keywords"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with keywords $seen, $flagged and custom."
+    when: "Email/set update {M1: {\"keywords\": {}}}."
+    then: "updated contains M1 and Email/get returns keywords {}. Over IMAP FETCH FLAGS shows no flags apart from \\Recent handling."
+    sources:
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "rfc:8621 4.6"
+
+  - id: ESET-006
+    title: "Several keyword patches in one PatchObject are applied together"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with keyword $flagged."
+    when: "Email/set update {M1: {\"keywords/$seen\": true, \"keywords/$flagged\": null, \"keywords/work\": true}}."
+    then: "updated contains M1 and Email/get returns {\"$seen\": true, \"work\": true}. A single IMAP modseq bump covers the change, not one per patch."
+    sources:
+      - "cyrus:JMAPEmail/email_set_patch"
+      - "stalwart:mail/set.rs"
+      - "rfc:8620 5.3"
+
+  - id: ESET-007
+    title: "Setting a keyword that is already set succeeds and changes nothing"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with keyword $seen."
+    when: "Email/set update {M1: {\"keywords/$seen\": true}}."
+    then: "updated contains M1, keywords stay {\"$seen\": true}, and newState equals oldState because nothing changed."
+    sources:
+      - "cyrus:JMAPEmail/email_set_seen"
+      - "rfc:8620 5.3"
+      - "wildduck:state must not change when nothing changed"
+    notes: "The WildDuck journal must not get an entry for a store that changes no flag."
+
+  - id: ESET-008
+    title: "Update the same keyword on many emails in one call"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Ten emails in INBOX, none with keywords."
+    when: "One Email/set with ten update entries, each {\"keywords/$seen\": true}."
+    then: "updated has all ten ids, notUpdated is null, and Email/get shows $seen on each. Mailbox/get unreadEmails for INBOX dropped by ten."
+    sources:
+      - "james:EmailSetMethodContract#rangeFlagsAdditionShouldUpdateStoredFlags"
+      - "cyrus:JMAPEmail/email_set_update_bulk"
+
+  - id: ESET-009
+    title: "Update response lists updated ids with null or changed server set properties only"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set update {M1: {\"keywords/$seen\": true}}."
+    then: "updated is an object keyed by M1; its value is null (or an object holding only properties that changed without being requested). It never echoes the keywords the client sent."
+    sources:
+      - "rfc:8620 5.3"
+      - "stalwart:mail/set.rs"
+      - "fastmail:t/Email/set/update/email-keywords.t"
+
+  - id: ESET-010
+    title: "Setting and clearing $seen maps to the IMAP flag \\Seen"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX without flags; an IMAP session has INBOX selected."
+    when: "Email/set update {M1: {\"keywords/$seen\": true}}, then FETCH FLAGS over IMAP; then Email/set update {M1: {\"keywords/$seen\": null}} and FETCH FLAGS again."
+    then: "After the first call IMAP FLAGS contains \\Seen (any letter case) and nothing else new; after the second it is gone. The REST API message listing shows seen true, then false after clearing; INBOX unreadEmails changes by one each time."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "james:ImapKeywordsConsistencyContract"
+      - "wildduck:keywords map to IMAP system flags"
+
+  - id: ESET-011
+    title: "Setting and clearing $flagged maps to the IMAP flag \\Flagged"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX without flags; an IMAP session has INBOX selected."
+    when: "Email/set update {M1: {\"keywords/$flagged\": true}}, then FETCH FLAGS over IMAP; then Email/set update {M1: {\"keywords/$flagged\": null}} and FETCH FLAGS again."
+    then: "After the first call IMAP FLAGS contains \\Flagged (any letter case) and nothing else new; after the second it is gone. The REST API message shows flagged true, then false."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "james:ImapKeywordsConsistencyContract"
+      - "wildduck:keywords map to IMAP system flags"
+
+  - id: ESET-012
+    title: "Setting and clearing $answered maps to the IMAP flag \\Answered"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX without flags; an IMAP session has INBOX selected."
+    when: "Email/set update {M1: {\"keywords/$answered\": true}}, then FETCH FLAGS over IMAP; then Email/set update {M1: {\"keywords/$answered\": null}} and FETCH FLAGS again."
+    then: "After the first call IMAP FLAGS contains \\Answered (any letter case) and nothing else new; after the second it is gone. The REST API message shows answered true, then false."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "james:ImapKeywordsConsistencyContract"
+      - "wildduck:keywords map to IMAP system flags"
+
+  - id: ESET-013
+    title: "Setting and clearing $draft maps to the IMAP flag \\Draft"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX without flags; an IMAP session has INBOX selected."
+    when: "Email/set update {M1: {\"keywords/$draft\": true}}, then FETCH FLAGS over IMAP; then Email/set update {M1: {\"keywords/$draft\": null}} and FETCH FLAGS again."
+    then: "After the first call IMAP FLAGS contains \\Draft (any letter case) and nothing else new; after the second it is gone. The REST API message shows draft true, then false; while $draft is set an unread message does not count in unreadEmails."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "james:ImapKeywordsConsistencyContract"
+      - "wildduck:keywords map to IMAP system flags"
+
+  - id: ESET-014
+    title: "Setting and clearing $forwarded maps to the IMAP flag $Forwarded"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX without flags; an IMAP session has INBOX selected."
+    when: "Email/set update {M1: {\"keywords/$forwarded\": true}}, then FETCH FLAGS over IMAP; then Email/set update {M1: {\"keywords/$forwarded\": null}} and FETCH FLAGS again."
+    then: "After the first call IMAP FLAGS contains $Forwarded (any letter case) and nothing else new; after the second it is gone. The REST API message shows forwarded true, then false."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "james:ImapKeywordsConsistencyContract"
+      - "wildduck:keywords map to IMAP system flags"
+
+  - id: ESET-015
+    title: "A custom keyword is stored as an IMAP keyword flag"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX without flags."
+    when: "Email/set update {M1: {\"keywords/project-x\": true}}."
+    then: "IMAP FETCH FLAGS on the message includes project-x, the mailbox PERMANENTFLAGS or FLAGS list includes it on the next SELECT, and IMAP SEARCH KEYWORD project-x finds the message."
+    sources:
+      - "cyrus:JMAPEmail/email_set_userkeywords"
+      - "cyrus:JMAPEmail/email_set_keywords"
+      - "rfc:8621 4.1.1"
+
+  - id: ESET-016
+    title: "Keywords given in mixed case are stored once and returned lowercase"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Email/set update {M1: {\"keywords/$Flagged\": true, \"keywords/MyTag\": true}}, then Email/get."
+    then: "updated contains M1. Email/get returns {\"$flagged\": true, \"mytag\": true}. IMAP shows \\Flagged and one MyTag or mytag keyword, never two spellings."
+    sources:
+      - "fastmail:t/Email/set/update/email-keywords.t"
+      - "cyrus:JMAPEmail/email_set_userkeywords"
+      - "rfc:8621 4.1.1"
+
+  - id: ESET-017
+    title: "A keyword differing only by case from an IMAP stored flag does not create a duplicate"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 on which IMAP STORE +FLAGS (Important) was run."
+    when: "Email/set update {M1: {\"keywords/important\": true}}, then {M1: {\"keywords/IMPORTANT\": null}}."
+    then: "After the first call IMAP FETCH FLAGS still shows exactly one flag spelled Important and Email/get shows {\"important\": true}. After the second call the flag is gone from both views."
+    sources:
+      - "wildduck:report section 9, keyword case: STORE compares case insensitively and keeps the stored spelling"
+      - "james:ImapKeywordsConsistencyContract"
+      - "rfc:8621 4.1.1"
+
+  - id: ESET-018
+    title: "Two keys in one keywords object that differ only by case are collapsed or rejected, never stored twice"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Email/set update {M1: {\"keywords\": {\"Foo\": true, \"foo\": true}}}."
+    then: "Either updated contains M1 and Email/get returns exactly {\"foo\": true}, or notUpdated has M1 with invalidProperties and properties [\"keywords\"]. IMAP never shows two flags."
+    sources:
+      - "wildduck:keywords are case insensitive"
+      - "rfc:8621 4.1.1"
+    notes: "Decide one behaviour before implementing; collapsing is the friendlier choice."
+
+  - id: ESET-019
+    title: "A keyword patch value of false is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with keyword $flagged."
+    when: "Email/set update {M1: {\"keywords/$flagged\": false}}."
+    then: "notUpdated has M1 with type invalidProperties (properties names keywords or the patch path); updated is null; $flagged is still set."
+    sources:
+      - "james:EmailSetMethodContract#emailSetShouldRejectPartiallyUpdateWhenFalseValue"
+      - "cyrus:JMAPEmail/email_set_keywords_bogus_values"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+      - "rfc:8621 4.1.1"
+    notes: "Stalwart accepts false as a removal. RFC 8621 4.1.1 says every value MUST be true, so WildDuck rejects."
+
+  - id: ESET-020
+    title: "A whole keywords object with a false value is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with keyword $seen."
+    when: "Email/set update {M1: {\"keywords\": {\"$flagged\": false}}}."
+    then: "notUpdated M1 is invalidProperties with properties [\"keywords\"]; keywords are still {\"$seen\": true}."
+    sources:
+      - "james:EmailSetMethodContract#shouldNotResetKeywordWhenFalseValue"
+      - "cyrus:JMAPEmail/email_set_keywords_bogus_values"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+
+  - id: ESET-021
+    title: "Keyword values that are not JSON booleans are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Three separate updates on M1: {\"keywords/foo\": 1}, {\"keywords/foo\": \"true\"}, {\"keywords\": {\"foo\": null}}."
+    then: "Each is refused with invalidProperties in notUpdated and the email keeps keywords {}."
+    sources:
+      - "cyrus:JMAPEmail/email_set_keywords_bogus_values"
+      - "fastmail:t/Email/set/update/keyword-set-clear.t"
+
+  - id: ESET-022
+    title: "Keywords with forbidden characters are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Separate updates setting each of these keywords to true: one with a space, one with each of ( ) { ] % * \" and backslash, one with a control character, one with a non ASCII letter."
+    then: "Each is refused with invalidProperties (properties names keywords), nothing is stored and IMAP flags are unchanged."
+    sources:
+      - "james:EmailSetMethodContract#shouldNotResetKeywordWhenInvalidKeyword"
+      - "james:EmailSetMethodContract#emailSetShouldRejectPartiallyUpdateWhenInvalidKeyword"
+      - "rfc:8621 4.1.1"
+    notes: "In a patch path the keyword is a JSON Pointer token, so ~ and / need ~0 and ~1 escaping; a keyword containing / is legal in IMAP atoms and must work when escaped."
+
+  - id: ESET-023
+    title: "Empty keyword and keyword longer than 255 characters are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Update with {\"keywords\": {\"\": true}}, then with a 256 character keyword, then with a 255 character keyword."
+    then: "The first two give invalidProperties. The 255 character keyword is accepted and returned by Email/get."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "james:EmailSetMethodContract#shouldNotResetKeywordWhenInvalidKeyword"
+
+  - id: ESET-024
+    title: "A keyword containing a slash can be patched with JSON Pointer escaping"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Email/set update {M1: {\"keywords/a~1b\": true}}, then Email/get."
+    then: "updated contains M1 and keywords is {\"a/b\": true}. The unescaped form {\"keywords/a/b\": true} is refused with invalidPatch because keywords/a does not exist."
+    sources:
+      - "cyrus:JMAPEmail/email_set_keywords_shared_slash_bypass"
+      - "rfc:8620 5.3"
+
+  - id: ESET-025
+    title: "Keywords naming the hidden IMAP flags cannot be set"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Separate updates setting \"$deleted\": true and \"$recent\": true, as patch and as whole object."
+    then: "Each is refused with invalidProperties (properties [\"keywords\"]). The message does not get \\Deleted over IMAP and stays visible over JMAP."
+    sources:
+      - "james:EmailSetMethodContract#shouldKeepUnexposedKeywordWhenResetKeywords"
+      - "rfc:8621 4.1.1"
+      - "wildduck:Deleted messages are invisible to JMAP"
+    notes: "Open question: RFC 8621 does not reserve $deleted. Rejecting avoids a client hiding mail by accident. Deleting is done with destroy."
+
+  - id: ESET-026
+    title: "Replacing keywords does not touch flags that JMAP does not expose"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 that an IMAP session sees as \\Recent."
+    when: "Email/set update {M1: {\"keywords\": {\"$seen\": true}}}."
+    then: "updated contains M1. Nothing is added to or removed from the stored flags except what keywords names; the message does not become \\Deleted."
+    sources:
+      - "james:EmailSetMethodContract#shouldKeepUnexposedKeywordWhenResetKeywords"
+    notes: "A message that already has \\Deleted is invisible to JMAP, so it cannot be the target of this update at all (see the notFound scenario)."
+
+  - id: ESET-027
+    title: "The registered keywords $junk, $notjunk, $phishing and $mdnsent are plain keywords"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Email/set update {M1: {\"keywords\": {\"$junk\": true, \"$mdnsent\": true}}}."
+    then: "Accepted; Email/get returns both in lowercase; IMAP shows $Junk and $MDNSent style flags (case insensitive compare). The email stays in its mailbox."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "cyrus:JMAPEmail/email_set_keywords"
+    notes: "Setting $junk does not move the message to Junk and does not train the spam filter in the current plan."
+
+  - id: ESET-028
+    title: "tooManyKeywords when a server keyword limit would be exceeded"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: may
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1; the server limit on distinct keywords (per email or per mailbox flag list) is known from configuration."
+    when: "Email/set update replacing keywords with one more distinct custom keyword than the limit allows."
+    then: "notUpdated M1 has type tooManyKeywords and no keyword of the request was applied (the update is atomic)."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_too_many_keywords"
+      - "rfc:8621 4.6"
+    notes: "WildDuck tracks at most 100 custom flags per mailbox (lib/handlers/on-store.js). Open question: enforce this as tooManyKeywords, or keep storing flags beyond the mailbox list as IMAP does today."
+
+  - id: ESET-029
+    title: "Adding a $wdlabel$ keyword assigns an existing WildDuck label"
+    method: Email/set
+    spec: "WildDuck labels"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "A label L created through the REST API (24 hex id) and an email M1 without labels."
+    when: "Email/set update {M1: {\"keywords/$wdlabel$<L>\": true}}."
+    then: "updated contains M1; Email/get keywords has \"$wdlabel$<L>\": true; the REST API message shows label L and the label counter grew by one; IMAP FETCH FLAGS shows the same $wdlabel$ keyword."
+    sources:
+      - "wildduck:report section 9: labels as keywords"
+      - "tmail:labels contracts"
+
+  - id: ESET-030
+    title: "Removing a $wdlabel$ keyword removes the label"
+    method: Email/set
+    spec: "WildDuck labels"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "An email M1 carrying label L (set through the REST API) and keyword $seen."
+    when: "Email/set update {M1: {\"keywords/$wdlabel$<L>\": null}}."
+    then: "updated contains M1; the REST API shows no labels on the message and the label counter dropped; $seen is untouched."
+    sources:
+      - "wildduck:report section 9: labels as keywords"
+      - "tmail:labels contracts"
+
+  - id: ESET-031
+    title: "Replacing the whole keywords object replaces labels too"
+    method: Email/set
+    spec: "WildDuck labels"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "An email M1 with labels L1 and L2 and keyword $seen."
+    when: "Email/set update {M1: {\"keywords\": {\"$seen\": true, \"$wdlabel$<L2>\": true}}}."
+    then: "L1 is removed, L2 stays, $seen stays. Label counters for L1 and L2 match the REST API listing."
+    sources:
+      - "wildduck:report section 9: labels as keywords"
+
+  - id: ESET-032
+    title: "A $wdlabel$ keyword for an unknown or malformed label id is rejected"
+    method: Email/set
+    spec: "WildDuck labels"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "An email M1; no label with id 000000000000000000000000 exists."
+    when: "Update with \"keywords/$wdlabel$000000000000000000000000\": true, then with \"keywords/$wdlabel$xyz\": true."
+    then: "Both are refused with invalidProperties (properties [\"keywords\"]); no label document is created and the message is unchanged."
+    sources:
+      - "wildduck:lib/handlers/on-store.js label handling"
+    notes: "Open question: IMAP STORE may silently ignore unknown label ids. JMAP has to answer per object, so rejecting is clearer. Confirm against the IMAP behaviour."
+
+  - id: ESET-033
+    title: "A keyword update raises the IMAP MODSEQ and is reported by CHANGEDSINCE"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; an IMAP client records HIGHESTMODSEQ H after SELECT with CONDSTORE."
+    when: "Email/set update {M1: {\"keywords/$flagged\": true}}, then IMAP UID FETCH 1:* (FLAGS MODSEQ) (CHANGEDSINCE H)."
+    then: "The FETCH returns M1 with \\Flagged and a MODSEQ greater than H; the mailbox HIGHESTMODSEQ grew."
+    sources:
+      - "wildduck:same message through IMAP and JMAP"
+      - "james:ImapKeywordsConsistencyContract"
+
+  - id: ESET-034
+    title: "An idling IMAP client is notified of a JMAP keyword change"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An IMAP session has INBOX selected and is in IDLE; M1 is in INBOX."
+    when: "Email/set update {M1: {\"keywords/$seen\": true}}."
+    then: "The IMAP session receives an untagged FETCH with FLAGS containing \\Seen for the message sequence number without having to poll."
+    sources:
+      - "cyrus:JMAPEmail/email_set_setflags_mboxevent"
+      - "wildduck:lib/imap-notifier.js"
+
+  - id: ESET-035
+    title: "A keyword update is visible in the REST API and in the mailbox counters"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "Three unread emails in INBOX."
+    when: "Email/set update marking one of them $seen, then GET /users/:user/mailboxes/:mailbox and the messages listing through the REST API, and Mailbox/get over JMAP."
+    then: "The REST API reports unseen 2 and seen true on that message; Mailbox/get unreadEmails is 2 and the Mailbox state changed."
+    sources:
+      - "wildduck:REST API and JMAP share the store"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: ESET-036
+    title: "Keyword changes made over IMAP between two JMAP patches are preserved"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 with no flags."
+    when: "IMAP STORE +FLAGS (\\Answered) on M1, then Email/set update {M1: {\"keywords/$flagged\": true}}."
+    then: "Email/get returns both $answered and $flagged: a patch only touches the named keyword and never rewrites the flag list from a stale copy."
+    sources:
+      - "james:ImapKeywordsConsistencyContract#emailSetShouldSucceedToSolveKeywordsConflictsIntroducedViaImapUponFlagsAddition"
+      - "wildduck:patch semantics"
+
+  - id: ESET-037
+    title: "Move an email by replacing the mailboxIds object"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX with keyword $seen; a mailbox Archive exists."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<Archive>\": true}}}."
+    then: "updated contains M1 (same id). Email/get for M1 returns mailboxIds {\"<Archive>\": true} with the same id, blobId, threadId, receivedAt, size and keywords as before."
+    sources:
+      - "james:EmailSetMethodContract#emailSetMailboxIdResetShouldSucceed"
+      - "cyrus:JMAPEmail/email_set_move"
+      - "cyrus:JMAPEmail/email_set_mailboxids"
+      - "jmapio:email/set-update-move-mailbox"
+      - "fastmail:t/Email/set/update/one-folder-to-another.t"
+      - "stalwart:mail/set.rs"
+      - "legacy-proxy:test/compliance/known-failures.txt"
+      - "wildduck:stable ids on move"
+    notes: "The jmapio test set-update-move-mailbox fails on IMAP shaped servers that derive the id from mailbox and UID. WildDuck uses the message root as id, so it must pass."
+
+  - id: ESET-038
+    title: "Move an email with a double patch on mailboxIds"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; a mailbox Archive exists."
+    when: "Email/set update {M1: {\"mailboxIds/<INBOX>\": null, \"mailboxIds/<Archive>\": true}}."
+    then: "updated contains M1 and Email/get shows mailboxIds {\"<Archive>\": true}; the id is unchanged."
+    sources:
+      - "james:EmailSetMethodContract#mailboxIdsShouldSupportPartialUpdates"
+      - "cyrus:JMAPEmail/email_set_move_multiuid_patch"
+      - "fastmail:t/Email/set/update/one-folder-to-another.t"
+      - "stalwart:mail/set.rs"
+    notes: "The two patches must be evaluated together. Evaluating the add first would wrongly produce tooManyMailboxes, evaluating the remove first would wrongly produce an empty set."
+
+  - id: ESET-039
+    title: "A JMAP move is seen as a move over IMAP"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "M1 in INBOX with UID u; one IMAP session has INBOX selected, another has Archive selected."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<Archive>\": true}}}, then NOOP in both IMAP sessions."
+    then: "The INBOX session gets an untagged EXPUNGE for the message, the Archive session gets EXISTS; the message in Archive has a new UID, the same INTERNALDATE, flags and RFC822.SIZE, and identical BODY[] bytes."
+    sources:
+      - "james:ImapSetMessagesMailboxesUpdatesCompatibilityContract#messageMovedByJmapIsSeenMovedByImap"
+      - "james:ImapSetMessagesMailboxesUpdatesCompatibilityContract#imapClientShouldBeNotifiedWhenSelectingMailboxWhereMessageMovedByJmap"
+      - "cyrus:JMAPEmail/email_set_move"
+      - "wildduck:same message through IMAP and JMAP"
+
+  - id: ESET-040
+    title: "A move updates the counters of both mailboxes"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An unread email M1 in INBOX, alone in its thread; Archive is empty."
+    when: "Email/set update moving M1 to Archive, then Mailbox/get for both."
+    then: "INBOX totalEmails, unreadEmails, totalThreads and unreadThreads each dropped by one and Archive gained one of each. The REST API mailbox counters agree."
+    sources:
+      - "stalwart:mail/mailbox.rs"
+      - "james:EmailSetMethodContract#rangeMoveShouldUpdateMailboxId"
+      - "cyrus:JMAPEmail/email_set_email_duplicates_mailbox_counts"
+
+  - id: ESET-041
+    title: "A move is reported as updated by Email/changes, not as destroyed plus created"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX and the Email state S0 from Email/get."
+    when: "Email/set update moving M1 to Archive, then Email/changes sinceState S0 and Mailbox/changes sinceState S0."
+    then: "Email/changes lists M1 in updated only. Mailbox/changes lists INBOX and Archive in updated with updatedProperties limited to the count properties or null."
+    sources:
+      - "wildduck:brief: a move is reported as updated"
+      - "jmapio:email/set-update-move-mailbox"
+
+  - id: ESET-042
+    title: "Move several emails in one call"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "Five emails in INBOX; a mailbox Archive."
+    when: "One Email/set with five update entries each replacing mailboxIds with Archive."
+    then: "All five ids are in updated, Email/query inMailbox Archive returns the five ids, inMailbox INBOX returns none."
+    sources:
+      - "james:EmailSetMethodContract#emailSetMailboxIdResetShouldSucceedForMultipleMessages"
+      - "james:EmailSetMethodContract#rangeMoveShouldUpdateMailboxId"
+      - "cyrus:JMAPEmail/email_set_update_bulk"
+      - "cyrus:JMAPEmail/email_set_move_multiuid_set"
+
+  - id: ESET-043
+    title: "Move and keyword change in one update are applied atomically"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX without keywords; a mailbox Archive."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<Archive>\": true}, \"keywords/$seen\": true}}."
+    then: "updated contains M1; the email is in Archive with $seen. Over IMAP the message in Archive has \\Seen. If either part is invalid nothing is applied."
+    sources:
+      - "james:EmailSetMethodContract#updateShouldSupportMixingMoveAndFlagUpdate"
+      - "cyrus:JMAPEmail/email_set_move_keywords"
+      - "rfc:8620 5.3"
+
+  - id: ESET-044
+    title: "A failed move leaves the keyword part of the same update unapplied"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX without keywords."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<unknown mailbox id>\": true}, \"keywords/$seen\": true}}."
+    then: "notUpdated M1 is invalidProperties with properties [\"mailboxIds\"]. The email is still in INBOX and still has no keywords."
+    sources:
+      - "rfc:8620 5.3"
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldFailWhenInvalidKey"
+    notes: "RFC 8620 5.3: the server MUST NOT commit only part of an update to a single record."
+
+  - id: ESET-045
+    title: "Adding a second mailbox is rejected with tooManyMailboxes"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; a mailbox Archive."
+    when: "Email/set update {M1: {\"mailboxIds/<Archive>\": true}}, and separately {M1: {\"mailboxIds\": {\"<INBOX>\": true, \"<Archive>\": true}}}."
+    then: "Both give notUpdated M1 with type tooManyMailboxes. The email stays only in INBOX and no copy appears in Archive over IMAP."
+    sources:
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldSucceedWhenCopyMessage"
+      - "cyrus:JMAPEmail/email_set_update_too_many_mailboxes"
+      - "cyrus:JMAPEmail/email_set_update_too_many_mailboxes_lowlimit"
+      - "jmapio:email/set-update-add-mailbox"
+      - "legacy-proxy:test/compliance/known-failures.txt"
+      - "rfc:8621 4.6"
+    notes: "RFC behaviour is a copy into the second mailbox. maxMailboxesPerEmail is 1 in WildDuck, so jmapio email/set-update-add-mailbox and email/get-mailbox-ids are known failures by design."
+
+  - id: ESET-046
+    title: "Removing the only mailbox is rejected with invalidProperties"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX."
+    when: "Email/set update {M1: {\"mailboxIds/<INBOX>\": null}}, and separately {M1: {\"mailboxIds\": {}}}."
+    then: "Both give notUpdated M1 with type invalidProperties and properties [\"mailboxIds\"]. The email is still in INBOX."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_mailboxids_nonempty"
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldFailWhenRemovingMessageFromSourceMailbox"
+      - "jmapio:email/set-update-remove-mailbox"
+      - "stalwart:mail/set.rs"
+      - "rfc:8621 4.1.1"
+    notes: "jmapio email/set-update-remove-mailbox first adds a second mailbox, so it cannot pass with maxMailboxesPerEmail 1."
+
+  - id: ESET-047
+    title: "Moving to a mailbox id that does not exist is rejected"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<well formed but unknown mailbox id>\": true}}}, and the same with a syntactically invalid id."
+    then: "Both give notUpdated M1 with invalidProperties and properties [\"mailboxIds\"]. The email stays in INBOX."
+    sources:
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldFailWhenInvalidKey"
+      - "cyrus:JMAPEmail/email_set_update_mailboxids_validate_nopatch"
+      - "rfc:8620 5.3"
+
+  - id: ESET-048
+    title: "mailboxIds values other than true are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX; a mailbox Archive."
+    when: "Updates with {\"mailboxIds\": {\"<Archive>\": false}}, {\"mailboxIds/<Archive>\": false}, {\"mailboxIds\": {\"<Archive>\": \"yes\"}} and {\"mailboxIds\": [\"<Archive>\"]}."
+    then: "Each gives invalidProperties with properties [\"mailboxIds\"] and the email stays in INBOX."
+    sources:
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldFailWhenValueIsFalse"
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldFailWhenInvalidValue"
+      - "james:EmailSetMethodContract#invalidMailboxPartialUpdateValueShouldFail"
+      - "cyrus:JMAPEmail/email_set_update_mailboxids_nonempty"
+
+  - id: ESET-049
+    title: "Replacing mailboxIds with the current mailbox is a no-op that keeps the IMAP UID"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX with UID u."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<INBOX>\": true}, \"keywords/$seen\": true}}."
+    then: "updated contains M1; over IMAP the message still has UID u (no expunge, no new copy) and now has \\Seen."
+    sources:
+      - "stalwart:mail/set.rs update_preserves_uids"
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetShouldNotAffectMailboxIdFilter"
+
+  - id: ESET-050
+    title: "Move to the Trash mailbox instead of destroying"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; the Trash mailbox (role trash) from Mailbox/get."
+    when: "Email/set update {M1: {\"mailboxIds\": {\"<Trash>\": true}}}."
+    then: "updated contains M1; the email is in Trash with the same id and is not archived; IMAP shows it in Trash without \\Deleted."
+    sources:
+      - "rfc:8621 4.6"
+      - "cyrus:JMAPEmail/email_set_move"
+    notes: "WildDuck applies the Trash retention time to messages moved there; the JMAP view is unaffected until the retention task removes it, which then surfaces as destroyed in Email/changes."
+
+  - id: ESET-051
+    title: "A mailbox created earlier in the same request can be used through its creation id"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX."
+    when: "One request: Mailbox/set create {\"mb\": {name: \"New\"}}, then Email/set update {M1: {\"mailboxIds\": {\"#mb\": true}}}."
+    then: "Both calls succeed; Email/get shows M1 in the new mailbox id returned by Mailbox/set. An unknown reference \"#nope\" gives invalidProperties with properties [\"mailboxIds\"]."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_mailbox_creationid"
+      - "jmapio:email/set-create-creation-id-reference"
+      - "rfc:8620 5.3"
+
+  - id: ESET-052
+    title: "Moving a draft out of Drafts keeps $draft"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "A draft D1 in Drafts with keyword $draft."
+    when: "Email/set update {D1: {\"mailboxIds\": {\"<INBOX>\": true}}}."
+    then: "updated contains D1 and Email/get shows it in INBOX still carrying $draft: the server does not add or remove keywords on a move."
+    sources:
+      - "cyrus:JMAPEmail/email_set_move_keywords"
+      - "rfc:8621 4.6"
+
+  - id: ESET-053
+    title: "A moved email is found by the REST API in the target mailbox"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "An email M1 in INBOX."
+    when: "Email/set update moving M1 to Archive, then the REST API message listing for INBOX and for Archive."
+    then: "The message is listed only under Archive, with the same subject, flags and internal date."
+    sources:
+      - "wildduck:REST API and JMAP share the store"
+
+  - id: ESET-054
+    title: "Update after an IMAP move addresses the same email id"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX with JMAP id M1."
+    when: "IMAP UID MOVE of the message to Archive, then Email/set update {M1: {\"keywords/$seen\": true}}."
+    then: "updated contains M1; Email/get shows mailboxIds Archive and $seen. An IMAP COPY of the same message instead yields a second Email with a different id that is updated independently."
+    sources:
+      - "wildduck:brief: id is stable across moves, COPY creates a new Email"
+      - "cyrus:JMAPEmail/email_set_update_after_attach"
+      - "james:EmailSetMethodContract#emailSetDestroyShouldDestroyEmailWhenMovedIntoAnotherMailbox"
+
+  - id: ESET-055
+    title: "A patch on an unknown top level property is rejected"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set update {M1: {\"invalid\": \"value\"}}."
+    then: "notUpdated M1 has type invalidProperties (or invalidPatch) naming the offending key; nothing changed."
+    sources:
+      - "james:EmailSetMethodContract#invalidPatchPropertyShouldFail"
+      - "rfc:8620 5.3"
+
+  - id: ESET-056
+    title: "A patch path whose parent does not exist is invalidPatch"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Updates with {\"keywords/$absent/x\": true} and {\"mailboxIds/nosuchmailbox/x\": true}."
+    then: "Each gives notUpdated M1 with type invalidPatch; keywords stay {}."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_invalid_patch"
+      - "rfc:8620 5.3"
+
+  - id: ESET-057
+    title: "A patch where one path is a prefix of another is invalidPatch"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set update {M1: {\"keywords\": {\"a\": true}, \"keywords/$seen\": true}} and likewise {\"mailboxIds\": {\"<Archive>\": true}, \"mailboxIds/<INBOX>\": null}."
+    then: "Each gives notUpdated M1 with type invalidPatch and nothing is applied."
+    sources:
+      - "james:EmailSetMethodContract#emailSetShouldRejectPartiallyUpdateAndResetKeywordsAtTheSameTime"
+      - "james:EmailSetMethodContract#mixingResetAndPartialUpdatesShouldFail"
+      - "cyrus:JMAPEmail/email_set_update_invalid_patch"
+      - "rfc:8620 5.3"
+
+  - id: ESET-058
+    title: "Malformed patch keys are rejected"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Updates with the keys \"/keywords/$seen\" (leading slash), \"\" (empty), \"keywords/\" (empty final token) and \"mailboxIds/invalid id!\"."
+    then: "Each gives notUpdated M1 with invalidPatch or invalidProperties, and the email is unchanged."
+    sources:
+      - "james:EmailSetMethodContract#invalidMailboxPartialUpdatePropertyShouldFail"
+      - "james:EmailSetMethodContract#invalidPatchPropertyShouldFail"
+      - "rfc:8620 5.3"
+
+  - id: ESET-059
+    title: "An update whose value is not a JSON object is rejected for that id only"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Emails M1 and M2."
+    when: "Email/set update {M1: \"oops\", M2: {\"keywords/$seen\": true}}."
+    then: "Either the method fails with invalidArguments, or notUpdated M1 is invalidPatch while M2 is updated. Nothing is applied to M1."
+    sources:
+      - "rfc:8620 5.3"
+      - "rfc:8620 3.6.2"
+    notes: "Pick the per object answer (invalidPatch) so one bad entry does not sink the batch."
+
+  - id: ESET-060
+    title: "An empty PatchObject succeeds without changing anything"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set update {M1: {}}."
+    then: "updated contains M1 with value null, newState equals oldState, IMAP MODSEQ of the message is unchanged."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_no_id"
+      - "rfc:8620 5.3"
+
+  - id: ESET-061
+    title: "Changing an immutable or server set property is rejected"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 fetched with Email/get."
+    when: "Separate updates trying to set each of: id, blobId, threadId, size, receivedAt, subject, from, \"header:Subject\", bodyValues, textBody, bodyStructure, preview, hasAttachment to a different value."
+    then: "Each gives notUpdated M1 with type invalidProperties and properties listing exactly the offending property. Email/get afterwards returns the original values."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_immutable"
+      - "cyrus:JMAPEmail/email_set_update"
+      - "rfc:8620 5.3"
+      - "stalwart:changelog: /set rejects changing immutable id"
+
+  - id: ESET-062
+    title: "Server set properties may be sent back unchanged"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 fetched with the default Email/get properties."
+    when: "Email/set update {M1: <the whole object as returned by Email/get, with keywords changed to add $seen>}."
+    then: "updated contains M1 and only keywords changed. Including id, blobId, threadId, size, receivedAt and header properties with identical values is not an error."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_immutable"
+      - "rfc:8620 5.3"
+
+  - id: ESET-063
+    title: "One invalid property rejects the whole update of that email and lists all invalid properties"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Email/set update {M1: {\"keywords/$seen\": true, \"subject\": \"new\", \"size\": 1}}."
+    then: "notUpdated M1 is invalidProperties with properties containing both subject and size; $seen was not set."
+    sources:
+      - "rfc:8620 5.3"
+      - "cyrus:JMAPEmail/email_set_update_immutable"
+
+  - id: ESET-064
+    title: "Updating an unknown email id gives notFound"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "No email with the well formed id M000000000000000000000000."
+    when: "Email/set update {\"M000000000000000000000000\": {\"keywords/$seen\": true}}."
+    then: "updated is null; notUpdated has that id with type notFound. HTTP status is 200."
+    sources:
+      - "james:EmailSetMethodContract#shouldNotResetKeywordWhenMessageIdNonExisted"
+      - "jmapio:email/set-update-not-found"
+      - "fastmail:t/Email/set/nonexistent-id.t"
+      - "rfc:8620 5.3"
+
+  - id: ESET-065
+    title: "Updating a syntactically invalid id gives a per object error"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Nothing special."
+    when: "Email/set update {\"not-an-id!\": {\"keywords/$seen\": true}}."
+    then: "notUpdated has \"not-an-id!\" with type notFound (invalidArguments at method level is not acceptable); the method does not fail as a whole."
+    sources:
+      - "james:EmailSetMethodContract#shouldNotResetKeywordWhenInvalidMessageId"
+      - "stalwart:changelog: unparsable ids returned in notUpdated"
+      - "fastmail:t/Email/set/nonexistent-id.t"
+
+  - id: ESET-066
+    title: "A bad id does not stop a good one in the same call"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 and an unknown id MX."
+    when: "Email/set update {MX: {\"keywords/$seen\": true}, M1: {\"keywords/$seen\": true}}."
+    then: "updated contains M1, notUpdated contains MX with notFound; M1 has $seen."
+    sources:
+      - "fastmail:t/Email/set/nonexistent-id.t"
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetSuccessAndFailureCanBeMixed"
+      - "rfc:8620 5.3"
+
+  - id: ESET-067
+    title: "An email flagged \\Deleted over IMAP cannot be updated through JMAP"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 on which IMAP STORE +FLAGS (\\Deleted) was run, not yet expunged."
+    when: "Email/set update {M1: {\"keywords/$seen\": true}}."
+    then: "notUpdated M1 has type notFound; IMAP flags of the message are unchanged."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "wildduck:brief: Deleted messages are invisible to JMAP everywhere"
+
+  - id: ESET-068
+    title: "Another user's email id gives notFound"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, api]
+    given: "Users A and B; an email MB in the INBOX of B."
+    when: "As A, Email/set with accountId A: update {MB: {\"keywords/$seen\": true}} and destroy [MB] in separate calls."
+    then: "notUpdated and notDestroyed report MB as notFound; the email of B is untouched. Using accountId B as A fails with accountNotFound."
+    sources:
+      - "james:EmailSetMethodContract#emailSetDestroyShouldFailWhenMailDoesNotBelongToUser"
+      - "james:EmailSetMethodContract#bobShouldNotBeAbleToUpdateEmailInAndreMailboxWhenNotDelegated"
+      - "fastmail:t/Email/foreign-account.t"
+
+  - id: ESET-069
+    title: "Destroy an email"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 in INBOX."
+    when: "Email/set destroy [M1]."
+    then: "destroyed is [M1], notDestroyed null, created and updated null. Email/get for M1 returns it in notFound and Email/query no longer lists it."
+    sources:
+      - "james:EmailSetMethodContract#emailSetShouldDestroyEmail"
+      - "cyrus:JMAPEmail/email_set_destroy"
+      - "jmapio:email/set-destroy-single"
+      - "fastmail:t/Email/set/destroy/all-mailboxes.t"
+      - "stalwart:mail/set.rs"
+      - "rfc:8621 4.6"
+
+  - id: ESET-070
+    title: "Destroy several emails in one call"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Emails M1, M2 and M3 in two different mailboxes."
+    when: "Email/set destroy [M1, M2, M3]."
+    then: "destroyed contains the three ids (any order); Email/get with those ids returns all three in notFound."
+    sources:
+      - "cyrus:JMAPEmail/email_set_destroy_bulk"
+      - "jmapio:email/set-destroy-multiple"
+      - "stalwart:mail/set.rs"
+
+  - id: ESET-071
+    title: "A destroyed email disappears from IMAP"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; an IMAP session has INBOX selected."
+    when: "Email/set destroy [M1], then NOOP over IMAP."
+    then: "The IMAP session receives an untagged EXPUNGE for the message; a fresh SELECT shows EXISTS reduced by one and UID SEARCH for the old UID finds nothing."
+    sources:
+      - "cyrus:JMAPEmail/email_set_destroy"
+      - "wildduck:same message through IMAP and JMAP"
+
+  - id: ESET-072
+    title: "A destroyed email disappears from the REST API listing and is archived"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "An email M1 in INBOX."
+    when: "Email/set destroy [M1], then the REST API message listing for INBOX and the archived messages listing for the user."
+    then: "The message is no longer listed in INBOX and is present in the archived listing with its original mailbox, and the user storage used dropped by the message size."
+    sources:
+      - "wildduck:brief: Email/set destroy archives the message"
+      - "wildduck:report: archived collection keeps deleted messages 25 days"
+
+  - id: ESET-073
+    title: "A destroyed email restored through the REST API reappears as created"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap, api]
+    given: "An email M1 destroyed through Email/set; the Email state S1 taken after the destroy."
+    when: "Restore the archived message through the REST API, then Email/changes sinceState S1 and Email/get for the id reported."
+    then: "Email/changes lists exactly one id in created. Email/get returns the message with the same content, receivedAt and keywords as before the destroy."
+    sources:
+      - "wildduck:brief: a restored message reappears as a created Email"
+    notes: "The report says restore reinserts the original document, so the id is expected to equal M1. Clients must treat it as new either way."
+
+  - id: ESET-074
+    title: "Destroy updates mailbox counts"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An unread email M1 alone in its thread in INBOX; Mailbox/get shows totalEmails n and unreadEmails u."
+    when: "Email/set destroy [M1], then Mailbox/get."
+    then: "INBOX totalEmails is n-1, unreadEmails u-1, totalThreads and unreadThreads each one lower. The Mailbox state changed."
+    sources:
+      - "fastmail:t/Email/set/destroy/all-mailboxes.t"
+      - "stalwart:mail/mailbox.rs"
+      - "cyrus:JMAPEmail/email_set_email_duplicates_mailbox_counts"
+
+  - id: ESET-075
+    title: "Destroying one email of a thread updates the thread"
+    method: Email/set
+    spec: "RFC 8621 3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A thread T with emails M1 and M2 (M2 replies to M1, same subject)."
+    when: "Email/set destroy [M1], then Thread/get [T] and Thread/changes from the state before."
+    then: "Thread/get returns T with emailIds [M2]. Thread/changes lists T in updated."
+    sources:
+      - "cyrus:JMAPEmail/email_set_destroy"
+      - "jmapio:thread/changes-after-email-destroy"
+      - "rfc:8621 3"
+
+  - id: ESET-076
+    title: "Destroying the last email of a thread destroys the thread"
+    method: Email/set
+    spec: "RFC 8621 3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A thread T holding only M1; Thread state S0."
+    when: "Email/set destroy [M1], then Thread/get [T] and Thread/changes sinceState S0."
+    then: "Thread/get returns T in notFound. Thread/changes lists T in destroyed."
+    sources:
+      - "jmapio:thread/changes-after-email-destroy"
+      - "legacy-proxy:test/compliance/known-failures.txt"
+      - "stalwart:changelog: Thread/changes after a thread becomes empty"
+    notes: "legacy-proxy fails this because it has no record of thread membership once the email is gone. WildDuck journal entries carry the thread id, so it must pass."
+
+  - id: ESET-077
+    title: "Destroy changes the state and is reported by Email/changes"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 and Email state S0."
+    when: "Email/set destroy [M1], then Email/changes sinceState S0."
+    then: "The Email/set response has oldState S0 and a different newState. Email/changes lists M1 in destroyed only and its newState equals the Email/set newState."
+    sources:
+      - "james:EmailSetMethodContract#newStateShouldBeUpToDate"
+      - "cyrus:JMAPEmail/email_set_destroy"
+      - "rfc:8620 5.3"
+
+  - id: ESET-078
+    title: "Destroying an unknown id gives notFound"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "No email with id M000000000000000000000000."
+    when: "Email/set destroy [\"M000000000000000000000000\"]."
+    then: "destroyed is null; notDestroyed has the id with type notFound."
+    sources:
+      - "james:EmailSetMethodContract#emailSetDestroyShouldFailWhenMessageIdNotFound"
+      - "jmapio:email/set-destroy-not-found"
+      - "fastmail:t/Email/set/nonexistent-id.t"
+      - "rfc:8620 5.3"
+
+  - id: ESET-079
+    title: "Destroying a syntactically invalid id gives a per object error"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Nothing special."
+    when: "Email/set destroy [\"invalid id!\"]."
+    then: "notDestroyed has \"invalid id!\" with type notFound; the method itself does not fail."
+    sources:
+      - "james:EmailSetMethodContract#emailSetDestroyShouldFailWhenInvalidMessageId"
+      - "stalwart:changelog: unparsable ids returned in notDestroyed"
+
+  - id: ESET-080
+    title: "Destroying an already destroyed id gives notFound"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 that was destroyed by an earlier Email/set."
+    when: "Email/set destroy [M1] again."
+    then: "notDestroyed M1 is notFound, newState equals oldState, and the archive holds one copy only."
+    sources:
+      - "rfc:8620 5.3"
+      - "stalwart:mail/set.rs"
+
+  - id: ESET-081
+    title: "The same id listed twice in destroy is destroyed once"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set destroy [M1, M1]."
+    then: "M1 appears once in destroyed and is not also reported in notDestroyed; the message is archived once."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: ESET-082
+    title: "Destroy successes and failures are mixed in one response"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 and an unknown id MX."
+    when: "Email/set destroy [M1, MX]."
+    then: "destroyed is [M1]; notDestroyed has MX with notFound."
+    sources:
+      - "james:EmailSetMethodContract#emailSetDestroySuccessAndFailureCanBeMixed"
+      - "fastmail:t/Email/set/nonexistent-id.t"
+
+  - id: ESET-083
+    title: "An email flagged \\Deleted over IMAP is not destroyable through JMAP"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 on which IMAP STORE +FLAGS (\\Deleted) was run, not expunged."
+    when: "Email/set destroy [M1]."
+    then: "notDestroyed M1 is notFound. The message is still present over IMAP with \\Deleted until an IMAP EXPUNGE, and the state did not change."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "wildduck:brief: Deleted messages are invisible to JMAP everywhere"
+    notes: "Open question: the alternative is to let destroy expunge and archive it. notFound is consistent with the message already being reported as destroyed in Email/changes."
+
+  - id: ESET-084
+    title: "Destroy after a move still finds the email"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 moved from INBOX to Archive by an earlier Email/set."
+    when: "Email/set destroy [M1]."
+    then: "destroyed is [M1]; neither INBOX nor Archive lists it over IMAP."
+    sources:
+      - "james:EmailSetMethodContract#emailSetDestroyShouldDestroyEmailWhenMovedIntoAnotherMailbox"
+      - "jmapio:email/set-destroy-removes-from-all-mailboxes"
+      - "legacy-proxy:test/compliance/known-failures.txt"
+    notes: "jmapio email/set-destroy-removes-from-all-mailboxes seeds an email in two mailboxes, which WildDuck refuses; this is the single mailbox version of it."
+
+  - id: ESET-085
+    title: "Destroying one of two IMAP copies leaves the other"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX and its IMAP COPY in Archive, which has a different JMAP id M2."
+    when: "Email/set destroy [M1]."
+    then: "M1 is destroyed, M2 is still returned by Email/get with mailboxIds Archive, and its blob still downloads."
+    sources:
+      - "wildduck:brief: an IMAP COPY creates a new Email"
+      - "cyrus:JMAPEmail/email_copy_has_expunged"
+
+  - id: ESET-086
+    title: "Blobs of a destroyed email stop resolving"
+    method: Email/set
+    spec: "RFC 8620 6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 with an attachment; its blobId and the attachment part blobId are known."
+    when: "Email/set destroy [M1], then download both blob ids and use the attachment blobId in a new Email/set create."
+    then: "Downloads answer 404 and the create fails with blobNotFound listing the blob id."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:report 4.10 blob ids"
+    notes: "Blob ids of message parts embed the Email id; once the message is archived they no longer resolve."
+
+  - id: ESET-087
+    title: "Destroying a draft that has a pending submission"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 3
+    applies: adapted
+    seed: [jmap]
+    given: "An email D1 with a pending EmailSubmission (delayed send)."
+    when: "Email/set destroy [D1]."
+    then: "destroyed is [D1]. The EmailSubmission stays queryable with its emailId, and the queued copy is still delivered or cancelled independently."
+    sources:
+      - "rfc:8621 7"
+      - "cyrus:JMAPEmail/email_set_delayed_deleted_mailbox"
+    notes: "RFC 8621 7: the emailId of a submission may refer to an Email that has since been destroyed."
+
+  - id: ESET-088
+    title: "oldState and newState frame the change"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1; Email/get returns state S0."
+    when: "Email/set update {M1: {\"keywords/$seen\": true}}, then Email/get."
+    then: "The response has accountId, oldState equal to S0 and newState different from S0; Email/get state equals newState."
+    sources:
+      - "james:EmailSetMethodContract#newStateShouldBeUpToDate"
+      - "james:EmailSetMethodContract#oldStateShouldIncludeSetChanges"
+      - "jmapio:email/set-create-state-changes"
+      - "rfc:8620 5.3"
+
+  - id: ESET-089
+    title: "A set call in which every operation fails does not change the state"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Email state S0."
+    when: "Email/set update of an unknown id and destroy of an unknown id."
+    then: "oldState and newState both equal S0."
+    sources:
+      - "rfc:8620 5.3"
+      - "wildduck:state must not change when nothing changed"
+
+  - id: ESET-090
+    title: "An Email/set with no create, update or destroy returns the current state"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Email state S0."
+    when: "Email/set with only accountId, and again with create, update and destroy all null."
+    then: "Response has oldState and newState equal to S0 and created, updated, destroyed, notCreated, notUpdated, notDestroyed all null."
+    sources:
+      - "rfc:8620 5.3"
+      - "fastmail:t/Email/set/create/empty-set-fields-are-null.t"
+
+  - id: ESET-091
+    title: "Email, Thread and Mailbox states move together"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "States for Email, Thread and Mailbox read with the three /get methods."
+    when: "Email/set update moving an email to another mailbox."
+    then: "newState from Email/set is the new Email state, and Mailbox/get and Thread/get report the same new state string, since the three types share one journal derived state."
+    sources:
+      - "wildduck:brief: Email, Thread and Mailbox share one state string per account"
+
+  - id: ESET-092
+    title: "ifInState matching the current state is accepted"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 and current Email state S0."
+    when: "Email/set with ifInState S0 and update {M1: {\"keywords/$seen\": true}}."
+    then: "The update is applied and oldState is S0."
+    sources:
+      - "jmapio:email/set-update-if-in-state"
+      - "fastmail:t/Email/set/if-in-state.t"
+      - "rfc:8620 5.3"
+
+  - id: ESET-093
+    title: "ifInState not matching the current state aborts with stateMismatch"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1; state S0 read, then a flag changed over IMAP so the state moved on."
+    when: "Email/set with ifInState S0 containing a create, an update of M1 and a destroy."
+    then: "The method response is [\"error\", {\"type\": \"stateMismatch\"}] with the same call id, HTTP 200. Nothing was created, updated or destroyed."
+    sources:
+      - "fastmail:t/Email/set/if-in-state.t"
+      - "rfc:8620 5.3"
+
+  - id: ESET-094
+    title: "ifInState null applies to the current state"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set with ifInState null and a keyword update."
+    then: "The update is applied exactly as when ifInState is omitted."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: ESET-095
+    title: "An ifInState that is not a valid state string is stateMismatch, not a server error"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Nothing special."
+    when: "Email/set with ifInState \"garbage\" and a keyword update; then with ifInState 5 (a number)."
+    then: "The string case answers stateMismatch; the number answers invalidArguments. Neither applies the update and neither answers serverFail."
+    sources:
+      - "rfc:8620 5.3"
+      - "rfc:8620 3.6.2"
+
+  - id: ESET-096
+    title: "A later call in the same request sees the state left by Email/set"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "One request: Email/set update of M1, then Email/get of M1, then a second Email/set with ifInState set to the state from before the request."
+    then: "Email/get returns the new keywords and a state equal to newState of the first call; the second Email/set fails with stateMismatch while the first stays applied."
+    sources:
+      - "rfc:8620 3.3"
+      - "rfc:8620 5.3"
+
+  - id: ESET-097
+    title: "More objects than maxObjectsInSet gives requestTooLarge"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Session capability maxObjectsInSet is N."
+    when: "Email/set with create, update and destroy entries totalling N+1 (for example N destroy ids and one update)."
+    then: "The method answers [\"error\", {\"type\": \"requestTooLarge\"}] and nothing is applied. Exactly N objects in total is accepted."
+    sources:
+      - "rfc:8620 5.3"
+      - "rfc:8620 2"
+    notes: "The limit counts create plus update plus destroy together."
+
+  - id: ESET-098
+    title: "Missing or wrong accountId"
+    method: Email/set
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user with account id A."
+    when: "Email/set without accountId; with accountId \"unknown\"; with accountId 42."
+    then: "Missing and non string accountId answer invalidArguments; an unknown account id answers accountNotFound. HTTP 200 in all three cases."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "stalwart:changelog: accountId required"
+      - "jmapio:rfc-clarifications"
+
+  - id: ESET-099
+    title: "Arguments of the wrong type or unknown arguments give invalidArguments"
+    method: Email/set
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Nothing special."
+    when: "Email/set with create as an array, with update as a string, with destroy as an object, and with an extra argument \"bogus\": true."
+    then: "Each answers [\"error\", {\"type\": \"invalidArguments\"}]; nothing is applied."
+    sources:
+      - "james:EmailSetMethodContract#createShouldRejectInvalidJson"
+      - "rfc:8620 3.6.2"
+    notes: "RFC 8620 3.6.2 lets a server ignore unknown arguments; WildDuck rejects them so typos surface. Level for the unknown argument part is a WildDuck choice."
+
+  - id: ESET-100
+    title: "Email/set requires the mail capability in using"
+    method: Email/set
+    spec: "RFC 8620 3.6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Nothing special."
+    when: "A request whose using lists only urn:ietf:params:jmap:core and calls Email/set."
+    then: "The method answers [\"error\", {\"type\": \"unknownMethod\"}]."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "stalwart:changelog: methods only available when the capability is in using"
+
+  - id: ESET-101
+    title: "Create, update and destroy in one call"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "Emails M1 and M2 in INBOX."
+    when: "One Email/set with create {\"c1\": <minimal draft>}, update {M1: {\"keywords/$seen\": true}} and destroy [M2]."
+    then: "created has c1, updated has M1, destroyed is [M2], all three not* maps are null, and one oldState to newState transition covers all of it."
+    sources:
+      - "james:EmailSetMethodContract#shouldCombineCreateAndUpdateInASingleMethodCall"
+      - "cyrus:JMAPEmail/email_set_update"
+      - "rfc:8620 5.3"
+
+  - id: ESET-102
+    title: "A failure in one operation does not stop the others"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "An email M1."
+    when: "One Email/set with create {\"bad\": <email without mailboxIds>, \"ok\": <minimal draft>}, update {M1: {\"keywords/$seen\": true}, \"MX\": {...}} and destroy [\"MY\"]."
+    then: "created has ok, notCreated has bad (invalidProperties), updated has M1, notUpdated has MX (notFound), notDestroyed has MY (notFound)."
+    sources:
+      - "rfc:8620 5.3"
+      - "fastmail:t/Email/set/nonexistent-id.t"
+      - "fastmail:t/Email/import/one-fails-another-succeeds.t"
+
+  - id: ESET-103
+    title: "Updating and destroying the same id in one call"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: may
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1 without keywords."
+    when: "Email/set with update {M1: {\"keywords/$seen\": true}} and destroy [M1]."
+    then: "destroyed is [M1]. The update is either reported in notUpdated with type willDestroy or in updated; it is never reported as notFound and the email is gone afterwards."
+    sources:
+      - "stalwart:mail/set.rs"
+      - "rfc:8620 5.3"
+    notes: "WildDuck should answer willDestroy and skip the write."
+
+  - id: ESET-104
+    title: "A creation id from the same call can be used in update and destroy"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "Email/set with create {\"c1\": <minimal draft>} and update {\"#c1\": {\"keywords/$flagged\": true}}."
+    then: "created has c1 and updated has the new real id as key (not \"#c1\"); Email/get shows $flagged. Creates are processed before updates and destroys."
+    sources:
+      - "rfc:8620 5.3"
+    notes: "RFC 8620 5.3 requires creates to be ordered before references to them in the same call for same type references. Email has no Email typed foreign key, so this is level should."
+
+  - id: ESET-105
+    title: "A creation id is resolvable in later method calls of the same request"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "One request: Email/set create {\"c1\": <minimal draft>}, then Email/get ids [\"#c1\"], then Email/set destroy [\"#c1\"]."
+    then: "Email/get returns the created email; the second Email/set destroys it. The response createdIds is present only if the request sent createdIds, and then maps c1 to the real id."
+    sources:
+      - "cyrus:JMAPEmail/email_set_text_crlf"
+      - "jmapio:email/set-create-creation-id-reference"
+      - "rfc:8620 5.3"
+      - "rfc:8620 3.3"
+
+  - id: ESET-106
+    title: "An unknown creation reference fails only the object that uses it"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1."
+    when: "Email/set with update {\"#nope\": {\"keywords/$seen\": true}, M1: {\"keywords/$seen\": true}} and destroy [\"#nope2\"]."
+    then: "M1 is updated; \"#nope\" is in notUpdated and \"#nope2\" in notDestroyed, both with notFound (or the method fails with invalidResultReference, which is not acceptable for WildDuck)."
+    sources:
+      - "rfc:8620 5.3"
+      - "stalwart:changelog: Email/set creation reference"
+
+  - id: ESET-107
+    title: "A reused creation id maps to the most recently created object"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "One request with two Email/set calls that both create under creation id \"c1\" with different subjects, then Email/get ids [\"#c1\"]."
+    then: "Email/get returns the email created by the second call."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: ESET-108
+    title: "Each object is atomic and the batch is not"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Emails M1, M2, M3."
+    when: "Email/set update {M1: valid keyword patch, M2: patch with one valid and one invalid property, M3: valid keyword patch}."
+    then: "M1 and M3 are updated in full, M2 is in notUpdated with none of its patch applied."
+    sources:
+      - "rfc:8620 5.3"
+      - "james:EmailSetMethodContract#emailSetMailboxIdsResetSuccessAndFailureCanBeMixed"
+
+  - id: ESET-109
+    title: "SetError objects carry type and an optional description string"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Nothing special."
+    when: "Any Email/set producing notCreated, notUpdated and notDestroyed entries."
+    then: "Every SetError has a string type from the RFC 8620 5.3 or RFC 8621 4.6 lists and, when present, a string description. invalidProperties errors carry properties as an array of strings."
+    sources:
+      - "rfc:8620 5.3"
+      - "fastmail:t/Email/set/create/minimum-properties-required.t"
+
+  - id: ESET-110
+    title: "Email/set create over the creation rate limit gives rateLimit"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: may
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "A user whose IMAP upload counter (the per day upload limit) is exhausted."
+    when: "Email/set create of a minimal draft."
+    then: "notCreated has the creation id with type rateLimit or overQuota, never serverFail, and no message is stored."
+    sources:
+      - "rfc:8620 5.3"
+      - "wildduck:iup upload counters"
+    notes: "Open question: whether the IMAP upload byte limit also applies to JMAP creates and imports. If it does, rateLimit is the matching SetError."
+
+  - id: ESET-111
+    title: "Create an email with only mailboxIds"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create {\"c1\": {\"mailboxIds\": {\"<Drafts>\": true}}}."
+    then: "created.c1 has string id (M plus 24 hex), blobId, threadId and numeric size; notCreated is null. Email/get returns the email with keywords {}, from null, subject null and mailboxIds Drafts."
+    sources:
+      - "fastmail:t/Email/set/create/minimum-properties-required.t"
+      - "fastmail:t/Email/set/create/created-response-required-properties.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-112
+    title: "Create a plain text email with textBody and bodyValues"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with mailboxIds, from, to, subject, textBody [{\"partId\": \"t\", \"type\": \"text/plain\"}] and bodyValues {\"t\": {\"value\": \"Hello\"}}."
+    then: "created.c1 is returned. Email/get with fetchTextBodyValues shows bodyStructure of type text/plain without subParts, textBody and htmlBody both pointing at that part, bodyValues value \"Hello\", and the from, to and subject as sent."
+    sources:
+      - "james:EmailSetMethodContract#createShouldAddAnEmailInTargetMailbox"
+      - "jmapio:email/set-create-plain-text"
+      - "fastmail:t/Email/set/create/text-body.t"
+      - "cyrus:JMAPEmail/email_set_draft"
+      - "stalwart:resources/jmap/email_set/minimal"
+      - "wildduck:MIME builder, after jmap-proxy-go mime_build_test.go"
+
+  - id: ESET-113
+    title: "Create an HTML only email without a multipart wrapper"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with htmlBody [{\"partId\": \"h\", \"type\": \"text/html\"}] and bodyValues {\"h\": {\"value\": \"<p>Hi</p>\"}}."
+    then: "Email/get shows bodyStructure type text/html with no subParts; htmlBody and textBody both list that part; the html value round trips."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportHtmlBody"
+      - "james:EmailSetMethodContract#htmlBodyOnlyShouldNotBeWrappedInMultiparts"
+      - "jmapio:email/set-create-html"
+      - "fastmail:t/Email/set/create/html-body.t"
+
+  - id: ESET-114
+    title: "textBody plus htmlBody produce multipart/alternative"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with textBody [{\"partId\": \"t\"}], htmlBody [{\"partId\": \"h\"}] and both bodyValues."
+    then: "Email/get shows bodyStructure multipart/alternative with exactly two subParts in the order text/plain then text/html; textBody lists the plain part, htmlBody the html part, attachments is empty and hasAttachment false."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportHtmlAndTextBody"
+      - "james:EmailSetMethodContract#createShouldWrapInlineBodyWithAlternativeMultipart"
+      - "jmapio:email/set-create-multipart-alternative"
+      - "wildduck:MIME builder, after jmap-proxy-go mime_build_test.go"
+      - "stalwart:resources/jmap/email_set/rfc8621_1"
+
+  - id: ESET-115
+    title: "The created object holds only server set and defaulted properties"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with mailboxIds, subject and a text body."
+    then: "created.c1 contains id, blobId, threadId and size, may contain defaulted properties such as keywords and receivedAt, and does not echo subject or bodyValues. updated, destroyed, notCreated, notUpdated and notDestroyed are null, not {} or []."
+    sources:
+      - "fastmail:t/Email/set/create/created-response-required-properties.t"
+      - "fastmail:t/Email/set/create/empty-set-fields-are-null.t"
+      - "jmapio:email/set-create-server-set-properties"
+      - "rfc:8620 5.3"
+
+  - id: ESET-116
+    title: "A create changes the state and is reported by Email/changes"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Email state S0."
+    when: "Email/set create of a minimal draft, then Email/changes sinceState S0 and Mailbox/changes sinceState S0."
+    then: "oldState is S0, newState differs. Email/changes lists the new id in created only. Mailbox/changes lists the Drafts mailbox in updated."
+    sources:
+      - "jmapio:email/set-create-state-changes"
+      - "james:EmailSetMethodContract#newStateShouldBeUpToDate"
+      - "rfc:8620 5.3"
+
+  - id: ESET-117
+    title: "Several emails created in one call get distinct ids"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with five creation ids, identical content."
+    then: "created has five entries with five different ids and blobIds; Email/query inMailbox Drafts returns five more emails than before."
+    sources:
+      - "rfc:8620 5.3"
+      - "cyrus:JMAPEmail/email_set_create_duplicate_retry"
+      - "wildduck:brief: ids are not content derived"
+    notes: "Cyrus deduplicates identical drafts; WildDuck does not, each create is a new Email."
+
+  - id: ESET-118
+    title: "Create without mailboxIds is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "Email/set create with a subject and body but no mailboxIds; again with \"mailboxIds\": {} and with \"mailboxIds\": null."
+    then: "Each gives notCreated with type invalidProperties and properties [\"mailboxIds\"]; no message is stored."
+    sources:
+      - "james:EmailSetMethodContract#createShouldRejectNoMailboxIds"
+      - "james:EmailSetMethodContract#createShouldRejectEmptyMailboxIds"
+      - "fastmail:t/Email/set/create/minimum-properties-required.t"
+      - "rfc:8621 4.1.1"
+
+  - id: ESET-119
+    title: "Create with an unknown or malformed mailbox id is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "Email/set create with mailboxIds {\"<well formed unknown id>\": true}; again with {\"invalid id!\": true}; again with {\"<Drafts>\": false}."
+    then: "Each gives invalidProperties with properties [\"mailboxIds\"]."
+    sources:
+      - "james:EmailSetMethodContract#createShouldRejectInvalidMailboxIds"
+      - "james:EmailSetMethodContract#createShouldFailIfForbidden"
+      - "rfc:8620 5.3"
+
+  - id: ESET-120
+    title: "Create with two mailboxIds is rejected with tooManyMailboxes"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "Mailboxes Drafts and INBOX."
+    when: "Email/set create with mailboxIds {\"<Drafts>\": true, \"<INBOX>\": true}."
+    then: "notCreated.c1 has type tooManyMailboxes; no message appears in either mailbox."
+    sources:
+      - "rfc:8621 4.6"
+      - "wildduck:brief: maxMailboxesPerEmail is 1"
+      - "james:EmailImportContract#importShouldFailWhenTooManyMailboxes"
+
+  - id: ESET-121
+    title: "Create into a mailbox created in the same request"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "One request: Mailbox/set create {\"mb\": {name: \"Projects\"}}, then Email/set create with mailboxIds {\"#mb\": true}."
+    then: "Both succeed and Email/get shows mailboxIds with the real id of Projects."
+    sources:
+      - "jmapio:email/set-create-creation-id-reference"
+      - "cyrus:JMAPEmail/email_set_update_mailbox_creationid"
+      - "rfc:8620 5.3"
+
+  - id: ESET-122
+    title: "Create is allowed in any mailbox, not only Drafts"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Mailboxes INBOX, Sent and a user folder."
+    when: "Three creates of minimal emails, one into each mailbox, without $draft."
+    then: "All three are created and listed in their mailbox over IMAP without the \\Draft flag."
+    sources:
+      - "james:EmailSetMethodContract#createShouldAddAnEmailInTargetMailbox"
+      - "cyrus:JMAPEmail/email_set_create_prefers_drafts"
+      - "rfc:8621 4.6"
+
+  - id: ESET-123
+    title: "Keywords given at creation are stored and visible over IMAP"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with keywords {\"$draft\": true, \"$seen\": true, \"todo\": true}."
+    then: "Email/get returns exactly those three keywords. IMAP FETCH FLAGS on the new message shows \\Draft, \\Seen and todo."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportKeywords"
+      - "jmapio:email/set-create-with-keywords"
+      - "cyrus:JMAPEmail/email_set_userkeywords"
+      - "cyrus:JMAPEmail/email_set_draft"
+
+  - id: ESET-124
+    title: "Keywords default to an empty set"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Two creates: one without keywords, one with \"keywords\": {}."
+    then: "Both succeed; Email/get returns keywords {} and the message counts as unread in Mailbox/get unreadEmails."
+    sources:
+      - "james:EmailSetMethodContract#emailSetCreateShouldSucceedWithEmptyKeywords"
+      - "rfc:8621 4.1.1"
+
+  - id: ESET-125
+    title: "Invalid keywords at creation are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with keywords {\"$seen\": false}, {\"bad keyword\": true}, {\"$deleted\": true} and [\"$seen\"]."
+    then: "Each gives invalidProperties with properties [\"keywords\"] and nothing is stored."
+    sources:
+      - "cyrus:JMAPEmail/email_set_keywords_bogus_values"
+      - "rfc:8621 4.1.1"
+      - "wildduck:hidden flags cannot be set"
+
+  - id: ESET-126
+    title: "Create a draft in Drafts with $draft"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox (role drafts) from Mailbox/get."
+    when: "Email/set create with mailboxIds Drafts, keywords {\"$draft\": true}, from, to, subject and a text body."
+    then: "The email is created; IMAP shows it in Drafts with \\Draft; the REST API shows draft true; Mailbox/get unreadEmails for Drafts does not count it."
+    sources:
+      - "cyrus:JMAPEmail/email_set_draft"
+      - "james:EmailSetMethodContract#createShouldAddAnEmailInTargetMailbox"
+      - "rfc:8621 4.6"
+      - "rfc:8621 2"
+
+  - id: ESET-127
+    title: "receivedAt defaults to the time of creation"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create without receivedAt, noting the wall clock before and after."
+    then: "Email/get receivedAt is a UTCDate between the two readings and IMAP INTERNALDATE of the message is the same instant."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "cyrus:JMAPEmail/email_set_received_at"
+
+  - id: ESET-128
+    title: "An explicit receivedAt is stored and becomes the IMAP INTERNALDATE"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with \"receivedAt\": \"2014-10-30T14:12:00Z\"."
+    then: "Email/get returns that receivedAt, IMAP FETCH INTERNALDATE shows 30-Oct-2014 14:12:00 +0000, and Email/query sorted by receivedAt places it accordingly."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportReceivedAt"
+      - "cyrus:JMAPEmail/email_set_received_at"
+      - "cyrus:JMAPEmail/email_set_guidsearch_updated_internaldate"
+
+  - id: ESET-129
+    title: "A receivedAt that is not a UTCDate is rejected"
+    method: Email/set
+    spec: "RFC 8620 1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with receivedAt \"2014-10-30T14:12:00+02:00\", \"2014-10-30\", \"yesterday\" and 1414678320."
+    then: "Each gives invalidProperties with properties [\"receivedAt\"]."
+    sources:
+      - "rfc:8620 1.4"
+      - "fastmail:t/Email/import/bad-values.t"
+
+  - id: ESET-130
+    title: "Server set properties cannot be supplied at creation"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates that include each of id, blobId, threadId, size, hasAttachment, preview."
+    then: "Each gives invalidProperties listing the offending property; nothing is stored."
+    sources:
+      - "rfc:8620 5.3"
+      - "james:EmailSetMethodContract#createShouldRejectUnknownProperties"
+
+  - id: ESET-131
+    title: "Unknown properties are rejected and all of them are listed"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with mailboxIds plus \"unknown\": 1 and \"another\": 2."
+    then: "notCreated.c1 is invalidProperties and properties contains both unknown and another."
+    sources:
+      - "james:EmailSetMethodContract#createShouldRejectUnknownProperties"
+      - "rfc:8620 5.3"
+
+  - id: ESET-132
+    title: "A create value that is not an object fails only that creation id"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create {\"a\": \"string\", \"b\": <minimal draft>}."
+    then: "b is created. a is reported in notCreated with invalidProperties, or the whole method answers invalidArguments; never serverFail."
+    sources:
+      - "james:EmailSetMethodContract#createShouldRejectInvalidJson"
+      - "rfc:8620 3.6.2"
+
+  - id: ESET-133
+    title: "Address convenience properties become the matching header fields"
+    method: Email/set
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with from, sender, replyTo, to (two addresses), cc and bcc, each an array of {name, email}."
+    then: "Email/get returns the same six properties. The raw message has one From, Sender, Reply-To, To, Cc and Bcc line each, with display names as phrases and addresses in angle brackets."
+    sources:
+      - "james:EmailSetMethodContract#createShouldHandleAddressHeaders"
+      - "cyrus:JMAPEmail/email_set_headers"
+      - "cyrus:JMAPEmail/email_set_issue2293"
+      - "stalwart:resources/jmap/email_set/headers"
+
+  - id: ESET-134
+    title: "Bcc is kept in the stored draft"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with bcc [{\"email\": \"hidden@example.com\"}]."
+    then: "Email/get bcc returns the address and the raw blob contains the Bcc header. Stripping happens at submission, not at creation."
+    sources:
+      - "james:EmailSetMethodContract#createShouldHandleAddressHeaders"
+      - "rfc:8621 7.5"
+
+  - id: ESET-135
+    title: "Several From addresses are accepted"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with from holding two addresses and sender holding one."
+    then: "Created; Email/get from has both addresses in order."
+    sources:
+      - "james:EmailSetMethodContract#createWithMultipleSenderShouldNotCrash"
+      - "rfc:8621 4.1.2.3"
+
+  - id: ESET-136
+    title: "An email without From is accepted"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with to, subject and body but no from."
+    then: "Created; Email/get from is null and the raw message has no From header. The server does not invent a From from the account address."
+    sources:
+      - "rfc:8621 4.6"
+      - "fastmail:t/Email/set/create/minimum-properties-required.t"
+    notes: "jmap-proxy-go requires From at build time; RFC 8621 4.6 allows incomplete drafts, validation belongs to EmailSubmission."
+
+  - id: ESET-137
+    title: "Display names and subjects with special characters round trip"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with to [{\"name\": \"Doe, \\\"JD\\\" John\", \"email\": \"jd@example.com\"}] and subject \"bob@example.com, hello and more\"."
+    then: "Email/get returns exactly the same name and subject; the raw To header quotes or encodes the name so it parses as one address."
+    sources:
+      - "cyrus:JMAPEmail/email_set_create_subject_with_address"
+      - "cyrus:JMAPEmail/email_set_issue2293"
+
+  - id: ESET-138
+    title: "Non ASCII subject and display names are RFC 2047 encoded"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with a subject and a from name containing accented Latin, Cyrillic and emoji characters."
+    then: "The raw header lines contain only ASCII, using encoded words of at most 75 characters each; Email/get subject and from name return the original Unicode strings."
+    sources:
+      - "cyrus:JMAPEmail/email_set_headers"
+      - "cyrus:JMAPEmail/email_set_header_nfc"
+      - "rfc:8621 4.1.2.2"
+      - "rfc:8621 4.1.2.3"
+
+  - id: ESET-139
+    title: "An internationalised address is accepted"
+    method: Email/set
+    spec: "RFC 8621 4.8"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with to [{\"email\": \"user@xn--bcher-kva.example\"}] and another with a UTF-8 local part and a Unicode domain."
+    then: "Both are created and Email/get returns an address that identifies the same mailbox; no header line contains raw 8 bit data unless the message is generated as an RFC 6532 message."
+    sources:
+      - "rfc:8621 4.8"
+      - "cyrus:JMAPEmail/email_set_header_nfc"
+    notes: "Open question: whether the builder emits UTF-8 headers (RFC 6532) or converts the domain to punycode and rejects non ASCII local parts."
+
+  - id: ESET-140
+    title: "subject sets the Subject header"
+    method: Email/set
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with \"subject\": \"Quarterly report\"."
+    then: "Email/get subject is \"Quarterly report\" and header:Subject returns \" Quarterly report\"; IMAP ENVELOPE subject matches."
+    sources:
+      - "cyrus:JMAPEmail/email_set_headers"
+      - "rfc:8621 4.1.3"
+
+  - id: ESET-141
+    title: "sentAt sets the Date header and keeps the time zone offset"
+    method: Email/set
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with \"sentAt\": \"2019-05-02T03:15:00+07:00\"."
+    then: "Email/get sentAt returns the same string and header:Date returns \" Thu, 02 May 2019 03:15:00 +0700\". receivedAt is unaffected."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportSentAt"
+      - "cyrus:JMAPEmail/email_set_date"
+
+  - id: ESET-142
+    title: "messageId, inReplyTo and references set the identification headers"
+    method: Email/set
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with messageId [\"m1@example.com\"], inReplyTo [\"p1@example.com\"], references [\"r1@example.com\", \"p1@example.com\"]."
+    then: "Email/get returns the three lists unchanged; the raw headers carry each id in angle brackets, References separated by spaces."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportMessageIdHeaders"
+      - "cyrus:JMAPEmail/email_set_headers"
+
+  - id: ESET-143
+    title: "A Message-ID is generated when absent"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Two creates without messageId."
+    then: "Each email has messageId with exactly one value of the form local@domain (no angle brackets in the JMAP value), the two values differ, and the raw message has one Message-ID header."
+    sources:
+      - "james:EmailSetMethodContract#emailSetCreateShouldPositionMissingDateAndMessageId"
+      - "fastmail:t/Email/set/create/no-message-id-server-provides-one.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-144
+    title: "A Date is generated when absent"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create without sentAt."
+    then: "Email/get sentAt is within a few seconds of the request time and the raw message has exactly one Date header in RFC 5322 format."
+    sources:
+      - "james:EmailSetMethodContract#emailSetCreateShouldPositionMissingDateAndMessageId"
+      - "fastmail:t/Email/set/create/no-date-server-provides-one.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-145
+    title: "A client supplied Message-ID and Date are not overridden"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with messageId [\"fixed@example.com\"] and sentAt \"2020-01-01T00:00:00Z\"."
+    then: "The raw message has exactly one Message-ID (<fixed@example.com>) and one Date header with that instant."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportMessageIdHeaders"
+      - "cyrus:JMAPEmail/email_set_create_duplicate_retry"
+      - "rfc:8621 4.6"
+
+  - id: ESET-146
+    title: "MIME-Version is added, and no client identifying header"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create of a text email; a second one with \"header:MIME-Version\": \" 1.1\"."
+    then: "The first raw message has \"MIME-Version: 1.0\" exactly once and no X-Mailer or User-Agent header. The second either keeps the client value as the only MIME-Version header or is rejected with invalidProperties; it never has two."
+    sources:
+      - "cyrus:JMAPEmail/email_set_mimeversion"
+      - "cyrus:JMAPEmail/email_set_create_no_xmailer_header"
+
+  - id: ESET-147
+    title: "A new email joins the thread of the message it replies to"
+    method: Email/set
+    spec: "RFC 8621 3"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [imap, jmap]
+    given: "An email M1 in INBOX with Message-ID <a@example.com> and subject \"Plan\" in thread T."
+    when: "Create a draft with inReplyTo [\"a@example.com\"], references [\"a@example.com\"] and subject \"Re: Plan\"; create another with the same references but subject \"Other\"."
+    then: "The first is created with threadId T and Thread/get T lists both emails. The second gets a new threadId."
+    sources:
+      - "cyrus:JMAPEmail/email_set_create_memo_inreplyto"
+      - "rfc:8621 3"
+      - "wildduck:brief: threading needs a shared reference and the same normalised subject"
+
+  - id: ESET-148
+    title: "The headers property is rejected on the Email"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with \"headers\": [{\"name\": \"X-Foo\", \"value\": \" bar\"}]."
+    then: "notCreated.c1 is invalidProperties with properties [\"headers\"]."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenEmailContainsHeadersProperties"
+      - "fastmail:t/Email/set/create/headers-property-forbidden.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-149
+    title: "The headers property is rejected on a body part"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with bodyStructure {\"type\": \"text/plain\", \"partId\": \"t\", \"headers\": [{\"name\": \"X-Foo\", \"value\": \" bar\"}]}."
+    then: "notCreated.c1 is invalidProperties naming bodyStructure (or bodyStructure/headers)."
+    sources:
+      - "fastmail:t/Email/set/create/headers-property-forbidden-in-body-structure.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-150
+    title: "A raw header:X property is written verbatim"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with \"header:X-Custom\": \" some value\"."
+    then: "The raw message contains the line \"X-Custom: some value\". Email/get header:X-Custom returns \" some value\"."
+    sources:
+      - "cyrus:JMAPEmail/email_set_headers"
+      - "fastmail:t/Email/set/create/header-header-field-name.t"
+      - "stalwart:resources/jmap/email_set/headers"
+
+  - id: ESET-151
+    title: "header:X:asText encodes and decodes text"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with \"header:Subject:asText\", \"header:Comments:asText\", \"header:List-Id:asText\" and \"header:X-Foo:asText\", once with an ASCII value and once with a non ASCII value."
+    then: "All are created. Email/get of the same asText property returns the original string, and the raw header is ASCII only with RFC 2047 encoded words where needed."
+    sources:
+      - "fastmail:t/Email/set/create/header-header-field-name.t"
+      - "cyrus:JMAPEmail/email_set_header_nfc"
+      - "james:EmailSetMethodContract#specificHeaderShouldMatchSupportedType"
+
+  - id: ESET-152
+    title: "header:X:asAddresses and asGroupedAddresses build address headers"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with \"header:Resent-To:asAddresses\" [{\"name\": \"Foo Bar\", \"email\": \"foo@example.net\"}] and \"header:Cc:asGroupedAddresses\" [{\"name\": \"Team\", \"addresses\": [two addresses]}, {\"name\": null, \"addresses\": [one address]}]."
+    then: "Email/get returns the same structures for the same properties. The raw Cc line uses group syntax \"Team: a, b;\" followed by the ungrouped address. An empty group round trips as a group with no addresses."
+    sources:
+      - "fastmail:t/Email/set/create/header-header-field-name.t"
+      - "cyrus:JMAPEmail/email_set_groupaddr"
+      - "rfc:8621 4.1.2.4"
+
+  - id: ESET-153
+    title: "header:X:asMessageIds, asDate and asURLs build their headers"
+    method: Email/set
+    spec: "RFC 8621 4.1.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with \"header:X-Ref:asMessageIds\" [\"a@b\"], \"header:Resent-Date:asDate\" \"2020-02-03T04:05:06Z\" and \"header:List-Unsubscribe:asURLs\" [\"mailto:u@example.com\", \"https://example.com/u\"]."
+    then: "Raw headers are \"X-Ref: <a@b>\", an RFC 5322 date, and \"List-Unsubscribe: <mailto:u@example.com>, <https://example.com/u>\". Email/get of the same properties returns the input values."
+    sources:
+      - "fastmail:t/Email/set/create/header-header-field-name.t"
+      - "rfc:8621 4.1.2.5"
+      - "rfc:8621 4.1.2.6"
+      - "rfc:8621 4.1.2.7"
+
+  - id: ESET-154
+    title: "The :all suffix creates one header instance per list item, in order"
+    method: Email/set
+    spec: "RFC 8621 4.1.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with \"header:X-Tag:all\": [\" cat\", \" dog\", \" mouse\"]; a second create with \"header:X-Tag\": [\" cat\", \" dog\"] (list without :all)."
+    then: "The first raw message has three X-Tag lines in that order and Email/get header:X-Tag:all returns the three values. The second is rejected with invalidProperties naming the property."
+    sources:
+      - "fastmail:t/Email/set/create/header-header-field-name.t"
+      - "rfc:8621 4.1.3"
+
+  - id: ESET-155
+    title: "A parsed form that is forbidden for the header is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with \"header:Subject:asAddresses\", \"header:From:asText\", \"header:Date:asMessageIds\", \"header:To:asURLs\" and \"header:Message-ID:asDate\", each with a value of the right JSON type for the form."
+    then: "Each gives invalidProperties with properties naming exactly that property."
+    sources:
+      - "james:EmailSetMethodContract#specificHeaderShouldMatchSupportedType"
+      - "rfc:8621 4.6"
+      - "rfc:8621 4.1.2"
+
+  - id: ESET-156
+    title: "A header property value of the wrong JSON type is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with \"header:X-Foo:asAddresses\": \"not a list\", \"header:X-Foo:asDate\": \"not a date\", \"header:X-Foo\": 5, and \"header:X-Foo:asBogus\": \"x\"."
+    then: "Each gives invalidProperties naming the property."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenBadJsonPayloadForSpecificHeader"
+      - "rfc:8621 4.1.2"
+
+  - id: ESET-157
+    title: "Two properties for the same header field are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with (a) from plus \"header:From\", (b) subject plus \"header:SUBJECT:asText\", (c) \"header:X-Foo\" plus \"header:x-foo:asText\", (d) messageId plus \"header:Message-ID:asMessageIds\"."
+    then: "Each gives invalidProperties listing the conflicting properties; header names are compared case insensitively."
+    sources:
+      - "james:EmailSetMethodContract#specificHeadersCannotOverrideConvenienceHeader"
+      - "fastmail:t/Email/set/create/no-duplicate-header-representations.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-158
+    title: "Content-* headers are rejected on the Email object"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with \"header:Content-Type\": \" text/plain\", \"header:Content-Disposition\": \" inline\" and \"header:content-transfer-encoding\": \" base64\" at top level; a control create with \"header:X-Content-Info\": \" ok\"."
+    then: "The three Content- creates give invalidProperties naming the property; the control is created."
+    sources:
+      - "james:EmailSetMethodContract#specificContentHeadersShouldBeRejected"
+      - "fastmail:t/Email/set/create/no-content-headers-top-level.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-159
+    title: "A header may not be given on both the Email and its bodyStructure"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with \"subject\": \"a\" and bodyStructure {\"type\": \"text/plain\", \"partId\": \"t\", \"header:Subject\": \" b\"}."
+    then: "notCreated.c1 is invalidProperties. With the header only on the top level bodyStructure part the create succeeds and the header appears once in the message header."
+    sources:
+      - "fastmail:t/Email/set/create/body-structure-cannot-duplicate-headers-from-email.t"
+      - "fastmail:t/Email/set/create/body-structure-subparts.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-160
+    title: "A null header property creates no header"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with \"header:X-Foo\": null and \"header:X-Bar:asMessageIds\": null."
+    then: "Created; the raw message has no X-Foo or X-Bar header and Email/get header:X-Foo is null."
+    sources:
+      - "cyrus:JMAPEmail/email_set_nullheader"
+
+  - id: ESET-161
+    title: "Invalid header field names are rejected"
+    method: Email/set
+    spec: "RFC 5322 2.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with property names \"header:X Foo\", \"header:\", \"header:X-Fo\\u00f6\", \"header:X:Y:Z:asText\" and a name containing a control character."
+    then: "Each gives invalidProperties naming the property; no message is stored."
+    sources:
+      - "rfc:8621 4.1.2"
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+
+  - id: ESET-162
+    title: "CR, LF or CRLF in a header property name cannot inject a header"
+    method: Email/set
+    spec: "RFC 5322 2.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with the property name \"header:X-A\\r\\nBcc: evil@example.com\" (JSON escapes for CR LF) and value \" x\"."
+    then: "notCreated.c1 is invalidProperties. Nothing is stored."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "cyrus:JMAPEmail/email_set_header_control"
+
+  - id: ESET-163
+    title: "Bare CR, bare LF, unfolded CRLF and form feed in a raw header value are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Four creates with \"header:X-Test\" set to \" a<CRLF>b\", \" a<CR>b\", \" a<LF>b\" and \" a<FF>b\"."
+    then: "Each gives invalidProperties with properties [\"header:X-Test\"]."
+    sources:
+      - "cyrus:JMAPEmail/email_set_header_control"
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+
+  - id: ESET-164
+    title: "A correctly folded raw header value and a tab are accepted"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with \"header:X-Test\" set to \" a<CRLF><SP>b\" and to \" a<TAB>b\"."
+    then: "Both are created; Email/get header:X-Test returns the value as sent and the raw message has a single X-Test field (two physical lines for the folded one)."
+    sources:
+      - "cyrus:JMAPEmail/email_set_header_control"
+
+  - id: ESET-165
+    title: "CRLF followed by a header line in a raw value cannot add a header"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with \"header:X-Test\": \" a<CRLF>Bcc: evil@example.com\" and another with \" a<CRLF><CRLF>injected body\"."
+    then: "Both give invalidProperties. In no case does a stored message have a Bcc header or a body the client did not supply through the body properties."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "cyrus:JMAPEmail/email_set_header_control"
+
+  - id: ESET-166
+    title: "Line breaks in subject and other text form values never start a new header"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with subject \"Hi<CRLF>Bcc: evil@example.com\" and with \"header:X-Note:asText\" holding the same string."
+    then: "Either invalidProperties, or the email is created with the line break encoded or folded inside the one field. Email/get headers has no Bcc entry and exactly one Subject entry."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "rfc:8621 4.1.2.2"
+    notes: "Preferred: encode the value as an RFC 2047 encoded word so the text round trips."
+
+  - id: ESET-167
+    title: "Line breaks in address names and addresses never start a new header"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with to [{\"name\": \"A<CRLF>Bcc: evil@example.com\", \"email\": \"a@example.com\"}] and to [{\"email\": \"a@example.com<CRLF>Bcc: evil@example.com\"}]."
+    then: "The name case is either rejected or the name is encoded inside the To field. The email case gives invalidProperties with properties [\"to\"]. No stored message has a Bcc header."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "rfc:8621 4.1.2.3"
+
+  - id: ESET-168
+    title: "Line breaks in messageId, inReplyTo, references and URL values are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with messageId [\"a@b<CRLF>X-Evil: 1\"], references [\"a@b>\\r\\n<c@d\"] and \"header:List-Post:asURLs\" [\"mailto:a@b<CRLF>X-Evil: 1\"]."
+    then: "Each gives invalidProperties naming the property."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "rfc:8621 4.1.2.5"
+      - "rfc:8621 4.1.2.7"
+    notes: "Message ids containing spaces, angle brackets or control characters are also rejected."
+
+  - id: ESET-169
+    title: "Line breaks in body part properties cannot inject MIME headers"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Creates whose attachment part has name \"a.txt<CRLF>Content-Type: text/html\", or type \"text/plain<CRLF>X-Evil: 1\", or cid \"x<CRLF>X-Evil: 1\", or disposition, language, location or charset with an embedded CRLF."
+    then: "type, cid, disposition, language, location and charset with line breaks give invalidProperties. A name with line breaks is rejected or encoded as an RFC 2231 or RFC 2047 parameter. No part ends up with an X-Evil header or a second Content-Type."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "cyrus:JMAPEmail/email_set_filename"
+
+  - id: ESET-170
+    title: "NUL and other control characters in header values are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with subject \"a<NUL>b\", \"header:X-Test\": \" a<NUL>b\" and from name containing U+0001."
+    then: "Each is rejected with invalidProperties, or the control character is carried inside an encoded word; the raw message never contains a NUL octet in its header section."
+    sources:
+      - "wildduck:header injection hardening, after ionosphere jmap-header-injection.test.ts"
+      - "cyrus:JMAPEmail/email_set_header_control"
+      - "rfc:8621 4.8"
+
+  - id: ESET-171
+    title: "Long header values are folded"
+    method: Email/set
+    spec: "RFC 5322 2.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with a 400 character ASCII subject, a 400 character non ASCII subject (separate create), 60 recipients in to, and 50 ids in references."
+    then: "No physical header line in the raw message exceeds 998 octets and lines are folded near 78 characters where the syntax allows. Email/get returns the subject, to and references exactly as sent."
+    sources:
+      - "rfc:8621 4.1.2.2"
+      - "cyrus:JMAPEmail/email_set_headers"
+      - "wildduck:MIME builder, after jmap-proxy-go mime_build_test.go"
+
+  - id: ESET-172
+    title: "A raw header value longer than the line limit without folding is rejected or folded"
+    method: Email/set
+    spec: "RFC 5322 2.1.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with \"header:X-Long\" set to a space followed by 2000 characters without white space."
+    then: "Either invalidProperties naming the property, or the message is created with every physical line at most 998 octets. A line over 998 octets is never stored."
+    sources:
+      - "rfc:8621 4.1.2.1"
+      - "wildduck:IMAP and SMTP line length limits"
+
+  - id: ESET-173
+    title: "Address objects of the wrong shape are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.1.2.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with to \"a@example.com\" (string), to [{\"name\": \"A\"}] (no email), to [{\"email\": null}], to [{\"email\": 5}] and to [null]."
+    then: "Each gives invalidProperties with properties [\"to\"]."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenBadJsonPayloadForSpecificHeader"
+      - "rfc:8621 4.1.2.3"
+
+  - id: ESET-174
+    title: "A syntactically invalid address string is accepted in a stored email"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with keywords {\"$draft\": true} and to [{\"email\": \"not an address\"}]; the same without $draft."
+    then: "Both are created, and Email/get to returns the value in a form that identifies what was typed. A later EmailSubmission of either is refused with invalidEmail."
+    sources:
+      - "james:EmailSetMethodContract#emailSetShouldSucceedWhenInvalidToMailAddressAndHaveDraftKeyword"
+      - "james:EmailSetMethodContract#emailGetShouldReturnUncheckedMailAddressValueWhenDraftEmail"
+      - "james:EmailSetMethodContract#emailSetShouldFailWhenInvalidToEmailAddressAndHaveNotDraftKeyword"
+      - "rfc:8621 4.6"
+    notes: "James rejects the non draft case. RFC 8621 4.6 allows an invalid message for any create and defers strict checks to submission. Open question: follow the RFC (as written here) or James."
+
+  - id: ESET-175
+    title: "Create with a single part bodyStructure"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Email/set create with bodyStructure {\"type\": \"text/plain\", \"partId\": \"t\"} and bodyValues {\"t\": {\"value\": \"body\"}}."
+    then: "Created; Email/get bodyStructure is a text/plain leaf, textBody lists it and the value round trips."
+    sources:
+      - "fastmail:t/Email/set/create/body-structure.t"
+      - "cyrus:JMAPEmail/email_set_bodystructure"
+      - "stalwart:resources/jmap/email_set/minimal"
+    notes: "James rejects bodyStructure on create altogether (createShouldRejectBodyStructure). WildDuck supports it, as the plan calls for a full MIME builder."
+
+  - id: ESET-176
+    title: "bodyStructure together with textBody, htmlBody or attachments is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Three creates giving bodyStructure plus textBody, plus htmlBody, plus attachments."
+    then: "Each gives invalidProperties listing bodyStructure and the conflicting property."
+    sources:
+      - "james:EmailSetMethodContract#createShouldRejectBodyStructureCombinedWithHtmlBody"
+      - "fastmail:t/Email/set/create/no-duplicate-structural-representations.t"
+      - "cyrus:JMAPEmail/email_set_bodystructure_invalid"
+      - "rfc:8621 4.6"
+
+  - id: ESET-177
+    title: "A multipart bodyStructure with subParts is built as given"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B (application/pdf)."
+    when: "Create with bodyStructure {\"type\": \"multipart/mixed\", \"subParts\": [{\"type\": \"text/plain\", \"partId\": \"t\"}, {\"type\": \"application/pdf\", \"blobId\": B, \"name\": \"a.pdf\", \"disposition\": \"attachment\"}]}."
+    then: "Email/get bodyStructure has the same tree with partIds assigned by the server; textBody lists the text part, attachments lists the pdf with name a.pdf, hasAttachment is true."
+    sources:
+      - "fastmail:t/Email/set/create/body-structure-subparts.t"
+      - "cyrus:JMAPEmail/email_set_bodystructure"
+      - "stalwart:resources/jmap/email_set/mixed"
+      - "wildduck:MIME builder, after jmap-proxy-go mime_build_test.go"
+
+  - id: ESET-178
+    title: "A nested bodyStructure keeps its shape"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Uploaded blobs IMG (image/png) and DOC (application/pdf)."
+    when: "Create with multipart/mixed [ multipart/alternative [ text/plain, multipart/related [ text/html, image/png inline with cid \"img1\" ] ], application/pdf attachment ]."
+    then: "Email/get bodyStructure reproduces the four level tree and types. textBody is the plain part, htmlBody the html part, attachments holds the image (disposition inline, cid img1) and the pdf."
+    sources:
+      - "cyrus:JMAPEmail/email_set_multipart_related"
+      - "cyrus:JMAPEmail/email_set_bodystructure"
+      - "stalwart:resources/jmap/email_set/nested_body"
+      - "stalwart:resources/jmap/email_set/rfc8621_2"
+
+  - id: ESET-179
+    title: "Other multipart subtypes are passed through"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Two existing emails E1 and E2 whose blobIds are known."
+    when: "Create with bodyStructure multipart/digest whose subParts are {\"blobId\": E1 blob} and {\"blobId\": E2 blob} without type; another create with multipart/report and multipart/x-custom parents."
+    then: "Created. In the digest the sub parts have type message/rfc822 (the implicit type inside multipart/digest). Unknown multipart subtypes are kept as given and behave like mixed in textBody, htmlBody and attachments."
+    sources:
+      - "cyrus:JMAPEmail/email_set_multipartdigest"
+      - "rfc:8621 4.1.4"
+
+  - id: ESET-180
+    title: "Structurally invalid body parts are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Creates with (a) a multipart part that has partId or blobId, (b) a multipart with no subParts or an empty list, (c) a leaf part with subParts, (d) a part with type \"notatype\", (e) subParts that is not an array."
+    then: "Each gives invalidProperties naming bodyStructure (or a path below it); nothing is stored."
+    sources:
+      - "cyrus:JMAPEmail/email_set_bodystructure_invalid"
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+      - "rfc:8621 4.1.4"
+
+  - id: ESET-181
+    title: "A bodyStructure nested beyond the server limit is rejected cleanly"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with bodyStructure nested 200 multipart levels deep."
+    then: "notCreated.c1 is invalidProperties (or tooLarge); the server does not crash, time out or answer serverFail."
+    sources:
+      - "wildduck:imap-core max parser depth, MIME tree limits"
+
+  - id: ESET-182
+    title: "textBody or htmlBody with more than one part is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with textBody holding two parts; another with htmlBody holding two parts; another with textBody [] (empty list)."
+    then: "Each gives invalidProperties with properties naming textBody or htmlBody."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenMultipleBodyParts"
+      - "fastmail:t/Email/set/create/only-one-part-in-text-body.t"
+      - "fastmail:t/Email/set/create/only-one-part-in-html-body.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-183
+    title: "textBody must be text/plain and htmlBody must be text/html"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with textBody [{\"partId\": \"a\", \"type\": \"text/html\"}]; another with htmlBody [{\"partId\": \"a\", \"type\": \"text/plain\"}]; another with htmlBody [{\"partId\": \"a\"}] (type omitted)."
+    then: "The first two give invalidProperties naming textBody and htmlBody. The third is created and the part type is text/html."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenHtmlBodyIsNotHtmlType"
+      - "james:EmailSetMethodContract#createShouldSucceedWhenPartPropertiesOmitted"
+      - "rfc:8621 4.6"
+
+  - id: ESET-184
+    title: "A part needs exactly one of partId and blobId"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded text blob B."
+    when: "Create with textBody [{\"partId\": \"a\", \"blobId\": B}] and bodyValues a; another with textBody [{\"type\": \"text/plain\"}] (neither)."
+    then: "Both give invalidProperties naming textBody."
+    sources:
+      - "james:EmailSetMethodContract#emailCreationShouldFailWhenHtmlBodyPresentBothBlobIdAndPartId"
+      - "james:EmailSetMethodContract#emailCreationShouldFailWhenHtmlBodyAbsentBothBlobIdAndPartId"
+      - "fastmail:t/Email/set/create/cannot-have-blobid-and-partid.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-185
+    title: "A partId that is missing from bodyValues is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with textBody [{\"partId\": \"a\"}] and bodyValues {\"b\": {\"value\": \"x\"}}; another with no bodyValues at all."
+    then: "Both give invalidProperties naming textBody or bodyValues."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenPartIdMisMatch"
+      - "fastmail:t/Email/set/create/email-body-part-must-be-present.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-186
+    title: "charset and size are not allowed together with partId"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with textBody [{\"partId\": \"a\", \"charset\": \"utf-8\"}]; another with textBody [{\"partId\": \"a\", \"size\": 3}]."
+    then: "Both give invalidProperties naming the part property (for example textBody/0/charset or textBody)."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenCharsetIsSpecified"
+      - "james:EmailSetMethodContract#createShouldFailWhenSizeIsSpecified"
+      - "fastmail:t/Email/set/create/no-charset-with-partid.t"
+      - "fastmail:t/Email/set/create/no-size-with-partid.t"
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+
+  - id: ESET-187
+    title: "size given together with blobId is ignored"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B of 100 octets."
+    when: "Create with an attachment {\"blobId\": B, \"type\": \"text/plain\", \"size\": 105}; another with size 100."
+    then: "Both are created and Email/get reports the real decoded size 100 for the part."
+    sources:
+      - "fastmail:t/Email/set/create/size-with-blob-id-must-match.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-188
+    title: "A Content-Transfer-Encoding header on a body part is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Creates with \"header:Content-Transfer-Encoding\": \" base64\" (and \" 7bit\", \" binary\") on a textBody part, on an attachment part and on a bodyStructure part."
+    then: "Each gives invalidProperties naming the part or the header property."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenContentTransferEncodingIsSpecified"
+      - "james:EmailSetMethodContract#rejectAttahmentCreationRequestWithContentTransferEncoding"
+      - "james:EmailSetMethodContract#textContentTransferEncodingShouldBeRejectedInTextBody"
+      - "james:EmailSetMethodContract#binaryContentTransferEncodingShouldBeRejectedInTextBody"
+      - "fastmail:t/Email/set/create/content-transfer-encoding-not-allowed.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-189
+    title: "isTruncated or isEncodingProblem true in bodyValues is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Four creates whose body value has isTruncated true, isEncodingProblem true, both false, and both omitted."
+    then: "The first two give invalidProperties naming bodyValues; the last two are created."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenIsTruncatedIsTrue"
+      - "james:EmailSetMethodContract#createShouldFailWhenIsEncodingProblemIsTrue"
+      - "fastmail:t/Email/set/create/email-body-value-restrictions.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-190
+    title: "bodyValues of the wrong shape are rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Creates with bodyValues {\"a\": \"text\"}, {\"a\": {\"value\": 5}}, {\"a\": {}} and bodyValues as an array."
+    then: "Each gives invalidProperties naming bodyValues."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "cyrus:JMAPEmail/email_set_bodystructure_invalid"
+
+  - id: ESET-191
+    title: "An empty text body is allowed"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with textBody [{\"partId\": \"a\"}] and bodyValues {\"a\": {\"value\": \"\"}}."
+    then: "Created; Email/get returns the part with size 0 and value \"\"."
+    sources:
+      - "rfc:8621 4.6"
+      - "fastmail:t/Email/set/create/text-body.t"
+
+  - id: ESET-192
+    title: "The server chooses charset and transfer encoding for text given by partId"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with a text body value mixing ASCII, accented Latin, CJK and emoji characters."
+    then: "Email/get returns the identical string, charset \"utf-8\" on the part and isEncodingProblem false. The raw part is quoted-printable or base64 with a matching Content-Transfer-Encoding header, and the raw message is 7 bit clean."
+    sources:
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+      - "rfc:8621 4.6"
+      - "wildduck:MIME builder, after jmap-proxy-go mime_build_test.go"
+
+  - id: ESET-193
+    title: "ASCII text is not needlessly encoded"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with a short ASCII only text body with lines under 76 characters."
+    then: "The raw part uses Content-Transfer-Encoding 7bit (or quoted-printable without any encoded octet), so the body is readable in the raw message."
+    sources:
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+      - "cyrus:JMAPEmail/email_set_encode_plain_text_attachment"
+
+  - id: ESET-194
+    title: "Very long lines in a text body are encoded so no raw line exceeds 998 octets"
+    method: Email/set
+    spec: "RFC 5322 2.1.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with a text body value of 2000 \"x\" characters without a line break, and an html body with a 5000 character line."
+    then: "No line of the raw message exceeds 998 octets; Email/get returns the values unchanged with no inserted line breaks."
+    sources:
+      - "cyrus:JMAPEmail/email_set_text_split"
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+
+  - id: ESET-195
+    title: "Line endings in a body value are normalised"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with body value \"ab<CRLF>cde<CR>fgh<LF>ij\"."
+    then: "The raw message body contains only CRLF line endings (no bare CR or LF). Email/get returns the value with LF line endings: \"ab<LF>cde<LF>fgh<LF>ij\"."
+    sources:
+      - "cyrus:JMAPEmail/email_set_text_crlf"
+      - "rfc:8621 4.1.4"
+
+  - id: ESET-196
+    title: "Lines starting with From or a dot and trailing spaces survive"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with a text body whose lines include \"From here\", \".\", \"..\" and a line ending with spaces."
+    then: "Email/get returns exactly the same text and an IMAP FETCH BODY[TEXT] decodes to the same text; nothing is escaped with \">\" or dropped."
+    sources:
+      - "wildduck:MIME builder round trip"
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+
+  - id: ESET-197
+    title: "The multipart boundary never occurs in the content"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An existing multipart email E whose raw blob is known."
+    when: "Create a multipart/mixed email that attaches blob E as text/plain and whose text body contains lines starting with \"--\"."
+    then: "Email/get returns exactly two sub parts with the original contents; the generated boundary string does not appear inside any part."
+    sources:
+      - "cyrus:JMAPEmail/email_set_create_deterministic_boundaries"
+      - "wildduck:MIME builder round trip"
+
+  - id: ESET-198
+    title: "Attach an uploaded blob"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A 20 kB binary file uploaded through the upload endpoint, blobId B."
+    when: "Create with a text body and attachments [{\"blobId\": B, \"type\": \"application/pdf\", \"name\": \"report.pdf\", \"disposition\": \"attachment\"}]."
+    then: "Created. Email/get shows hasAttachment true and one attachment with type application/pdf, name report.pdf, disposition attachment and size 20 kB; downloading its blobId returns bytes identical to the upload."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportAttachment"
+      - "james:EmailSetMethodContract#createShouldSupportAttachmentWithName"
+      - "james:EmailSetMethodContract#createShouldSupportAttachmentAndTextBody"
+      - "cyrus:JMAPEmail/email_set_attachments"
+      - "jmapio:email/set-create-with-attachment"
+      - "fastmail:t/Email/set/create/attachments-using-blob-id.t"
+      - "fastmail:t/Email/set/create/attachments.t"
+
+  - id: ESET-199
+    title: "textBody, htmlBody and attachments together"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Uploaded blobs IMG and DOC."
+    when: "Create with textBody, htmlBody, and attachments [IMG with disposition inline and cid \"c1\", DOC with disposition attachment]."
+    then: "Email/get: textBody is the plain part, htmlBody the html part, attachments lists IMG (inline, cid c1) and DOC. The html part and IMG share a multipart/related parent and DOC sits in the outer multipart/mixed."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportInlinedAttachmentsMixedWithRegularAttachmentsAndHtmlBody"
+      - "james:EmailSetMethodContract#createShouldSupportAttachmentAndHtmlBody"
+      - "james:EmailSetMethodContract#inlinedAttachmentsShouldBeWrappedInRelatedMultipart"
+      - "cyrus:JMAPEmail/email_set_multipart_related"
+      - "stalwart:resources/jmap/email_set/rfc8621_2"
+
+  - id: ESET-200
+    title: "No needless multipart wrappers are generated"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Uploaded blobs IMG and DOC."
+    when: "Create (a) htmlBody plus one inline IMG only, (b) htmlBody plus one regular attachment DOC only."
+    then: "In (a) the top level is multipart/related with no multipart/mixed around it. In (b) the top level is multipart/mixed with no multipart/related inside."
+    sources:
+      - "james:EmailSetMethodContract#inlinedAttachmentsOnlyShouldNotBeWrappedInAMixedMultipart"
+      - "james:EmailSetMethodContract#htmlBodyPartWithOnlyNormalAttachmentsShouldNotBeWrappedInARelatedMultipart"
+
+  - id: ESET-201
+    title: "cid becomes a Content-ID header in angle brackets"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded image blob IMG."
+    when: "Create with an inline attachment {\"blobId\": IMG, \"type\": \"image/png\", \"cid\": \"logo@example.com\", \"disposition\": \"inline\"}."
+    then: "The raw part has \"Content-ID: <logo@example.com>\" and Email/get returns cid \"logo@example.com\" without brackets. A cid containing spaces or angle brackets is rejected with invalidProperties."
+    sources:
+      - "james:EmailSetMethodContract#inlinedAttachmentsShouldBeWrappedInRelatedMultipart"
+      - "fastmail:t/Email/set/create/body-structure-subparts.t"
+      - "rfc:8621 4.1.4"
+
+  - id: ESET-202
+    title: "language and location become Content-Language and Content-Location"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with bodyStructure {\"type\": \"text/plain\", \"partId\": \"t\", \"language\": [\"de-DE\", \"en-CA\"], \"location\": \"http://example.com/uri\"}."
+    then: "Email/get bodyStructure returns the same language list and location; the raw headers are \"Content-Language: de-DE, en-CA\" and \"Content-Location: http://example.com/uri\"."
+    sources:
+      - "cyrus:JMAPEmail/email_set_language_header"
+      - "cyrus:JMAPEmail/email_set_location"
+      - "fastmail:t/Email/set/create/body-structure-subparts.t"
+
+  - id: ESET-203
+    title: "disposition and name set Content-Disposition and its filename"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Creates with attachments using disposition \"attachment\", \"inline\", null (omitted) and a non standard token \"x-custom\", each with name \"a.bin\"."
+    then: "Email/get returns the disposition as sent (lowercase) and name \"a.bin\". With disposition omitted the part still carries the name (as a Content-Type name or Content-Disposition filename parameter) and is listed in attachments."
+    sources:
+      - "cyrus:JMAPEmail/email_set_filename"
+      - "james:EmailSetMethodContract#createShouldSupportAttachmentWithName"
+      - "rfc:8621 4.1.4"
+
+  - id: ESET-204
+    title: "Non ASCII and long attachment names are encoded and round trip"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Creates with attachment names containing accented and CJK characters, a name with quotes, semicolons and backslashes, and a 300 character name."
+    then: "Email/get name returns each original name. The raw header uses RFC 2231 or RFC 2047 parameter encoding with ASCII only lines under 998 octets, and IMAP BODYSTRUCTURE exposes a decodable file name."
+    sources:
+      - "cyrus:JMAPEmail/email_set_filename"
+      - "cyrus:JMAPEmail/email_import_encoded_contenttype"
+
+  - id: ESET-205
+    title: "Binary and 8 bit attachment content is preserved exactly"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob containing all 256 octet values, NUL octets, bare CR and bare LF and no trailing newline."
+    when: "Create with that blob as an application/octet-stream attachment."
+    then: "The raw part is base64 encoded with lines of at most 76 characters. Downloading the part blobId, and IMAP FETCH BINARY or decoding BODY[n], gives bytes identical to the upload."
+    sources:
+      - "cyrus:JMAPEmail/email_set_blobencoding"
+      - "cyrus:JMAPEmail/email_set_encode_plain_text_attachment"
+      - "jmapio:binary/upload-binary-content"
+
+  - id: ESET-206
+    title: "A text attachment with LF line endings is not rewritten"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob with content \"line1<LF>line2<LF>\" (bare LF)."
+    when: "Create with that blob as a text/plain attachment with disposition attachment."
+    then: "Downloading the attachment part blob returns the original octets with bare LF; the server used an encoding (base64 or quoted-printable) that preserves them."
+    sources:
+      - "cyrus:JMAPEmail/email_set_encode_plain_text_attachment"
+
+  - id: ESET-207
+    title: "Text and HTML bodies can be given by blobId"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Uploaded blobs T (UTF-8 text) and H (UTF-8 html)."
+    when: "Create with textBody [{\"blobId\": T, \"type\": \"text/plain\"}] and htmlBody [{\"blobId\": H, \"type\": \"text/html\"}], no bodyValues."
+    then: "Created; Email/get with fetchAllBodyValues returns the blob contents as the text and html values."
+    sources:
+      - "james:EmailSetMethodContract#creationShouldSupportHtmlBodyUsingBlobId"
+      - "fastmail:t/Email/set/create/text-body-using-blob-id.t"
+      - "fastmail:t/Email/set/create/html-body-using-blob-id.t"
+
+  - id: ESET-208
+    title: "charset given with a blobId is declared on the part"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob holding ISO-8859-1 encoded text with accented characters."
+    when: "Create with textBody [{\"blobId\": B, \"type\": \"text/plain\", \"charset\": \"iso-8859-1\"}]."
+    then: "Email/get returns charset \"iso-8859-1\" for the part and the decoded body value shows the accented characters correctly; the blob bytes are not transcoded."
+    sources:
+      - "james:EmailSetMethodContract#shouldPreserveCharsetOfBlobWhenEmailBodyWithBlobId"
+      - "james:EmailSetMethodContract#createShouldSupportCustomCharsetInAttachment"
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+
+  - id: ESET-209
+    title: "A part blob of another email can be reused as an attachment"
+    method: Email/set
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "An email E in INBOX with a PDF attachment whose part blobId PB is known from Email/get."
+    when: "Create a new email with attachments [{\"blobId\": PB, \"type\": \"application/pdf\", \"name\": \"copy.pdf\"}]."
+    then: "Created; the new attachment downloads byte identical to the original. Destroying E afterwards does not affect the new email."
+    sources:
+      - "cyrus:JMAPEmail/email_set_update_after_attach"
+      - "rfc:8620 6"
+      - "fastmail:t/Email/set/create/attachments-using-blob-id.t"
+
+  - id: ESET-210
+    title: "A whole email can be attached as message/rfc822"
+    method: Email/set
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "An email E in INBOX with blobId EB, containing 8 bit characters."
+    when: "Create with attachments [{\"blobId\": EB, \"type\": \"message/rfc822\", \"name\": \"fwd.eml\"}]."
+    then: "Created; the nested part has type message/rfc822 and Content-Transfer-Encoding 7bit, 8bit or binary (never base64 or quoted-printable). Downloading the part blob equals the raw bytes of E and Email/parse on it returns the subject of E."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSupportAttachedMessages"
+      - "cyrus:JMAPEmail/email_set_blobencoding"
+      - "cyrus:JMAPEmail/email_set_multipartdigest"
+      - "rfc:8620 6"
+    notes: "RFC 2046 5.2.1 forbids base64 or quoted-printable on message/rfc822."
+
+  - id: ESET-211
+    title: "A blob used in a create and whose owner is destroyed in the same call is still usable"
+    method: Email/set
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "An email E with an attachment part blob PB."
+    when: "One Email/set with create {\"c1\": <email attaching PB>} and destroy [E]."
+    then: "c1 is created with the attachment intact and E is destroyed."
+    sources:
+      - "rfc:8620 6"
+
+  - id: ESET-212
+    title: "Custom headers on a body part are written into the part"
+    method: Email/set
+    spec: "RFC 8621 4.1.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Create with bodyStructure multipart/mixed whose attachment part has \"header:X-Part-Info\": \" abc\" and \"header:Content-Description:asText\": \"desc\"."
+    then: "Email/get with bodyProperties [\"header:X-Part-Info\", \"header:Content-Description:asText\"] returns those values on that part only, not on the top level."
+    sources:
+      - "james:EmailSetMethodContract#shouldSupportSpecificHeadersInEmailBodyPart"
+      - "fastmail:t/Email/set/create/body-structure-subparts.t"
+      - "stalwart:resources/jmap/email_set/headers"
+
+  - id: ESET-213
+    title: "A part header that duplicates a part property is rejected"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "Creates whose part has (a) type plus \"header:Content-Type\", (b) disposition plus \"header:Content-Disposition\", (c) cid plus \"header:Content-ID\", (d) language plus \"header:Content-Language\", (e) location plus \"header:Content-Location\"."
+    then: "Each gives invalidProperties naming the part."
+    sources:
+      - "james:EmailSetMethodContract#shouldFailIfSpecificHeadersSetInBothEmailBodyPartAndEmailBodyValue"
+      - "cyrus:JMAPEmail/email_set_create_encoding"
+      - "rfc:8621 4.6"
+
+  - id: ESET-214
+    title: "An attachment without a type gets a default type"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A blob uploaded with Content-Type image/png."
+    when: "Create with attachments [{\"blobId\": B, \"name\": \"x.png\"}] (no type)."
+    then: "Created; the part type is the type recorded at upload, or application/octet-stream. It is never text/plain for binary content."
+    sources:
+      - "james:EmailSetMethodContract#createShouldSucceedWhenPartPropertiesOmitted"
+      - "rfc:8620 6"
+    notes: "RFC 8620 6 says a blobId carries no content type, so falling back to application/octet-stream is the strict reading. Decide one."
+
+  - id: ESET-215
+    title: "An unknown blobId gives blobNotFound with the notFound list"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "One uploaded blob B; ids X1 and X2 that do not exist."
+    when: "Create with attachments referencing X1, B and X2."
+    then: "notCreated.c1 has type blobNotFound and notFound containing exactly X1 and X2 (not B). Nothing is stored."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenAttachmentNotFound"
+      - "james:EmailSetMethodContract#emailCreationShouldFailWhenHtmlBodyUsesNotFoundBlobId"
+      - "fastmail:t/Email/set/create/blob-not-found.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-216
+    title: "Another user's blob gives blobNotFound"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, api]
+    given: "Users A and B; a blob uploaded by B and the blobId of an email of B."
+    when: "As A, create an email attaching each of those blob ids."
+    then: "Both creates fail with blobNotFound listing the blob id; no data of B is copied."
+    sources:
+      - "james:EmailSetMethodContract#createShouldFailWhenAttachmentDoesNotBelongToUser"
+      - "james:EmailSetMethodContract#emailCreationShouldFailWhenHtmlBodyUsesNotUploadBlobId"
+      - "james:EmailImportContract#importShouldFailWhenBlobNotOwned"
+
+  - id: ESET-217
+    title: "A malformed blobId is reported like a missing blob"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The Drafts mailbox id is known."
+    when: "Create with attachments [{\"blobId\": \"not a blob id!\", \"type\": \"text/plain\"}] and another with \"blobId\": 5."
+    then: "The string case gives blobNotFound with the id in notFound (or invalidProperties); the number gives invalidProperties. Neither answers serverFail."
+    sources:
+      - "fastmail:t/Email/set/create/blob-not-found.t"
+      - "rfc:8621 4.6"
+
+  - id: ESET-218
+    title: "An expired upload gives blobNotFound"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, time]
+    given: "A blob uploaded and left unreferenced past the upload expiry time."
+    when: "Create with an attachment referencing that blobId."
+    then: "notCreated.c1 is blobNotFound with the id in notFound."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:brief: uploads expire when unreferenced"
+
+  - id: ESET-219
+    title: "An email keeps its attachment after the uploaded blob expires"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, time]
+    given: "An email created with an attachment from uploaded blob B."
+    when: "Let the upload expire and run the upload cleanup, then Email/get and download the attachment part blob."
+    then: "The attachment is intact and downloads byte identical; the message owns its own copy of the content."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:report 4.10: upload expiry"
+
+  - id: ESET-220
+    title: "One uploaded blob can be attached to several emails and several times in one email"
+    method: Email/set
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob B."
+    when: "One Email/set creating two emails that both attach B, one of them twice under different names."
+    then: "Both are created; each attachment downloads identical to B; B itself still downloads until it expires."
+    sources:
+      - "rfc:8620 6"
+      - "cyrus:JMAPEmail/email_set_attachments"
+
+  - id: ESET-221
+    title: "An email larger than the message size limit gives tooLarge"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The server message size limit L is known (maxSizeAttachmentsPerEmail and the configured maximum message size)."
+    when: "Create with a text body value large enough that the generated message exceeds L (within maxSizeRequest), or with attachments that push it over."
+    then: "notCreated.c1 has type tooLarge; nothing is stored and the quota usage is unchanged."
+    sources:
+      - "james:EmailSetMethodContract#tooBigEmailsShouldBeRejected"
+      - "rfc:8620 5.3"
+
+  - id: ESET-222
+    title: "Attachments over maxSizeAttachmentsPerEmail give tooLarge"
+    method: Email/set
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The account capability maxSizeAttachmentsPerEmail is N; two uploaded blobs whose sizes add up to more than N while each is below N."
+    when: "Create attaching both blobs; then create attaching only one."
+    then: "The first gives tooLarge. The second is created."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "james:EmailSetMethodContract#tooBigEmailsShouldBeRejected"
+    notes: "The limit counts unencoded attachment sizes. Attachments summing to exactly N must be accepted, so the raw message size limit has to leave room for base64 overhead."
+
+  - id: ESET-223
+    title: "A create that would exceed the storage quota gives overQuota"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, api]
+    given: "A user whose quota is set through the REST API so that less than 10 kB is free; a 50 kB uploaded blob."
+    when: "Create attaching the blob."
+    then: "notCreated.c1 has type overQuota; no message is stored, storageUsed in the REST API is unchanged, and a small create that fits still succeeds afterwards."
+    sources:
+      - "james:EmailSetMethodContract#createShouldEnforceQuotas"
+      - "cyrus:JMAPEmail/email_set_getquota"
+      - "cyrus:JMAPEmail/email_set_create_copy_overquota"
+      - "stalwart:system/quota.rs"
+
+  - id: ESET-224
+    title: "A create increases the storage used by the message size"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, api]
+    given: "storageUsed of the user read through the REST API."
+    when: "Create an email, read created.c1.size, read storageUsed again; destroy the email and read once more."
+    then: "storageUsed grew by exactly size after the create and returned to the original value after the destroy."
+    sources:
+      - "cyrus:JMAPEmail/email_set_getquota"
+      - "wildduck:quota accounting through the existing upload path"
+
+  - id: ESET-225
+    title: "Keyword and update operations work while over quota"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap, api]
+    given: "A user over quota (quota lowered through the REST API) with an email M1 in INBOX."
+    when: "Email/set update of keywords on M1, a move of M1 to Trash, and a destroy."
+    then: "All three succeed; being over quota blocks creates only."
+    sources:
+      - "james:EmailSetMethodContract#copyShouldEnforceQuotas"
+      - "rfc:8620 5.3"
+    notes: "James checks quota on JMAP copy because a second mailbox is a new copy; in WildDuck a move does not add storage."
+
+  - id: ESET-226
+    title: "Create into a mailbox with encryption at rest"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, api]
+    given: "A user with a PGP public key and encryptMessages enabled."
+    when: "Email/set create of a text draft."
+    then: "Created; created.c1.size and blobId describe the message as stored (encrypted), and the IMAP view of the same message has the same size and bytes."
+    sources:
+      - "wildduck:brief: encrypted at rest mailboxes return the encrypted parts as stored"
+    notes: "Open question: whether drafts created by the owner should be encrypted at all; today the REST API draft upload follows the user setting."
+
+  - id: ESET-227
+    title: "A created email is byte identical over IMAP"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An IMAP session for the same user."
+    when: "Create an email with text, html and one attachment; download created.c1.blobId; IMAP FETCH (RFC822.SIZE BODY.PEEK[] INTERNALDATE FLAGS) of the new message."
+    then: "BODY[] equals the downloaded blob octet for octet, RFC822.SIZE equals created size and the blob length, INTERNALDATE equals receivedAt, and FLAGS match the keywords."
+    sources:
+      - "wildduck:brief: the same message must look the same through IMAP and JMAP"
+      - "stalwart:mail/set.rs"
+      - "cyrus:JMAPEmail/email_set_draft"
+
+  - id: ESET-228
+    title: "IMAP BODYSTRUCTURE and ENVELOPE agree with the JMAP view of a created email"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An IMAP session for the same user."
+    when: "Create a nested multipart email with from, to, cc, subject, messageId and inReplyTo; IMAP FETCH (BODYSTRUCTURE ENVELOPE)."
+    then: "BODYSTRUCTURE has the same tree, types, names, content ids, encodings and part sizes that Email/get bodyStructure reports; ENVELOPE subject, addresses, message id and in-reply-to match the convenience properties."
+    sources:
+      - "wildduck:brief: the same message must look the same through IMAP and JMAP"
+      - "cyrus:JMAPEmail/email_set_bodystructure"
+
+  - id: ESET-229
+    title: "A selected IMAP session is told about a created email"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An IMAP session idling on Drafts."
+    when: "Email/set create into Drafts."
+    then: "The session receives an untagged EXISTS (and the message is found with the next UID); the mailbox UIDNEXT advanced by one."
+    sources:
+      - "wildduck:lib/imap-notifier.js"
+      - "james:ImapSetMessagesMailboxesUpdatesCompatibilityContract"
+
+  - id: ESET-230
+    title: "A created email is visible in the REST API"
+    method: Email/set
+    spec: "RFC 8621 4.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, api]
+    given: "Nothing special."
+    when: "Create a draft with $draft, subject, text, html and an attachment; fetch it through the REST API messages endpoint of Drafts."
+    then: "The REST message shows the same subject, addresses, draft true, the text and html content and one attachment with the same file name and size."
+    sources:
+      - "wildduck:REST API and JMAP share the store"
+
+  - id: ESET-231
+    title: "The created email can be fetched in the same request with the full body model"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Nothing special."
+    when: "One request: Email/set create {\"c1\": ...} then Email/get ids [\"#c1\"] with fetchAllBodyValues true."
+    then: "Email/get returns the email with preview (at most 128 characters), hasAttachment, bodyStructure, textBody, htmlBody, attachments and bodyValues consistent with what was sent."
+    sources:
+      - "cyrus:JMAPEmail/email_set_text_crlf"
+      - "stalwart:mail/set.rs"
+      - "fastmail:t/Email/set/create/text-body.t"
+
+  - id: ESET-232
+    title: "Concurrent keyword patches on the same email are both applied"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 without keywords; two JMAP clients."
+    when: "In parallel, client 1 sends {\"keywords/$seen\": true} and client 2 sends {\"keywords/$flagged\": true}, repeated 50 times with clearing in between."
+    then: "Every round ends with both keywords set and both calls reporting updated. No patch is lost through read, modify, write on the whole flag list."
+    sources:
+      - "wildduck:report 4.4: no transaction, patches map to the STORE path"
+      - "cyrus:JMAPEmail/email_set_update_bulk"
+
+  - id: ESET-233
+    title: "Whole object keyword replacements from two clients leave one of the two values"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1; two JMAP clients."
+    when: "In parallel, client 1 sends {\"keywords\": {\"a\": true}} and client 2 sends {\"keywords\": {\"b\": true}}."
+    then: "Both report updated. The final keywords are exactly {\"a\": true} or exactly {\"b\": true}, never a mix and never empty, and IMAP shows the same."
+    sources:
+      - "wildduck:report 4.4: Email/set update"
+      - "rfc:8620 5.3"
+
+  - id: ESET-234
+    title: "A second client with a stale ifInState is refused"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An email M1; both clients read state S0."
+    when: "Client 1 updates M1 with ifInState S0 and succeeds; then client 2 updates M1 with ifInState S0."
+    then: "Client 2 gets stateMismatch and its change is not applied; after re-reading the state its retry succeeds."
+    sources:
+      - "fastmail:t/Email/set/if-in-state.t"
+      - "rfc:8620 5.3"
+    notes: "When the two calls are truly simultaneous the report accepts a small check then write race; the sequential case must always hold."
+
+  - id: ESET-235
+    title: "Concurrent moves of the same email leave exactly one copy"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; mailboxes A and B; two JMAP clients."
+    when: "In parallel, client 1 moves M1 to A and client 2 moves M1 to B."
+    then: "Afterwards Email/get shows M1 with exactly one mailboxId (A or B). Over IMAP exactly one of A and B holds the message and INBOX does not; counters of all three mailboxes are exact. Each call reports updated or notFound, never serverFail."
+    sources:
+      - "wildduck:report 5.1: uniqueness of root is an invariant of the write paths"
+      - "cyrus:JMAPEmail/email_set_move_multiuid_set"
+
+  - id: ESET-236
+    title: "Concurrent destroy and update of the same email"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1; two JMAP clients."
+    when: "In parallel, client 1 destroys M1 and client 2 sets a keyword on M1."
+    then: "The destroy reports destroyed. The update reports updated or notFound. Afterwards the email is gone from JMAP and IMAP and exists once in the archive."
+    sources:
+      - "rfc:8620 5.3"
+      - "wildduck:archive on destroy"
+
+  - id: ESET-237
+    title: "Two clients destroying the same email"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1; two JMAP clients."
+    when: "Both send Email/set destroy [M1] at the same time."
+    then: "One or both report destroyed and any other reports notFound; mailbox counters drop by one only, storageUsed drops by the size once, and the archive holds one copy."
+    sources:
+      - "rfc:8620 5.3"
+      - "wildduck:archive on destroy"
+
+  - id: ESET-238
+    title: "JMAP update racing with an IMAP move"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; an IMAP session and a JMAP client."
+    when: "At the same time IMAP UID MOVE of the message to Archive and Email/set update {M1: {\"keywords/$flagged\": true}}."
+    then: "The JMAP call reports updated (never notFound for a message that still exists) and the message in Archive ends up with \\Flagged."
+    sources:
+      - "wildduck:brief: id is stable across moves"
+      - "james:ImapSetMessagesMailboxesUpdatesCompatibilityContract"
+    notes: "A move inserts the new document before deleting the old one (report 5.1), so the lookup by root must tolerate seeing two documents for a moment."
+
+  - id: ESET-239
+    title: "JMAP keyword patch racing with an IMAP STORE on the same message"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "An email M1 in INBOX; an IMAP session and a JMAP client."
+    when: "At the same time IMAP STORE +FLAGS (\\Answered) and Email/set update {M1: {\"keywords/$flagged\": true}}."
+    then: "Both flags are set afterwards in both views, and Email/changes from the earlier state lists M1 in updated."
+    sources:
+      - "james:ImapKeywordsConsistencyContract"
+      - "wildduck:patch semantics"

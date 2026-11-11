@@ -1,0 +1,503 @@
+area: email-parse
+title: "Email/parse"
+description: "RFC 8621 section 4.9: parsing blobs (uploads, raw message blobs and attached message parts) into Email objects without storing them. Covers the response shape, null metadata, the property and body arguments shared with Email/get, notParsable, notFound and limits."
+scenarios:
+  - id: EPAR-001
+    title: "Parse an uploaded message blob"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A valid RFC 5322 message (From, To, Subject, Date, Message-ID, text/plain body) uploaded through the upload endpoint with type message/rfc822; blob id B."
+    when: "Email/parse with accountId and blobIds [B]."
+    then: "The response is an Email/parse invocation with accountId, parsed as an object with the single key B, notParsable null and notFound null. parsed[B] has subject, from, to, messageId and sentAt matching the uploaded headers."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldSuccess"
+      - "cyrus:JMAPEmail/email_parse_blob822"
+      - "jmapio:email-parse#parse-valid-message"
+      - "jmapio:email-parse#parse-response-structure"
+      - "stalwart:mail/parse.rs"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-002
+    title: "Use the Email/parse default property set"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded multipart/alternative message with one attachment."
+    when: "Email/parse with blobIds [B] and no properties argument; and again with properties null."
+    then: "parsed[B] has exactly the keys messageId, inReplyTo, references, sender, from, to, cc, bcc, replyTo, subject, sentAt, hasAttachment, preview, bodyValues, textBody, htmlBody, attachments. There is no id, blobId, threadId, mailboxIds, keywords, size or receivedAt key. bodyValues is {}."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldSupportAllProperties"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-003
+    title: "Return null for id, mailboxIds, keywords and receivedAt"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Email/parse with properties ['id', 'mailboxIds', 'keywords', 'receivedAt', 'subject']."
+    then: "parsed[B] has the keys id, mailboxIds, keywords and receivedAt, each with the value null (not {} and not absent), and subject as a string."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_null_metadata"
+      - "cyrus:JMAPEmail/email_parse_blob822"
+      - "cyrus:JMAPEmail/email_parse"
+      - "jmapio:email-parse#parse-null-metadata"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-004
+    title: "Return null for threadId"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A stored message X, and an uploaded blob B that is a reply to X (References X, same subject) plus an unrelated uploaded blob C."
+    when: "Email/parse with blobIds [B, C] and properties ['threadId']."
+    then: "threadId is present and null for both."
+    sources:
+      - "cyrus:JMAPEmail/email_parse"
+      - "rfc:8621 4.9"
+    notes: "The RFC allows the server to predict the thread. WildDuck assigns threads only while storing, so it always answers null. Open question if prediction is wanted later."
+
+  - id: EPAR-005
+    title: "Return blobId and size of the parsed blob when requested"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B of N octets."
+    when: "Email/parse with properties ['blobId', 'size']."
+    then: "parsed[B].blobId equals B and size equals N."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_embedded_toplevel"
+      - "rfc:8621 4.9"
+    notes: "Only id, mailboxIds, keywords, receivedAt (and optionally threadId) are named as null; blobId and size have natural values."
+
+  - id: EPAR-006
+    title: "Parse an attached message/rfc822 part of a stored Email"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A stored message: mixed [text/plain, message/rfc822 with Subject 'bar', its own From, To, Date, Message-ID and the body 'An embedded email']. The part blobId A is read from Email/get attachments."
+    when: "Email/parse with blobIds [A], properties ['subject', 'from', 'to', 'cc', 'messageId', 'sentAt', 'bodyStructure', 'textBody', 'htmlBody', 'attachments', 'bodyValues'], fetchAllBodyValues true."
+    then: "parsed[A] describes the embedded message, not the outer one: subject 'bar', its own from, to, messageId and sentAt, cc null, bodyStructure text/plain without subParts, one textBody part, one htmlBody part, no attachments, and the body value 'An embedded email'."
+    sources:
+      - "cyrus:JMAPEmail/email_parse"
+      - "james:EmailParseMethodContract#parseShouldSuccessWhenAttachment"
+      - "stalwart:mail/parse.rs (attachment.eml)"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-007
+    title: "Parse an attached message that is transfer encoded"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Stored messages whose message/rfc822 part is base64 encoded, respectively quoted-printable encoded; the embedded message has a quoted-printable UTF-8 text body."
+    when: "Email/parse with the part blobId, properties ['from', 'subject', 'textBody', 'bodyValues'], fetchAllBodyValues true."
+    then: "Both parse successfully with the embedded headers and the fully decoded body text (outer and inner transfer encodings both removed)."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_base64"
+      - "cyrus:JMAPEmail/email_parse_encoding"
+      - "stalwart:mail/parse.rs (attachment_b64.eml)"
+
+  - id: EPAR-008
+    title: "Keep the headers of the attached message separate from the outer message"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An outer message with From outer@example.com and no Reply-To that attaches a message with From attachedfrom@example.com and Reply-To attachedreplyto@example.com."
+    when: "Email/parse with the attachment blobId and properties ['from', 'replyTo']."
+    then: "from is the attached message's From and replyTo its Reply-To; nothing comes from the outer message."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_replyto"
+
+  - id: EPAR-009
+    title: "Parse a message inside multipart/digest that has no Content-Type"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A stored message with a multipart/digest whose child part has no Content-Type header (implicit message/rfc822) and contains a message with Subject 'bar'."
+    when: "Email/get bodyStructure to read the child's blobId, then Email/parse with it."
+    then: "parsed has that blob id with subject 'bar'."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_digest"
+
+  - id: EPAR-010
+    title: "Parse the raw blob of a stored Email and match Email/get"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A stored multipart Email E with blobId R (candidate fixtures imap-core/test/fixtures/nodemailer.eml and mimetorture.eml)."
+    when: "Email/parse blobIds [R] and Email/get ids [E], both with the same header, body and bodyValues properties, bodyProperties ['type', 'size', 'name', 'charset', 'disposition', 'cid', 'language', 'location', 'subParts'] and fetchAllBodyValues true."
+    then: "Every header derived and body derived property is equal between the two results, including hasAttachment and preview. Only partId and part blobId values may differ."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_embedded_toplevel"
+      - "stalwart:mail/parse.rs"
+      - "wildduck:jmap-report Email/parse"
+    notes: "Guards the plan decision that Email/parse runs the same MIME model code as Email/get. All header and body edge cases of the email-get file therefore apply to Email/parse through this equivalence (charset defaults and Content-Type fallbacks are tested by Cyrus through Email/parse)."
+
+  - id: EPAR-011
+    title: "Return only the requested properties, without id"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Email/parse with properties ['subject', 'from']; then with properties []."
+    then: "The first parsed[B] has exactly the keys subject and from (no id is added, unlike Email/get). The second is an empty object."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldFilterProperties"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-012
+    title: "Reject unknown properties and bodyProperties"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Separate Email/parse calls with properties ['invalid'], bodyProperties ['invalid'], properties as a string, and blobIds as a string."
+    then: "Every call answers invalidArguments and nothing is parsed."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "cyrus:JMAPEmail/email_get_invalid_body_properties"
+
+  - id: EPAR-013
+    title: "Support header properties in every form and echo the requested capitalisation"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message with From, a group in To, two X-Tra headers, List-Unsubscribe and Date."
+    when: "Email/parse with properties ['headers', 'header:from:asAddresses', 'header:To:asGroupedAddresses', 'header:X-TRA:all', 'header:x-tra:asText', 'header:List-Unsubscribe:asURLs', 'header:Date:asDate', 'header:Missing', 'header:Missing:all']."
+    then: "Each property key is spelled as requested and holds the value Email/get would give for the same message: parsed forms, both X-Tra values for all, the last one for asText, null and [] for the missing header, and headers as the ordered Raw list."
+    sources:
+      - "stalwart:mail/parse.rs (headers.eml)"
+      - "james:EmailParseMethodContract#parseShouldSupportAllProperties"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-014
+    title: "Reject a forbidden header form"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message blob B."
+    when: "Separate Email/parse calls with properties ['header:From:asDate'], ['header:Subject:asAddresses'], ['header:Date:asText'] and ['header:X-A:all:asText']."
+    then: "Every call is rejected with invalidArguments; there is no parsed, notParsable or notFound result."
+    sources:
+      - "rfc:8621 4.9"
+
+  - id: EPAR-015
+    title: "Return body values according to the fetch flags"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message: mixed [alternative [text/plain P, text/html H], text/csv attachment T]."
+    when: "Email/parse with properties ['textBody', 'htmlBody', 'bodyValues'] four times: no flag, fetchTextBodyValues, fetchHTMLBodyValues, fetchAllBodyValues."
+    then: "bodyValues is {}, then {P}, then {H}, then {P, H, T}, keyed by the partIds used in textBody and htmlBody, each with value, isEncodingProblem false and isTruncated false."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldAllowRetrievingBody"
+      - "jmapio:email-parse#parse-body-values"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-016
+    title: "Truncate body values to maxBodyValueBytes on a UTF-8 boundary"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message whose UTF-8 text body starts with 'ab' followed by a three byte character and more text."
+    when: "Email/parse with fetchAllBodyValues true and maxBodyValueBytes 3, then 5, then 0; and once with maxBodyValueBytes -1."
+    then: "Limit 3 gives 'ab' with isTruncated true (the character is not split). Limit 5 gives 'ab' plus the character with isTruncated true. Limit 0 gives the full text with isTruncated false. The negative value answers invalidArguments."
+    sources:
+      - "rfc:8621 4.9"
+      - "cyrus:JMAPEmail/email_get_maxbodyvaluebytes_utf8"
+
+  - id: EPAR-017
+    title: "Apply bodyProperties to the parsed parts"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded multipart/mixed message with a text part and a named pdf attachment."
+    when: "Email/parse with properties ['bodyStructure', 'attachments'], first without bodyProperties, then with bodyProperties ['type', 'name', 'header:Content-Type', 'subParts']."
+    then: "Without the argument each leaf part has the Email/get default part keys (partId, blobId, size, name, type, charset, disposition, cid, language, location). With it each part has exactly the requested keys (subParts only on the multipart)."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldApplyBodyFiltering"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-018
+    title: "Describe the full body model of a complex parsed message"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message with the structure of the RFC 8621 4.1.4 example (parts A to K)."
+    when: "Email/parse with properties ['bodyStructure', 'textBody', 'htmlBody', 'attachments', 'hasAttachment', 'preview'] and bodyProperties ['partId', 'type', 'header:X-Body-Id', 'subParts']."
+    then: "textBody is [A, B, C, D, K], htmlBody is [A, E, K], attachments is [C, F, G, H, J], hasAttachment is true, preview is a string of at most 128 characters, multiparts have partId null."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldSupportAllProperties"
+      - "stalwart:mail/parse.rs"
+      - "rfc:8621 4.1.4"
+
+  - id: EPAR-019
+    title: "Make the part blobs of a parsed message downloadable and parsable"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A stored Email that attaches a message which itself has a base64 png attachment and a second level attached message. A is the blobId of the first level attachment."
+    when: "Email/parse [A] with properties ['attachments']; download the png part blobId from the result; Email/parse the second level message blobId from the result."
+    then: "Every part of the parsed message has a non null blobId. The png download returns the decoded image bytes with length equal to the part size. The second level parse succeeds and returns the innermost message's subject."
+    sources:
+      - "james:EmailParseMethodContract#attachmentsOfNestedMessagesShouldBeDownloadable"
+      - "stalwart:mail/parse.rs (attachment.part1 to part3)"
+    notes: "The part blob id scheme (message id plus part path) must therefore also address parts inside an arbitrary blob: an upload id or a nested part path. The same must hold when the parsed blob is an upload (seed jmap only)."
+
+  - id: EPAR-020
+    title: "Report unknown and malformed blob ids in notFound"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/parse with blobIds ['invalid', a well formed upload blob id that does not exist, a well formed part blob id that points to a missing Email, a part blob id with a part path that does not exist in an existing Email]."
+    then: "notFound contains all four ids, parsed is null and notParsable is null. No error is returned."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldReturnNotFoundWhenBlobDoNotExist"
+      - "james:EmailParseMethodContract#parseShouldReturnNotFoundWhenBadBlobId"
+      - "jmapio:email-parse#parse-not-found"
+      - "rfc:8621 4.9"
+
+  - id: EPAR-021
+    title: "Report another user's blob as not found"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap, imap]
+    given: "User B has an uploaded message blob and a stored Email; their blob ids are known to user A."
+    when: "A calls Email/parse on A's account with B's upload blob id, raw message blob id and a part blob id."
+    then: "All three ids are in notFound; nothing is parsed."
+    sources:
+      - "rfc:8620 6.2"
+      - "wildduck:jmap-report blob id scheme"
+    notes: "Blob resolution must check that the referenced message or upload belongs to the account."
+
+  - id: EPAR-022
+    title: "Report a blob that is not a message in notParsable"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "An uploaded PNG image, an uploaded blob of random bytes containing NUL octets, an uploaded zero length blob, and the part blobId of a pdf attachment of a stored Email."
+    when: "Email/parse with those four blob ids."
+    then: "notParsable contains all four ids, parsed is null and notFound is null."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_notparsable"
+      - "jmapio:email-parse#parse-not-parsable"
+      - "rfc:8621 4.9"
+    notes: "WildDuck's MIME parser accepts any input, so an explicit rule is needed. Proposed: a blob is not parsable when it is empty, or its first line is not a header field (name of printable ASCII, colon) and not an empty line, or its header block contains NUL octets. Open question: confirm the rule, in particular for a plain text blob with no header lines at all."
+
+  - id: EPAR-023
+    title: "Parse leniently when mandatory headers are missing"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded blob with only 'To: foo@bar.local', 'Subject: test' and a text body (no From, no Date), using bare LF line endings."
+    when: "Email/parse with the default properties and fetchAllBodyValues true."
+    then: "The blob is in parsed, not in notParsable. from and sentAt are null, to is [{name null, email 'foo@bar.local'}], and the body value is the text."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_blob822_lenient"
+
+  - id: EPAR-024
+    title: "Parse messages with internationalised (EAI) headers"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message with raw UTF-8 in Subject, in the From display name, in a local part and in a domain (RFC 6532), and Content-Type message/global on upload."
+    when: "Email/parse with properties ['subject', 'from', 'to', 'header:Subject']."
+    then: "The blob is parsed. subject, the names and the addresses contain the UTF-8 characters unchanged, with no U+FFFD."
+    sources:
+      - "rfc:8621 4.9"
+      - "cyrus:JMAPEmail/email_get_8bit_headers"
+
+  - id: EPAR-025
+    title: "Sort every requested blob id into exactly one of parsed, notParsable and notFound"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A valid uploaded message blob V, an uploaded PNG P and an unknown blob id U."
+    when: "Email/parse with blobIds [V, P, U, V]."
+    then: "parsed has the single key V, notParsable is [P], notFound is [U]. The duplicate V is reported once."
+    sources:
+      - "rfc:8621 4.9"
+      - "james:EmailParseMethodContract#parseShouldReturnNotFoundWhenBlobDoNotExist"
+
+  - id: EPAR-026
+    title: "Handle empty and missing blobIds"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/parse with blobIds []; then with blobIds null; then without blobIds."
+    then: "The empty array answers parsed null, notParsable null, notFound null. The null and missing cases answer invalidArguments."
+    sources:
+      - "rfc:8621 4.9"
+      - "rfc:8620 3.6.2"
+
+  - id: EPAR-027
+    title: "Limit the number of blobs per call"
+    method: Email/parse
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The session advertises maxObjectsInGet N; N plus 1 uploaded message blobs."
+    when: "Email/parse with N blob ids, then with N plus 1."
+    then: "The first call parses all N. The second answers requestTooLarge and parses nothing."
+    sources:
+      - "wildduck:jmap-report maxObjectsInGet"
+      - "rfc:8620 3.6.2"
+    notes: "RFC 8621 defines no limit for Email/parse. WildDuck reuses maxObjectsInGet because each blob costs a full MIME parse. Open question: confirm reuse of this limit and the error type."
+
+  - id: EPAR-028
+    title: "Parse a blob at the maximum upload size"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An uploaded message just under maxSizeUpload with one large base64 attachment and a short text part."
+    when: "Email/parse with properties ['subject', 'bodyStructure', 'bodyValues'], fetchAllBodyValues true."
+    then: "The blob is parsed; the attachment part reports its decoded size and bodyValues holds only the short text. The response does not embed attachment content."
+    sources:
+      - "rfc:8621 4.9"
+
+  - id: EPAR-029
+    title: "Do not store anything or change state"
+    method: Email/parse
+    spec: "RFC 8621 4.9"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "An account with K Emails, Email state S and a known storage usage; an uploaded message blob B."
+    when: "Email/parse [B], then Email/get for state, Email/query with calculateTotal, and the REST API quota for the user."
+    then: "The Email state is still S, the total is still K, storage usage is unchanged, no Mailbox counter changed, and blob B is still available for a later Email/import."
+    sources:
+      - "rfc:8621 4.9"
+      - "wildduck:jmap-report Email/parse"
+
+  - id: EPAR-030
+    title: "Report an expired upload as not found"
+    method: Email/parse
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, time]
+    given: "An uploaded message blob that was never referenced; the upload expiry (test config sets it short) has passed and the cleanup task has run."
+    when: "Email/parse with that blob id."
+    then: "The id is in notFound."
+    sources:
+      - "rfc:8620 6.1"
+      - "wildduck:brief blobs"
+
+  - id: EPAR-031
+    title: "Answer accountNotFound and unknownMethod like other mail methods"
+    method: Email/parse
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Email/parse with an accountId that is not the user's; and Email/parse in a request whose using lacks urn:ietf:params:jmap:mail."
+    then: "The first answers accountNotFound, the second unknownMethod."
+    sources:
+      - "james:EmailParseMethodContract#parseShouldFailWhenWrongAccountId"
+      - "james:EmailParseMethodContract#parseShouldReturnUnknownMethodWhenMissingOneCapability"
+      - "james:EmailParseMethodContract#parseShouldReturnUnknownMethodWhenMissingAllCapabilities"
+
+  - id: EPAR-032
+    title: "Parse a blob created with Blob/upload"
+    method: Email/parse
+    spec: "RFC 9404 4.1"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [jmap]
+    given: "The blob capability is in using."
+    when: "One request: Blob/upload creating b1 from data:asText holding a small message, then Email/parse with the blob id returned for b1 and properties ['subject', 'bodyStructure']."
+    then: "Blob/upload reports created b1 with an id, and Email/parse returns that id in parsed with the right subject and a text/plain bodyStructure."
+    sources:
+      - "cyrus:JMAPEmail/email_parse_inmemory_blob"
+      - "rfc:9404 4.1"

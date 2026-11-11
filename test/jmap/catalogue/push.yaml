@@ -1,0 +1,2254 @@
+area: push
+title: "Push: EventSource, PushSubscription and the EmailDelivery state"
+description: "The event source stream (RFC 8620 7.3, phase 1), Web Push subscriptions with verification, encryption and delivery rules (RFC 8620 7.2, phase 4) and the EmailDelivery pseudo type (RFC 8621 1.5). The push endpoint in PUSH scenarios is a mock HTTPS push service controlled by the test."
+scenarios:
+  - id: ESRC-001
+    title: "The session advertises an event source URL template with the three variables"
+    method: "Session"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "eventSourceUrl is a URI template that contains the variables {types}, {closeafter} and {ping}, each exactly once."
+    sources:
+      - "cyrus:JMAPCore/eventsource"
+      - "rfc:8620 7.3"
+      - "rfc:8620 2"
+  - id: ESRC-002
+    title: "The event source requires authentication"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "No credentials."
+    when: "GET the event source URL with types=*, closeafter=no, ping=0 and no Authorization header, then with a wrong password."
+    then: "Both answer HTTP 401 with a WWW-Authenticate header and no event stream body. The failed password attempt counts towards the login lockout."
+    sources:
+      - "james:EventSourceContract#shouldRejectUnauthenticated"
+      - "rfc:8620 7.3"
+    notes: "The stream URL is the session eventSourceUrl with types, closeafter and ping filled in (GET /jmap/eventsource in the plan)."
+  - id: ESRC-003
+    title: "The event source accepts the same credentials as the API endpoint"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A user with a Bearer access token, an application password with the jmap scope and an application password with only the imap scope."
+    when: "GET the event source with each credential."
+    then: "The token and the jmap scoped password open a stream with HTTP 200. The imap only password is refused with the same status and body the API endpoint gives it, and no stream is opened."
+    sources:
+      - "wildduck:brief Accounts and auth"
+  - id: ESRC-004
+    title: "A successful connection is an open text/event-stream response"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the event source with types=*, closeafter=no, ping=0."
+    then: "HTTP 200, Content-Type text/event-stream, no Content-Length header, and the response stays open."
+    sources:
+      - "jmapio:push/eventsource-connect"
+      - "cyrus:JMAPCore/eventsource"
+      - "stalwart:compliance/push.rs"
+      - "rfc:8620 7.3"
+  - id: ESRC-005
+    title: "Response headers prevent caching and proxy buffering"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the event source with types=*, closeafter=no, ping=0, sending Accept-Encoding gzip."
+    then: "The response has Cache-Control no-store (or no-cache), X-Accel-Buffering no, no Content-Encoding, and the headers plus a first comment line are flushed at once so a client sees the response start within one second without any event."
+    sources:
+      - "wildduck:plan 6"
+      - "wildduck:lib/api/updates.js"
+    notes: "The plan asks for reverse proxy notes: buffering must be off for the stream, as for the existing updates endpoint."
+  - id: ESRC-006
+    title: "Only GET is allowed on the event source"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "POST and DELETE to the event source URL."
+    then: "HTTP 405 (or 404), no stream."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-007
+    title: "No event is sent while nothing changes"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "An account with existing messages and earlier changes."
+    when: "Connect with types=*, closeafter=no, ping=0 and no Last-Event-ID, wait three seconds."
+    then: "No state event and no ping event arrives. Comment lines are allowed."
+    sources:
+      - "james:EventSourceContract#noSSEEventShouldBeSentByDefault"
+      - "rfc:8620 7.3"
+  - id: ESRC-008
+    title: "A change pushes an event named state with a StateChange object"
+    method: "EventSource"
+    spec: "RFC 8620 7.1"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*, closeafter=no, ping=0."
+    when: "A message is appended over IMAP."
+    then: "One event arrives with the event field state and data that parses as JSON with @type StateChange and changed holding exactly one key, the account id, mapped to an object of type name to state string."
+    sources:
+      - "james:EventSourceContract#sseShouldTransportEvent"
+      - "cyrus:JMAPCore/eventsource"
+      - "jmapio:push/eventsource-receives-state-change"
+      - "stalwart:core/event_source.rs"
+      - "stalwart:compliance/push.rs"
+      - "legacy-proxy:test/unit/gmail-push.spec.ts"
+  - id: ESRC-009
+    title: "Pushed state strings equal what the get methods return"
+    method: "EventSource"
+    spec: "RFC 8620 7.1"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*."
+    when: "A message is appended over IMAP and, after the event arrived, Email/get, Mailbox/get and Thread/get are called."
+    then: "The values under Email, Mailbox and Thread in the event equal the state returned by the matching get call."
+    sources:
+      - "cyrus:JMAPCore/eventsource"
+      - "rfc:8620 7.1"
+  - id: ESRC-010
+    title: "A StateChange lists only types whose state changed"
+    method: "EventSource"
+    spec: "RFC 8620 7.1"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A stream is open with types=*."
+    when: "A message gets \\Flagged over IMAP."
+    then: "The event lists Email, Mailbox and Thread with one identical value (they share the state string) and no other type: no EmailDelivery, Identity, EmailSubmission or VacationResponse key."
+    sources:
+      - "rfc:8620 7.1"
+      - "wildduck:brief State and changes"
+    notes: "Open: because the three types share one state, every mail change reports all three. The alternative, listing only the types whose objects changed, is also defensible but then the pushed value for an unlisted type silently differs from the client cache."
+  - id: ESRC-011
+    title: "The types parameter with one type restricts the event to that type"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=Mailbox, closeafter=no, ping=0."
+    when: "A message is appended over IMAP."
+    then: "The event lists only the Mailbox key for the account."
+    sources:
+      - "james:EventSourceContract#sseEventsShouldBeFilteredByTypes"
+      - "jmapio:push/eventsource-types-filter"
+      - "stalwart:compliance/push.rs"
+      - "cyrus:JMAPCore/eventsource"
+  - id: ESRC-012
+    title: "The types parameter accepts a comma separated list"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=Email,Thread."
+    when: "A message is appended over IMAP."
+    then: "The event lists exactly Email and Thread."
+    sources:
+      - "cyrus:JMAPCore/eventsource"
+      - "rfc:8620 7.3"
+  - id: ESRC-013
+    title: "types=* pushes every changed type"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "A stream is open with types=*."
+    when: "A message is delivered over LMTP."
+    then: "The event lists Email, Mailbox, Thread and EmailDelivery."
+    sources:
+      - "james:EventSourceContract#allTypesShouldBeSupported"
+      - "cyrus:JMAPCore/eventsource"
+      - "stalwart:core/event_source.rs"
+  - id: ESRC-014
+    title: "No event is sent when only types outside the filter changed"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=EmailDelivery,VacationResponse."
+    when: "A message is flagged and another moved over IMAP. Wait two seconds."
+    then: "No state event arrives."
+    sources:
+      - "james:EventSourceContract#sseEventsShouldBeFilteredByTypes"
+      - "rfc:8620 7.3"
+  - id: ESRC-015
+    title: "An unknown type name in types is rejected"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the event source with types=Email,Nonsense and with types=email (wrong case)."
+    then: "HTTP 400 and no stream."
+    sources:
+      - "james:EventSourceContract#shouldRejectInvalidTypes"
+    notes: "Open: ignoring unknown names would be friendlier to clients built for servers with more types. If rejected, the known names must include every type of every capability in the session, including types whose methods arrive in a later phase."
+  - id: ESRC-016
+    title: "A missing or empty types parameter is rejected"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the event source without types, and with types set to the empty string."
+    then: "HTTP 400 and no stream."
+    sources:
+      - "james:EventSourceContract#typesQueryParamIsCompulsory"
+      - "rfc:8620 7.3"
+  - id: ESRC-017
+    title: "closeafter=state ends the response after the first state event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*, closeafter=state, ping=0."
+    when: "A message is appended over IMAP."
+    then: "One complete state event (with its id) is received and then the server ends the HTTP response cleanly."
+    sources:
+      - "james:EventSourceContract#sseShouldCloseAfterEventWhenCloseAfterState"
+      - "cyrus:JMAPCore/eventsource"
+      - "jmapio:push/eventsource-closeafter"
+      - "stalwart:compliance/push.rs"
+  - id: ESRC-018
+    title: "closeafter=state is not triggered by ping events"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*, closeafter=state and the smallest allowed ping."
+    when: "Two ping intervals pass, then a message is appended."
+    then: "The stream stays open through the ping events and closes only after the state event."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-019
+    title: "closeafter=no keeps the stream open across many events"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*, closeafter=no, ping=0."
+    when: "Three changes are made over IMAP, two seconds apart."
+    then: "Three state events arrive on the same connection, each with a newer Email state."
+    sources:
+      - "james:EventSourceContract#sseShouldTransportEvents"
+      - "rfc:8620 7.3"
+  - id: ESRC-020
+    title: "A missing or invalid closeafter is rejected"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the event source without closeafter, with closeafter=yes and with closeafter=State."
+    then: "HTTP 400 and no stream."
+    sources:
+      - "james:EventSourceContract#closeAfterQueryParamIsCompulsory"
+      - "james:EventSourceContract#shouldRejectInvalidCloseAfter"
+  - id: ESRC-021
+    title: "A ping event is sent each time the interval passes without an event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "The server minimum ping is configured to 2 seconds for the test."
+    when: "Connect with types=*, closeafter=no, ping=2 and wait seven seconds without changes."
+    then: "Three ping events arrive about two seconds apart. Each has the event field ping and data {\"interval\":2}."
+    sources:
+      - "james:EventSourceContract#pingShouldBeSupported"
+      - "stalwart:core/event_source.rs"
+      - "rfc:8620 7.3"
+  - id: ESRC-022
+    title: "Ping events never carry an event id"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream with ping enabled received one state event with id I."
+    when: "Several ping events arrive, then the client reconnects with Last-Event-ID I."
+    then: "No ping event has an id field, so the last event id of the client is still I, and the reconnect sends no immediate state event."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-023
+    title: "ping=0 disables ping events"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "Connect with ping=0 and wait longer than the server maximum ping."
+    then: "No event named ping arrives. Keep alive comment lines (lines starting with a colon) are permitted."
+    sources:
+      - "rfc:8620 7.3"
+      - "wildduck:lib/api/updates.js"
+  - id: ESRC-024
+    title: "A ping below the server minimum is raised and the real interval is reported"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: may
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "The server minimum ping is 5 seconds."
+    when: "Connect with ping=1."
+    then: "Ping events arrive five seconds apart and their data is {\"interval\":5}."
+    sources:
+      - "rfc:8620 7.3"
+      - "james:EventSourceContract#pingShouldBeSupported"
+    notes: "James does not clamp. The interval property is how the client learns the real value."
+  - id: ESRC-025
+    title: "A ping above the server maximum is lowered and the real interval is reported"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: may
+    phase: 1
+    applies: "yes"
+    seed: [time]
+    given: "The server maximum ping is 300 seconds."
+    when: "Connect with ping=86400."
+    then: "The first ping arrives after 300 seconds with data {\"interval\":300}."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-026
+    title: "Default ping limits satisfy the interoperability bounds"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [time]
+    given: "Default configuration."
+    when: "Connect once with ping=30 and once with ping=300."
+    then: "Both requested values are honoured unchanged (interval 30 and interval 300). A configuration with a minimum above 30 or a maximum below 300 is refused at start up."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-027
+    title: "A missing or invalid ping is rejected"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the event source without ping, with ping=-5, ping=abc and ping=1.5."
+    then: "HTTP 400 and no stream."
+    sources:
+      - "james:EventSourceContract#pingQueryParamIsCompulsory"
+      - "james:EventSourceContract#shouldRejectInvalidPing"
+  - id: ESRC-028
+    title: "The ping timer restarts after every event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream with ping=4 (minimum configured at or below 4)."
+    when: "A change is made three seconds after connecting."
+    then: "The state event arrives at about second 3 and the first ping at about second 7, not at second 4."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-029
+    title: "Every state event is followed by a new event id"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*."
+    when: "Two changes are made a few seconds apart."
+    then: "Both state events carry an id field, the two ids differ, and each id is a single line of printable ASCII."
+    sources:
+      - "cyrus:JMAPCore/eventsource"
+      - "rfc:8620 7.3"
+    notes: "The plan uses the journal id as event id. Open: from phase 2 the id must also encode the position of the per account change log used for Identity, EmailSubmission and later types, since the RFC wants it to encode the entire state visible to the user."
+  - id: ESRC-030
+    title: "Reconnecting with the latest event id sends nothing"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream received a state event with id I and was closed. Nothing changed since."
+    when: "Reconnect with the header Last-Event-ID I and wait two seconds."
+    then: "No state event arrives."
+    sources:
+      - "rfc:8620 7.3"
+      - "wildduck:lib/api/updates.js"
+  - id: ESRC-031
+    title: "Reconnecting with an older event id pushes the missed change at once"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream received a state event with id I and was closed. A message was then appended over IMAP."
+    when: "Reconnect with Last-Event-ID I and types=*."
+    then: "Within one second a single state event arrives with the current Email, Mailbox and Thread state and a new id. Missed changes are summarised in one event, not replayed one by one."
+    sources:
+      - "rfc:8620 7.3"
+      - "wildduck:plan 4.9"
+  - id: ESRC-032
+    title: "Replay respects the types filter"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream with types=EmailDelivery received id I and was closed. A flag was then changed over IMAP."
+    when: "Reconnect with Last-Event-ID I and types=EmailDelivery."
+    then: "No state event arrives, because no requested type changed."
+    sources:
+      - "rfc:8620 7.3"
+      - "rfc:8621 1.5"
+  - id: ESRC-033
+    title: "An event id older than the journal retention triggers a full state event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, time]
+    given: "A stream received id I. The journal retention passed and changes happened."
+    when: "Reconnect with Last-Event-ID I and types=*."
+    then: "The connection is accepted with HTTP 200 and immediately sends a state event with the current state of every requested type. No error status and no silent gap."
+    sources:
+      - "wildduck:plan 4.9"
+      - "wildduck:plan 5.2"
+  - id: ESRC-034
+    title: "A malformed or foreign Last-Event-ID is treated as unknown"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "User A has an account with messages. User B has an event id IB from its own stream."
+    when: "A connects with Last-Event-ID set to \"garbage\", then with IB."
+    then: "Both connections get HTTP 200 and an immediate state event with the current states of A. Nothing about B is revealed and no 400 is returned."
+    sources:
+      - "wildduck:lib/api/updates.js"
+    notes: "The existing updates endpoint validates the id as an ObjectId and would answer 400. A browser EventSource cannot recover from a 400 on reconnect, so the JMAP endpoint must not do that."
+  - id: ESRC-035
+    title: "closeafter=state with a stale Last-Event-ID works as a poll"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A client holds event id I. A change happened since."
+    when: "GET the event source with closeafter=state, ping=0 and Last-Event-ID I."
+    then: "The missed state event is sent immediately and the response ends."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-036
+    title: "Changes that happened before a first connection are not announced"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "Changes were made one second before connecting."
+    when: "Connect without Last-Event-ID and wait two seconds."
+    then: "No state event arrives until the next change."
+    sources:
+      - "james:EventSourceContract#noSSEEventShouldBeSentByDefault"
+  - id: ESRC-037
+    title: "A change made through the REST API produces a state event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A stream is open with types=*."
+    when: "A message is moved to another mailbox through the REST API."
+    then: "A state event arrives with a new Email and Mailbox state."
+    sources:
+      - "wildduck:brief State and changes"
+      - "rfc:8620 7.3"
+  - id: ESRC-038
+    title: "A mailbox created over IMAP produces a state event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=Mailbox."
+    when: "IMAP CREATE makes a new mailbox, later IMAP DELETE removes it."
+    then: "Each command produces a state event with a new Mailbox state."
+    sources:
+      - "stalwart:core/event_source.rs"
+      - "cyrus:JMAPCore/eventsource"
+  - id: ESRC-039
+    title: "A change made with a JMAP set call produces a state event, also for the caller"
+    method: "EventSource"
+    spec: "RFC 8620 7.1"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "A client has a stream open with types=* and uses the same credentials for API calls."
+    when: "It updates a keyword with Email/set."
+    then: "A state event arrives whose Email value equals the newState of the Email/set response."
+    sources:
+      - "jmapio:push/eventsource-receives-state-change"
+      - "stalwart:compliance/push.rs"
+      - "rfc:8620 7.1"
+  - id: ESRC-040
+    title: "Types kept in the JMAP change log are pushed on their own"
+    method: "EventSource"
+    spec: "RFC 8620 7.1"
+    level: must
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "A stream is open with types=*."
+    when: "Identity/set updates the name of an identity."
+    then: "A state event arrives that lists only Identity, with the value Identity/get returns."
+    sources:
+      - "rfc:8620 7.1"
+      - "wildduck:brief State and changes"
+  - id: ESRC-041
+    title: "An event reaches a stream served by a different worker process"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap, lmtp]
+    given: "The server runs several worker processes. A stream is open on one of them."
+    when: "Changes are made through IMAP and LMTP connections that land on other workers."
+    then: "Every change results in a state event on the stream."
+    sources:
+      - "wildduck:plan 4.9"
+  - id: ESRC-042
+    title: "A burst of changes is coalesced and the last event carries the final state"
+    method: "EventSource"
+    spec: "RFC 8620 7"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*."
+    when: "100 messages are appended over IMAP within one second."
+    then: "Fewer than 100 state events arrive, and the Email value of the last one equals the Email/get state after the burst."
+    sources:
+      - "stalwart:core/event_source.rs"
+      - "legacy-proxy:test/unit/gmail-push.spec.ts"
+      - "rfc:8620 7"
+  - id: ESRC-043
+    title: "A journal write that does not change any JMAP state sends no event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=*."
+    when: "An IMAP STORE sets a flag that is already set, and a message already flagged \\Deleted is expunged."
+    then: "No state event is sent for the first. For the second an event is sent only if the Email state string changed."
+    sources:
+      - "legacy-proxy:test/unit/gmail-push.spec.ts"
+      - "wildduck:plan 4.9"
+  - id: ESRC-044
+    title: "A user may hold several streams and each receives the event"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "Three streams are open for the same user, two with types=* and one with types=Mailbox."
+    when: "A message is appended over IMAP."
+    then: "All three receive a state event. The third lists only Mailbox."
+    sources:
+      - "rfc:8620 7.3"
+  - id: ESRC-045
+    title: "Streams of other users receive nothing"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "Users A and B each have a stream open with types=*."
+    when: "A message is delivered to A."
+    then: "Only the stream of A gets an event, and its changed map has only the account id of A."
+    sources:
+      - "rfc:8620 7.1"
+  - id: ESRC-046
+    title: "The number of concurrent streams per user is limited"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "The per user stream limit is configured to 3 and three streams are open."
+    when: "A fourth stream is requested, then one stream is closed and the request repeated."
+    then: "The fourth request is refused with HTTP 429 and a Retry-After header while the existing streams keep working. After one closes the request succeeds."
+    sources:
+      - "wildduck:plan 4.9"
+    notes: "Open: limit value and whether to refuse the new stream or close the oldest. Refusing is easier to test and matches the IMAP connection limit behaviour."
+  - id: ESRC-047
+    title: "A closed client connection frees its slot"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "The per user stream limit is 2."
+    when: "Two streams are opened and aborted by the client 20 times in a row, then two more are opened."
+    then: "The last two succeed, so aborted connections do not leak listeners or limit counters."
+    sources:
+      - "wildduck:lib/api/updates.js"
+  - id: ESRC-048
+    title: "The stream is closed when its application password is deleted"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A stream is open, authenticated with an application password."
+    when: "The application password is deleted through the REST API."
+    then: "The server ends the stream within a few seconds, and a reconnect with the same credentials gets HTTP 401."
+    sources:
+      - "wildduck:brief Accounts and auth"
+  - id: ESRC-049
+    title: "The stream is closed when the account password changes or tokens are revoked"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "Two streams are open, one with the account password over Basic and one with a Bearer token."
+    when: "The password is changed through the REST API (which bumps authVersion)."
+    then: "Both streams are ended by the server and reconnecting with the old credentials gets HTTP 401."
+    sources:
+      - "wildduck:brief Accounts and auth"
+      - "wildduck:plan 3"
+  - id: ESRC-050
+    title: "The stream is closed when the user is disabled, suspended or loses the jmap scope"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A stream is open. The test is repeated for: user disabled, user suspended, jmap added to disabledScopes, user deleted."
+    when: "The change is made through the REST API."
+    then: "The server ends the stream within a few seconds and sends no further event. A reconnect is refused."
+    sources:
+      - "wildduck:brief Accounts and auth"
+  - id: ESRC-051
+    title: "An idle stream is kept alive and a maximum lifetime is enforced"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [time]
+    given: "The maximum stream lifetime is configured to 30 seconds for the test (default 30 minutes)."
+    when: "Connect with closeafter=no, ping=0 and make no changes."
+    then: "The connection is not dropped for inactivity before the lifetime and is ended cleanly by the server at about 30 seconds. A reconnect with the last event id loses no change."
+    sources:
+      - "wildduck:lib/api/updates.js"
+    notes: "The existing endpoint sends a comment every 15 seconds and closes after 30 minutes. Open: keep a lifetime cap for JMAP streams or let them live until the client leaves."
+  - id: ESRC-052
+    title: "The event source is not served when JMAP is disabled"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "The server wide JMAP switch is off."
+    when: "GET the event source URL with valid credentials."
+    then: "HTTP 404 (the listener is absent or answers not found), no stream."
+    sources:
+      - "cyrus:JMAPCore/eventsource_disabled"
+      - "legacy-proxy:test/unit/gmail-push.spec.ts"
+  - id: EDLV-001
+    title: "A delivered message changes the EmailDelivery state"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "A stream is open with types=*."
+    when: "A message is delivered to INBOX over LMTP."
+    then: "The state event lists EmailDelivery together with Email, Mailbox and Thread."
+    sources:
+      - "james:EventSourceContract#shouldPushEmailDeliveryChangeWhenUserReceivesEmail"
+      - "stalwart:core/event_source.rs"
+      - "rfc:8621 1.5"
+  - id: EDLV-002
+    title: "A stream filtered to EmailDelivery gets an event with only that type on delivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "A stream is open with types=EmailDelivery."
+    when: "A message is delivered over LMTP."
+    then: "One state event arrives and the type map of the account has the single key EmailDelivery with a string value."
+    sources:
+      - "james:EventSourceContract#shouldPushEmailDeliveryChangeWhenUserReceivesEmail"
+      - "rfc:8621 1.5.1"
+  - id: EDLV-003
+    title: "Delivery through the SMTP front end changes EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [smtp]
+    given: "A stream is open with types=EmailDelivery."
+    when: "A message is accepted by the inbound SMTP server and stored by the WildDuck plugin."
+    then: "A state event with EmailDelivery arrives."
+    sources:
+      - "rfc:8621 1.5"
+      - "wildduck:plan 4.9"
+  - id: EDLV-004
+    title: "Each delivery gives a new EmailDelivery value"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "A stream is open with types=EmailDelivery."
+    when: "Two messages are delivered five seconds apart."
+    then: "Two events arrive and their EmailDelivery values differ."
+    sources:
+      - "rfc:8621 1.5"
+  - id: EDLV-005
+    title: "Marking a message as read does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=EmailDelivery."
+    when: "A message gets \\Seen over IMAP, another gets a label through the REST API. Wait two seconds."
+    then: "No event arrives."
+    sources:
+      - "rfc:8621 1.5.1"
+      - "stalwart:core/event_source.rs"
+  - id: EDLV-006
+    title: "Moving a message does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap, api]
+    given: "A stream is open with types=EmailDelivery."
+    when: "One message is moved with IMAP MOVE and another through the REST API. Wait two seconds."
+    then: "No event arrives."
+    sources:
+      - "rfc:8621 1.5"
+      - "wildduck:plan 4.9"
+  - id: EDLV-007
+    title: "Copying a message does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: "must"
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=EmailDelivery."
+    when: "IMAP COPY copies a message to another mailbox. Wait two seconds."
+    then: "A state event with EmailDelivery arrives, because the copy is a new Email."
+    sources:
+      - "wildduck:brief Push"
+    notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
+  - id: EDLV-008
+    title: "Destroying or expunging a message does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [imap, api]
+    given: "A stream is open with types=EmailDelivery."
+    when: "One message is expunged over IMAP and one deleted through the REST API. Wait two seconds."
+    then: "No event arrives."
+    sources:
+      - "rfc:8621 1.5"
+  - id: EDLV-009
+    title: "Saving a draft does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: "must"
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=EmailDelivery."
+    when: "A draft is appended to Drafts over IMAP. In phase 2 the same is repeated with Email/set create."
+    then: "A state event with EmailDelivery arrives for each draft, because a new Email was added. Updating the draft afterwards does not change EmailDelivery."
+    sources:
+      - "james:EventSourceContract#shouldNotPushEmailDeliveryChangeWhenUserCreatesDraftEmail"
+      - "james:WebPushContract#shouldNotPushEmailDeliveryChangeWhenUserCreatesDraftEmail"
+    notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
+  - id: EDLV-010
+    title: "Sending a message does not change the sender EmailDelivery state"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: "must"
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A stream is open with types=EmailDelivery for user A."
+    when: "A submits a message to an external recipient through the REST API and the sent copy is stored in Sent."
+    then: "A state event with EmailDelivery arrives for A, because the Sent copy is a new Email."
+    sources:
+      - "james:EventSourceContract#shouldNotPushEmailDeliveryChangeWhenUserSendsEmail"
+      - "james:WebPushContract#shouldNotPushEmailDeliveryChangeWhenUserSendsEmail"
+    notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
+  - id: EDLV-011
+    title: "An IMAP APPEND into INBOX does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: "must"
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A stream is open with types=EmailDelivery."
+    when: "A message is appended to INBOX over IMAP and another uploaded through the REST API. Wait two seconds."
+    then: "A state event with EmailDelivery arrives for each of the two messages."
+    sources:
+      - "wildduck:brief Push"
+      - "stalwart:core/event_source.rs"
+    notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
+  - id: EDLV-012
+    title: "Email/import does not change EmailDelivery"
+    method: "Email/import"
+    spec: "RFC 8621 1.5"
+    level: "must"
+    phase: 2
+    applies: "yes"
+    seed: [jmap]
+    given: "A stream is open with types=EmailDelivery."
+    when: "A message is imported into INBOX with Email/import."
+    then: "A state event with EmailDelivery arrives."
+    sources:
+      - "stalwart:core/event_source.rs"
+      - "wildduck:brief Push"
+    notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
+  - id: EDLV-013
+    title: "Restoring an archived message does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: "must"
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A stream is open with types=EmailDelivery. A deleted message sits in the archive."
+    when: "It is restored through the REST API."
+    then: "A state event with EmailDelivery arrives, because the restored message is added to the store again."
+    sources:
+      - "wildduck:brief Push"
+    notes: "Decided 2026-11-11: EmailDelivery follows RFC 8621 1.5 literally and changes whenever a new Email is added to the store."
+  - id: EDLV-014
+    title: "A delivery filed by a filter outside INBOX still changes EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter files matching mail into mailbox Lists, another marks mail as spam. A stream is open with types=EmailDelivery."
+    when: "One message matching each filter is delivered."
+    then: "An EmailDelivery event arrives for each delivery."
+    sources:
+      - "rfc:8621 1.5"
+    notes: "Open: a product choice could exclude Junk deliveries to avoid waking mobile clients. The RFC text makes no such exception."
+  - id: EDLV-015
+    title: "A delivery discarded by a filter does not change EmailDelivery"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A filter with the delete action matches a sender. A stream is open with types=*."
+    when: "A matching message is delivered and dropped."
+    then: "No event arrives."
+    sources:
+      - "wildduck:brief Push"
+  - id: EDLV-016
+    title: "A missed delivery is replayed to an EmailDelivery only stream"
+    method: "EventSource"
+    spec: "RFC 8621 1.5"
+    level: should
+    phase: 1
+    applies: "yes"
+    seed: [lmtp]
+    given: "A stream with types=EmailDelivery received id I and was closed. A message was then delivered."
+    when: "Reconnect with Last-Event-ID I."
+    then: "A state event with EmailDelivery arrives immediately."
+    sources:
+      - "rfc:8620 7.3"
+      - "rfc:8621 1.5"
+  - id: EDLV-017
+    title: "EmailDelivery has no methods"
+    method: "Request"
+    spec: "RFC 8621 1.5"
+    level: must
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "Any account."
+    when: "A request calls EmailDelivery/get and EmailDelivery/changes."
+    then: "Both answer unknownMethod."
+    sources:
+      - "rfc:8621 1.5"
+  - id: PUSH-001
+    title: "PushSubscription methods answer unknownMethod until Web Push ships"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "A server at phase 1 to 3, or with Web Push switched off in the configuration."
+    when: "A request calls PushSubscription/get and PushSubscription/set."
+    then: "Both answer unknownMethod. The session does not advertise any push specific capability."
+    sources:
+      - "james:WebPushDisabledContract#pushSubscriptionGetShouldBeRejected"
+      - "james:WebPushDisabledContract#pushSubscriptionSetShouldBeRejected"
+      - "legacy-proxy:test/unit/gmail-subscriptions.spec.ts"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the PushSubscription scenarios."
+  - id: PUSH-002
+    title: "PushSubscription/get works without accountId and returns no state"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions exist for the credentials."
+    when: "PushSubscription/get with ids null and no accountId, using only the core capability."
+    then: "The response has list as an empty array and notFound as an empty array, and has neither accountId nor state."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#getShouldReturnEmptyWhenNone"
+      - "rfc:8620 7.2.1"
+  - id: PUSH-003
+    title: "PushSubscription/get with ids null returns every subscription of the credentials"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "Two subscriptions were created with the current credentials."
+    when: "PushSubscription/get with ids null."
+    then: "list holds both, each with id, deviceClientId, verificationCode, expires and types."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#getShouldReturnAllRecords"
+      - "jmapio:push/push-subscription-get"
+      - "stalwart:compliance/push.rs"
+  - id: PUSH-004
+    title: "PushSubscription/get by id returns found and not found ids"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "One subscription with id P1 exists."
+    when: "PushSubscription/get with ids [P1, an unknown id, a malformed id], and again with ids as an empty array."
+    then: "The first returns P1 in list and the other two ids in notFound. The second returns an empty list."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#getByIdShouldReturnRecords"
+      - "james:PushSubscriptionSetMethodContract#getByIdShouldReturnNotFound"
+      - "james:PushSubscriptionSetMethodContract#getByIdShouldReturnEmptyWhenEmpty"
+  - id: PUSH-005
+    title: "PushSubscription/get never returns url or keys by default"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "A subscription created with url and keys exists."
+    when: "PushSubscription/get with properties omitted, and again with properties null."
+    then: "No object in list has a url or keys property."
+    sources:
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2.1"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-006
+    title: "Explicitly requesting url or keys is forbidden"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "A subscription exists."
+    when: "PushSubscription/get with properties [url], then [id, keys]."
+    then: "Each call is rejected with a method level error of type forbidden."
+    sources:
+      - "rfc:8620 7.2.1"
+  - id: PUSH-007
+    title: "PushSubscription/get honours the properties argument"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "A subscription exists."
+    when: "PushSubscription/get with properties [deviceClientId, expires]."
+    then: "Each object has exactly id, deviceClientId and expires. An unknown property name answers invalidArguments."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#getShouldFilterProperties"
+  - id: PUSH-008
+    title: "The verification code is hidden until the subscription is verified"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "A subscription was created and the PushVerification was captured by the mock push service."
+    when: "PushSubscription/get before the client sets the code, and again after it did."
+    then: "Before, verificationCode is null. After, it is the verified code."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#getShouldReturnValidatedVerificationCode"
+      - "jmap-perl:t/push.t"
+    notes: "Returning the code before verification would let a client verify an endpoint it does not control."
+  - id: PUSH-009
+    title: "Creating a subscription returns the id and server set properties"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "PushSubscription/set create with deviceClientId and an https url, nothing else, no accountId."
+    then: "created holds the creation id with id (letter prefixed, URL safe characters), keys null and expires as a UTCDate in the future. The response has no accountId, oldState or newState."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldCreatedWhenValidRequest"
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotRequireAccountId"
+      - "jmapio:push/push-subscription-create"
+      - "stalwart:compliance/push.rs"
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-010
+    title: "PushSubscription methods need only the core capability"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "Any account."
+    when: "PushSubscription/set with using [urn:ietf:params:jmap:core], then with using [urn:ietf:params:jmap:mail] only."
+    then: "The first works. The second answers unknownMethod because the core capability is missing."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldFailWhenMissingCapability"
+  - id: PUSH-011
+    title: "Several subscriptions can be created in one call and failures are reported per creation id"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "PushSubscription/set create with three entries: two valid with different deviceClientId values and one with an http url."
+    then: "created holds the two valid ones with distinct ids, notCreated holds the third with type invalidProperties. Two PushVerification requests are sent."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldCreatedSeveralValidCreationRequest"
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldSuccessWhenMixCase"
+  - id: PUSH-012
+    title: "A url that is not https is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "PushSubscription/set create with url http://push.example.com/abc."
+    then: "notCreated has type invalidProperties with properties [url]. Nothing is stored and no request is sent to the URL."
+    sources:
+      - "jmapio:push/push-subscription-reject-non-https"
+      - "stalwart:compliance/push.rs"
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenInvalidURLProperty"
+      - "jmap-perl:t/push.t"
+  - id: PUSH-013
+    title: "A url that is not an absolute, plain https URL is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with url set in turn to \"not a url\", \"/relative/path\", \"ftp://host/x\", \"https://\", \"https://user:pass@push.example.com/x\", a number, and a 10000 character https URL."
+    then: "Each is notCreated with invalidProperties and properties [url]."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenInvalidURLProperty"
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2"
+    notes: "Rejecting embedded credentials and over long URLs is a WildDuck choice."
+  - id: PUSH-014
+    title: "deviceClientId is required"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create without deviceClientId, with an empty string, and with a number."
+    then: "Each is notCreated with invalidProperties and properties [deviceClientId]."
+    sources:
+      - "rfc:8620 7.2"
+      - "jmap-perl:t/push.t"
+  - id: PUSH-015
+    title: "A verificationCode supplied at creation is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with verificationCode set to a string."
+    then: "notCreated with invalidProperties and properties [verificationCode]. A create with verificationCode null is accepted."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenCreationRequestHasVerificationCodeProperty"
+      - "rfc:8620 7.2"
+  - id: PUSH-016
+    title: "A client supplied id or unknown property is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with an id property, and separately with an unknown property foo."
+    then: "Both are notCreated with invalidProperties naming the offending property."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenCreationRequestHasIdProperty"
+      - "rfc:8620 5.3"
+  - id: PUSH-017
+    title: "types null or omitted subscribes to all types"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create one subscription with types null and one without types, verify both, then make a mail change."
+    then: "PushSubscription/get shows types null for both and both receive a StateChange listing Email, Mailbox and Thread."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setCreateShouldAcceptNullTypesPropertyInCreationRequest"
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2"
+  - id: PUSH-018
+    title: "A types list is stored and returned"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with types [Mailbox, Email, EmailDelivery], then PushSubscription/get."
+    then: "The subscription lists exactly these three types."
+    sources:
+      - "jmapio:push/push-subscription-types-filter"
+      - "stalwart:compliance/push.rs"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-019
+    title: "An empty types list is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with types as an empty array."
+    then: "notCreated with invalidProperties and properties [types]."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenTypesPropertyIsEmpty"
+    notes: "An empty list would be a subscription that can never fire."
+  - id: PUSH-020
+    title: "Unknown or malformed types are rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with types [Email, Nonsense], with types \"Email\" (a string) and with types [1]."
+    then: "Each is notCreated with invalidProperties and properties [types]."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenInValidTypesProperty"
+    notes: "Same open question as for the event source types parameter: reject or ignore unknown names."
+  - id: PUSH-021
+    title: "Valid encryption keys are accepted and never returned"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A P-256 key pair and a 16 byte auth secret generated by the test."
+    when: "Create with keys {p256dh, auth} in URL safe base64, then PushSubscription/get."
+    then: "The creation succeeds. The created object does not echo the key material back with different values, and get returns no keys property."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldAcceptValidKey"
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldAcceptValidKeys"
+      - "rfc:8620 7.2"
+  - id: PUSH-022
+    title: "Invalid encryption keys are rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with keys missing auth, missing p256dh, p256dh that is not base64, p256dh of 64 bytes, p256dh that is not a point on P-256, auth of 8 bytes, and keys as a string."
+    then: "Each is notCreated with invalidProperties and properties [keys]. No verification request is sent."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldRejectInvalidKey"
+      - "rfc:8620 7.2"
+      - "rfc:8291 3.1"
+  - id: PUSH-023
+    title: "A requested expiry within the limit is kept"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "The maximum subscription lifetime is 7 days (default)."
+    when: "Create with expires three days ahead, once as 2027-01-31T12:00:00Z style and once with milliseconds."
+    then: "Both are created. PushSubscription/get returns the requested instant in UTCDate form."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldAcceptValidExpiresProperty"
+      - "jmap-perl:t/push.t"
+  - id: PUSH-024
+    title: "A missing expiry gets the server default"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: should
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "The maximum subscription lifetime is 7 days."
+    when: "Create without expires."
+    then: "created reports expires about 7 days from now (within a minute) and get returns the same value."
+    sources:
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-025
+    title: "An expiry beyond the limit is shortened and reported back"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: should
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "The maximum subscription lifetime is 7 days."
+    when: "Create with expires one year ahead."
+    then: "The subscription is created and created reports expires about 7 days from now, not the requested value."
+    sources:
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-026
+    title: "The maximum lifetime is never below 48 hours"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "Default configuration, Basic authentication."
+    when: "Create with expires 47 hours ahead and with expires 7 days minus one minute ahead."
+    then: "Both values are kept unchanged. A configured maximum below 48 hours is refused at start up."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-027
+    title: "An expiry in the past is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with expires one hour ago."
+    then: "notCreated with invalidProperties and properties [expires]."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenInValidExpiresProperty"
+  - id: PUSH-028
+    title: "An expiry that is not a UTCDate is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscriptions."
+    when: "Create with expires set in turn to \"tomorrow\", a date with a +01:00 offset, 2027-02-31T12:00:00Z and a number."
+    then: "Each is notCreated with invalidProperties and properties [expires]."
+    sources:
+      - "jmap-perl:t/push.t"
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenInValidExpiresProperty"
+      - "rfc:8620 1.4"
+  - id: PUSH-029
+    title: "A second subscription with the same deviceClientId is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [jmap]
+    given: "A subscription with deviceClientId D exists for the credentials."
+    when: "Create another with deviceClientId D."
+    then: "notCreated with invalidProperties and properties [deviceClientId]. The same value under other credentials or another user is accepted."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodShouldNotCreatedWhenDeviceClientIdExists"
+    notes: "Open: the RFC does not demand uniqueness. A client that replaces its subscription in one set call (destroy old, create new) would fail because creates run before destroys. Alternative: let the new one replace the old one."
+  - id: PUSH-030
+    title: "The number of subscriptions per user is limited"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "The per user limit is configured to 3 and three subscriptions exist, created with two different credentials."
+    when: "Create a fourth."
+    then: "notCreated with type overQuota, nothing stored, no verification request sent. After destroying one, a create succeeds."
+    sources:
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 8.6"
+  - id: PUSH-031
+    title: "The creation rate is limited"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "The creation rate limit is configured to 5 per hour per user."
+    when: "Create and destroy a subscription six times in a row, all towards the same third party URL."
+    then: "The first five succeed and each sends one PushVerification. The sixth is notCreated with type rateLimit and sends nothing."
+    sources:
+      - "stalwart:core/push_subscription.rs"
+      - "rfc:8620 8.6"
+      - "rfc:8620 5.3"
+    notes: "Stalwart instead defers the verification (one per minute). Rejecting is simpler to reason about and uses the standard SetError."
+  - id: PUSH-032
+    title: "Creation immediately posts a PushVerification object"
+    method: "WebPush"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A mock push service is listening."
+    when: "Create a subscription without keys."
+    then: "Within a few seconds the URL receives one POST with Content-Type application/json, a TTL header, and a body with exactly @type PushVerification, pushSubscriptionId equal to the created id and verificationCode as a string."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodCreateShouldCallVerificationToPushServer"
+      - "stalwart:core/push_subscription.rs"
+      - "stalwart:compliance/push.rs"
+      - "jmapio:push/push-subscription-verification"
+      - "jmap-perl:t/push.t"
+  - id: PUSH-033
+    title: "Verification codes are unguessable and unique"
+    method: "WebPush"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A mock push service is listening."
+    when: "Create 20 subscriptions."
+    then: "All 20 verification codes differ, each carries at least 128 bits of randomness (for example 22 or more URL safe characters), and none is derived from the subscription id."
+    sources:
+      - "rfc:8620 7.2.2"
+      - "rfc:8620 8.6"
+  - id: PUSH-034
+    title: "Nothing but the verification is sent before the subscription is verified"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A subscription was created and its code was not yet set."
+    when: "Messages are appended and flagged over IMAP. Wait five seconds."
+    then: "The push URL received the single PushVerification and no StateChange."
+    sources:
+      - "james:WebPushContract#webPushShouldNotPushToPushServerWhenNotValidatedCode"
+      - "rfc:8620 7.2"
+      - "rfc:8620 8.6"
+  - id: PUSH-035
+    title: "Setting the correct verification code activates the subscription"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A subscription P1 was created and the code captured."
+    when: "PushSubscription/set update P1 with verificationCode set to the code, then a message is appended over IMAP."
+    then: "updated holds P1 with null. A StateChange is then posted to the URL."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldValidateVerificationCode"
+      - "jmapio:push/push-subscription-verification"
+      - "stalwart:core/push_subscription.rs"
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-036
+    title: "A wrong verification code is rejected and the subscription stays inactive"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A subscription P1 awaits verification."
+    when: "Update P1 with verificationCode \"wrong\", then make a mail change."
+    then: "notUpdated holds P1 with type invalidProperties and properties [verificationCode]. No StateChange is pushed and get still shows verificationCode null."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldNotValidateVerificationCodeWhenWrong"
+      - "rfc:8620 7.2.2"
+  - id: PUSH-037
+    title: "Repeated wrong verification codes lock the subscription"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 8.6"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A subscription P1 awaits verification. The attempt limit is 5."
+    when: "Update P1 with a wrong code six times, then with the right code."
+    then: "After the fifth failure the subscription is destroyed (or locked), so the right code no longer activates it and the update answers notFound (or invalidProperties)."
+    sources:
+      - "rfc:8620 8.6"
+    notes: "Open: destroy or lock. Destroy is simpler. Entropy alone already defeats guessing, this is defence in depth."
+  - id: PUSH-038
+    title: "A failing verification request does not fail the creation"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [none]
+    given: "The mock push service answers 500 to every request."
+    when: "Create a subscription."
+    then: "The set call answers created without waiting for the push service. The verification is retried a limited number of times with backoff and then given up."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#setMethodCreateShouldNotCreatedWhenCallVerificationToPushServerHasError"
+      - "james:PushSubscriptionSetMethodContract#setMethodCreateShouldNotSaveSubscriptionEntryWhenCallVerificationToPushServerHasError"
+    notes: "James sends the verification inline and answers serverFail without storing. WildDuck delivers through a queue, so the API call cannot depend on a third party server."
+  - id: PUSH-039
+    title: "A subscription that is never verified is removed"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [time]
+    given: "A subscription was created and never verified. The grace period for verification is configured to one minute."
+    when: "After the grace period, PushSubscription/get with ids null."
+    then: "The subscription is gone and its url and keys are no longer stored."
+    sources:
+      - "rfc:8620 8.6"
+  - id: PUSH-040
+    title: "The verification is sent once and not repeated on updates"
+    method: "WebPush"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A verified subscription P1."
+    when: "Update expires and types of P1 several times."
+    then: "No further PushVerification is posted and the subscription stays active."
+    sources:
+      - "rfc:8620 7.2.2"
+  - id: PUSH-041
+    title: "Setting the code again on a verified subscription changes nothing"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A verified subscription P1."
+    when: "Update P1 with the same code, then with a different code."
+    then: "The first is accepted without effect. The second is notUpdated with invalidProperties and the subscription stays verified."
+    sources:
+      - "rfc:8620 7.2.2"
+  - id: PUSH-042
+    title: "Updating types changes what is pushed"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription P1 with types [Mailbox]."
+    when: "Update P1 with types [EmailDelivery], then flag a message over IMAP, then deliver a message."
+    then: "The flag change pushes nothing. The delivery pushes a StateChange with only EmailDelivery. get shows the new types."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldModifyTypes"
+      - "stalwart:core/push_subscription.rs"
+  - id: PUSH-043
+    title: "Updating types to null subscribes to all types and omitting types keeps them"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A verified subscription P1 with types [Email]."
+    when: "Update P1 with only expires, read it, then update with types null and read it."
+    then: "After the first update types is still [Email]. After the second it is null."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldAcceptNullTypesAndUpdateToAllTypes"
+      - "james:PushSubscriptionSetMethodContract#updateWithMissingTypesPropertyShouldNotUpdateTypes"
+  - id: PUSH-044
+    title: "Updating types with an invalid value is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A verified subscription P1 with types [Email]."
+    when: "Update P1 with types [Unknown], types \"Email\" and types []."
+    then: "Each is notUpdated with invalidProperties and properties [types]. types stays [Email]."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldRejectUnknownTypes"
+      - "james:PushSubscriptionSetMethodContract#updateShouldRejectBadTypes"
+      - "james:PushSubscriptionSetMethodContract#updateShouldRejectBadType"
+  - id: PUSH-045
+    title: "Extending expires is limited to the maximum and reported back"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [time]
+    given: "A verified subscription P1 created two days ago with a 7 day maximum."
+    when: "Update P1 with expires one month ahead."
+    then: "updated holds P1 with expires about 7 days from now. The subscription stays verified and keeps pushing without a new verification."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateWithBiggerExpiresThanServerLimitShouldSetToServerLimitAndExplicitlyReturned"
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2.3"
+  - id: PUSH-046
+    title: "Expires can be extended within the limit or shortened"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A verified subscription P1."
+    when: "Update P1 with expires five days ahead, then with expires one hour ahead."
+    then: "Both are accepted with updated P1 null (no server change) and get returns the requested value each time."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateValidExpiresShouldSucceed"
+      - "jmap-perl:t/push.t"
+  - id: PUSH-047
+    title: "Updating expires to the past or to a non date is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A verified subscription P1."
+    when: "Update P1 with expires one hour ago, then with expires \"soon\"."
+    then: "Both are notUpdated with invalidProperties and properties [expires]. The stored expiry is unchanged."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateOutdatedExpiresShouldFail"
+      - "james:PushSubscriptionSetMethodContract#updateInvalidExpiresStringShouldFail"
+  - id: PUSH-048
+    title: "Immutable properties cannot be updated"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A subscription P1."
+    when: "Update P1 with url, with keys, with deviceClientId and with id, each set to a new value, and with an unknown property."
+    then: "Each is notUpdated with invalidProperties naming the property. Only verificationCode, expires and types are updatable."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldFailWhenUnknownProperty"
+      - "rfc:8620 7.2"
+      - "rfc:8620 7.2.2"
+  - id: PUSH-049
+    title: "Updating an unknown subscription answers notFound"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "No subscription with the given ids."
+    when: "Update a well formed unknown id and a malformed id."
+    then: "Both are in notUpdated with type notFound."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateShouldFailWhenNotFound"
+      - "james:PushSubscriptionSetMethodContract#updateShouldFailWhenInvalidId"
+      - "rfc:8620 5.3"
+    notes: "James answers invalidArguments for a malformed id. notFound follows the general set rule."
+  - id: PUSH-050
+    title: "A set call with mixed updates reports each id separately"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "Verified subscriptions P1 and P2."
+    when: "One PushSubscription/set that gives P1 new types, P2 a past expires and an unknown id a new expires."
+    then: "updated holds P1, notUpdated holds P2 with invalidProperties and the unknown id with notFound."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#updateMixed"
+  - id: PUSH-051
+    title: "Destroying a subscription removes it and stops pushes"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription P1 that received pushes."
+    when: "PushSubscription/set destroy [P1], then PushSubscription/get, then a mail change."
+    then: "destroyed is [P1], get returns P1 in notFound, and no request reaches the URL."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#destroyShouldSucceed"
+      - "james:WebPushContract#webPushShouldNotPushToPushServerWhenDeletedSubscription"
+      - "jmapio:push/push-subscription-destroy"
+      - "stalwart:compliance/push.rs"
+      - "stalwart:core/push_subscription.rs"
+      - "jmap-perl:t/push.t"
+  - id: PUSH-052
+    title: "Destroying unknown ids answers notFound per id"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A subscription P1."
+    when: "Destroy [P1, an unknown id, a malformed id]."
+    then: "destroyed is [P1], notDestroyed holds the other two with type notFound."
+    sources:
+      - "james:PushSubscriptionSetMethodContract#destroyShouldHandleMixedCases"
+      - "james:PushSubscriptionSetMethodContract#destroyShouldFailWhenInvalidId"
+      - "james:PushSubscriptionSetMethodContract#destroyShouldNotFailWhenUnknownId"
+      - "jmap-perl:t/push.t"
+    notes: "James treats an unknown id as destroyed. RFC 8620 5.3 asks for notFound."
+  - id: PUSH-053
+    title: "A destroyed subscription leaves no url or keys in storage"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [db]
+    given: "A subscription with a unique url and keys."
+    when: "Destroy it, then inspect the subscription collection and the delivery queue."
+    then: "Neither the url nor the key material is present anywhere, including queued or failed delivery jobs."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-054
+    title: "Subscriptions are visible only to the credentials that created them"
+    method: "PushSubscription/get"
+    spec: "RFC 8620 7.2.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [api]
+    given: "A user with two application passwords A and B and a Bearer token. A subscription P1 was created with A."
+    when: "PushSubscription/get with ids null and with ids [P1] using B and using the token."
+    then: "ids null returns an empty list and ids [P1] returns P1 in notFound for both. With A it is returned."
+    sources:
+      - "rfc:8620 7.2"
+      - "rfc:8620 7.2.1"
+  - id: PUSH-055
+    title: "Other credentials cannot update or destroy a subscription"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 7.2.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [api]
+    given: "Subscription P1 was created with application password A."
+    when: "With application password B of the same user, and with credentials of another user, update P1 and destroy P1."
+    then: "All four attempts answer notFound in notUpdated or notDestroyed. P1 is unchanged."
+    sources:
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 7.2.1"
+  - id: PUSH-056
+    title: "Deleting an application password destroys its subscriptions"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [api, imap]
+    given: "A verified subscription created with application password A."
+    when: "A is deleted through the REST API, then a message is appended."
+    then: "No push is sent, and the subscription record with its url and keys is gone from storage."
+    sources:
+      - "rfc:8620 7.2"
+      - "wildduck:plan 3"
+  - id: PUSH-057
+    title: "Changing the account password destroys subscriptions created with it"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [api, imap]
+    given: "Verified subscriptions created with the account password over Basic and with a Bearer token issued before the change."
+    when: "The password is changed through the REST API (authVersion increases), then a mail change is made."
+    then: "Neither subscription receives a push and both are removed. A subscription created with an untouched application password keeps working."
+    sources:
+      - "rfc:8620 7.2"
+      - "wildduck:plan 3"
+  - id: PUSH-058
+    title: "A subscription created with an expiring token ends with the token"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [api, time]
+    given: "A Bearer token with a one minute lifetime created a verified subscription with expires three days ahead."
+    when: "The token expires, then a mail change is made."
+    then: "No push is sent after the token expired, whatever expires says."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-059
+    title: "A disabled, suspended or deleted user gets no pushes"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [api, lmtp]
+    given: "A verified subscription. The test is repeated for user disabled, user suspended, jmap in disabledScopes and user deleted."
+    when: "The change is made through the REST API, then a message is delivered (where delivery is still possible)."
+    then: "No push is sent. For a deleted user the subscriptions are removed."
+    sources:
+      - "wildduck:brief Accounts and auth"
+  - id: PUSH-060
+    title: "A change posts a StateChange object to a verified subscription"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [jmap]
+    given: "A verified subscription without keys and with types null."
+    when: "An Email is created with Email/set."
+    then: "The URL receives a POST with Content-Type application/json and a UTF-8 JSON body with @type StateChange and changed mapping the account id to the changed types, whose values equal the current get states."
+    sources:
+      - "jmapio:push/push-subscription-receives-notification"
+      - "stalwart:compliance/push.rs"
+      - "stalwart:core/push_subscription.rs"
+      - "james:WebPushContract#shouldPushEmailDeliveryChangeWhenUserReceivesEmail"
+      - "rfc:8620 7.2"
+  - id: PUSH-061
+    title: "Changes made over IMAP, the REST API and delivery are pushed"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap, api, lmtp]
+    given: "A verified subscription with types null."
+    when: "A flag is set over IMAP, later a message is moved through the REST API, later a message is delivered over LMTP, each ten seconds apart."
+    then: "Each change results in a StateChange push with a newer Email state. The third also lists EmailDelivery."
+    sources:
+      - "wildduck:brief State and changes"
+      - "rfc:8620 7"
+  - id: PUSH-062
+    title: "Only subscribed types are pushed and other types are left out"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription with types [Mailbox]."
+    when: "A message is appended over IMAP."
+    then: "The pushed StateChange lists only Mailbox for the account."
+    sources:
+      - "stalwart:core/push_subscription.rs"
+      - "jmapio:push/push-subscription-types-filter"
+      - "rfc:8620 7.2"
+  - id: PUSH-063
+    title: "No push is sent when none of the subscribed types changed"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription with types [EmailDelivery]."
+    when: "Messages are flagged, moved and expunged over IMAP. Wait five seconds."
+    then: "The URL receives nothing."
+    sources:
+      - "rfc:8620 7.2"
+      - "rfc:8621 1.5.1"
+      - "james:WebPushContract#shouldNotPushEmailDeliveryChangeWhenUserCreatesDraftEmail"
+  - id: PUSH-064
+    title: "A subscription for EmailDelivery is pushed on delivery only"
+    method: "WebPush"
+    spec: "RFC 8621 1.5"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [lmtp, api]
+    given: "A verified subscription with types [EmailDelivery]."
+    when: "The user submits a message through the REST API (sent copy stored), then a message is delivered to the user over LMTP."
+    then: "Nothing is pushed for the submission. The delivery pushes a StateChange whose only type is EmailDelivery."
+    sources:
+      - "james:WebPushContract#shouldPushEmailDeliveryChangeWhenUserReceivesEmail"
+      - "james:WebPushContract#shouldNotPushEmailDeliveryChangeWhenUserSendsEmail"
+      - "rfc:8621 1.5.1"
+  - id: PUSH-065
+    title: "Every verified subscription of the user receives the push"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "Three verified subscriptions with different URLs, created with two different credentials."
+    when: "A message is appended over IMAP."
+    then: "Each URL receives one StateChange. Subscriptions of other users receive nothing."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-066
+    title: "A burst of changes is coalesced into few pushes ending with the final state"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: should
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription with types null."
+    when: "50 messages are appended within one second."
+    then: "Far fewer than 50 pushes arrive and the Email state in the last one equals the Email/get state after the burst."
+    sources:
+      - "stalwart:core/push_subscription.rs"
+      - "rfc:8620 7"
+  - id: PUSH-067
+    title: "An expired subscription receives nothing and is removed"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap, time]
+    given: "A verified subscription whose expires passed."
+    when: "A message is appended, then PushSubscription/get with ids null."
+    then: "No request reaches the URL after the expiry time. The subscription is no longer returned and is deleted from storage."
+    sources:
+      - "james:WebPushContract#webPushShouldNotPushToPushServerWhenExpiredSubscription"
+      - "james:PushSubscriptionSetMethodContract#getShouldNotReturnExpiredSubscriptionAndTriggerTheDeletion"
+      - "legacy-proxy:test/unit/gmail-subscriptions.spec.ts"
+      - "rfc:8620 7.2"
+  - id: PUSH-068
+    title: "Every push request carries a TTL header"
+    method: "WebPush"
+    spec: "RFC 8030 5.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A subscription, verified during the test."
+    when: "Capture the PushVerification request and a StateChange request."
+    then: "Both are POST requests with a TTL header holding a non negative integer number of seconds."
+    sources:
+      - "rfc:8620 7.2"
+      - "rfc:8030 5.2"
+  - id: PUSH-069
+    title: "Urgency and Topic headers, when sent, are well formed"
+    method: "WebPush"
+    spec: "RFC 8030 5.3"
+    level: may
+    phase: 4
+    applies: "yes"
+    seed: [lmtp]
+    given: "A verified subscription."
+    when: "Capture StateChange requests for a delivery and for a flag change."
+    then: "If Urgency is present it is one of very-low, low, normal, high. If Topic is present it has at most 32 characters from the URL safe base64 alphabet and is constant for the subscription. PushVerification requests carry no Topic."
+    sources:
+      - "rfc:8620 7.2"
+      - "rfc:8030 5.3"
+      - "rfc:8030 5.4"
+    notes: "Open: whether WildDuck sends them at all. Suggested: a fixed Topic per subscription so a push service replaces an undelivered older StateChange, and Urgency high only when EmailDelivery changed."
+  - id: PUSH-070
+    title: "Push requests carry no user credentials or message content"
+    method: "WebPush"
+    spec: "RFC 8620 8.6"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [lmtp]
+    given: "A verified subscription without keys."
+    when: "A message with a distinctive subject is delivered and the push request is captured."
+    then: "The request has no Cookie header, no Authorization header with user credentials, and the body holds only the StateChange object: no subject, sender, ids of Emails or user name."
+    sources:
+      - "rfc:8620 7"
+      - "rfc:8620 8.6"
+  - id: PUSH-071
+    title: "With keys the verification and every push are encrypted per RFC 8291"
+    method: "WebPush"
+    spec: "RFC 8291"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A subscription created with a P-256 public key and auth secret whose private key the test holds."
+    when: "Capture the PushVerification request, verify, make a change and capture the StateChange request."
+    then: "Both requests have Content-Encoding aes128gcm and a binary body that decrypts with the private key and auth secret (aes128gcm record with a 16 byte salt and the 65 byte server public key as key id) to the JSON PushVerification or StateChange object."
+    sources:
+      - "james:WebPushContract#correctBehaviourShouldSuccessWhenEncryptionKeys"
+      - "james:PushSubscriptionSetMethodContract#bodyRequestToPushServerShouldBeEncryptedWhenClientAssignEncryptionKeys"
+      - "james:WebPushVapidContract#pushVerificationShouldBeReadableWithTheKeysOfABrowser"
+      - "stalwart:core/push_subscription.rs"
+      - "rfc:8620 7.2"
+      - "rfc:8291 4"
+    notes: "Open: Content-Type of the encrypted request. RFC 8620 says application/json for the POST, push services expect application/octet-stream with aes128gcm. Pin one after checking against a real push service."
+  - id: PUSH-072
+    title: "Each encrypted push uses a fresh salt and ephemeral key"
+    method: "WebPush"
+    spec: "RFC 8291"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription with keys."
+    when: "Two changes are made and both push bodies are captured, including one that is retried."
+    then: "The salt and the server public key differ between the bodies, including between an original and its retry."
+    sources:
+      - "rfc:8291 3.1"
+      - "rfc:8291 4"
+  - id: PUSH-073
+    title: "A subscription with keys never receives plain text"
+    method: "WebPush"
+    spec: "RFC 8620 8.7"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription with keys. The mock push service answers 500 twice, then 201."
+    when: "A change is made and all three requests are captured."
+    then: "No request body is parseable JSON. All three carry Content-Encoding aes128gcm."
+    sources:
+      - "rfc:8620 7.2"
+      - "rfc:8620 8.7"
+  - id: PUSH-074
+    title: "Any 2xx answer counts as delivered"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service answers 201 Created, in a second run 200 and 204."
+    when: "A change is made."
+    then: "One request is sent per change and it is not retried."
+    sources:
+      - "rfc:8030 5"
+      - "rfc:8620 7.2"
+  - id: PUSH-075
+    title: "A 429 answer slows pushes down and Retry-After is honoured"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service answers 429 with Retry-After 20 to the next request."
+    when: "Five changes are made over the following ten seconds."
+    then: "No request is sent during the 20 seconds. Afterwards a single StateChange with the latest state is sent, not five."
+    sources:
+      - "rfc:8620 7.2"
+      - "stalwart:core/push_subscription.rs"
+  - id: PUSH-076
+    title: "Repeated 429 answers lengthen the push interval"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap, time]
+    given: "A verified subscription. The mock push service answers 429 without Retry-After to every request while changes continue once per second."
+    when: "Observe the request times for two minutes."
+    then: "The gaps between attempts grow (backoff) up to a configured ceiling, and attempts never come faster than the first retry delay."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-077
+    title: "A 5xx answer is retried with backoff until delivered"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: should
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service answers 503 twice, then 201."
+    when: "One change is made."
+    then: "Three requests are sent with growing delays, the third succeeds, and no fourth is sent."
+    sources:
+      - "stalwart:core/push_subscription.rs"
+      - "rfc:8620 7.2"
+  - id: PUSH-078
+    title: "A retried push carries the newest state"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: should
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service fails the first request."
+    when: "A second change is made before the retry fires."
+    then: "The retry body has the state after the second change, and no separate push for the second change follows."
+    sources:
+      - "rfc:8620 7"
+      - "stalwart:core/push_subscription.rs"
+  - id: PUSH-079
+    title: "Connection errors and timeouts are retried and do not block other subscriptions"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "Two verified subscriptions. The first URL accepts the connection and never answers, the second works."
+    when: "A change is made."
+    then: "The second URL gets its push within a few seconds. The first request is aborted at the configured timeout (default 10 seconds) and scheduled for retry."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-080
+    title: "A 404 or 410 answer removes the subscription"
+    method: "WebPush"
+    spec: "RFC 8030 7.3"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service answers 410 Gone (in a second run 404)."
+    when: "A change is made, then another, then PushSubscription/get."
+    then: "After the first answer no further request is sent and the subscription is no longer returned."
+    sources:
+      - "legacy-proxy:test/unit/gmail-subscriptions.spec.ts"
+      - "rfc:8030 7.3"
+  - id: PUSH-081
+    title: "Other 4xx answers are not retried for the same push"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service answers 400 (in further runs 401, 403, 413)."
+    when: "One change is made."
+    then: "One request is sent and it is not retried. The failure is counted towards the permanent failure limit."
+    sources:
+      - "rfc:8620 7.2"
+  - id: PUSH-082
+    title: "A subscription that keeps failing is removed"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [imap, time]
+    given: "A verified subscription. The permanent failure limit is configured to 5 consecutive failed pushes. The mock push service answers 500 to everything."
+    when: "Changes are made until five pushes have exhausted their retries."
+    then: "The subscription is destroyed, its url and keys are erased, and later changes cause no request. A success in between resets the counter."
+    sources:
+      - "legacy-proxy:test/unit/gmail-subscriptions.spec.ts"
+      - "rfc:8620 7.2"
+  - id: PUSH-083
+    title: "A url pointing at a loopback, private or link local address is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "SSRF protection on (no test allowlist)."
+    when: "Create with url host set in turn to 127.0.0.1, localhost, [::1], 10.0.0.5, 172.16.1.1, 192.168.1.1, 169.254.169.254, 0.0.0.0, [fc00::1], [fe80::1], [::ffff:127.0.0.1], 100.64.0.1 and the decimal form 2130706433."
+    then: "Each is notCreated with invalidProperties and properties [url], and no connection is attempted."
+    sources:
+      - "legacy-proxy:test/unit/push-target.spec.ts"
+      - "jmap-perl:t/push.t"
+      - "rfc:8620 8.6"
+    notes: "Tests that use a local mock push service need an explicit allowlist setting, which must be off by default."
+  - id: PUSH-084
+    title: "A host name that resolves to a private address is rejected"
+    method: "PushSubscription/set"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "A DNS name that resolves to 10.1.2.3, and one that has both a public and a private A record."
+    when: "Create with an https url on each name."
+    then: "Both are notCreated with invalidProperties and properties [url]."
+    sources:
+      - "legacy-proxy:test/unit/push-target.spec.ts"
+      - "rfc:8620 8.6"
+  - id: PUSH-085
+    title: "The address is checked again at delivery time"
+    method: "WebPush"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription whose host resolved to a public address at creation. The DNS answer then changes to 127.0.0.1."
+    when: "A change is made."
+    then: "No connection to the loopback address is made. The push counts as a failed delivery. The connection goes to the address that was validated, not to a second lookup."
+    sources:
+      - "rfc:8620 8.6"
+      - "legacy-proxy:test/unit/push-target.spec.ts"
+  - id: PUSH-086
+    title: "Redirects from the push service are not followed"
+    method: "WebPush"
+    spec: "RFC 8620 8.6"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "A verified subscription. The mock push service answers 302 (in further runs 301, 307, 308) with a Location on another host and on an internal address."
+    when: "A change is made."
+    then: "No request is made to the Location target. The answer is handled as a failed delivery."
+    sources:
+      - "rfc:8620 8.6"
+  - id: PUSH-087
+    title: "The session advertises a VAPID application server key"
+    method: "Session"
+    spec: "RFC 9749 3"
+    level: may
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "Web Push with VAPID configured."
+    when: "GET the session resource."
+    then: "capabilities has urn:ietf:params:jmap:webpush-vapid with applicationServerKey as the URL safe base64 P-256 public key, and the session state changes when the key is rotated."
+    sources:
+      - "james:WebPushVapidContract#sessionShouldAdvertiseTheApplicationServerKey"
+      - "james:WebPushVapidContract#sessionStateShouldDependOnTheApplicationServerKey"
+      - "stalwart:core/push_subscription.rs"
+    notes: "Decided 2026-11-11: VAPID is included in phase 4, because push services backed by FCM require it. Signing uses node:crypto (ES256)."
+  - id: PUSH-088
+    title: "Push requests are signed with VAPID"
+    method: "WebPush"
+    spec: "RFC 8292 3"
+    level: may
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "Web Push with VAPID configured and a verified subscription."
+    when: "Capture the PushVerification and a StateChange request."
+    then: "Both carry Authorization: vapid with t (a JWT signed with ES256 by the advertised key, aud equal to the origin of the push URL, exp at most 24 hours ahead, sub present) and k (the advertised public key)."
+    sources:
+      - "james:WebPushVapidContract#pushVerificationShouldBeAuthenticated"
+      - "james:WebPushVapidContract#stateChangeShouldBeAuthenticated"
+      - "stalwart:core/push_subscription.rs"
+    notes: "Decided 2026-11-11: VAPID is included in phase 4."

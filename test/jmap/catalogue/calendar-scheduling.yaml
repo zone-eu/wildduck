@@ -1,0 +1,1896 @@
+area: calendar-scheduling
+title: "Calendar scheduling, parse and notifications"
+description: "Scheduling as defined by draft-ietf-jmap-calendars-33: outbound iTIP REQUEST, CANCEL and REPLY over iMIP driven by sendSchedulingMessages, inbound iMIP processing in the delivery path, CalendarEvent/parse of iCalendar blobs, and CalendarEventNotification for auto processed scheduling messages. Held until the draft, JSCalendar bis and the JSCalendar to iCalendar mapping are published; the iCalendar side follows RFC 5545, RFC 5546 and RFC 6047, and the mapping draft was not reviewed, so property level expectations may move."
+scenarios:
+  - id: CSCH-001
+    title: "Send a REQUEST to every other participant when a scheduled event is created"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2 and draft-ietf-jmap-calendars-33 5.9.2.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create an event with owner mailto:alice@example.com and attendees mailto:bob@example.com and mailto:carol@remote.example, with sendSchedulingMessages true. Inspect the outbound queue."
+    then: "The event is created with isOrigin true. Two messages are queued, one to bob@example.com and one to carol@remote.example, none to alice. Each has a text/calendar part with method=REQUEST whose VCALENDAR has METHOD:REQUEST and one VEVENT with the event's UID, SEQUENCE:0, ORGANIZER and all three ATTENDEE lines."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_request"
+      - "cyrus:JMAPCalendars/calendarevent_set_schedulingmessages"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:5546 3.2.2"
+      - "rfc:6047 2.4"
+      - "wildduck:plan 10.2 scheduling"
+
+  - id: CSCH-002
+    title: "Send nothing when sendSchedulingMessages is false or omitted"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create, update and destroy an event with participants, with sendSchedulingMessages omitted and then explicitly false."
+    then: "All changes succeed and the outbound queue stays empty."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedulingmessages"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+
+  - id: CSCH-003
+    title: "Do not send to participants that are the account owner"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create an event with owner mailto:alice@example.com, attendee mailto:al@example.com (her alias) and attendee mailto:bob@example.com, with sendSchedulingMessages true."
+    then: "Exactly one message is queued, to bob@example.com. Neither of Alice's own addresses receives one."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_request"
+      - "cyrus:JMAPCalendars/calendarevent_set_participants_justorga"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+
+  - id: CSCH-004
+    title: "Treat sendSchedulingMessages as a no-op for events without participants"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create, update and destroy an event that has no participants, each with sendSchedulingMessages true."
+    then: "All three succeed, nothing is queued and no noSupportedScheduleMethods error is raised."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+
+  - id: CSCH-005
+    title: "Send no scheduling messages for draft events"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create an event with participants, isDraft true and sendSchedulingMessages true; update its title with sendSchedulingMessages true; then update it with {\"isDraft\": false} and sendSchedulingMessages true."
+    then: "Nothing is queued for the create or the title update. When the draft flag is cleared a REQUEST goes to each attendee."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_isdraft"
+      - "rfc:draft-ietf-jmap-calendars-33 5"
+    notes: "Clearing isDraft is the moment the event is published, so it is treated like a create for scheduling even though isDraft itself is not a property that triggers a REQUEST."
+
+  - id: CSCH-006
+    title: "Build the invitation email as a readable message with a calendar part"
+    method: "CalendarEvent/set"
+    spec: "RFC 6047 2.4"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create a scheduled event titled \"Budget review\" with sendSchedulingMessages true and fetch the queued message for bob."
+    then: "From is the organizer address, To is bob@example.com, Subject mentions the title. The body is multipart with a text/plain (or text/html) summary of title, time and place and a text/calendar; method=REQUEST; charset=utf-8 part. The iCalendar has PRODID, VERSION:2.0, DTSTAMP and, for a zoned event, DTSTART with TZID and a matching VTIMEZONE."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_request"
+      - "cyrus:JMAPCalendars/calendarevent_encode_imip_uri"
+      - "rfc:6047 2.4"
+      - "rfc:5546 3.2.2"
+
+  - id: CSCH-007
+    title: "Choose organizerCalendarAddress from the owner participant's identity, else the default identity"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create event X with owner participant mailto:al@example.com, and event Y whose only owner participant is mailto:someone@elsewhere.example, both with an attendee, no organizerCalendarAddress and sendSchedulingMessages true."
+    then: "X gets organizerCalendarAddress \"mailto:al@example.com\" and its REQUEST has From al@example.com. Y gets \"mailto:alice@example.com\" (the default identity). Both are returned in the created map with isOrigin true."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "stalwart:calendar/event.rs"
+      - "cyrus:JMAPCalendars/calendarevent_set_organizer"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+      - "rfc:draft-ietf-jmap-calendars-33 8.2"
+    notes: "The draft leaves the choice to the server and its example uses a per event address. WildDuck uses the user identities so replies arrive in the same account."
+
+  - id: CSCH-008
+    title: "Keep a client supplied organizer address that belongs to the user and reveal no other identity"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9 and draft-ietf-jmap-calendars-33 9.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create a scheduled event with organizerCalendarAddress \"mailto:al@example.com\", owner participant mailto:al@example.com and attendee bob, with sendSchedulingMessages true."
+    then: "The stored organizerCalendarAddress is unchanged. The queued message has From al@example.com and ORGANIZER mailto:al@example.com; the string alice@example.com appears nowhere in its headers or body."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_organizer"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+      - "rfc:draft-ietf-jmap-calendars-33 9.1"
+
+  - id: CSCH-009
+    title: "Send no REQUEST for an event whose organizer is someone else"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create an event with organizerCalendarAddress \"mailto:unknown@remote.example\", an owner participant with that address and attendee mailto:dave@remote.example (Alice is not a participant), with sendSchedulingMessages true. Then change its title with sendSchedulingMessages true."
+    then: "The event is stored with isOrigin false. No message is queued for either change: the server is not the origin and no participant corresponds to the user."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_organizer_mismatch"
+      - "cyrus:JMAPCalendars/calendarevent_set_same_uid_no_organizer"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-010
+    title: "Match plus tagged addresses to the user's identity"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 3"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create a scheduled event with owner mailto:alice@example.com and attendees mailto:alice+travel@example.com and mailto:bob@example.com, with sendSchedulingMessages true."
+    then: "Only bob receives a REQUEST. The plus tagged participant is treated as Alice herself."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_plusaddr_itip"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_plusaddr"
+      - "rfc:draft-ietf-jmap-calendars-33 3"
+      - "wildduck:lib/tools.js normalizeAddress"
+    notes: "WildDuck delivers plus tagged mail to the base address, so the server would receive that message back in the same account."
+
+  - id: CSCH-011
+    title: "Send an updated REQUEST with the incremented sequence when a shared property changes"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1 and draft-ietf-jmap-calendars-33 5.9"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Update E1 with {\"start\": <one hour later>} and sendSchedulingMessages true."
+    then: "E1 has sequence 1. REQUEST messages go to bob and carol with SEQUENCE:1 and the new DTSTART."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_request"
+      - "cyrus:JMAPCalendars/calendarevent_itip_request_sequence"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+
+  - id: CSCH-012
+    title: "Send nothing when only per user properties or calendarIds change"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1 and draft-ietf-jmap-calendars-33 5.4"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Update E1 in separate calls with {\"color\": \"red\"}, {\"keywords/x\": true}, {\"freeBusyStatus\": \"free\"}, {\"useDefaultAlerts\": true}, a new alert, and a move to another calendar, each with sendSchedulingMessages true."
+    then: "Nothing is queued for any of them and sequence stays 0."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_color_empty_text_no_itip"
+      - "cyrus:JMAPCalendars/calendarevent_set_peruser"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.4"
+
+  - id: CSCH-013
+    title: "Invite an added participant and inform the existing ones"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Update E1 with {\"participants/d\": {attendee, mailto:dave@remote.example}} and sendSchedulingMessages true."
+    then: "REQUEST messages are queued for dave, bob and carol, each listing dave as ATTENDEE."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_request_add_participant"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+
+  - id: CSCH-014
+    title: "Send a CANCEL only to a removed participant and a REQUEST to the rest"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Update E1 with {\"participants/<carol's id>\": null} and sendSchedulingMessages true."
+    then: "carol receives one message with METHOD:CANCEL for E1's UID. bob receives a REQUEST that no longer lists carol. carol receives no REQUEST."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_cancel"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+      - "rfc:5546 3.2.5"
+
+  - id: CSCH-015
+    title: "Send a CANCEL to all participants when the event is destroyed"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Destroy E1 with sendSchedulingMessages true."
+    then: "bob and carol each receive a message with METHOD:CANCEL, E1's UID and a SEQUENCE not lower than the last one sent. Alice receives nothing."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_destroy"
+      - "cyrus:JMAPCalendars/calendarevent_set_destroy_itip"
+      - "cyrus:JMAPCalendars/calendarevent_set_destroy_stored_address"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+    notes: "Stalwart skips attendees who already declined. The draft says all participants; skipping declined attendees falls under the essential updates allowance of 5.9.2 and is not asserted either way."
+
+  - id: CSCH-016
+    title: "Send no scheduling messages when events are removed by onDestroyRemoveEvents"
+    method: "Calendar/set"
+    spec: "draft-ietf-jmap-calendars-33 4.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 is the only event in calendar A."
+    when: "Call Calendar/set with destroy [idA] and onDestroyRemoveEvents true."
+    then: "The calendar and E1 are destroyed and the outbound queue stays empty."
+    sources:
+      - "cyrus:JMAPCalendars/calendar_set_destroy_events"
+      - "rfc:draft-ietf-jmap-calendars-33 4.3"
+
+  - id: CSCH-017
+    title: "Do not reset participation status when the organiser changes event details"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. bob's participationStatus is \"accepted\"."
+    when: "Update E1's start with sendSchedulingMessages true."
+    then: "In Alice's copy bob is still \"accepted\", and the REQUEST sent to bob carries PARTSTAT=ACCEPTED for him."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_itip_preserve_partstat"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+
+  - id: CSCH-018
+    title: "Send a CANCEL for one occurrence when an exclusion is added"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 recurs weekly."
+    when: "Update E1 with {\"recurrenceOverrides/2026-01-12T09:00:00\": {\"excluded\": true}} and sendSchedulingMessages true (or destroy the synthetic instance id)."
+    then: "bob and carol each receive a CANCEL whose VEVENT has RECURRENCE-ID for 2026-01-12T09:00:00. No REQUEST for the whole series is sent for this change."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_cancel"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+
+  - id: CSCH-019
+    title: "Send a CANCEL when an added instance is removed"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 recurs weekly and has an extra instance override {\"2026-01-21T15:00:00\": {}}."
+    when: "Update E1 with {\"recurrenceOverrides/2026-01-21T15:00:00\": null} and sendSchedulingMessages true."
+    then: "bob and carol each receive a CANCEL with RECURRENCE-ID 2026-01-21T15:00:00."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+
+  - id: CSCH-020
+    title: "Announce an added instance with a REQUEST for the series, not an ADD"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 recurs weekly."
+    when: "Update E1 with {\"recurrenceOverrides/2026-01-21T15:00:00\": {}} and sendSchedulingMessages true."
+    then: "bob and carol receive METHOD:REQUEST messages that include the extra date (as RDATE or as an extra VEVENT). No message with METHOD:ADD is sent."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:5546 3.2.4"
+
+  - id: CSCH-021
+    title: "Send a participant who is invited to single occurrences only those occurrences"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 recurs weekly. dave is not a participant of the series."
+    when: "Update E1 with {\"recurrenceOverrides/2026-01-12T09:00:00\": {\"participants/d\": {attendee, mailto:dave@remote.example}}} and sendSchedulingMessages true."
+    then: "dave's message contains a single VEVENT with RECURRENCE-ID 2026-01-12T09:00:00 and no RRULE; nothing in it reveals the other occurrences. bob and carol receive the series with the override."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_participants_recur"
+      - "cyrus:JMAPCalendars/email_get_calendarevents_standalone_instances"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+
+  - id: CSCH-022
+    title: "Mark occurrences a participant was removed from as excluded in that participant's message"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 recurs weekly with an extra instance on 2026-01-21T15:00:00."
+    when: "Update E1 so that overrides for 2026-01-12T09:00:00 (rule generated) and 2026-01-21T15:00:00 (added) both contain \"participants/<bob's id>\": null, with sendSchedulingMessages true."
+    then: "bob's message has the series with EXDATE 2026-01-12T09:00:00 and does not mention 2026-01-21T15:00:00 at all. carol's message contains both occurrences."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+
+  - id: CSCH-023
+    title: "Hide other attendees in each recipient's message when hideAttendees is true"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1 and draft-ietf-jmap-calendars-33 5.1.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create an event with hideAttendees true, owner alice and attendees bob, carol and dave, with sendSchedulingMessages true."
+    then: "Three messages are queued. bob's lists ORGANIZER alice and ATTENDEE bob only (plus the owner if she is an attendee); carol's lists only carol; dave's only dave. No message's To or Cc header names another attendee."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_hideattendees_alternate_representations"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.1.3"
+
+  - id: CSCH-024
+    title: "Reject the change with noSupportedScheduleMethods when a recipient cannot be reached by email"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9 and draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create an event with owner alice and attendees mailto:bob@example.com, \"tel:+3725550100\" and a participant without calendarAddress, with sendSchedulingMessages true. Repeat with sendSchedulingMessages false."
+    then: "The first create is in notCreated with type noSupportedScheduleMethods; no event is stored and nothing is queued, not even for bob. The second create succeeds."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 10.8.2"
+    notes: "iMIP is the only transport, so every recipient needs a syntactically valid mailto address."
+
+  - id: CSCH-025
+    title: "Reject an RSVP with noSupportedScheduleMethods when the organizer address is not a mailto URI"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob holds an invitation whose organizerCalendarAddress is \"https://cal.remote.example/itip/123\"."
+    when: "Update his participant to participationStatus \"accepted\" with sendSchedulingMessages true, then with false."
+    then: "The first update is in notUpdated with type noSupportedScheduleMethods and the status is unchanged. The second succeeds."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "cyrus:JMAPCalendars/calendarevent_get_organizer_bogusuri"
+
+  - id: CSCH-026
+    title: "Inline blob attachments as data URLs in outgoing invitations"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. A 2 kB PDF was uploaded as blob B1."
+    when: "Create a scheduled event with an enclosure link {\"blobId\": B1, \"contentType\": \"application/pdf\"} and sendSchedulingMessages true."
+    then: "The VEVENT sent to bob contains an ATTACH whose value is the PDF as inline base64 data (a data: URL or ENCODING=BASE64 binary), not a URL that needs Alice's credentials and not the blob id."
+    sources:
+      - "cyrus:JMAPCalendars/rewrite_webdav_attachment_binary_itip_caldav"
+      - "cyrus:JMAPCalendars/rewrite_webdav_attachment_url_itip_caldav"
+      - "cyrus:JMAPCalendars/calendarevent_set_attachbinary_datauri"
+      - "rfc:draft-ietf-jmap-calendars-33 5.3"
+    notes: "Links with an ordinary href are sent as they are. A size cap for inlined attachments is needed; above it the change should fail with tooLarge rather than send a broken invitation."
+
+  - id: CSCH-027
+    title: "Leave per user properties out of outgoing scheduling messages"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.4 and draft-ietf-jmap-calendars-33 9.4"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create a scheduled event with alerts {\"a1\": ...}, keywords {\"private-tag\": true}, color \"red\" and useDefaultAlerts false, with sendSchedulingMessages true."
+    then: "The VEVENT sent to bob has no VALARM, no CATEGORIES from the keywords and no COLOR."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.4"
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+
+  - id: CSCH-028
+    title: "Send full details to participants regardless of privacy"
+    method: "CalendarEvent/set"
+    spec: "RFC 8984 4.4.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar."
+    when: "Create a scheduled event with privacy \"private\", a title, description and location, with sendSchedulingMessages true."
+    then: "bob's REQUEST contains SUMMARY, DESCRIPTION and LOCATION."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_preserve_class"
+      - "rfc:8984 4.4.3"
+
+  - id: CSCH-029
+    title: "Count scheduling messages against the user's outbound recipient limits"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 9.4"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. Her daily recipient limit is 5 and she has used 4."
+    when: "Create a scheduled event with three external attendees and sendSchedulingMessages true."
+    then: "The create is rejected (SetError type rateLimit), nothing is stored and nothing is queued. With sendSchedulingMessages false it succeeds."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+      - "wildduck:brief Submission"
+      - "wildduck:plan 10.2 scheduling"
+    notes: "Open question: RFC 8620 defines rateLimit for create only. For an update or destroy that cannot notify, the same type is assumed. The limit is the existing wdr counter shared with mail submission."
+
+  - id: CSCH-030
+    title: "Refuse scheduling for users who may not send mail"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 9.4"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice's account is suspended for sending through the REST API (or the jmap scope lacks submission rights)."
+    when: "Create a scheduled event with sendSchedulingMessages true."
+    then: "The create is rejected with a forbidden SetError and nothing is queued."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+      - "wildduck:brief Submission"
+
+  - id: CSCH-031
+    title: "Send a REPLY to the organizer when the user's participation status changes"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob (bob@example.com) holds event V1, an invitation organised by mailto:carol@remote.example (isOrigin false) in which his participant b has participationStatus \"needs-action\"."
+    when: "Update V1 with {\"participants/b/participationStatus\": \"accepted\"} and sendSchedulingMessages true."
+    then: "One message is queued, to carol@remote.example, From bob@example.com, with METHOD:REPLY, V1's UID and SEQUENCE, and a single ATTENDEE line for bob with PARTSTAT=ACCEPTED. V1's sequence is unchanged."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_reply"
+      - "cyrus:JMAPCalendars/calendarevent_set_reply_partstat_changed"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_simple"
+      - "cyrus:JMAPCalendars/calendarevent_itip_reply_sequence"
+      - "stalwart:calendar/notification.rs"
+      - "tmail:LinagoraCalendarEventAcceptMethodContract"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+      - "rfc:5546 3.2.3"
+
+  - id: CSCH-032
+    title: "Send REPLY messages for tentative and declined as well"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob (bob@example.com) holds event V1, an invitation organised by mailto:carol@remote.example (isOrigin false) in which his participant b has participationStatus \"needs-action\"."
+    when: "Update the status to \"tentative\" and later to \"declined\", each with sendSchedulingMessages true."
+    then: "Two REPLY messages are queued, with PARTSTAT=TENTATIVE and PARTSTAT=DECLINED."
+    sources:
+      - "tmail:LinagoraCalendarEventMaybeMethodContract"
+      - "tmail:LinagoraCalendarEventRejectMethodContract"
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_reply"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-033
+    title: "Send no REPLY for changes other than a participation status change away from needs-action"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob (bob@example.com) holds event V1, an invitation organised by mailto:carol@remote.example (isOrigin false) in which his participant b has participationStatus \"needs-action\". Later his status is \"accepted\"."
+    when: "With sendSchedulingMessages true: update V1's title; update Bob's keywords; set his status from \"accepted\" back to \"needs-action\"; change another participant's status."
+    then: "Nothing is queued for any of the four updates."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_reply_partstat_changed"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-034
+    title: "Send a REPLY when an invitation is created already answered, and none when it is created unanswered"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob has no event with uid inv-1."
+    when: "Create an event with organizerCalendarAddress \"mailto:carol@remote.example\" and Bob's participant at \"accepted\", with sendSchedulingMessages true. Separately create another invitation with his participant at \"needs-action\" and an excluded override."
+    then: "The first create queues one REPLY with PARTSTAT=ACCEPTED to carol. The second queues nothing."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_create_no_reply_exdate"
+      - "cyrus:JMAPCalendars/calendarevent_set_standalone_itip"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-035
+    title: "Send a declining REPLY when an answered invitation is destroyed, and none when it was unanswered"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob holds invitation V1 with status \"accepted\" and invitation V2 with status \"needs-action\"."
+    when: "Destroy V1 and V2 with sendSchedulingMessages true."
+    then: "One REPLY with PARTSTAT=DECLINED is queued for V1's organizer. Nothing is queued for V2."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_omit"
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_reply"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-036
+    title: "Reply for a single occurrence when the status is changed in a recurrence override"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob (bob@example.com) holds event V1, an invitation organised by mailto:carol@remote.example (isOrigin false) in which his participant b has participationStatus \"needs-action\". V1 recurs weekly."
+    when: "Update V1 with {\"recurrenceOverrides/2026-01-12T09:00:00/participants~1b~1participationStatus\": \"declined\"} and sendSchedulingMessages true."
+    then: "The REPLY has one VEVENT with RECURRENCE-ID 2026-01-12T09:00:00 and PARTSTAT=DECLINED; it does not restate the whole series."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_reply_partstat_changed"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_patch"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-037
+    title: "Reply only for the standalone instance whose status changed"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob holds two standalone instances of uid series-9 (invited to two occurrences only), both \"needs-action\"."
+    when: "Update the first instance's participant to \"accepted\" with sendSchedulingMessages true."
+    then: "One REPLY is queued with RECURRENCE-ID of the first instance. Nothing is sent for the second."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_standalone_itip"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_standalone"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-038
+    title: "Reply once per participant that corresponds to the user, each from its own identity"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3 and draft-ietf-jmap-calendars-33 9.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Alice holds an external invitation in which both mailto:alice@example.com (id p1) and mailto:al@example.com (id p2) are attendees."
+    when: "Update p1 to \"accepted\" with sendSchedulingMessages true; then update p2 to \"declined\"."
+    then: "The first update queues one REPLY from alice@example.com that does not mention al@example.com as the sender. The second queues one REPLY from al@example.com."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+      - "rfc:draft-ietf-jmap-calendars-33 9.1"
+
+  - id: CSCH-039
+    title: "Address the REPLY to organizerCalendarAddress, not to the owner participants"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, db]
+    given: "Bob holds an invitation with organizerCalendarAddress \"mailto:itip-4711@itip.remote.example\" and an owner participant mailto:carol@remote.example."
+    when: "Accept with sendSchedulingMessages true."
+    then: "The REPLY is queued for itip-4711@itip.remote.example only."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_organizermailto"
+      - "cyrus:JMAPCalendars/itip_rsvp_organizer_change"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 8.2"
+
+  - id: CSCH-040
+    title: "Record scheduleSequence and scheduleUpdated when the client applies a reply itself"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. A client read bob's REPLY from the mailbox (SEQUENCE 0, DTSTAMP 2026-01-03T10:00:00Z)."
+    when: "Update E1 with {\"participants/<bob>/participationStatus\": \"accepted\", \"participants/<bob>/scheduleSequence\": 0, \"participants/<bob>/scheduleUpdated\": \"2026-01-03T10:00:00Z\"}."
+    then: "All three values are stored, E1's sequence is not incremented by a change that touches only these participant properties plus expectReply, and no REQUEST is sent to others even with sendSchedulingMessages true."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_rsvpsequence"
+      - "cyrus:JMAPCalendars/email_get_calendarevents_itip_schedprops"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2.2"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+    notes: "Not re-notifying everyone about one attendee's status is the essential updates allowance of 5.9.2. Strictly, participants is not a per user property, so the sequence rule of 5.9 would increment; Cyrus does not, and incrementing would invalidate other attendees' replies. Flagged as an ambiguity in the draft."
+
+  - id: CSCH-041
+    title: "Add an inbound invitation to the default calendar as an unanswered event"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 7 and draft-ietf-jmap-calendars-33 9.4"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has JMAP calendars in use. CalendarEvent state S1."
+    when: "Deliver an iMIP message from carol@remote.example to bob@example.com with a text/calendar; method=REQUEST part: UID inv-1, SEQUENCE 0, ORGANIZER mailto:carol@remote.example, ATTENDEE mailto:bob@example.com with PARTSTAT=NEEDS-ACTION and RSVP=TRUE, with DTSTART;TZID=Europe/Berlin:20260310T120000 and DURATION:PT1H."
+    then: "CalendarEvent/changes since S1 lists one created event. It is in Bob's default calendar with uid \"inv-1\", start \"2026-03-10T12:00:00\", timeZone \"Europe/Berlin\", organizerCalendarAddress \"mailto:carol@remote.example\", isOrigin false, isDraft false, and Bob's participant at participationStatus \"needs-action\" with expectReply true. The message is also in his INBOX."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "cyrus:JMAPCalendars/itip_request_with_transp"
+      - "cyrus:JMAPCalendars/email_get_calendarevents"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+      - "wildduck:plan 10.2 scheduling"
+    notes: "Auto processing is an implementation policy in the draft. WildDuck adds invitations unanswered and never replies on the user's behalf."
+
+  - id: CSCH-042
+    title: "Keep the organizer's updated, sequence and created values on an invitation"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 5.9"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no event inv-1."
+    when: "Deliver the REQUEST with SEQUENCE:3, DTSTAMP:20260301T080000Z, LAST-MODIFIED:20260301T075900Z and CREATED:20260201T000000Z."
+    then: "The stored event has sequence 3 and updated and created taken from the message, not the delivery time."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_updated_scheduled_not_source"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+
+  - id: CSCH-043
+    title: "Detect the scheduling method in any text/calendar part of the message"
+    method: "CalendarEvent/get"
+    spec: "RFC 6047 2.4"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no matching events."
+    when: "Deliver four invitations with different uids: the calendar part as the only body; inside multipart/alternative after text/plain and text/html; base64 encoded; and with the method only in the METHOD property (no method parameter on Content-Type)."
+    then: "All four create an event."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents"
+      - "cyrus:JMAPCalendars/email_get_calendarevents_icsfile"
+      - "cyrus:JMAPCalendars/email_get_calendarevents_extended_filename"
+      - "tmail:LinagoraCalendarEventParseMethodContract"
+      - "rfc:6047 2.4"
+      - "wildduck:plan 10.2 scheduling"
+    notes: "RFC 6047 requires the method parameter, but real senders omit it. A Content-Type method that disagrees with the METHOD property makes the message invalid and it is not processed."
+
+  - id: CSCH-044
+    title: "Do not auto process calendar data without a scheduling method or with PUBLISH"
+    method: "CalendarEvent/changes"
+    spec: "RFC 5546 3.2"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "CalendarEvent state S1."
+    when: "Deliver a message with an .ics attachment that has no METHOD, and one with METHOD:PUBLISH."
+    then: "Both messages are delivered as mail. CalendarEvent/changes since S1 reports nothing. The attachments can still be read with CalendarEvent/parse."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents_icsfile"
+      - "rfc:5546 3.2"
+
+  - id: CSCH-045
+    title: "Leave COUNTER, DECLINECOUNTER, REFRESH and ADD messages to the client"
+    method: "CalendarEvent/changes"
+    spec: "RFC 5546 3.2"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. CalendarEvent state S1."
+    when: "Deliver messages for E1's UID with METHOD:COUNTER, METHOD:REFRESH and METHOD:ADD."
+    then: "E1 is unchanged, no notification is created, and the messages are in the INBOX."
+    sources:
+      - "tmail:CalendarEventCounterAcceptMethodContract"
+      - "rfc:5546 3.2"
+
+  - id: CSCH-046
+    title: "Ignore an invitation that does not list the recipient as an attendee"
+    method: "CalendarEvent/changes"
+    spec: "draft-ietf-jmap-calendars-33 9.2"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no matching events; CalendarEvent state S1."
+    when: "Deliver a REQUEST to bob@example.com whose only ATTENDEE is mailto:erin@remote.example (a forwarded invitation)."
+    then: "No event is created; the message is delivered as mail."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_attendee_noorganizer"
+      - "rfc:draft-ietf-jmap-calendars-33 9.2"
+
+  - id: CSCH-047
+    title: "Match the invited address against all of the recipient's identities"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 3"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice owns alice@example.com and al@example.com."
+    when: "Deliver a REQUEST whose ATTENDEE is MAILTO:AL@Example.COM."
+    then: "An event is created in Alice's default calendar; the participant with calendarAddress for al@example.com is the one treated as hers (reduceParticipants returns it)."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_plusaddr"
+      - "rfc:draft-ietf-jmap-calendars-33 3"
+
+  - id: CSCH-048
+    title: "Strip alerts from inbound invitations and apply the user's defaults"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 9.4"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob's default calendar has defaultAlertsWithTime {\"dt\": offset \"-PT10M\"}."
+    when: "Deliver a REQUEST whose VEVENT contains two VALARM components."
+    then: "The created event has useDefaultAlerts true and no alerts of its own. Only Bob's default alert fires."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_defaultalerts_imip"
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+
+  - id: CSCH-049
+    title: "Skip invitations in messages scored as junk"
+    method: "CalendarEvent/changes"
+    spec: "draft-ietf-jmap-calendars-33 9.4"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "CalendarEvent state S1."
+    when: "Deliver a REQUEST that the inbound pipeline marks as spam (it is filed into Junk)."
+    then: "The message is in Junk. No event and no CalendarEventNotification is created. Moving the message to the INBOX later does not add the event either."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+      - "wildduck:plan 10.2 scheduling"
+    notes: "The client can still add the event with CalendarEvent/parse and CalendarEvent/set once the user trusts the message."
+
+  - id: CSCH-050
+    title: "Require the sender of an update or cancellation to match the stored organizer"
+    method: "CalendarEvent/changes"
+    spec: "draft-ietf-jmap-calendars-33 9.2"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds invitation inv-1 organised by mailto:carol@remote.example."
+    when: "Deliver a REQUEST with a higher SEQUENCE and a CANCEL for UID inv-1 whose ORGANIZER is mailto:mallory@evil.example; then a CANCEL with ORGANIZER carol but an envelope sender and From at evil.example that fails DMARC."
+    then: "inv-1 is unchanged after all three messages and no notification is created."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_organizer_address_claimed"
+      - "cyrus:JMAPCalendars/itip_rsvp_organizer_change"
+      - "rfc:draft-ietf-jmap-calendars-33 9.2"
+
+  - id: CSCH-051
+    title: "Never let an inbound message replace or cancel an event the user created"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice has her own unscheduled event with uid \"known-uid\" (no participants, isOrigin true), and a scheduled event she organises with uid \"org-uid\"."
+    when: "Deliver from an outside sender a REQUEST and then a CANCEL for UID known-uid naming Alice as attendee, and the same pair for UID org-uid."
+    then: "Both events are unchanged and still exist. No second event with either uid is created."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_same_uid_no_organizer"
+      - "rfc:draft-ietf-jmap-calendars-33 9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 1.4.1"
+
+  - id: CSCH-052
+    title: "Apply an update with a higher sequence and ignore stale ones"
+    method: "CalendarEvent/get"
+    spec: "RFC 5546 2.1.5"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds inv-1 at sequence 2 with updated 2026-03-01T08:00:00Z."
+    when: "Deliver REQUESTs for inv-1 in this order: SEQUENCE 3 with a new start; SEQUENCE 1 with another start; SEQUENCE 3 with an older DTSTAMP and another title; SEQUENCE 3 with a newer DTSTAMP and title \"Final\"."
+    then: "After the first the start is updated and sequence is 3. The second and third change nothing. After the fourth the title is \"Final\"."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_itip_request_sequence"
+      - "rfc:5546 2.1.5"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2"
+
+  - id: CSCH-053
+    title: "Keep the user's per user properties, calendar and privacy when an update arrives"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 5.4 and draft-ietf-jmap-calendars-33 5.9"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob moved inv-1 to calendar B, set keywords {\"client\": true}, color \"green\", privacy \"private\", useDefaultAlerts false and his own alert \"mine\"."
+    when: "Deliver a REQUEST for inv-1 with a higher SEQUENCE, a new title, CLASS:PUBLIC and a VALARM."
+    then: "The title is updated. calendarIds, keywords, color, privacy \"private\", useDefaultAlerts false and the alert \"mine\" are unchanged; the organiser's VALARM is not added."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_defaultalerts_imip"
+      - "cyrus:JMAPCalendars/itip_remove_privacy_property"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+      - "rfc:draft-ietf-jmap-calendars-33 5.4"
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+
+  - id: CSCH-054
+    title: "Ignore the organiser's privacy classification on a new invitation"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 5.9 and RFC 8984 4.4.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no event inv-1."
+    when: "Deliver a REQUEST with CLASS:PRIVATE."
+    then: "The created event has privacy \"public\" (or no privacy property). Bob can then set privacy \"secret\" himself and accept; the REPLY carries no CLASS."
+    sources:
+      - "cyrus:JMAPCalendars/itip_remove_privacy_property"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+      - "rfc:8984 4.4.3"
+
+  - id: CSCH-055
+    title: "Reset the recipient's answer when a rescheduling update says so, keep it otherwise"
+    method: "CalendarEvent/get"
+    spec: "RFC 5546 3.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob accepted inv-1."
+    when: "Deliver an update with a new DTSTART whose ATTENDEE line for Bob has PARTSTAT=NEEDS-ACTION; in a second run deliver one that keeps PARTSTAT=ACCEPTED and changes only the description."
+    then: "After the first Bob's participationStatus is \"needs-action\". After the second it stays \"accepted\"."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_itip_preserve_partstat"
+      - "rfc:5546 3.2.2"
+
+  - id: CSCH-056
+    title: "Remove the event when the organiser cancels it"
+    method: "CalendarEvent/changes"
+    spec: "RFC 5546 3.2.5"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds inv-1 (accepted); CalendarEvent state S1."
+    when: "Deliver a CANCEL for inv-1 from the organiser with a SEQUENCE not lower than the stored one."
+    then: "CalendarEvent/changes since S1 lists the event in destroyed. No REPLY is sent. The cancellation mail is in the INBOX."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:5546 3.2.5"
+    notes: "Open question: the alternative is to keep the event with status \"cancelled\". Cyrus deletes (processimip :deletecanceled) and reports a destroyed notification, which is what CEN asserts."
+
+  - id: CSCH-057
+    title: "Exclude a single occurrence when the organiser cancels one instance"
+    method: "CalendarEvent/get"
+    spec: "RFC 5546 3.2.5"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds recurring invitation inv-1."
+    when: "Deliver a CANCEL with RECURRENCE-ID for the 2026-01-12T09:00:00 occurrence."
+    then: "inv-1 keeps its id and has recurrenceOverrides {\"2026-01-12T09:00:00\": {\"excluded\": true}}; the other occurrences remain."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_changes_add_override_keep_main_unchanged"
+      - "rfc:5546 3.2.5"
+
+  - id: CSCH-058
+    title: "Store an invitation to single occurrences as standalone instances"
+    method: "CalendarEvent/changes"
+    spec: "draft-ietf-jmap-calendars-33 5.5 and draft-ietf-jmap-calendars-33 1.4.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no event with uid series-9; state S1."
+    when: "Deliver a REQUEST containing only a VEVENT with RECURRENCE-ID 20260112T090000 (no master VEVENT), then another for RECURRENCE-ID 20260119T090000."
+    then: "Two events are created with the same uid, recurrenceId \"2026-01-12T09:00:00\" and \"2026-01-19T09:00:00\", a recurrenceIdTimeZone, and no recurrenceRule."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents_standalone_instances"
+      - "cyrus:JMAPCalendars/calendarevent_query_get_standalone_added_later"
+      - "rfc:draft-ietf-jmap-calendars-33 5.5"
+      - "rfc:draft-ietf-jmap-calendars-33 1.4.1"
+
+  - id: CSCH-059
+    title: "Replace standalone instances with the base event when the user is later invited to the series"
+    method: "CalendarEvent/changes"
+    spec: "draft-ietf-jmap-calendars-33 5.5"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds standalone instances I1 and I2 of uid series-9, with his own keyword on I1; state S1."
+    when: "Deliver a REQUEST for uid series-9 with the master VEVENT (RRULE) and Bob as attendee."
+    then: "CalendarEvent/changes since S1 lists I1 and I2 in destroyed and one new id in created; the new event has the recurrenceRule and no recurrenceId."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_standalone_instances_to_main"
+      - "rfc:draft-ietf-jmap-calendars-33 5.5"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+
+  - id: CSCH-060
+    title: "Add an inbound single instance change as an override on the existing series"
+    method: "CalendarEvent/changes"
+    spec: "RFC 5546 3.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds recurring invitation inv-1 (id V1); state S1."
+    when: "Deliver a REQUEST for uid inv-1 containing only a VEVENT with RECURRENCE-ID 20260112T090000 and a different start time."
+    then: "CalendarEvent/changes since S1 lists V1 in updated and nothing in created. V1 has an override for 2026-01-12T09:00:00 with the new start."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_changes_add_override_keep_main_unchanged"
+      - "rfc:5546 3.2.2"
+
+  - id: CSCH-061
+    title: "Apply an inbound REPLY to the organiser's event"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 5.2 and draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Deliver a REPLY from carol@remote.example for E1's UID with SEQUENCE:0, DTSTAMP:20260103T100000Z and ATTENDEE carol PARTSTAT=ACCEPTED."
+    then: "In E1 carol has participationStatus \"accepted\", scheduleSequence 0 and scheduleUpdated \"2026-01-03T10:00:00Z\". E1's sequence is still 0, bob is unchanged, and nothing is queued for bob."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_itip_reply_sequence"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_localorg"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2.2"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+
+  - id: CSCH-062
+    title: "Discard replies that arrive out of order"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 5.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 is at sequence 2; carol's participant has scheduleSequence 2 and scheduleUpdated 2026-01-05T10:00:00Z with status \"declined\"."
+    when: "Deliver REPLYs from carol with: SEQUENCE 1 and PARTSTAT=ACCEPTED; SEQUENCE 2, DTSTAMP 2026-01-04T10:00:00Z and PARTSTAT=TENTATIVE; SEQUENCE 2, DTSTAMP 2026-01-06T10:00:00Z and PARTSTAT=ACCEPTED."
+    then: "The first two change nothing. The third sets \"accepted\" and scheduleUpdated \"2026-01-06T10:00:00Z\"."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_crossuser_concurrent"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.2.2"
+
+  - id: CSCH-063
+    title: "Ignore a REPLY from someone who is not a participant or whose sender does not match the attendee"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 9.2"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example."
+    when: "Deliver a REPLY for E1 with ATTENDEE mailto:stranger@remote.example; then a REPLY with ATTENDEE carol sent From mallory@evil.example."
+    then: "E1 has no new participant and carol's status is unchanged."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_reply_rsvp_attendee"
+      - "rfc:draft-ietf-jmap-calendars-33 9.2"
+    notes: "Adding uninvited repliers (party crashers) is allowed by iTIP but is a spam vector. mayInviteSelf true on the event is the only case where an unknown replier may be added."
+
+  - id: CSCH-064
+    title: "Apply a REPLY for one occurrence as an override"
+    method: "CalendarEvent/get"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice (alice@example.com, alias al@example.com) has a default calendar. She organises event E1 (sequence 0) with herself as owner (mailto:alice@example.com) and attendees mailto:bob@example.com (a local user) and mailto:carol@remote.example. E1 recurs weekly."
+    when: "Deliver a REPLY from carol with RECURRENCE-ID 20260112T090000 and PARTSTAT=DECLINED."
+    then: "E1 has an override for 2026-01-12T09:00:00 that sets carol's participationStatus to \"declined\"; her status on the base event is unchanged."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_patch"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.1"
+
+  - id: CSCH-065
+    title: "Create the default calendar when the first invitation arrives for a user without calendars"
+    method: "Calendar/get"
+    spec: "draft-ietf-jmap-calendars-33 4"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "A user who has never called a calendar method."
+    when: "Deliver a valid REQUEST for the user, then call Calendar/get and CalendarEvent/query."
+    then: "One default calendar exists and contains the invitation."
+    sources:
+      - "wildduck:plan 10.2 Calendar"
+      - "wildduck:plan 10.2 scheduling"
+    notes: "Open question: alternatively auto processing could be limited to users who have used calendars, to avoid creating storage for every mail only user that receives an invitation."
+
+  - id: CSCH-066
+    title: "Process a redelivered scheduling message only once"
+    method: "CalendarEvent/query"
+    spec: "draft-ietf-jmap-calendars-33 9.4"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no event inv-1."
+    when: "Deliver the same REQUEST twice (same Message-ID, same content)."
+    then: "One event with uid inv-1 exists and one CalendarEventNotification of type created; the second delivery changes nothing."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents_deduplicate"
+      - "rfc:5546 2.1.5"
+
+  - id: CSCH-067
+    title: "Never fail mail delivery because of calendar processing"
+    method: "CalendarEvent/changes"
+    spec: "draft-ietf-jmap-calendars-33 9.4"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob's mailbox accepts mail."
+    when: "Deliver messages whose calendar part is truncated, has an unknown TZID without VTIMEZONE, a DTSTART beyond maxDateTime, or 5000 ATTENDEE lines."
+    then: "Every message is accepted and stored in the INBOX. No event is created for the unusable ones and nothing is bounced."
+    sources:
+      - "cyrus:JMAPCalendars/itip_ignore_invalid_timezone"
+      - "cyrus:JMAPCalendars/calendarevent_parse_repair_broken_ical"
+      - "rfc:draft-ietf-jmap-calendars-33 9.3"
+      - "rfc:draft-ietf-jmap-calendars-33 1.5.1"
+
+  - id: CSCH-068
+    title: "Deliver an invitation from one local user to another"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "Alice and Bob are users on the same server; both have default calendars."
+    when: "Alice creates a scheduled event with attendee mailto:bob@example.com and sendSchedulingMessages true; let the outbound queue deliver."
+    then: "Bob's INBOX holds the invitation mail and his default calendar holds an event with the same uid, isOrigin false, organizerCalendarAddress Alice's address and his participationStatus \"needs-action\". The ids of the two events differ."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "cyrus:JMAPCalendars/calendarevent_set_itip_preserve_partstat"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_localorg"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2"
+      - "rfc:draft-ietf-jmap-calendars-33 1.4.1"
+
+  - id: CSCH-069
+    title: "Carry an acceptance back to the organiser"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "The state after the previous scenario."
+    when: "Bob updates his participant to \"accepted\" with sendSchedulingMessages true; let the queue deliver."
+    then: "Alice's event shows bob with participationStatus \"accepted\" and scheduleSequence equal to the event sequence. Her event's sequence is unchanged, isOrigin stays true for her and false for Bob, and Bob has not become organiser in either copy."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_simple"
+      - "cyrus:JMAPCalendars/calendarevent_participantreply_localorg"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-070
+    title: "Propagate a reschedule and a later decline"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "Alice organises an event Bob accepted."
+    when: "Alice moves the start with sendSchedulingMessages true and the queue delivers; then Bob sets \"declined\" with sendSchedulingMessages true and the queue delivers."
+    then: "Bob's copy has the new start and sequence. After his decline Alice's copy shows bob \"declined\"."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "cyrus:JMAPCalendars/calendarevent_set_itip_preserve_partstat"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.3"
+
+  - id: CSCH-071
+    title: "Propagate a cancellation"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "Alice organises an event with local attendees Bob (accepted) and Jane (declined)."
+    when: "Alice destroys the event with sendSchedulingMessages true; let the queue deliver."
+    then: "Bob's copy is destroyed (reported by CalendarEvent/changes). Jane's copy is destroyed too if she still had one."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_destroy"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+
+  - id: CSCH-072
+    title: "Remove the event from an uninvited attendee's calendar only"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.9.2.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "Alice organises an event with local attendees Bob and Jane, both delivered."
+    when: "Alice removes Jane's participant with sendSchedulingMessages true; let the queue deliver."
+    then: "Jane's copy is destroyed. Bob's copy remains and no longer lists Jane."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_cancel"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9.2.2"
+
+  - id: CPAR-001
+    title: "Advertise calendars:parse as an empty object in both capability maps"
+    method: "Session"
+    spec: "draft-ietf-jmap-calendars-33 1.5.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [none]
+    given: "Phase 7 server."
+    when: "GET the session resource."
+    then: "capabilities and the account's accountCapabilities both contain urn:ietf:params:jmap:calendars:parse with value {}. Calling CalendarEvent/parse without that URI in using answers unknownMethod."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_singlecommand"
+      - "tmail:CalendarEventSupportCapabilityContract"
+      - "stalwart:principal/get.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 1.5.3"
+
+  - id: CPAR-002
+    title: "Parse an uploaded iCalendar file into CalendarEvent objects"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "An uploaded blob B1 containing a VCALENDAR with one VEVENT: UID u1, SUMMARY \"jmap session\", DTSTART;TZID=Australia/Brisbane:20240319T130000, DURATION:PT2H, LOCATION, DESCRIPTION, STATUS:CONFIRMED, SEQUENCE:2, LAST-MODIFIED, PRODID."
+    when: "Call CalendarEvent/parse with blobIds [B1]."
+    then: "parsed[B1] is an array with one object: \"@type\" \"Event\", uid \"u1\", title \"jmap session\", start \"2024-03-19T13:00:00\", timeZone \"Australia/Brisbane\", duration \"PT2H\", sequence 2, updated, prodId, status \"confirmed\", description and one location with the name. notFound and notParsable are null."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_singlecommand"
+      - "stalwart:calendar/event.rs"
+      - "tmail:LinagoraCalendarEventParseMethodContract"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+      - "rfc:draft-ietf-jmap-calendars-33 8.5"
+
+  - id: CPAR-003
+    title: "Set the method property from the iCalendar METHOD"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Blobs with METHOD:REQUEST, METHOD:PUBLISH, METHOD:CANCEL and one without METHOD."
+    when: "Call CalendarEvent/parse for all four."
+    then: "The parsed events have method \"request\", \"publish\" and \"cancel\" (lowercase) on every event of the respective file. The events from the file without METHOD have no method property."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_singlecommand"
+      - "cyrus:JMAPCalendars/email_get_calendarevents"
+      - "tmail:LinagoraCalendarEventParseMethodContract"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+      - "rfc:draft-ietf-jmap-calendars-33 5"
+      - "rfc:draft-ietf-jmap-calendars-33 8.5"
+
+  - id: CPAR-004
+    title: "Return null for the JMAP metadata properties when requested"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Blob B1 with one VEVENT."
+    when: "Call CalendarEvent/parse with blobIds [B1] and properties [\"id\", \"baseEventId\", \"calendarIds\", \"isDraft\", \"isOrigin\", \"uid\"]."
+    then: "The parsed object has uid set and id, baseEventId, calendarIds, isDraft and isOrigin all null."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_singlecommand"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-005
+    title: "Limit the returned properties with the properties argument"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Blob B1 with one VEVENT."
+    when: "Call CalendarEvent/parse with properties [\"title\", \"start\"]; then with properties null."
+    then: "The first returns objects with only title and start. The second returns all properties the file defines."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-006
+    title: "Report unknown blobs in notFound and non calendar blobs in notParsable"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "B1 is a valid iCalendar blob, B2 is an uploaded JPEG, B3 is an uploaded text file \"hello\"."
+    when: "Call CalendarEvent/parse with blobIds [B1, B2, B3, \"Bmissing\"]."
+    then: "parsed has only B1, notParsable is [B2, B3] (any order) and notFound is [\"Bmissing\"]. A call with only \"Bmissing\" returns parsed null and notParsable null."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_repair_broken_ical"
+      - "tmail:LinagoraCalendarEventParseMethodContract"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+      - "rfc:draft-ietf-jmap-calendars-33 8.5"
+
+  - id: CPAR-007
+    title: "Return every event of a file with several VEVENTs"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with three VEVENTs with three different UIDs."
+    when: "Call CalendarEvent/parse."
+    then: "parsed[blob] has three objects with the three uids."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_multi_icalobj"
+      - "tmail:LinagoraCalendarEventParseMethodContract"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-008
+    title: "Merge a master VEVENT and its RECURRENCE-ID overrides into one event"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13 and RFC 8984 4.3.5"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with a master VEVENT (RRULE:FREQ=WEEKLY;COUNT=5, EXDATE for week 3) and a second VEVENT with the same UID, RECURRENCE-ID for week 2 and a different SUMMARY and DTSTART."
+    when: "Call CalendarEvent/parse."
+    then: "One object is returned with recurrenceRule {frequency \"weekly\", count 5} and recurrenceOverrides holding the week 2 key (patching title and start) and the week 3 key with excluded true."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_multi_icalobj"
+      - "cyrus:JMAPCalendars/calendarevent_get_recurrenceoverrides"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-009
+    title: "Return an override without a master as an event with recurrenceId"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13 and RFC 8984 4.3.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with a single VEVENT that has RECURRENCE-ID;TZID=Europe/Berlin:20260112T090000 and no master."
+    when: "Call CalendarEvent/parse."
+    then: "One object with recurrenceId \"2026-01-12T09:00:00\", recurrenceIdTimeZone \"Europe/Berlin\" and no recurrenceRule."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents_standalone_instances"
+      - "cyrus:JMAPCalendars/calendarevent_get_recurrenceid"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-010
+    title: "Map the three iCalendar time forms to JSCalendar"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Blobs with DTSTART;TZID=Europe/Berlin:20260310T120000, DTSTART:20260310T120000Z, DTSTART:20260310T120000 (floating) and DTSTART;VALUE=DATE:20260310 with DTEND;VALUE=DATE:20260311."
+    when: "Call CalendarEvent/parse for all four."
+    then: "Zoned: start \"2026-03-10T12:00:00\", timeZone \"Europe/Berlin\". UTC: same start, timeZone \"Etc/UTC\". Floating: timeZone null or absent. Date: start \"2026-03-10T00:00:00\", duration \"P1D\", showWithoutTime true, no timeZone."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents_utc"
+      - "cyrus:JMAPCalendars/calendarevent_get_utctime_with_tzid"
+      - "cyrus:JMAPCalendars/calendarevent_get_expandrecurrences_date"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-011
+    title: "Map non IANA zone names to IANA ids"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with DTSTART;TZID=\"W. Europe Standard Time\" (no usable VTIMEZONE), and one with a custom TZID \"Our Office\" plus a VTIMEZONE whose rules equal Europe/Berlin."
+    when: "Call CalendarEvent/parse."
+    then: "Both events are returned with timeZone \"Europe/Berlin\", or another IANA zone with identical rules. If no zone can be determined the blob is reported in notParsable rather than returned with a wrong time."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_ms_timezone"
+      - "cyrus:JMAPCalendars/calendarevent_get_guesstz"
+      - "cyrus:JMAPCalendars/calendarevent_guesstz_nonstandard_utcoffset"
+      - "cyrus:JMAPCalendars/calendarevent_get_ignore_embedded_ianatz"
+      - "cyrus:JMAPCalendars/calendarevent_utcstart_customtz"
+      - "cyrus:JMAPCalendars/calendarevent_set_schedule_reply_custom_tz"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-012
+    title: "Convert DTEND into a duration and a differing end zone into endTimeZone"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with DTSTART;TZID=Europe/London:20260501T220000 and DTEND;TZID=Asia/Tokyo:20260502T150000."
+    when: "Call CalendarEvent/parse."
+    then: "start \"2026-05-01T22:00:00\", timeZone \"Europe/London\", duration \"PT9H\" and endTimeZone \"Asia/Tokyo\"."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_endtimezone"
+      - "cyrus:JMAPCalendars/calendarevent_get_endtimezone_recur"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-013
+    title: "Convert ORGANIZER and ATTENDEE into organizerCalendarAddress and participants"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with ORGANIZER;CN=Carol:mailto:carol@remote.example and ATTENDEE;CN=Bob;PARTSTAT=TENTATIVE;RSVP=TRUE;ROLE=REQ-PARTICIPANT:mailto:bob@example.com and ATTENDEE;ROLE=CHAIR;PARTSTAT=ACCEPTED:mailto:carol@remote.example."
+    when: "Call CalendarEvent/parse."
+    then: "organizerCalendarAddress is \"mailto:carol@remote.example\". participants has two entries: bob with name \"Bob\", participationStatus \"tentative\", expectReply true and the attendee role; carol with participationStatus \"accepted\" and roles including owner and chair."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_participants"
+      - "cyrus:JMAPCalendars/calendarevent_get_organizer"
+      - "cyrus:JMAPCalendars/calendarevent_get_sentby_imip"
+      - "cyrus:JMAPCalendars/calendarevent_set_sentby"
+      - "cyrus:JMAPCalendars/email_get_calendarevents_itip_schedprops"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-014
+    title: "Convert RRULE, RDATE and EXDATE"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13 and RFC 8984 4.3.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob with RRULE:FREQ=MONTHLY;BYDAY=2TU;UNTIL=20261231T235959Z on a zoned event, one RDATE and one EXDATE."
+    when: "Call CalendarEvent/parse."
+    then: "recurrenceRule has frequency \"monthly\", byDay [{day \"tu\", nthOfPeriod 2}] and until as a LocalDateTime in the event's time zone. recurrenceOverrides has the RDATE key with an empty patch and the EXDATE key with excluded true."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_recurrence"
+      - "cyrus:JMAPCalendars/calendarevent_get_rdate_period"
+      - "cyrus:JMAPCalendars/calendarevent_get_empty_rrule"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-015
+    title: "Convert VALARM components into alerts without filtering them"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13 and RFC 8984 4.5.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob whose VEVENT has a VALARM with TRIGGER:-PT15M and ACTION:DISPLAY and one with an absolute TRIGGER and ACTION:EMAIL."
+    when: "Call CalendarEvent/parse."
+    then: "alerts has two entries: an OffsetTrigger with offset \"-PT15M\" and action \"display\", and an AbsoluteTrigger with action \"email\". Parse reports the file as it is; stripping alerts only applies when the server adds an invitation to the calendar."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_get_alerts"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+
+  - id: CPAR-016
+    title: "Parse the calendar part of a received email by its blob id"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "An invitation email was delivered; Email/get with bodyProperties [\"blobId\", \"type\"] shows a text/calendar part with blob id P1, transferred as base64."
+    when: "Call CalendarEvent/parse with blobIds [P1]."
+    then: "The event is parsed from the decoded part content, with method \"request\"."
+    sources:
+      - "cyrus:JMAPCalendars/email_get_calendarevents"
+      - "cyrus:JMAPCalendars/email_get_calendarevents_icsfile"
+      - "cyrus:JMAPCalendars/email_get_previous_calendarevent"
+      - "tmail:LinagoraCalendarEventParseMethodContract"
+      - "tmail:LinagoraCalendarEventAttendanceGetMethodContract"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+    notes: "Replaces the Cyrus and TMail vendor extensions that expose calendar events on Email objects. The usual client flow is Email/get, CalendarEvent/parse, then CalendarEvent/set."
+
+  - id: CPAR-017
+    title: "Tolerate common iCalendar defects"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: should
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Blobs with bare LF line endings, a missing DTSTAMP, a missing VERSION, and lines longer than 75 octets."
+    when: "Call CalendarEvent/parse."
+    then: "All four are parsed. A VEVENT without UID or without DTSTART puts its blob in notParsable."
+    sources:
+      - "cyrus:JMAPCalendars/calendarevent_parse_repair_broken_ical"
+      - "cyrus:JMAPCalendars/calendarevent_get_no_dtstart"
+      - "cyrus:JMAPCalendars/calendarevent_get_location_newline"
+      - "cyrus:JMAPCalendars/calendarevent_get_empty_apple_location"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-018
+    title: "Report files without any VEVENT as notParsable"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13 and draft-ietf-jmap-calendars-33 1"
+    level: wd
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A blob holding a VCALENDAR with only a VTODO, and one with only VFREEBUSY."
+    when: "Call CalendarEvent/parse."
+    then: "Both blob ids are in notParsable; parsed is null."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 1"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-019
+    title: "Leave the account untouched"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "CalendarEvent state S1 and Calendar state C1."
+    when: "Call CalendarEvent/parse on a valid blob, then CalendarEvent/changes since S1 and Calendar/changes since C1."
+    then: "Both report no changes; no event with the parsed uid exists."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CPAR-020
+    title: "Import a parsed event with CalendarEvent/set"
+    method: "CalendarEvent/set"
+    spec: "draft-ietf-jmap-calendars-33 5.13 and draft-ietf-jmap-calendars-33 5.9"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "A parsed event from a METHOD:REQUEST file."
+    when: "Send the parsed object to CalendarEvent/set create after adding calendarIds and removing method; then send it once with method still present."
+    then: "The first create succeeds and keeps uid, sequence and updated from the file (isOrigin is false, so updated is not overridden). The second fails with invalidProperties and properties [\"method\"]."
+    sources:
+      - "stalwart:calendar/event.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+      - "rfc:draft-ietf-jmap-calendars-33 5.9"
+      - "rfc:draft-ietf-jmap-calendars-33 5"
+
+  - id: CPAR-021
+    title: "Limit the number of blobs and the work per call"
+    method: "CalendarEvent/parse"
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "maxObjectsInGet from the core capability."
+    when: "Call CalendarEvent/parse with more blob ids than maxObjectsInGet; then with one blob containing 50000 VEVENTs."
+    then: "The first answers with error type requestTooLarge. The second returns in bounded time, with the blob in notParsable."
+    sources:
+      - "rfc:8620 5.1"
+      - "rfc:draft-ietf-jmap-calendars-33 9.3"
+
+  - id: CPAR-022
+    title: "Hide blobs of other accounts"
+    method: "CalendarEvent/parse"
+    spec: "draft-ietf-jmap-calendars-33 5.13"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap]
+    given: "Another user uploaded an iCalendar blob BX."
+    when: "Call CalendarEvent/parse with blobIds [BX] in the own account, and with accountId of the other user."
+    then: "The first reports BX in notFound. The second answers with error type accountNotFound."
+    sources:
+      - "fastmail:t/CalendarEvent/foreign-account.t"
+      - "rfc:draft-ietf-jmap-calendars-33 5.13"
+
+  - id: CEN-001
+    title: "Create a created notification when an invitation is auto processed"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has no notifications; state N1."
+    when: "Deliver an iMIP message from carol@remote.example to bob@example.com with a text/calendar; method=REQUEST part: UID inv-1, SEQUENCE 0, ORGANIZER mailto:carol@remote.example, ATTENDEE mailto:bob@example.com with PARTSTAT=NEEDS-ACTION and RSVP=TRUE with COMMENT:Please join. Then call CalendarEventNotification/changes since N1 and get the created id."
+    then: "One notification exists with type \"created\", calendarEventId of the new event, isDraft false, created close to now, comment \"Please join\", changedBy {name of the organizer or \"\", email \"carol@remote.example\", principalId null, calendarAddress \"mailto:carol@remote.example\"}, and event equal to the event as stored after creation. It has no eventPatch."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "cyrus:JMAPCalendars/calendareventnotification_get"
+      - "cyrus:JMAPCalendars/calendareventnotification_jscalendar2"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-002
+    title: "Create an updated notification with the previous event and a patch"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds inv-1 titled \"Kickoff\"."
+    when: "Deliver an update with a higher SEQUENCE and title \"Kickoff v2\", then fetch the newest notification."
+    then: "type is \"updated\", event has title \"Kickoff\" (the data before the change), and eventPatch contains \"title\": \"Kickoff v2\" plus the changed sequence and updated values. Applying eventPatch to event gives the current event apart from per user properties."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-003
+    title: "Create a destroyed notification with the event as it was"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds inv-1."
+    when: "Deliver the organiser's CANCEL, then fetch the newest notification."
+    then: "type is \"destroyed\", calendarEventId is the id inv-1 had, event is its last content, and neither eventPatch nor isDraft is present. CalendarEvent/get for that id reports notFound."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-004
+    title: "Notify the organiser when a reply changes a participant"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Alice organises E1 with attendee carol."
+    when: "Deliver carol's REPLY with PARTSTAT=ACCEPTED, then fetch Alice's newest notification."
+    then: "type is \"updated\", calendarEventId is E1, changedBy.calendarAddress is \"mailto:carol@remote.example\", and eventPatch changes participants/<carol>/participationStatus to \"accepted\" (together with scheduleSequence and scheduleUpdated)."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-005
+    title: "Create no notification for changes the user makes"
+    method: "CalendarEventNotification/changes"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "adapted"
+    seed: [jmap]
+    given: "Alice's notification state N1."
+    when: "Alice creates, updates and destroys events through CalendarEvent/set, destroys a calendar with onDestroyRemoveEvents true, and acknowledges an alert."
+    then: "CalendarEventNotification/changes since N1 reports the same state and no ids."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_get_no_sharee"
+      - "cyrus:JMAPCalendars/calendareventnotification_caldav"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+      - "rfc:draft-ietf-jmap-calendars-33 4.3"
+    notes: "Without sharing the only other source of changes is auto processed scheduling. The Cyrus tests for sharee edits (aclcheck, changes_shared, caldav) have no counterpart."
+
+  - id: CEN-006
+    title: "Keep calendarEventId on the base event for single instance changes"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob holds recurring invitation inv-1 (id V1)."
+    when: "Deliver a REQUEST that changes only the 2026-01-12 occurrence, then fetch the newest notification."
+    then: "calendarEventId is V1, never a synthetic id. event and eventPatch either describe the whole event (patching recurrenceOverrides) or just that instance."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-007
+    title: "Still notify the owner about events they marked private or secret"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob set privacy \"secret\" on invitation inv-1."
+    when: "Deliver an update for inv-1, then list notifications."
+    then: "An updated notification for inv-1 exists with full event details."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-008
+    title: "Fetch notifications by id with properties, and report unknown ids"
+    method: "CalendarEventNotification/get"
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has two notifications N-a and N-b."
+    when: "Call CalendarEventNotification/get with ids [N-a, \"Zmissing\"] and properties [\"type\", \"calendarEventId\"]; then with ids null."
+    then: "The first returns one object with id, type and calendarEventId and notFound [\"Zmissing\"]. The second returns both notifications."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_get"
+      - "rfc:draft-ietf-jmap-calendars-33 7.1"
+      - "rfc:8620 5.1"
+
+  - id: CEN-009
+    title: "Track notifications through changes"
+    method: "CalendarEventNotification/changes"
+    spec: "draft-ietf-jmap-calendars-33 7.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "State N1."
+    when: "Deliver an invitation (creating notification X), destroy X with CalendarEventNotification/set, calling CalendarEventNotification/changes since N1 after each step and once with sinceState \"bogus\"."
+    then: "After delivery created is [X]. After the destroy, changes since the intermediate state lists X in destroyed. The bogus state answers cannotCalculateChanges."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_changes"
+      - "stalwart:calendar/notification.rs"
+      - "rfc:draft-ietf-jmap-calendars-33 7.2"
+      - "rfc:8620 5.2"
+
+  - id: CEN-010
+    title: "Dismiss a notification by destroying it"
+    method: "CalendarEventNotification/set"
+    spec: "draft-ietf-jmap-calendars-33 7.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has notification X."
+    when: "Call CalendarEventNotification/set with destroy [X, \"Zmissing\"]."
+    then: "destroyed is [X], notDestroyed.Zmissing has type notFound, and X is in notFound on the next get. The event the notification was about is unaffected."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_set_destroy"
+      - "cyrus:JMAPCalendars/calendareventnotification_set"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+      - "rfc:draft-ietf-jmap-calendars-33 7.3"
+
+  - id: CEN-011
+    title: "Reject creating and updating notifications with forbidden"
+    method: "CalendarEventNotification/set"
+    spec: "draft-ietf-jmap-calendars-33 7.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has notification X."
+    when: "Call CalendarEventNotification/set with create {\"k1\": {\"type\": \"created\", \"calendarEventId\": \"E1\"}} and update {X: {\"comment\": \"edited\"}}."
+    then: "notCreated.k1 and notUpdated[X] both have type forbidden; X is unchanged."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_set"
+      - "rfc:draft-ietf-jmap-calendars-33 7.3"
+
+  - id: CEN-012
+    title: "Honour ifInState on CalendarEventNotification/set"
+    method: "CalendarEventNotification/set"
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has notification X and a stale state string."
+    when: "Call CalendarEventNotification/set with ifInState set to the stale state and destroy [X]."
+    then: "The response is an error with type stateMismatch and X still exists."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_set_statemismatch"
+      - "rfc:8620 5.3"
+
+  - id: CEN-013
+    title: "Filter notifications by type and calendarEventIds"
+    method: "CalendarEventNotification/query"
+    spec: "draft-ietf-jmap-calendars-33 7.4.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has notifications: created for V1, updated for V1, created for V2, destroyed for V3."
+    when: "Call CalendarEventNotification/query with filter {\"type\": \"created\"}, {\"calendarEventIds\": [V1]}, {\"type\": \"updated\", \"calendarEventIds\": [V2, V3]} and {\"calendarEventIds\": []}."
+    then: "The results have 2, 2, 0 and 0 ids respectively."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_query"
+      - "rfc:draft-ietf-jmap-calendars-33 7.4.1"
+
+  - id: CEN-014
+    title: "Filter notifications by creation time with inclusive after and exclusive before"
+    method: "CalendarEventNotification/query"
+    spec: "draft-ietf-jmap-calendars-33 7.4.1"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp, time]
+    given: "Three notifications created at T1 < T2 < T3."
+    when: "Call CalendarEventNotification/query with filter {\"after\": T2}, {\"before\": T2}, {\"after\": T1, \"before\": T3} and {\"after\": null, \"before\": null}."
+    then: "The results are [T2, T3], [T1], [T1, T2] and all three."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_query"
+      - "rfc:draft-ietf-jmap-calendars-33 7.4.1"
+
+  - id: CEN-015
+    title: "Sort notifications by created and page the result"
+    method: "CalendarEventNotification/query"
+    spec: "draft-ietf-jmap-calendars-33 7.4.2"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp, time]
+    given: "Five notifications with distinct created times."
+    when: "Call CalendarEventNotification/query with sort [{\"property\": \"created\", \"isAscending\": false}], position 1, limit 2 and calculateTotal true; then with sort [{\"property\": \"type\"}]."
+    then: "The first returns the second and third newest with total 5. The second answers with error type unsupportedSort."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_query"
+      - "rfc:draft-ietf-jmap-calendars-33 7.4.2"
+      - "rfc:8620 5.5"
+
+  - id: CEN-016
+    title: "Report new and dismissed notifications through queryChanges"
+    method: "CalendarEventNotification/queryChanges"
+    spec: "draft-ietf-jmap-calendars-33 7.5"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "A query sorted by created returned queryState Q1 with ids [X]."
+    when: "Deliver another invitation (notification Y), destroy X, then call CalendarEventNotification/queryChanges since Q1."
+    then: "removed contains X and added contains Y with index 0. An unknown sinceQueryState answers cannotCalculateChanges."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_querychanges"
+      - "rfc:draft-ietf-jmap-calendars-33 7.5"
+      - "rfc:8620 5.6"
+
+  - id: CEN-017
+    title: "Cap the number of stored notifications and drop the oldest first"
+    method: "CalendarEventNotification/changes"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: may
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "The configured maximum is N notifications per user; Bob has N, the oldest being X; state N1."
+    when: "Deliver one more invitation."
+    then: "Bob still has N notifications. CalendarEventNotification/changes since N1 lists the new id in created and X in destroyed."
+    sources:
+      - "cyrus:JMAPCalendars/calendareventnotification_prune"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+      - "wildduck:plan 10.2 CalendarEventNotification"
+
+  - id: CEN-018
+    title: "Expire notifications after the retention period"
+    method: "CalendarEventNotification/changes"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: may
+    phase: 7
+    applies: "yes"
+    seed: [lmtp, time]
+    given: "Bob has a notification X; the configured retention is R days; state N1."
+    when: "Advance the clock by R days plus one hour and let the cleanup task run."
+    then: "X is gone and CalendarEventNotification/changes since N1 lists it in destroyed (or answers cannotCalculateChanges if the tombstone window has also passed)."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+      - "wildduck:plan 10.2 CalendarEventNotification"
+
+  - id: CEN-019
+    title: "Keep a notification after its event is destroyed by the user"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has a created notification X for invitation V1."
+    when: "Bob destroys V1 with CalendarEvent/set, then gets X."
+    then: "X still exists with calendarEventId V1 and the event snapshot; no destroyed notification is added for Bob's own action."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+
+  - id: CEN-020
+    title: "Push a StateChange for CalendarEventNotification and CalendarEvent when an invitation is processed"
+    method: "EventSource"
+    spec: "RFC 8620 7.3 and draft-ietf-jmap-calendars-33 10.6"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob has an EventSource connection with types=*."
+    when: "Deliver a valid invitation."
+    then: "A state event arrives whose changed[accountId] contains CalendarEventNotification and CalendarEvent (and Email and Mailbox for the delivered message). EmailDelivery changes as for any new mail."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 10.6"
+      - "rfc:8620 7.1"
+      - "rfc:8620 7.3"
+
+  - id: CEN-021
+    title: "Create no notification for scheduling messages that were not applied"
+    method: "CalendarEventNotification/changes"
+    spec: "draft-ietf-jmap-calendars-33 7 and draft-ietf-jmap-calendars-33 9.4"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [lmtp]
+    given: "Bob's notification state N1."
+    when: "Deliver a junk scored invitation, a stale update (lower SEQUENCE), a CANCEL from a non organiser and a REPLY from a stranger."
+    then: "CalendarEventNotification/changes since N1 reports no ids."
+    sources:
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+      - "rfc:draft-ietf-jmap-calendars-33 9.4"
+      - "rfc:draft-ietf-jmap-calendars-33 9.2"
+
+  - id: CEN-022
+    title: "Produce notifications on both sides of a local RSVP exchange"
+    method: "CalendarEventNotification/get"
+    spec: "draft-ietf-jmap-calendars-33 7"
+    level: must
+    phase: 7
+    applies: "yes"
+    seed: [jmap, lmtp]
+    given: "Alice and Bob are local users with no notifications."
+    when: "Alice invites Bob with sendSchedulingMessages true; Bob accepts with sendSchedulingMessages true; Alice destroys the event with sendSchedulingMessages true. Let the queue deliver after each step."
+    then: "Bob gets a created notification and later a destroyed one, both with changedBy.calendarAddress of Alice. Alice gets one updated notification with changedBy.calendarAddress of Bob. Neither user gets a notification for their own step."
+    sources:
+      - "stalwart:calendar/notification.rs"
+      - "cyrus:JMAPCalendars/calendareventnotification_imip"
+      - "rfc:draft-ietf-jmap-calendars-33 7"
+    notes: "changedBy.principalId stays null even for local users, because principals are not offered."

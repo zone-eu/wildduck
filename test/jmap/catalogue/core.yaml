@@ -1,0 +1,2172 @@
+area: core
+title: "JMAP core: session, authentication, request model, errors, limits, result references"
+description: "RFC 8620 sections 1 to 3, the generic parts of section 5, section 8 and the RFC 8621 1.3 capability objects: autodiscovery, the Session object, authentication, the request and response envelope, request level and method level errors, core limits, result references, createdIds, Core/echo, strict JSON handling and HTTP level behaviour. Endpoints assumed from the plan: GET /.well-known/jmap, POST /jmap, POST /jmap/upload/{accountId}, GET /jmap/download/{accountId}/{blobId}/{name}?type=, GET /jmap/eventsource."
+scenarios:
+  # ---------------------------------------------------------------- Session
+  - id: CORE-001
+    title: "Authenticated GET of /.well-known/jmap returns the Session object"
+    method: Session
+    spec: "RFC 8620 2, 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user created through the REST API with a valid credential."
+    when: "GET /.well-known/jmap with a valid Authorization header."
+    then: "HTTP 200 (directly, or after following a redirect to the session resource), Content-Type application/json, and the body is a single JSON object with the keys capabilities, accounts, primaryAccounts, username, apiUrl, downloadUrl, uploadUrl, eventSourceUrl and state."
+    sources:
+      - "rfc:8620 2"
+      - "james:SessionRoutesContract#getShouldReturnCorrectSession"
+      - "cyrus:JMAPCore/get_session"
+      - "fastmail:t/core/jmap-session-resource.t"
+      - "jmapio:core/session-has-capabilities"
+      - "stalwart:principal/get.rs"
+    notes: "WildDuck serves the session directly on the JMAP listener at /.well-known/jmap; the SRV record _jmap._tcp is a deployment documentation item and not testable here."
+
+  - id: CORE-002
+    title: "Session request without credentials is rejected with 401 and a challenge"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "No Authorization header."
+    when: "GET /.well-known/jmap."
+    then: "HTTP 401 with a WWW-Authenticate header offering both the Basic and the Bearer scheme; the body does not contain any Session property."
+    sources:
+      - "cyrus:JMAPCore/auth_fuzz"
+      - "james:AuthenticationContract#postShouldRespond401WhenNoAuthorizationHeader"
+      - "rfc:8620 2"
+
+  - id: CORE-003
+    title: "Session top level properties have the RFC types"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "capabilities, accounts and primaryAccounts are objects; username, apiUrl, downloadUrl, uploadUrl, eventSourceUrl and state are strings; state is not empty."
+    sources:
+      - "fastmail:t/core/jmap-session-resource.t"
+      - "jmapio:core/session-state"
+      - "jmapio:core/session-username"
+      - "jmapio:core/session-api-url"
+      - "legacy-proxy:test/unit/session.spec.ts"
+
+  - id: CORE-004
+    title: "Core capability object carries every required limit as an unsigned integer"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user and known JMAP limits in the server configuration."
+    when: "GET the session resource and read capabilities['urn:ietf:params:jmap:core']."
+    then: "The object contains maxSizeUpload, maxConcurrentUpload, maxSizeRequest, maxConcurrentRequests, maxCallsInRequest, maxObjectsInGet and maxObjectsInSet as non negative integers equal to the configured values, plus collationAlgorithms as an array of strings."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-core-capability-properties"
+      - "fastmail:t/core/jmap-session-resource.t"
+      - "cyrus:JMAPCore/session_large_limits"
+      - "james:SessionRoutesContract#getShouldReturnCorrectSession"
+
+  - id: CORE-005
+    title: "Default core limits meet the suggested minimums"
+    method: Session
+    spec: "RFC 8620 2"
+    level: should
+    phase: 1
+    applies: adapted
+    seed: [none]
+    given: "A server running with the default JMAP configuration."
+    when: "GET the session resource."
+    then: "maxConcurrentUpload >= 4, maxSizeRequest >= 10000000, maxConcurrentRequests >= 4, maxCallsInRequest >= 16, maxObjectsInGet >= 500 and maxObjectsInSet >= 500. maxSizeUpload equals the configured upload size and is at least maxSizeAttachmentsPerEmail."
+    sources:
+      - "rfc:8620 2"
+      - "wildduck:jmap-report 4.1"
+    notes: "Adapted: the plan derives maxSizeUpload from the message size limit (25 MB default, 64 MB hard cap), which is below the suggested 50000000. The plan also warns that maxObjectsInGet 500 is heavy for Email/get; if a lower value is chosen this scenario must be updated."
+
+  - id: CORE-006
+    title: "collationAlgorithms lists only collations the server really applies"
+    method: Session
+    spec: "RFC 8620 2, 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource, then issue a query with a Comparator whose collation is a value not in collationAlgorithms."
+    then: "Every entry of collationAlgorithms is an RFC 4790 registry identifier (for example i;ascii-casemap or i;unicode-casemap). The query with the unlisted collation is rejected with unsupportedSort."
+    sources:
+      - "rfc:8620 2"
+      - "rfc:8620 5.5"
+      - "jmapio:core/session-core-capability-properties"
+    notes: "Open decision: which collations WildDuck advertises. An empty list is valid while only non string sorts (receivedAt, sentAt, size, hasKeyword) are supported."
+
+  - id: CORE-007
+    title: "Mail capability is advertised at session level as an empty object"
+    method: Session
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "capabilities['urn:ietf:params:jmap:mail'] exists and is exactly {}."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "jmapio:core/session-has-mail-capability"
+      - "fastmail:t/core/jmap-session-resource.t"
+
+  - id: CORE-008
+    title: "Session lists exactly one personal, writable account keyed by the user id"
+    method: Session
+    spec: "RFC 8620 2, 1.6.2"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "Two users A and B exist; the request is authenticated as A."
+    when: "GET the session resource."
+    then: "accounts has exactly one key, the account id of A. Its value has name equal to A's main address, isPersonal true, isReadOnly false and an accountCapabilities object. B's account id appears nowhere in the response."
+    sources:
+      - "jmapio:core/session-accounts-present"
+      - "jmapio:core/session-account-properties"
+      - "james:SessionRoutesContract#getResponseShouldNotReturnDelegatedUsersWhenNotDelegated"
+      - "cyrus:JMAPCore/get_session"
+      - "wildduck:jmap-report 4.1"
+    notes: "Adapted: James, Cyrus and Stalwart also assert shared or delegated accounts in the session; WildDuck has no sharing, so the single account assertion is the whole test."
+
+  - id: CORE-009
+    title: "Account id is a valid JMAP Id"
+    method: Session
+    spec: "RFC 8620 1.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource and take the single key of accounts."
+    then: "The account id is 'u' followed by the 24 lowercase hex characters of the user id, so it is 25 octets, uses only A-Z, a-z, 0-9, hyphen and underscore, and starts with a letter."
+    sources:
+      - "rfc:8620 1.2"
+      - "jmapio:binary/upload-returns-valid-blob-id"
+    notes: "Decided 2026-11-11: account ids are letter prefixed like every other id."
+
+  - id: CORE-010
+    title: "Mail accountCapabilities object carries the WildDuck limits"
+    method: Session
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource and read accounts[accountId].accountCapabilities['urn:ietf:params:jmap:mail']."
+    then: "maxMailboxesPerEmail is 1, maxMailboxDepth is 128, maxSizeMailboxName is an integer >= 100, maxSizeAttachmentsPerEmail is a positive integer not larger than the message size limit, mayCreateTopLevelMailbox is true and emailQuerySortOptions is an array of strings."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "jmapio:core/session-mail-capability-properties"
+      - "jmapio:core/session-account-capabilities-mail"
+      - "fastmail:t/core/jmap-session-resource.t"
+      - "wildduck:jmap-report 4.1"
+    notes: "Adapted: maxMailboxesPerEmail is 1 because a WildDuck message lives in exactly one mailbox. The plan names 512 for maxSizeMailboxName (per path segment)."
+
+  - id: CORE-011
+    title: "emailQuerySortOptions lists exactly the sorts available in phase 1"
+    method: Session
+    spec: "RFC 8621 1.3.1, 4.4.2"
+    level: must
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "A server at phase 1 to 3 feature level."
+    when: "GET the session resource."
+    then: "emailQuerySortOptions contains receivedAt, sentAt, size and hasKeyword and does not contain from, to, subject, allInThreadHaveKeyword or someInThreadHaveKeyword. Each listed value is accepted by Email/query; each unlisted value answers unsupportedSort."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "wildduck:brief query and search"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See CORE-012 and EQRY-105."
+
+  - id: CORE-012
+    title: "emailQuerySortOptions grows with the phase 4 sorts"
+    method: Session
+    spec: "RFC 8621 1.3.1, 4.4.2"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A server at phase 4 feature level."
+    when: "GET the session resource."
+    then: "emailQuerySortOptions additionally contains from, to, subject, allInThreadHaveKeyword and someInThreadHaveKeyword."
+    sources:
+      - "rfc:8621 4.4.2"
+      - "wildduck:brief query and search"
+
+  - id: CORE-013
+    title: "Vacation response capability is advertised once implemented"
+    method: Session
+    spec: "RFC 8621 1.3.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A server at phase 2 feature level."
+    when: "GET the session resource."
+    then: "'urn:ietf:params:jmap:vacationresponse' is present in capabilities and in the account's accountCapabilities, with the value {} in both places, and primaryAccounts maps it to the account id."
+    sources:
+      - "rfc:8621 1.3.3"
+      - "james:SessionRoutesContract#getShouldReturnCorrectSession"
+      - "stalwart:principal/get.rs"
+
+  - id: CORE-014
+    title: "Submission capability carries maxDelayedSend and FUTURERELEASE"
+    method: Session
+    spec: "RFC 8621 1.3.2"
+    level: must
+    phase: 3
+    applies: adapted
+    seed: [none]
+    given: "A server at phase 3 feature level."
+    when: "GET the session resource."
+    then: "capabilities['urn:ietf:params:jmap:submission'] is {}. The account capability object has maxDelayedSend as a positive integer equal to the configured maximum queue delay in seconds and submissionExtensions equal to {\"FUTURERELEASE\": [\"<maxDelayedSend>\"]} with no other key. primaryAccounts maps the URN to the account id."
+    sources:
+      - "rfc:8621 1.3.2"
+      - "james:SessionRoutesContract#getShouldReturnCorrectSession"
+      - "wildduck:jmap-report 4.1"
+    notes: "Decided 2026-11-11: delayed send is expressed with the FUTURERELEASE hold parameters (HOLDFOR, HOLDUNTIL), so the extension is advertised; any other SMTP parameter is rejected."
+
+  - id: CORE-015
+    title: "Session advertises only capabilities that are implemented and enabled"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A server at a known phase level."
+    when: "GET the session resource."
+    then: "Every key of accountCapabilities is also a key of capabilities. No URN is present for a feature that is not implemented yet (for example blob before phase 4, contacts before phase 5, quota, websocket, mdn). Every advertised URN is accepted in using."
+    sources:
+      - "rfc:8620 2"
+      - "james:DisabledCapabilityContract#getShouldReturnCorrectSession"
+      - "cyrus:JMAPCore/capabilities"
+
+  - id: CORE-016
+    title: "primaryAccounts maps each data capability to the single account and omits core"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "primaryAccounts['urn:ietf:params:jmap:mail'] equals the account id, every other key of primaryAccounts is a key of accountCapabilities with the same value, and 'urn:ietf:params:jmap:core' is not a key of primaryAccounts."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-primary-accounts"
+      - "fastmail:t/core/jmap-session-resource.t"
+      - "stalwart:principal/get.rs"
+    notes: "Omitting core from primaryAccounts is a SHOULD NOT in the RFC; the mapping for mail is what clients such as aerc require."
+
+  - id: CORE-017
+    title: "username is the WildDuck username of the authenticated user"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user whose username differs from the local part of the main address."
+    when: "GET the session resource, once authenticated with the username and once with the address as Basic user name."
+    then: "username equals users.username in both responses, and accounts[accountId].name equals the main address."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-username"
+      - "wildduck:jmap-report 4.1"
+
+  - id: CORE-018
+    title: "apiUrl is an absolute URL built from the configured public base URL"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A public base URL set in the JMAP configuration, and a request that carries a different Host header and an X-Forwarded-Host header."
+    when: "GET the session resource, then POST a Core/echo request to the returned apiUrl."
+    then: "apiUrl, downloadUrl, uploadUrl and eventSourceUrl all start with the configured base URL, regardless of the request headers, and the POST to apiUrl succeeds."
+    sources:
+      - "jmapio:core/session-api-url"
+      - "james:SessionRoutesContract#getResponseShouldReturnUrlEndpointNOTContainJmapPrefixWhenAssignInvalidHeader"
+      - "cyrus:JMAPCore/get_session_base_url"
+      - "fastmail:t/core/upload.t"
+    notes: "WildDuck decision: URLs never follow client supplied headers, which avoids host header injection into a cached session. James optionally derives a prefix from a request header."
+
+  - id: CORE-019
+    title: "downloadUrl is a level 1 URI template with accountId, blobId, name and type"
+    method: Session
+    spec: "RFC 8620 2, 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "downloadUrl contains the literal variables {accountId}, {blobId}, {name} and {type}, uses no template operator beyond level 1, and {type} sits in the query part of the URL."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-download-url-template"
+      - "fastmail:t/core/download.t"
+    notes: "Putting type in the query section is RECOMMENDED by the RFC because of the slash in media types."
+
+  - id: CORE-020
+    title: "uploadUrl is a level 1 URI template with accountId"
+    method: Session
+    spec: "RFC 8620 2, 6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "uploadUrl is a string containing the literal variable {accountId} and no other variable."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-upload-url"
+      - "fastmail:t/core/upload.t"
+    notes: "The URL is advertised from phase 1 although the upload endpoint itself starts passing in phase 2; before that a POST to it answers a defined error, see BLOB-002."
+
+  - id: CORE-021
+    title: "eventSourceUrl is a URI template with types, closeafter and ping"
+    method: Session
+    spec: "RFC 8620 2, 7.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "eventSourceUrl contains the literal variables {types}, {closeafter} and {ping}."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-event-source-url"
+      - "fastmail:t/core/jmap-session-resource.t"
+
+  - id: CORE-022
+    title: "Session state is stable while nothing in the Session changes"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "An authenticated user whose session state S was read."
+    when: "Mail is delivered over LMTP, a flag is changed over IMAP, and the session resource is fetched again, also with the other auth scheme."
+    then: "state still equals S in every response. Mail activity changes Email, Mailbox and Thread states, never the session state."
+    sources:
+      - "rfc:8620 2"
+      - "jmapio:core/session-state"
+      - "cyrus:JMAPCore/sessionstate"
+
+  - id: CORE-023
+    title: "Session state changes when a Session property changes"
+    method: Session
+    spec: "RFC 8620 2, 3.4"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "An authenticated user whose session state S was read."
+    when: "The user's main address is changed through the REST API (which changes accounts[id].name), then the session resource is fetched and a Core/echo request is sent."
+    then: "The new Session state differs from S, and sessionState in the API response equals the new Session state."
+    sources:
+      - "rfc:8620 2"
+      - "cyrus:JMAPCore/sessionstate"
+      - "cyrus:JMAPCore/get_session_rename_race"
+      - "wildduck:jmap-report 4.1"
+    notes: "Adapted: Cyrus triggers the change through an ACL (new shared account). In WildDuck the changing inputs are the main address, the username, and capability configuration. The cached user profile (1 h TTL) must be invalidated so the change is visible at once."
+
+  - id: CORE-024
+    title: "Session response disables HTTP caching"
+    method: Session
+    spec: "RFC 8620 2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET the session resource."
+    then: "The response carries Cache-Control with no-cache, no-store and must-revalidate, and no ETag or Last-Modified based 304 is ever returned for the resource."
+    sources:
+      - "rfc:8620 2"
+
+  - id: CORE-025
+    title: "Session resource accepts a trailing slash"
+    method: Session
+    spec: "RFC 8620 2.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET /.well-known/jmap/ (with a trailing slash)."
+    then: "The same Session object as for /.well-known/jmap is returned with HTTP 200, or a redirect to it that keeps working with the Authorization header."
+    sources:
+      - "wildduck:landscape 3b Cypht requests the well-known path with a trailing slash"
+    notes: "Interop requirement from a real client (Cypht), not from the RFC."
+
+  - id: CORE-026
+    title: "Session resource only answers GET"
+    method: Session
+    spec: "RFC 8620 2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "POST, PUT or DELETE /.well-known/jmap."
+    then: "HTTP 405 with an Allow header listing GET (and OPTIONS when CORS is enabled); no Session body."
+    sources:
+      - "rfc:8620 2"
+
+  - id: CORE-027
+    title: "JMAP endpoints do not exist when the server wide switch is off"
+    method: Session
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A server started with JMAP disabled in the configuration."
+    when: "GET /.well-known/jmap and POST /jmap with valid credentials."
+    then: "No JMAP listener answers: the connection is refused or the path answers 404. Nothing is authenticated and no auth failure is counted."
+    sources:
+      - "wildduck:jmap-report 9 server wide switch"
+      - "james:DisabledCapabilityContract#shouldRejectDisabledCapabilities"
+
+  # ---------------------------------------------------------------- Authentication
+  - id: CORE-028
+    title: "Bearer user access token authenticates"
+    method: Auth
+    spec: "RFC 8620 3.1, 8.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user access token issued by POST /authenticate with token true."
+    when: "POST /jmap with Authorization: Bearer <token> and a Core/echo call."
+    then: "HTTP 200 and the echo response; the session fetched with the same token names that user's account."
+    sources:
+      - "james:AuthenticationContract#postShouldReturn200WhenValidJwtAuthorizationHeader"
+      - "cyrus:JMAPCore/bearer_auth_jwt"
+      - "wildduck:jmap-report 4.1"
+
+  - id: CORE-029
+    title: "Unknown or malformed Bearer token is rejected with 401"
+    method: Auth
+    spec: "RFC 8620 3.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "No token with the presented value exists."
+    when: "POST /jmap with Authorization: Bearer followed by a random 40 character string, and again with an empty token."
+    then: "HTTP 401 with a WWW-Authenticate header and a problem details body; no method is executed."
+    sources:
+      - "james:AuthenticationContract#postShouldReturn401WhenInvalidJwtAuthorizationHeader"
+      - "james:AuthenticationContract#postShouldReturn401WhenValidUnknownUserJwtAuthorizationHeader"
+
+  - id: CORE-030
+    title: "Revoked or expired Bearer token stops working at once"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api, time]
+    given: "A token that just authenticated a JMAP request successfully."
+    when: "The token is deleted through the REST API (or its TTL passes), then the same request is repeated."
+    then: "HTTP 401. A cached positive result for the token is not used."
+    sources:
+      - "wildduck:brief accounts and auth"
+      - "james:OidcAuthenticationContract"
+
+  - id: CORE-031
+    title: "Basic auth with the account password works when 2FA is off"
+    method: Auth
+    spec: "RFC 8620 8.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user without 2FA."
+    when: "POST /jmap with Basic credentials username and account password, then again with the main address as user name."
+    then: "HTTP 200 both times."
+    sources:
+      - "james:AuthenticationContract#postShouldRespond200WhenHasCredentials"
+      - "cyrus:JMAPCore/auth_fuzz"
+      - "wildduck:brief accounts and auth"
+
+  - id: CORE-032
+    title: "Basic auth with the account password is refused when 2FA is enabled"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user with TOTP enabled and no application specific password."
+    when: "POST /jmap with Basic credentials using the correct account password."
+    then: "HTTP 401 with WWW-Authenticate. The failure is counted like any other failed login."
+    sources:
+      - "wildduck:brief accounts and auth"
+
+  - id: CORE-033
+    title: "Application specific password with the jmap scope authenticates, also with 2FA on"
+    method: Auth
+    spec: "RFC 8620 8.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A user with 2FA enabled and an application specific password created with scopes [jmap]."
+    when: "POST /jmap with Basic credentials using that password."
+    then: "HTTP 200."
+    sources:
+      - "rfc:8620 8.2"
+      - "stalwart:system/authentication.rs"
+      - "wildduck:jmap-report 4.1"
+    notes: "Phase 0 because the jmap scope is a backend prerequisite (lib/consts.js SCOPES, ASP schemas)."
+
+  - id: CORE-034
+    title: "Application specific password with scope * authenticates"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "An application specific password created with scopes [*]."
+    when: "POST /jmap with Basic credentials using that password."
+    then: "HTTP 200."
+    sources:
+      - "wildduck:jmap-report 4.1"
+
+  - id: CORE-035
+    title: "Application specific password without the jmap scope is refused"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "An application specific password created with scopes [imap, smtp]."
+    when: "POST /jmap with Basic credentials using that password."
+    then: "HTTP 401, although the same password still logs in over IMAP."
+    sources:
+      - "wildduck:brief accounts and auth"
+      - "stalwart:system/authorization.rs"
+
+  - id: CORE-036
+    title: "Wrong password and unknown user give the same 401"
+    method: Auth
+    spec: "RFC 8620 3.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "An existing user and a user name that does not exist."
+    when: "POST /jmap with Basic credentials: existing user with a wrong password, then the unknown user with any password."
+    then: "Both answers are HTTP 401 with identical status, headers (apart from date and ids) and problem body, so that user existence cannot be probed."
+    sources:
+      - "james:AuthenticationContract#postShouldRespond401WhenWrongPassword"
+      - "james:AuthenticationContract#postShouldRespond401WhenUserNotFound"
+      - "james:AuthenticationContract#postShouldRespond401WhenCredentialsWithInvalidUser"
+      - "stalwart:system/security.rs"
+
+  - id: CORE-037
+    title: "Disabled or suspended users are refused"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "One user with disabled true and one with suspended true, each with a valid password and a valid Bearer token issued before the flag was set."
+    when: "GET the session resource and POST /jmap with each credential."
+    then: "Every request is refused with HTTP 401 and no account data is returned."
+    sources:
+      - "wildduck:brief accounts and auth"
+    notes: "Open decision: 401 versus 403 for a valid credential on a disabled account. 401 is specified here so that the response does not reveal that the password was right."
+
+  - id: CORE-038
+    title: "A disabled jmap scope refuses every credential type"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A user whose disabledScopes contains jmap, with an account password, an application specific password with scope * and a Bearer token."
+    when: "POST /jmap with each of the three credentials."
+    then: "All three are refused with HTTP 401, while IMAP login with the same passwords still works."
+    sources:
+      - "wildduck:brief accounts and auth"
+      - "wildduck:jmap-report 9 per user controls"
+
+  - id: CORE-039
+    title: "Repeated failed logins trigger the shared lockout"
+    method: Auth
+    spec: "RFC 8620 8.5"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api, time]
+    given: "A user with a known password and no recent failures."
+    when: "12 Basic requests with a wrong password are sent within 120 seconds, followed by one with the correct password."
+    then: "The first 12 answer 401. The request with the correct password is refused with HTTP 429 and a problem details body until the window expires; after the window it succeeds."
+    sources:
+      - "stalwart:system/security.rs"
+      - "wildduck:lib/consts.js auth lockout"
+    notes: "The existing counter is auth_user:<id> with 12 failures in 120 s."
+
+  - id: CORE-040
+    title: "JMAP and IMAP share one failure counter"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api, imap, time]
+    given: "A user with no recent failures."
+    when: "6 failed IMAP LOGIN attempts and 6 failed JMAP Basic attempts are made within 120 seconds, then a correct JMAP login and a correct IMAP login."
+    then: "Both correct logins are rate limited (JMAP 429, IMAP NO), showing that JMAP failures feed the same lockout as the other protocols."
+    sources:
+      - "stalwart:system/security.rs"
+      - "wildduck:brief accounts and auth"
+
+  - id: CORE-041
+    title: "Cached credentials do not bypass the failure counter"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api, time]
+    given: "A user whose correct Basic credential was just used, so the positive auth cache is warm."
+    when: "12 requests with wrong passwords are sent, then one with the cached correct credential."
+    then: "Each wrong attempt is evaluated and counted (cache misses), and the lockout applies to the user afterwards in the same way as without a cache."
+    sources:
+      - "wildduck:jmap-report 5 auth cache"
+    notes: "Open decision: whether a warm cache entry may keep working during a lockout. The plan only requires that failures are still applied to cache misses; this scenario fixes the stricter reading."
+
+  - id: CORE-042
+    title: "Password change invalidates the positive auth cache"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user who just authenticated over Basic with password P1."
+    when: "The password is changed to P2 through the REST API and two requests follow immediately: one with P1, one with P2."
+    then: "P1 answers 401 and P2 answers 200, with no grace period."
+    sources:
+      - "wildduck:brief accounts and auth"
+      - "james:OidcAuthenticationContract"
+
+  - id: CORE-043
+    title: "Deleting an application specific password invalidates the cache"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "An application specific password with the jmap scope that just authenticated a request."
+    when: "The password is deleted through the REST API and the same request is repeated at once."
+    then: "HTTP 401."
+    sources:
+      - "wildduck:brief accounts and auth"
+      - "rfc:8620 8.2"
+    notes: "RFC 8620 8.2 motivates app passwords by individual revocation, so revocation has to be immediate."
+
+  - id: CORE-044
+    title: "Disabling a user or the jmap scope takes effect on the next request"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user with a warm auth cache for a Basic credential and for a Bearer token."
+    when: "The user is set disabled through the REST API (and in a second run jmap is added to disabledScopes), then both credentials are used again."
+    then: "Both are refused with 401 immediately."
+    sources:
+      - "wildduck:brief accounts and auth"
+
+  - id: CORE-045
+    title: "API request without an Authorization header is 401 with problem details"
+    method: Auth
+    spec: "RFC 8620 3.1, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "No credentials."
+    when: "POST /jmap with a valid Core/echo request body and no Authorization header."
+    then: "HTTP 401, WWW-Authenticate lists Basic and Bearer challenges, the body is a problem details JSON object with status 401, and no methodResponses are returned."
+    sources:
+      - "james:AuthenticationContract#postShouldRespond401WhenNoAuthorizationHeader"
+      - "cyrus:JMAPCore/auth_fuzz"
+      - "rfc:8620 3.1"
+
+  - id: CORE-046
+    title: "Malformed Authorization headers are rejected with 401, never a server error"
+    method: Auth
+    spec: "RFC 8620 3.1, 3.9"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A valid user."
+    when: "Requests are sent with these Authorization values: the bare word Basic, Basic followed by characters that are not base64, Basic with base64 of a string without a colon, Basic with an empty user name, an unknown scheme name, and a header value of 10 KB."
+    then: "Each answers HTTP 401 (or 400 for the oversized header) with a problem body. None answers 5xx and none authenticates."
+    sources:
+      - "cyrus:JMAPCore/auth_fuzz"
+      - "cyrus:JMAPCore/scram_fuzz"
+      - "james:AuthenticationContract#postShouldRespond401WhenCredentialsWithSpaceDomain"
+
+  - id: CORE-047
+    title: "Authentication scheme name is matched case insensitively"
+    method: Auth
+    spec: "RFC 8620 3.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A valid Basic credential and a valid Bearer token."
+    when: "Requests are sent with the scheme written as bAsIc, BASIC and bearer."
+    then: "All authenticate with HTTP 200."
+    sources:
+      - "cyrus:JMAPCore/auth_fuzz"
+    notes: "HTTP auth scheme names are case insensitive (RFC 9110 11.1)."
+
+  - id: CORE-048
+    title: "Basic credentials with special characters are decoded correctly"
+    method: Auth
+    spec: "RFC 8620 3.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "Users whose address contains a plus tag or a percent sign, and a user whose password contains a colon and non ASCII (UTF-8) characters."
+    when: "Each authenticates over Basic."
+    then: "All succeed: the user name is everything before the first colon, the password everything after it, decoded as UTF-8, with no URL decoding applied."
+    sources:
+      - "cyrus:JMAPCore/auth_fuzz"
+      - "james:AuthenticationContract#postShouldRespond200WhenCredentialsWith2DotDomain"
+
+  - id: CORE-049
+    title: "Two different credentials in one request are rejected"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A valid Basic credential and a valid Bearer token."
+    when: "POST /jmap with two Authorization headers, one Basic and one Bearer."
+    then: "HTTP 400 with a problem details body; no method is executed."
+    sources:
+      - "james:AuthenticationContract#shouldRespond400WhenBothAuthentication"
+
+  - id: CORE-050
+    title: "Every JMAP endpoint requires authentication"
+    method: Auth
+    spec: "RFC 8620 2, 3.1, 6.1, 6.2, 7.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "No credentials."
+    when: "GET the session resource, POST the API, POST the upload URL, GET a download URL and GET the event source URL."
+    then: "Each answers HTTP 401 with WWW-Authenticate. The download request answers 401 for existing and for unknown blob ids alike."
+    sources:
+      - "james:UploadContract#uploadShouldRejectWhenUnauthenticated"
+      - "james:DownloadContract#downloadMessageShouldFailWhenUnauthentified"
+      - "james:EventSourceContract"
+      - "rfc:8620 6.1"
+
+  - id: CORE-051
+    title: "Credentials are accepted only in the Authorization header"
+    method: Auth
+    spec: "RFC 8620 3.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A valid user access token."
+    when: "POST /jmap without an Authorization header but with the token as accessToken query parameter, and again as X-Access-Token header."
+    then: "HTTP 401 both times."
+    sources:
+      - "wildduck:api.js token handling"
+    notes: "The REST API accepts both forms. JMAP must not, so tokens do not end up in access logs or in the download URLs that clients build from the template."
+
+  - id: CORE-052
+    title: "The REST API master token is not a JMAP credential"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The static REST API access token from the configuration (role root)."
+    when: "GET the session resource with Authorization: Bearer <master token>."
+    then: "HTTP 401, because the token is not bound to a user and so has no account."
+    sources:
+      - "wildduck:jmap-report 4.1"
+
+  # ---------------------------------------------------------------- Request and response envelope
+  - id: CORE-053
+    title: "A minimal request returns a Response object"
+    method: Request
+    spec: "RFC 8620 3.1, 3.3, 3.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "POST to apiUrl with Content-Type application/json and the body {using: [core URN], methodCalls: [[Core/echo, {hello: true}, c1]]}."
+    then: "HTTP 200, Content-Type application/json, body has methodResponses equal to [[Core/echo, {hello: true}, c1]], a string sessionState, and no createdIds."
+    sources:
+      - "rfc:8620 3.4"
+      - "james:EchoMethodContract#echoMethodShouldRespondOKWithRFC8621VersionAndSupportedMethod"
+      - "cyrus:JMAPCore/echo"
+      - "jmapio:core/echo-basic"
+
+  - id: CORE-054
+    title: "The method call id is echoed verbatim on each response"
+    method: Request
+    spec: "RFC 8620 3.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with three Core/echo calls whose call ids are 'first', an empty string and a string with spaces, a hash sign and non ASCII characters."
+    then: "The three responses carry exactly those call ids, in order."
+    sources:
+      - "rfc:8620 3.2"
+      - "jmapio:core/result-ref-call-id-preserved"
+
+  - id: CORE-055
+    title: "Responses come in call order, one per call, including errors"
+    method: Request
+    spec: "RFC 8620 3.3, 3.4, 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with Mailbox/get (ids []), Core/echo and a non existing method Fake/nonexistent, call ids call1 to call3."
+    then: "HTTP 200. methodResponses has three entries in call order: Mailbox/get, Core/echo, and error with type unknownMethod and call id call3."
+    sources:
+      - "jmapio:core/error-multiple-method-responses"
+      - "james:EchoMethodContract#echoMethodShouldRespondWithRFC8621VersionAndUnsupportedMethod"
+      - "rfc:8620 3.4"
+
+  - id: CORE-056
+    title: "An error in one call does not stop the following calls"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request whose first call is Mailbox/get with ids set to a string (invalid), and whose second call is a valid Mailbox/get."
+    then: "HTTP 200; the first response is error invalidArguments, the second is a normal Mailbox/get response."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "cyrus:JMAPCore/resultref_wildcard_fail_mem_cleanup"
+
+  - id: CORE-057
+    title: "Method calls run sequentially and later calls see earlier writes"
+    method: Request
+    spec: "RFC 8620 3.3, 3.10"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user without a mailbox named Seq."
+    when: "One request with Mailbox/set creating Seq, then Mailbox/get with ids null, then Mailbox/set destroying it by creation id reference, then Mailbox/get again."
+    then: "The first Mailbox/get lists Seq, the second does not, and the state strings of the four responses advance in call order."
+    sources:
+      - "rfc:8620 3.10"
+      - "james:BackReferenceContract#loadingAccountWithBackReferences"
+
+  - id: CORE-058
+    title: "sessionState in every API response equals the Session state"
+    method: Request
+    spec: "RFC 8620 3.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session resource was fetched and its state S noted."
+    when: "A Core/echo request, and a request in which every call fails with a method level error, are sent."
+    then: "Both responses contain sessionState equal to S."
+    sources:
+      - "rfc:8620 3.4"
+      - "jmapio:core/error-response-has-session-state"
+
+  - id: CORE-059
+    title: "An empty methodCalls array is a valid request"
+    method: Request
+    spec: "RFC 8620 3.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with using [core URN] and methodCalls []."
+    then: "HTTP 200 with methodResponses [] and sessionState."
+    sources:
+      - "rfc:8620 3.3"
+
+  - id: CORE-060
+    title: "Capabilities listed in using need not be used"
+    method: Request
+    spec: "RFC 8620 3.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request whose using lists every capability advertised in the session and whose only call is Core/echo."
+    then: "HTTP 200 with the echo response."
+    sources:
+      - "rfc:8620 3.3"
+
+  - id: CORE-061
+    title: "Methods of a capability that is not in using answer unknownMethod"
+    method: Request
+    spec: "RFC 8620 1.8, 3.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with using [core URN] only and the calls Mailbox/get and Email/query for the user's account."
+    then: "HTTP 200; both responses are error with type unknownMethod, and nothing is read."
+    sources:
+      - "rfc:8620 1.8"
+      - "cyrus:JMAPBlob/blob_get"
+      - "cyrus:JMAPEmail/emailsubmission_onsuccess_not_using"
+      - "stalwart:compliance changelog capability gating"
+      - "legacy-proxy:test/unit/dispatch.spec.ts"
+
+  - id: CORE-062
+    title: "Core/echo without the core capability in using answers unknownMethod"
+    method: Request
+    spec: "RFC 8620 3.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with using [] and one Core/echo call, and a second request with using [mail URN] and one Core/echo call."
+    then: "HTTP 200 in both cases; the call answers error with type unknownMethod."
+    sources:
+      - "jmapio:core/error-empty-using"
+      - "james:EchoMethodContract#echoMethodShouldReturnUnknownMethodWhenMissingCoreCapability"
+    notes: "The RFC does not spell this out; the jmapio suite records it as a ruling in rfc-clarifications.md (Q4) and James behaves the same. Cyrus accepts requests without the core URN, so real clients may omit it; revisit if interop shows a problem."
+
+  - id: CORE-063
+    title: "Unknown properties on the Request object are ignored"
+    method: Request
+    spec: "RFC 8620 3.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A valid Core/echo request with an extra top level property futureThing set to an object."
+    then: "HTTP 200 with the normal echo response; the extra property is not echoed in the Response object."
+    sources:
+      - "rfc:8620 3.3"
+
+  - id: CORE-064
+    title: "A request whose calls all fail is still HTTP 200"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with one unknown method, one call with a missing accountId and one call with an unknown accountId."
+    then: "HTTP 200 with Content-Type application/json and three error responses; no problem details body."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "jmapio:core/error-method-level-has-type"
+
+  # ---------------------------------------------------------------- createdIds and creation ids
+  - id: CORE-065
+    title: "createdIds is absent from the response when absent from the request"
+    method: Request
+    spec: "RFC 8620 3.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request without createdIds that creates a mailbox with creation id k1."
+    then: "The Mailbox/set response lists k1 under created, and the Response object has no createdIds property."
+    sources:
+      - "rfc:8620 3.4"
+      - "cyrus:JMAPCore/created_ids"
+
+  - id: CORE-066
+    title: "An empty createdIds in the request is returned with the new creations"
+    method: Request
+    spec: "RFC 8620 3.3, 3.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with createdIds {} that creates a mailbox with creation id k2."
+    then: "The Response object has createdIds equal to {k2: <new mailbox id>}."
+    sources:
+      - "rfc:8620 3.4"
+      - "cyrus:JMAPCore/created_ids"
+      - "fastmail:t/Blob/upload/basic.t"
+
+  - id: CORE-067
+    title: "createdIds passed in the request resolve creation id references"
+    method: Request
+    spec: "RFC 8620 3.3, 5.8"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "An existing mailbox with id X."
+    when: "A request with createdIds {k1: X} and the call Mailbox/get with ids ['#k1']."
+    then: "The Mailbox/get list contains the mailbox X, and the response createdIds contains k1 mapped to X."
+    sources:
+      - "cyrus:JMAPCore/created_ids"
+      - "rfc:8620 3.3"
+
+  - id: CORE-068
+    title: "Response createdIds keeps every id passed in and adds the new ones"
+    method: Request
+    spec: "RFC 8620 3.4"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "An existing mailbox with id X."
+    when: "A request with createdIds {old: X} that creates a mailbox with creation id fresh."
+    then: "Response createdIds has exactly the keys old (mapped to X) and fresh (mapped to the new id)."
+    sources:
+      - "rfc:8620 3.4"
+      - "cyrus:JMAPCore/created_ids"
+
+  - id: CORE-069
+    title: "createdIds of the wrong type is a notRequest error"
+    method: Request
+    spec: "RFC 8620 3.3, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request whose createdIds is the string bogus, and another whose createdIds maps a key to a number."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:notRequest; no call is executed."
+    sources:
+      - "cyrus:JMAPCore/created_ids"
+      - "rfc:8620 3.6.1"
+
+  - id: CORE-070
+    title: "A creation id from an earlier call can be referenced in a later call"
+    method: Request
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "Two emails in the Inbox."
+    when: "One request with Mailbox/set creating a mailbox with creation id newbox, followed by Email/set updating both emails with mailboxIds {'#newbox': true}."
+    then: "Mailbox/set reports newbox created, Email/set reports both emails updated with nothing in notUpdated, and a following Email/get shows mailboxIds equal to the new mailbox id for both."
+    sources:
+      - "fastmail:t/core/create-and-reference-in-one-request.t"
+      - "cyrus:JMAPEmail/misc_refobjects_simple"
+      - "cyrus:JMAPEmail/email_set_update_mailbox_creationid"
+      - "rfc:8620 5.3"
+
+  - id: CORE-071
+    title: "A creation id cannot be referenced before the call that creates it"
+    method: Request
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "One email in the Inbox."
+    when: "One request with Email/set updating the email with mailboxIds {'#laterbox': true}, followed by Mailbox/set creating a mailbox with creation id laterbox."
+    then: "HTTP 200. Email/set lists the email under notUpdated with a SetError of type invalidProperties naming mailboxIds, the mailbox is created by the second call, and the email is still in the Inbox."
+    sources:
+      - "fastmail:t/core/create-and-reference-in-one-request.t"
+      - "rfc:8620 5.3"
+    notes: "The server never has to look ahead. Fastmail only asserts that the id is in notUpdated; invalidProperties is the WildDuck choice for an unresolved creation id inside a property."
+
+  - id: CORE-072
+    title: "Creation ids share one map across types and the latest creation wins"
+    method: Request
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "One request with two Mailbox/set calls that both create a mailbox under the creation id dup (names A and B), then Mailbox/get with ids ['#dup'], with createdIds {} in the request."
+    then: "Mailbox/get returns mailbox B only, and response createdIds maps dup to the id of B."
+    sources:
+      - "rfc:8620 5.3"
+    notes: "Reuse is a client SHOULD NOT; the server MUST map the creation id to the most recently created record."
+
+  - id: CORE-073
+    title: "An unresolved creation id reference in /get ids goes to notFound"
+    method: Request
+    spec: "RFC 8620 5.1, 5.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user; no createdIds in the request."
+    when: "Mailbox/get with ids ['#nosuch']."
+    then: "A normal Mailbox/get response with list [] and notFound ['#nosuch']; no method level error."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnNotFoundWhenUnknownClientId"
+      - "stalwart:core/blob.rs"
+    notes: "James treats unknown client ids as notFound. Stalwart answers invalidResultReference for an unknown creation reference in Email/import; for /get ids WildDuck follows James."
+
+  # ---------------------------------------------------------------- Request level errors
+  - id: CORE-074
+    title: "A body that is not JSON is rejected with notJSON"
+    method: Request
+    spec: "RFC 8620 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "POST to apiUrl with Content-Type application/json and the body 'this is not json'; again with a JSON document cut off in the middle; again with an empty body."
+    then: "HTTP 400 each time, body is a problem details object with type urn:ietf:params:jmap:error:notJSON and status 400."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "jmapio:core/error-not-json"
+      - "stalwart:compliance/core error-not-json"
+      - "rfc:8620 8.4"
+
+  - id: CORE-075
+    title: "A request with a non JSON content type is rejected"
+    method: Request
+    spec: "RFC 8620 3.1, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A syntactically valid Core/echo request is posted with Content-Type text/plain, and again with no Content-Type header."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:notJSON; the call is not executed."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "jmapio:core/error-wrong-content-type"
+      - "stalwart:compliance/core error-wrong-content-type"
+    notes: "The jmapio ruling (Q2) accepts any 4xx, including 415. WildDuck uses 400 with the notJSON type, which is what the RFC text for notJSON describes."
+
+  - id: CORE-076
+    title: "application/json with a charset parameter is accepted"
+    method: Request
+    spec: "RFC 8620 3.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A Core/echo request is posted with Content-Type 'application/json; charset=utf-8', and with the media type written in upper case."
+    then: "HTTP 200 with the echo response."
+    sources:
+      - "rfc:8620 3.1"
+      - "james:EchoMethodContract#echoMethodShouldRespondOKWithRFC8621VersionAndSupportedMethod"
+    notes: "Real clients (browser fetch, Perl and Java HTTP stacks) add the charset parameter."
+
+  - id: CORE-077
+    title: "JSON that is not a Request object is rejected with notRequest"
+    method: Request
+    spec: "RFC 8620 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "These bodies are posted as application/json: {foo: bar}; a JSON array; a JSON string; null; an object with using but no methodCalls; an object with methodCalls but no using."
+    then: "HTTP 400 each time with problem type urn:ietf:params:jmap:error:notRequest and status 400."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "jmapio:core/error-not-request"
+      - "stalwart:compliance/core error-not-request"
+    notes: "The RFC wording is SHOULD for the problem body; the jmapio ruling (Q1) requires HTTP 400 and forbids a 200 answer."
+
+  - id: CORE-078
+    title: "Wrongly typed using or methodCalls is notRequest"
+    method: Request
+    spec: "RFC 8620 3.3, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Requests are posted with methodCalls as a string, methodCalls as an object, using as a string, and using as an array containing a number."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:notRequest."
+    sources:
+      - "jmapio:core/error-method-calls-not-array"
+      - "stalwart:compliance/core error-method-calls-not-array"
+      - "rfc:8620 3.6.1"
+
+  - id: CORE-079
+    title: "A malformed Invocation makes the whole request notRequest"
+    method: Request
+    spec: "RFC 8620 3.2, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Requests are posted in which one entry of methodCalls is: an array of two elements; an array of four elements; an object; a tuple whose name is a number; a tuple whose arguments are an array; a tuple whose call id is a number. Each request also has a valid Core/echo call before the bad entry."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:notRequest each time; the valid call before the bad entry is not executed."
+    sources:
+      - "rfc:8620 3.2"
+      - "rfc:8620 3.6"
+      - "jmap-perl:t/dispatch-check-accounts.t"
+
+  - id: CORE-080
+    title: "An unknown capability in using is rejected with unknownCapability"
+    method: Request
+    spec: "RFC 8620 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with using [core URN, 'urn:fake:nonexistent'] and one Core/echo call."
+    then: "HTTP 400, problem type urn:ietf:params:jmap:error:unknownCapability, status 400, and the detail text names the offending URN. No method response is returned."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "cyrus:JMAPCore/using_unknown_capability"
+      - "jmapio:core/error-unknown-capability"
+      - "stalwart:compliance/core error-unknown-capability"
+    notes: "jmapio ruling (Q3): this must be an HTTP level error, never a method level one. Naming the URN in detail is a WildDuck addition that helps client authors."
+
+  - id: CORE-081
+    title: "A standard capability that WildDuck does not implement is unknownCapability"
+    method: Request
+    spec: "RFC 8620 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A server that does not advertise urn:ietf:params:jmap:websocket, urn:ietf:params:jmap:mdn or urn:ietf:params:jmap:principals."
+    when: "A request with using [core URN, mail URN, MDN URN] and a Mailbox/get call."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:unknownCapability."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "wildduck:landscape 3b Cypht always sends core, mail and quota"
+    notes: "Quota is advertised (decided 2026-11-11), so Cypht, which always sends the quota URN, can connect. The rule is tested with a capability WildDuck does not implement."
+
+  - id: CORE-082
+    title: "Request level errors use the RFC 7807 problem details format"
+    method: Request
+    spec: "RFC 8620 3.6.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Each request level error is provoked once: notJSON, notRequest, unknownCapability and limit."
+    then: "Each response has Content-Type application/problem+json, a body with a string type, an integer status equal to the HTTP status code, and optionally title and detail strings. The body never contains methodResponses."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "cyrus:JMAPCore/request_too_large"
+      - "james:EchoMethodContract#apiShouldRejectBigRequests"
+
+  # ---------------------------------------------------------------- Limits
+  - id: CORE-083
+    title: "A request body over maxSizeRequest is rejected with a limit error"
+    method: Request
+    spec: "RFC 8620 2, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxSizeRequest N."
+    when: "A Core/echo request whose body is N + 1 octets (padded with a long string argument) is posted."
+    then: "HTTP 413, problem type urn:ietf:params:jmap:error:limit, and the problem object has limit equal to maxSizeRequest. The same answer is given when Content-Length is absent (chunked) and the limit is crossed while reading."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "cyrus:JMAPCore/request_too_large"
+      - "james:EchoMethodContract#apiShouldRejectBigRequests"
+      - "legacy-proxy:test/unit/dispatch.spec.ts"
+    notes: "Status code is a WildDuck choice: Cyrus answers 413, James 400. The server must stop reading at the limit and not buffer the whole body."
+
+  - id: CORE-084
+    title: "A request body of exactly maxSizeRequest octets is processed"
+    method: Request
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxSizeRequest N."
+    when: "A Core/echo request padded to exactly N octets is posted."
+    then: "HTTP 200 and the arguments are echoed completely."
+    sources:
+      - "rfc:8620 2"
+      - "cyrus:JMAPCore/session_large_limits"
+
+  - id: CORE-085
+    title: "More method calls than maxCallsInRequest is a limit error"
+    method: Request
+    spec: "RFC 8620 2, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxCallsInRequest N."
+    when: "One request with N Core/echo calls, and one with N + 1 Core/echo calls."
+    then: "The first answers HTTP 200 with N responses. The second answers HTTP 400 with problem type urn:ietf:params:jmap:error:limit and limit equal to maxCallsInRequest, and none of its calls is executed."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "james:EchoMethodContract#apiShouldRejectTooManyCalls"
+      - "jmap-perl:t/request-limits.t"
+
+  - id: CORE-086
+    title: "More concurrent API requests than maxConcurrentRequests is a limit error"
+    method: Request
+    spec: "RFC 8620 2, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxConcurrentRequests N, and N API requests of one user are held open (for example by slow request bodies)."
+    when: "The same user sends request N + 1."
+    then: "HTTP 429 with problem type urn:ietf:params:jmap:error:limit and limit equal to maxConcurrentRequests. After one of the held requests completes, a new request succeeds."
+    sources:
+      - "rfc:8620 3.6.1"
+      - "stalwart:system/security.rs"
+    notes: "429 is the WildDuck choice (Stalwart does the same). The counter must be released on every exit path, including aborted connections."
+
+  - id: CORE-087
+    title: "The concurrency limit is counted per user"
+    method: Request
+    spec: "RFC 8620 2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "User A holds maxConcurrentRequests API requests open."
+    when: "User B sends an API request, and user A fetches the session resource."
+    then: "Both succeed with HTTP 200: the limit of A does not affect B, and it applies to the API endpoint only."
+    sources:
+      - "stalwart:system/security.rs"
+      - "rfc:8620 2"
+
+  - id: CORE-088
+    title: "A /get with more ids than maxObjectsInGet answers requestTooLarge"
+    method: Request
+    spec: "RFC 8620 2, 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxObjectsInGet N."
+    when: "Email/get with N syntactically valid, non existing ids, then Email/get with N + 1 such ids."
+    then: "The first returns a normal response with N ids in notFound. The second returns error with type requestTooLarge and no list. HTTP status is 200 in both cases."
+    sources:
+      - "rfc:8620 5.1"
+      - "jmap-perl:t/request-limits.t"
+      - "james:MDNParseMethodContract"
+    notes: "Decided 2026-11-11: maxObjectsInGet is 1500, equal to the mailbox limit, so Mailbox/get with ids null always fits. N is the advertised value."
+
+  - id: CORE-089
+    title: "A /set with more objects than maxObjectsInSet answers requestTooLarge"
+    method: Request
+    spec: "RFC 8620 2, 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxObjectsInSet N."
+    when: "Mailbox/set whose create, update and destroy arguments together name N + 1 objects (for example N - 1 destroys of unknown ids plus 2 creates)."
+    then: "error with type requestTooLarge; no mailbox is created and the Mailbox state is unchanged. The same call reduced to N objects is processed normally."
+    sources:
+      - "rfc:8620 2"
+      - "rfc:8620 5.3"
+      - "jmap-perl:t/request-limits.t"
+
+  - id: CORE-090
+    title: "A result reference that expands past maxObjectsInGet answers requestTooLarge"
+    method: Request
+    spec: "RFC 8620 3.7, 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox with more emails than maxObjectsInGet."
+    when: "Email/query with limit set above maxObjectsInGet, followed by Email/get whose '#ids' references /ids of the query."
+    then: "Email/query succeeds; Email/get answers error requestTooLarge. The limit is applied after the reference is resolved."
+    sources:
+      - "rfc:8620 5.1"
+      - "rfc:8620 3.7"
+    notes: "If Email/query clamps limit to maxObjectsInGet this cannot happen through /ids; then test with a flattening path that yields more ids."
+
+  - id: CORE-091
+    title: "Deeply nested JSON is rejected without exhausting the server"
+    method: Request
+    spec: "RFC 8620 8.4, 8.5"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request under maxSizeRequest whose Core/echo argument is an array nested 100000 levels deep."
+    then: "The server answers within the normal time budget, either HTTP 400 with notJSON or a method level invalidArguments error, never a 5xx or a dropped connection; a following normal request succeeds."
+    sources:
+      - "rfc:8620 8.5"
+      - "cyrus:JMAPCore/resultref_wildcard_fail_mem_cleanup"
+
+  # ---------------------------------------------------------------- Strict JSON
+  - id: CORE-092
+    title: "Duplicate member names in the request are rejected with notJSON"
+    method: Request
+    spec: "RFC 8620 1.5, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request body in which the using member appears twice at top level, and another in which an arguments object has the same key twice."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:notJSON."
+    sources:
+      - "cyrus:JMAPCore/request_duplicate_member"
+      - "rfc:8620 1.5"
+    notes: "I-JSON (RFC 7493 2.3) forbids duplicate names. JSON.parse silently keeps the last value, so this needs a strict parser or a duplicate check."
+
+  - id: CORE-093
+    title: "Request bodies that are not valid UTF-8 are rejected with notJSON"
+    method: Request
+    spec: "RFC 8620 1.5, 3.6.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A Core/echo request is sent UTF-16 encoded; again as UTF-8 with an invalid byte sequence inside a string; again with a string containing an unpaired surrogate escape."
+    then: "HTTP 400 with problem type urn:ietf:params:jmap:error:notJSON each time."
+    sources:
+      - "rfc:8620 1.5"
+      - "rfc:8620 8.4"
+    notes: "I-JSON (RFC 7493 2.1) requires UTF-8 and forbids unpaired surrogates."
+
+  - id: CORE-094
+    title: "Numbers outside the Int range or of the wrong kind are invalidArguments"
+    method: Request
+    spec: "RFC 8620 1.3, 3.9"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Email/query is called with limit -1, with limit 1.5, with limit 9007199254740993 and with position given as the string '0'."
+    then: "Each call answers error with type invalidArguments; none is silently rounded or coerced."
+    sources:
+      - "rfc:8620 1.3"
+      - "rfc:8620 3.9"
+      - "jmapio:core/error-invalid-arguments-bad-type"
+
+  - id: CORE-095
+    title: "Prototype style keys in arguments never pollute server objects"
+    method: Request
+    spec: "RFC 8620 3.9, 8.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get is called with an extra argument named __proto__ whose value is {polluted: true}, and again with an argument named constructor; then a plain Core/echo {} follows in a new request."
+    then: "Both Mailbox/get calls answer error invalidArguments (unknown argument). The later echo response is exactly {} and no response object in any later request carries a polluted property."
+    sources:
+      - "wildduck:ionosphere packages/proto-jmap/test/proto-pollution.test.ts"
+      - "rfc:8620 3.9"
+
+  - id: CORE-096
+    title: "Method names that match Object prototype members are unknownMethod"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Calls are made with the method names constructor, toString, __proto__, hasOwnProperty and Mailbox/__proto__."
+    then: "Each answers error with type unknownMethod and HTTP 200; no call reaches a handler and none answers serverFail."
+    sources:
+      - "wildduck:ionosphere packages/proto-jmap/test/proto-pollution.test.ts"
+      - "rfc:8620 3.6.2"
+
+  - id: CORE-097
+    title: "Prototype style creation ids are handled as ordinary strings or rejected"
+    method: Request
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/set with a create map whose only key is __proto__, with createdIds {} in the request, followed by Mailbox/get with ids ['#__proto__'] and ['#constructor']."
+    then: "The creation is reported explicitly, either under created or under notCreated, never dropped silently. '#constructor' resolves to nothing (notFound). The response serialises as plain JSON and later requests are unaffected."
+    sources:
+      - "wildduck:ionosphere packages/proto-jmap/test/proto-pollution.test.ts"
+
+  # ---------------------------------------------------------------- Method level errors
+  - id: CORE-098
+    title: "An unknown method name answers unknownMethod"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user and using with core and mail."
+    when: "Calls to Fake/nonexistent, to Mailbox/frobnicate and to mailbox/get (lower case)."
+    then: "Each response is [error, {type: unknownMethod}, <call id>]; the error object always has a string type. Method names are case sensitive."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "jmapio:core/error-unknown-method"
+      - "jmapio:core/error-method-level-has-type"
+      - "james:EchoMethodContract#echoMethodShouldRespondWithRFC8621VersionAndUnsupportedMethod"
+      - "stalwart:compliance/core error-unknown-method"
+
+  - id: CORE-099
+    title: "Methods that are specified but not implemented yet answer unknownMethod"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "A server at phase 1 feature level, which advertises the mail capability."
+    when: "Calls to Mailbox/set, Email/set, Email/import, Email/copy and Email/parse with otherwise valid arguments."
+    then: "Each answers error with type unknownMethod and makes no change; none answers serverFail."
+    sources:
+      - "wildduck:brief phases"
+      - "rfc:8620 3.6.2"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the per method scenarios."
+
+  - id: CORE-100
+    title: "A missing accountId answers invalidArguments"
+    method: Request
+    spec: "RFC 8620 3.6.2, 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get with an empty arguments object, with accountId null and with accountId 42."
+    then: "Each answers error with type invalidArguments (a description naming accountId is allowed). The server does not fall back to the primary account."
+    sources:
+      - "cyrus:JMAPCore/core_accountid_required"
+      - "fastmail:t/core/accountId-required.t"
+      - "jmapio:core/error-invalid-arguments-missing-account"
+      - "jmap-perl:t/dispatch-check-accounts.t"
+      - "stalwart:compliance/core error-invalid-arguments-missing-account"
+    notes: "jmapio ruling (Q5): must be invalidArguments, defaulting to the primary account is not allowed."
+
+  - id: CORE-101
+    title: "An unknown accountId answers accountNotFound"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get with accountId nonexistent-account-id-xyz."
+    then: "error with type accountNotFound."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "jmapio:core/error-account-not-found"
+      - "fastmail:t/core/accountId-required.t"
+      - "james:MailboxGetMethodContract#mailboxGetShouldFailWhenWrongAccountId"
+      - "stalwart:compliance/core error-account-not-found"
+
+  - id: CORE-102
+    title: "Another user's account id answers accountNotFound, exactly like an unknown id"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "Users A and B; the request is authenticated as A."
+    when: "Mailbox/get, Email/query and Thread/get are called with B's account id."
+    then: "Each answers error with type accountNotFound, byte for byte the same error object as for a random account id; never forbidden, and no data of B is returned."
+    sources:
+      - "fastmail:t/Email/foreign-account.t"
+      - "fastmail:t/Blob/foreign-account.t"
+      - "james:QuotaGetMethodContract#quotaGetShouldFailWhenWrongAccountId"
+      - "jmap-perl:t/dispatch-check-accounts.t"
+    notes: "Adapted: there is no sharing, so an account outside the session does not exist from the caller's point of view."
+
+  - id: CORE-103
+    title: "Core/echo needs no accountId and returns one unchanged if given"
+    method: Core/echo
+    spec: "RFC 8620 4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Core/echo with {hello: world}, and Core/echo with {accountId: some-other-id, hello: world}."
+    then: "Both are echoed exactly; the accountId value is not validated and no accountNotFound is raised."
+    sources:
+      - "cyrus:JMAPCore/core_accountid_required"
+      - "fastmail:t/core/accountId-required.t"
+      - "jmap-perl:t/dispatch-check-accounts.t"
+
+  - id: CORE-104
+    title: "accountId may be supplied through a result reference and is validated after resolution"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "Users A and B; authenticated as A."
+    when: "Request 1: Mailbox/get (ids []) then Mailbox/get with '#accountId' referencing /accountId of the first. Request 2: Core/echo {x: <B's account id>} then Mailbox/get with '#accountId' referencing /x."
+    then: "Request 1: the second call succeeds for A's account. Request 2: the second call answers accountNotFound."
+    sources:
+      - "cyrus:JMAPCore/core_accountid_required"
+      - "jmap-perl:t/dispatch-check-accounts.t"
+
+  - id: CORE-105
+    title: "A wrongly typed argument answers invalidArguments"
+    method: Request
+    spec: "RFC 8620 3.6.2, 3.9"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get with ids set to the string not-an-array; Mailbox/get with properties set to an object; Email/query with filter set to an array."
+    then: "Each answers error with type invalidArguments; an optional description is a plain English string."
+    sources:
+      - "jmapio:core/error-invalid-arguments-bad-type"
+      - "stalwart:compliance/core error-invalid-arguments-bad-type"
+      - "rfc:8620 3.9"
+
+  - id: CORE-106
+    title: "An unknown argument to a standard method answers invalidArguments"
+    method: Request
+    spec: "RFC 8620 3.9"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get with the extra argument frobnicate true; Email/get with the misspelt argument fetchAllBodyValue."
+    then: "Each answers error with type invalidArguments."
+    sources:
+      - "rfc:8620 3.9"
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenUnknownParameter"
+    notes: "RFC 8620 3.9 lists unknown data among the cases that MUST give invalidArguments. Catching misspelt arguments also protects clients from silently ignored options."
+
+  - id: CORE-107
+    title: "Syntactically invalid ids in /get are reported in notFound"
+    method: Request
+    spec: "RFC 8620 1.2, 5.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get and Email/get with ids containing a string with a slash and a dot, an empty string, and a 300 character string."
+    then: "A normal /get response with all those values in notFound and an empty list; no database error and no invalidArguments."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnNotFoundWhenInvalid"
+      - "james:EmailGetMethodContract#invalidIdsShouldBeNotFound"
+      - "stalwart:compliance changelog unparsable ids"
+    notes: "Ids are not valid ObjectId hex in these cases, so the handler must not pass them to MongoDB unchecked."
+
+  - id: CORE-108
+    title: "forbidden is not used for cross account access"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: no
+    seed: [none]
+    given: "A server without ACLs, sharing or per method permissions inside an account."
+    when: "Not applicable."
+    then: "Not applicable."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "stalwart:mail/acl.rs"
+    notes: "Nothing testable: every credential that passes authentication has full rights on its single account, and other accounts answer accountNotFound (CORE-102). Revisit if read only tokens or scoped credentials are added."
+
+  - id: CORE-109
+    title: "accountNotSupportedByMethod and accountReadOnly cannot occur"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: no
+    seed: [none]
+    given: "A server whose only account supports every advertised capability and has isReadOnly false."
+    when: "Not applicable."
+    then: "Not applicable."
+    sources:
+      - "rfc:8620 3.6.2"
+    notes: "Nothing testable with one personal, writable account per user and no per user capability gate. If a per user gate or a read only mode is added, add scenarios: a method of a capability missing from accountCapabilities answers accountNotSupportedByMethod, and a /set on a read only account answers accountReadOnly."
+
+  - id: CORE-110
+    title: "An unexpected internal failure answers serverFail and keeps the request alive"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [db]
+    given: "A fault injected so that the handler of the second of three calls throws (for example a corrupted mailbox document)."
+    when: "The request with the three calls is sent."
+    then: "HTTP 200. Calls one and three answer normally; call two answers error with type serverFail and a description that contains no stack trace, file path or query text. The failure is logged server side."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "wildduck:ionosphere packages/proto-jmap/test/engine.test.ts"
+
+  - id: CORE-111
+    title: "A method level error leaves the server state unchanged"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The Mailbox state S and the list of mailboxes are known."
+    when: "Mailbox/set with a valid create entry plus an invalid top level argument (ifInState given as a number), so the call fails with invalidArguments."
+    then: "The response is a single error; no mailbox was created; Mailbox/get afterwards returns state S."
+    sources:
+      - "rfc:8620 3.6.2"
+
+  - id: CORE-112
+    title: "ifInState that does not match rejects the whole /set with stateMismatch"
+    method: Request
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/set with ifInState set to a string that is not the current state and a valid create entry."
+    then: "error with type stateMismatch; nothing is created."
+    sources:
+      - "rfc:8620 5.3"
+      - "jmapio:core/error-state-mismatch"
+      - "stalwart:compliance/core error-state-mismatch"
+    notes: "jmapio ruling (Q6): a server may never ignore ifInState. The per type variants live in the catalogue of each /set method."
+
+  # ---------------------------------------------------------------- Result references
+  - id: CORE-113
+    title: "A simple result reference feeds /ids of a query into a /get"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails in the Inbox."
+    when: "Email/query (inMailbox Inbox, limit 3, call id q) followed by Email/get with '#ids' {resultOf: q, name: Email/query, path: /ids} and properties [id, subject]."
+    then: "Email/get returns the same three ids in list, in query order or any order, and notFound is empty."
+    sources:
+      - "jmapio:core/result-ref-chained"
+      - "james:BackReferenceContract#backReferenceResolvingShouldWork"
+      - "fastmail:t/core/backrefs-simple.t"
+      - "stalwart:compliance/core result-ref-chained"
+      - "legacy-proxy:test/unit/refs.spec.ts"
+
+  - id: CORE-114
+    title: "The wildcard token maps over an array"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An account with its default mailboxes."
+    when: "Mailbox/get (ids null, call id a) followed by Mailbox/get with '#ids' {resultOf: a, name: Mailbox/get, path: '/list/*/id'}."
+    then: "The second response lists exactly the mailboxes of the first, with an empty notFound."
+    sources:
+      - "jmapio:core/result-ref-simple"
+      - "james:BackReferenceContract#pathShouldBeResolvable"
+      - "wildduck:ionosphere packages/proto-jmap/test/engine.test.ts"
+      - "stalwart:compliance/core result-ref-simple"
+
+  - id: CORE-115
+    title: "Wildcard results that are arrays are flattened into one array"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Two threads in the Inbox, one with three emails and one with two."
+    when: "Email/query (collapseThreads true) as t0; Email/get '#ids' from t0 /ids with properties [threadId] as t1; Thread/get '#ids' from t1 '/list/*/threadId' as t2; Email/get '#ids' from t2 '/list/*/emailIds' as t3."
+    then: "t3 returns the five emails: the path over emailIds yields one flat array of ids, not an array of arrays."
+    sources:
+      - "rfc:8620 3.7"
+      - "wildduck:ionosphere packages/proto-jmap/test/pointer.test.ts"
+      - "james:BackReferenceContract#loadingAccountWithBackReferences"
+    notes: "This is the worked example of RFC 8620 3.7 and the request most mail clients send when opening a mailbox."
+
+  - id: CORE-116
+    title: "A reference path may select a single scalar value"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get (ids [], call id s) followed by Mailbox/changes with '#sinceState' {resultOf: s, name: Mailbox/get, path: /state}."
+    then: "Mailbox/changes answers normally with oldState and newState equal to the state of the first response and empty change lists."
+    sources:
+      - "jmapio:core/result-ref-path-single-value"
+      - "stalwart:compliance/core result-ref-path-single-value"
+
+  - id: CORE-117
+    title: "JSON Pointer array indexes and escapes are honoured"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Core/echo {list: [{id: a}, {id: b}], 'k/1': {'m~n': [x]}} as e, then Core/echo calls with '#v' referencing /list/1/id, '/k~11/m~0n/0', and the empty path."
+    then: "The three later echoes return v equal to b, to x, and to the complete arguments object of e."
+    sources:
+      - "wildduck:ionosphere packages/proto-jmap/test/pointer.test.ts"
+      - "jmap-perl:t/dispatch-pointer.t"
+      - "rfc:8620 3.7"
+    notes: "RFC 6901: ~1 decodes to a slash, ~0 to a tilde, and the empty pointer is the whole document."
+
+  - id: CORE-118
+    title: "The wildcard on a value that is not an array fails"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get (ids null) as a, then Mailbox/get with '#ids' path '/*/*/id' (the root is an object); and Core/echo with a nested array followed by a reference with more wildcard levels than the data has."
+    then: "The referencing call answers error invalidResultReference in both cases; the first call's response is unaffected and memory use stays bounded."
+    sources:
+      - "james:BackReferenceContract#wildcardRequiresAnArray"
+      - "cyrus:JMAPCore/resultref_wildcard_fail_mem_cleanup"
+
+  - id: CORE-119
+    title: "A path that does not exist in the response fails"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get as a, then Mailbox/get with '#ids' path /nosuch; with path /list/999/id; with path 'list' (no leading slash); with path '/list/*/nosuch'."
+    then: "Each referencing call answers error invalidResultReference. A missing key is never treated as null."
+    sources:
+      - "fastmail:t/core/backrefs-simple.t"
+      - "wildduck:ionosphere packages/proto-jmap/test/engine.test.ts"
+      - "rfc:8620 3.7"
+
+  - id: CORE-120
+    title: "A reference to an unknown call id fails"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A single Email/get with '#ids' {resultOf: nonexistent, name: Email/query, path: /ids}."
+    then: "error with type invalidResultReference."
+    sources:
+      - "jmapio:core/result-ref-invalid-result-of"
+      - "james:BackReferenceContract#resolvingAnUnexistingMethodCallIdShouldFail"
+      - "stalwart:compliance/core result-ref-invalid-result-of"
+
+  - id: CORE-121
+    title: "A reference whose name differs from the response name fails"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One email in the Inbox."
+    when: "Email/query as q, then Email/get with '#ids' {resultOf: q, name: Mailbox/get, path: /ids}."
+    then: "Email/get answers error invalidResultReference."
+    sources:
+      - "jmapio:core/result-ref-wrong-method-name"
+      - "james:BackReferenceContract#resolvedBackReferenceShouldHaveTheRightMethodName"
+      - "wildduck:ionosphere packages/proto-jmap/test/engine.test.ts"
+
+  - id: CORE-122
+    title: "A reference to a call that failed does not resolve"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Email/query with an invalid filter as q (answers an error), then Email/get with '#ids' {resultOf: q, name: Email/query, path: /ids}."
+    then: "The first response is the error of the query; Email/get answers error invalidResultReference because the response named by q is called error, not Email/query."
+    sources:
+      - "rfc:8620 3.7"
+      - "fastmail:t/core/backrefs-simple.t"
+
+  - id: CORE-123
+    title: "A reference to a later call does not resolve"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Email/get with '#ids' {resultOf: later, name: Email/query, path: /ids}, followed by Email/query with call id later."
+    then: "Email/get answers error invalidResultReference; Email/query then runs normally."
+    sources:
+      - "rfc:8620 3.7"
+
+  - id: CORE-124
+    title: "The same argument in plain and referenced form is invalidArguments"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get as a, then Mailbox/get with both ids [x] and '#ids' {resultOf: a, name: Mailbox/get, path: '/list/*/id'}; and Core/echo with both foo and '#foo'."
+    then: "Each such call answers error with type invalidArguments (not invalidResultReference), even when the reference itself would resolve."
+    sources:
+      - "james:EchoMethodContract#echoShouldRejectNormalAndResultReferenceArgumentCollisions"
+      - "fastmail:t/core/backrefs-simple.t"
+      - "jmap-perl:t/dispatch-check-accounts.t"
+
+  - id: CORE-125
+    title: "A malformed ResultReference object does not resolve"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get as a, then Mailbox/get calls whose '#ids' value is: a string; an object without path; an object whose resultOf is a number; null."
+    then: "Each answers error with type invalidResultReference."
+    sources:
+      - "wildduck:ionosphere packages/proto-jmap/test/pointer.test.ts"
+      - "rfc:8620 3.7"
+    notes: "The RFC does not name the error for a reference that is not even a ResultReference object. invalidResultReference is chosen because the reference cannot be resolved; invalidArguments would also be defensible."
+
+  - id: CORE-126
+    title: "A resolved value of the wrong type is invalidArguments"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get as a, then Mailbox/get with '#ids' {resultOf: a, name: Mailbox/get, path: /state} (a string where an array of ids is expected)."
+    then: "The reference resolves, and the method is then processed as normal, so it answers error with type invalidArguments."
+    sources:
+      - "rfc:8620 3.7"
+
+  - id: CORE-127
+    title: "With duplicate call ids a reference resolves to the first matching response"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Core/echo {v: [one]} with call id dup, Core/echo {v: [two]} with call id dup, then Core/echo with '#v' {resultOf: dup, name: Core/echo, path: /v}."
+    then: "The third response has v equal to [one]."
+    sources:
+      - "rfc:8620 3.7"
+
+  - id: CORE-128
+    title: "Result references are only recognised on top level argument names"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Mailbox/get as a, then Email/query with filter {'#inMailbox': {resultOf: a, name: Mailbox/get, path: /list/0/id}}; and Core/echo with a nested object that has a key starting with a hash sign."
+    then: "Email/query does not resolve the nested key and answers invalidArguments or unsupportedFilter for the unknown filter property. Core/echo returns the nested object unchanged."
+    sources:
+      - "rfc:8620 3.7"
+    notes: "The server checks the arguments object for names beginning with a hash sign; nested objects are data."
+
+  - id: CORE-129
+    title: "Pointer tokens that name inherited object members do not resolve"
+    method: Request
+    spec: "RFC 8620 3.7"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Core/echo {a: {b: 1}} as e, then Core/echo calls with '#v' paths /__proto__, /constructor, /a/constructor/name and /a/toString; and a call with the argument name '#__proto__'."
+    then: "Every referencing call answers invalidResultReference (the last one invalidResultReference or invalidArguments); no function source or prototype object is ever returned."
+    sources:
+      - "wildduck:ionosphere packages/proto-jmap/test/proto-pollution.test.ts"
+
+  # ---------------------------------------------------------------- Core/echo
+  - id: CORE-130
+    title: "Core/echo with empty arguments returns an empty object"
+    method: Core/echo
+    spec: "RFC 8620 4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Core/echo with {}."
+    then: "[Core/echo, {}, <call id>]."
+    sources:
+      - "jmapio:core/echo-empty"
+      - "stalwart:compliance/core echo-empty"
+
+  - id: CORE-131
+    title: "Core/echo preserves every JSON type and nesting"
+    method: Core/echo
+    spec: "RFC 8620 4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Core/echo with a string containing non BMP characters and escaped control characters, the integers 0, -1 and 9007199254740991, true, false, null, an empty array, a mixed array, an empty object, a key that is an empty string and an object nested five levels deep."
+    then: "The response arguments are deep equal to the request arguments: null stays null (the key is not dropped), integers are not turned into strings, and empty containers keep their kind."
+    sources:
+      - "jmapio:core/echo-nested"
+      - "cyrus:JMAPCore/echo"
+      - "james:EchoMethodContract#echoMethodShouldRespondOKWithRFC8621VersionAndSupportedMethod"
+      - "wildduck:ionosphere packages/proto-jmap/test/engine.test.ts"
+    notes: "jmapio ruling (Q22): floating point round trip fidelity is not required, tests stick to integers. A response schema with fast-json-stringify must not be applied to this method, it would drop undeclared keys."
+
+  # ---------------------------------------------------------------- HTTP level behaviour
+  - id: CORE-132
+    title: "The API endpoint only accepts POST"
+    method: Request
+    spec: "RFC 8620 3.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "GET, PUT, DELETE and PATCH requests to apiUrl."
+    then: "HTTP 405 with an Allow header that lists POST; the body is a problem details object or empty, never a Response object."
+    sources:
+      - "rfc:8620 3.1"
+
+  - id: CORE-133
+    title: "Unknown paths under the JMAP listener answer 404 with problem details"
+    method: Request
+    spec: "RFC 8620 3.6.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "POST to apiUrl with extra path segments appended, and GET of an undefined path on the JMAP listener."
+    then: "HTTP 404 with a problem details body whose status is 404."
+    sources:
+      - "cyrus:JMAPCore/blob_upload_bad_url"
+
+  - id: CORE-134
+    title: "CORS preflight for the API endpoint is answered without authentication"
+    method: Request
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "CORS is enabled for the JMAP listener with an allowed origin."
+    when: "OPTIONS to apiUrl with Origin, Access-Control-Request-Method POST and Access-Control-Request-Headers 'authorization, content-type', without an Authorization header."
+    then: "A 2xx answer with Access-Control-Allow-Origin matching the configured origin, Access-Control-Allow-Methods including POST, and Access-Control-Allow-Headers including Authorization and Content-Type. No WWW-Authenticate challenge."
+    sources:
+      - "cyrus:JMAPCore/cors_preflight"
+      - "james:CorsHeaderAPITest#apiShouldPositionCorsHeaders"
+    notes: "Needed by browser based clients (webmail on another origin). The same preflight must work for the session, upload, download and event source URLs."
+
+  - id: CORE-135
+    title: "CORS headers are present on real responses, including errors"
+    method: Request
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "CORS is enabled with an allowed origin."
+    when: "With the Origin header set: a successful Core/echo, a 401 without credentials, and a 400 notJSON request."
+    then: "All three responses carry Access-Control-Allow-Origin, so that a browser client can read the problem details of the failures. With a disallowed origin the header is absent."
+    sources:
+      - "james:CorsHeaderAPITest#apiShouldPositionCorsHeaders"
+      - "cyrus:JMAPCore/cors_preflight"
+
+  - id: CORE-136
+    title: "Header values supplied by the client never reach logs or responses unescaped"
+    method: Request
+    spec: "RFC 8620 3.9"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A Core/echo request is sent with User-Agent and X-Forwarded-For values that contain encoded line breaks and log field separators, and a call id that contains line breaks."
+    then: "The request succeeds or is rejected with 400; the access log entry stays on one record with the values escaped, and no response header echoes the injected text."
+    sources:
+      - "cyrus:JMAPCore/loginject_via_logheaders"
+      - "wildduck:ionosphere apps/server/test/jmap-header-injection.test.ts"

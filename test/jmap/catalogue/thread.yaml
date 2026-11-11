@@ -1,0 +1,652 @@
+area: thread
+title: "Thread"
+description: "RFC 8621 section 3: Thread/get and Thread/changes, the threading rule WildDuck applies on delivery (shared Message-ID reference and same normalised subject), thread id immutability and how threads behave across mailboxes, drafts, moves and removals made over IMAP, LMTP and JMAP."
+scenarios:
+  # ----------------------------------------------------------------- Thread/get
+  - id: THR-001
+    title: "A single message forms a thread of its own"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "One message delivered to INBOX; Email/get returns its id E and threadId T."
+    when: "Thread/get is called with ids [T]."
+    then: "The response has accountId, a string state, notFound as an empty array and list holding one object with exactly the keys id (equal to T) and emailIds (equal to [E])."
+    sources:
+      - "cyrus:JMAPEmail/thread_get_onemsg"
+      - "stalwart:compliance/thread.rs#get_single_email_thread"
+      - "stalwart:compliance/thread.rs#get_thread_response_structure"
+      - "jmapio:thread/get-single-email-thread"
+      - "jmapio:thread/get-thread-response-structure"
+      - "rfc:8621 3"
+
+  - id: THR-002
+    title: "Thread ids are letter prefixed, URL safe and equal to Email.threadId"
+    method: Thread/get
+    spec: "RFC 8620 1.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Three delivered messages in two threads."
+    when: "Email/get is called with properties ['threadId'] and Thread/get with the distinct threadId values."
+    then: "Every threadId matches the pattern of a letter followed only by characters from A-Z, a-z, 0-9, hyphen and underscore, is at most 255 characters, cannot be confused with an Email or Mailbox id (different prefix), and is found by Thread/get."
+    sources:
+      - "wildduck:brief ids"
+      - "rfc:8620 1.2"
+
+  - id: THR-003
+    title: "Thread/get returns one object per requested thread"
+    method: Thread/get
+    spec: "RFC 8621 3.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Thread T1 with three messages (original and two replies) and thread T2 with two messages."
+    when: "Thread/get is called with ids [T1, T2]."
+    then: "list has two objects. The one with id T1 has three emailIds and the one with id T2 has two; no Email id appears in both and each equals an id Email/get knows."
+    sources:
+      - "james:ThreadGetContract#givenTwoThreadGetThatTwoThreadShouldReturnExactTwoThreadObjectWithEmailIdsSortedByArrivalDate"
+      - "cyrus:JMAPEmail/thread_get"
+      - "stalwart:compliance/thread.rs#get_thread_by_id"
+      - "stalwart:mail/thread_get.rs"
+      - "jmapio:thread/get-thread-by-id"
+      - "fastmail:t/Thread/get/few-messages.t"
+
+  - id: THR-004
+    title: "Unknown thread ids are reported in notFound"
+    method: Thread/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "One existing thread T."
+    when: "Thread/get is called with ids [T, <well formed unknown id>, 'nonsense', <an Email id>, <a Mailbox id>]."
+    then: "list holds only the object for T. notFound holds the other four ids. No error is raised for ids that do not have the thread id shape."
+    sources:
+      - "james:ThreadGetContract#givenNonMessageThenGetThreadsShouldReturnNotFound"
+      - "james:ThreadGetContract#givenOneThreadGetTwoThreadShouldReturnOnlyOneThreadObjectAndNotFound"
+      - "stalwart:compliance/thread.rs#get_thread_not_found"
+      - "jmapio:thread/get-thread-not-found"
+      - "fastmail:t/Thread/get/unknown-ids.t"
+
+  - id: THR-005
+    title: "An empty ids array returns an empty list and ids null is refused"
+    method: Thread/get
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp]
+    given: "An account with several threads."
+    when: "Thread/get is called with ids set to an empty array; then with ids null."
+    then: "The first call returns list and notFound empty with a state. The second returns an error invocation of type invalidArguments; it never tries to load every thread of the account."
+    sources:
+      - "fastmail:t/Thread/get/empty-list.t"
+      - "rfc:8620 5.1"
+    notes: "RFC 8621 allows ids null explicitly only for Mailbox/get. For Thread the RFC 8620 5.1 escape applies (fetching all is optional per type). requestTooLarge would be the alternative error; decide once and use the same for Email/get."
+
+  - id: THR-006
+    title: "More ids than maxObjectsInGet answers requestTooLarge"
+    method: Thread/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxObjectsInGet N."
+    when: "Thread/get is called with N plus 1 distinct ids."
+    then: "The response is an error invocation of type requestTooLarge."
+    sources:
+      - "rfc:8620 5.1"
+
+  - id: THR-007
+    title: "The properties argument is honoured"
+    method: Thread/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "One existing thread T."
+    when: "Thread/get is called with ids [T] and properties ['emailIds']; then properties []; then properties ['subject']."
+    then: "The first call returns id and emailIds, the second only id, the third an error invocation of type invalidArguments."
+    sources:
+      - "rfc:8620 5.1"
+      - "cyrus:JMAPEmail/thread_get"
+
+  - id: THR-008
+    title: "Thread methods with a foreign accountId answer accountNotFound"
+    method: Thread/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Users A and B; B has a thread T."
+    when: "User A calls Thread/get with accountId of B and ids [T], Thread/changes with accountId of B, and Thread/get with A's own accountId and ids [T]."
+    then: "The first two calls return an error invocation of type accountNotFound. The third returns T in notFound."
+    sources:
+      - "james:ThreadGetContract#badAccountIdShouldBeRejected"
+      - "james:ThreadChangesContract#badAccountIdShouldBeRejected"
+      - "fastmail:t/Thread/foreign-account.t"
+      - "cyrus:JMAPEmail/thread_get_shared"
+
+  - id: THR-009
+    title: "emailIds are sorted by receivedAt, oldest first"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three messages of one thread appended over IMAP with explicit internal dates so that the append order (M1, M2, M3) differs from the internal date order (M2 oldest, then M3, then M1), and with Date headers in yet another order."
+    when: "Thread/get is called for the thread and Email/get for receivedAt."
+    then: "emailIds is [M2, M3, M1]: ordered by receivedAt (the IMAP internal date), not by append order, UID, Date header or id."
+    sources:
+      - "james:ThreadGetContract#addRelatedMailsInAThreadThenGetThatThreadShouldReturnExactThreadObjectWithEmailIdsSortedByArrivalDate"
+      - "cyrus:JMAPEmail/thread_get"
+      - "stalwart:compliance/thread.rs#get_thread_email_ids_order"
+      - "stalwart:mail/thread_get.rs"
+      - "jmapio:thread/get-thread-email-ids-order"
+      - "fastmail:t/Thread/get/few-messages.t"
+
+  - id: THR-010
+    title: "Messages with an identical receivedAt keep a stable order"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three messages of one thread appended over IMAP with the same internal date."
+    when: "Thread/get is called five times, with unrelated flag changes on the messages in between."
+    then: "emailIds is the same sequence in every response, and it is ordered by Email id."
+    sources:
+      - "rfc:8621 3"
+      - "wildduck:jmap-report 4.3"
+
+  - id: THR-011
+    title: "A message that arrives late is placed by its receivedAt, not appended at the end"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "A thread with messages A (day 1) and B (day 3) and a draft reply E (day 4)."
+    when: "A message F of the same thread is appended over IMAP with internal date day 2, then Thread/get is called."
+    then: "emailIds is [A, F, B, E]."
+    sources:
+      - "cyrus:JMAPEmail/thread_latearrival_drafts"
+
+  - id: THR-012
+    title: "A thread lists its messages from every mailbox"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "A conversation: the original delivered to INBOX, the user's reply appended to Sent Mail, the answer delivered to INBOX, and one earlier message of the conversation moved to Trash."
+    when: "Thread/get is called for the thread and Email/get for mailboxIds of its emailIds."
+    then: "emailIds holds all four Email ids in receivedAt order, and their mailboxIds cover INBOX, Sent and Trash. All four Emails report the same threadId."
+    sources:
+      - "cyrus:JMAPEmail/thread_get"
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "rfc:8621 3"
+
+  - id: THR-013
+    title: "Messages flagged \\Deleted are left out of emailIds"
+    method: Thread/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "A thread T with three messages M1, M2, M3."
+    when: "M2 is flagged \\Deleted over IMAP (not expunged) and Thread/get is called; then the flag is cleared and Thread/get is called again."
+    then: "First emailIds is [M1, M3]. After clearing the flag it is [M1, M2, M3] again, with M2 having the same Email id and threadId as before."
+    sources:
+      - "wildduck:brief emails"
+      - "cyrus:JMAPEmail/email_querychanges_thread"
+      - "rfc:8621 4.1.1"
+
+  - id: THR-014
+    title: "A thread whose messages are all flagged \\Deleted is notFound"
+    method: Thread/get
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "A thread T with two messages, both flagged \\Deleted over IMAP and not expunged."
+    when: "Thread/get is called with ids [T]."
+    then: "T is returned in notFound. A Thread object with an empty emailIds array is never returned."
+    sources:
+      - "wildduck:brief emails"
+      - "rfc:8621 3"
+
+  - id: THR-015
+    title: "Email/get threadId can be chained into Thread/get and back into Email/get"
+    method: Thread/get
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "INBOX with two threads of two messages each."
+    when: "One request holds Email/query (limit 2, collapseThreads true), Email/get with '#ids' from '/ids' and properties ['threadId'], Thread/get with '#ids' from '/list/*/threadId', and Email/get with '#ids' from '/list/*/emailIds' and properties ['subject']."
+    then: "Thread/get returns the two threads and the last Email/get returns all four Emails. The wildcard path over emailIds flattens the nested arrays."
+    sources:
+      - "cyrus:JMAPEmail/thread_latearrival_drafts"
+      - "rfc:8621 4.10"
+      - "rfc:8620 3.7"
+
+  # ------------------------------------------------------------ threading rule
+  - id: THR-016
+    title: "A reply with a matching reference and the same subject joins the thread"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Message A with Message-ID <a@x> and subject 'Quarterly plan'."
+    when: "Message B is delivered with In-Reply-To <a@x>, References <a@x> and subject 'Re: Quarterly plan'; then message C with References '<a@x> <b@x>' only (no In-Reply-To) and subject 'RE: Re: Quarterly plan'."
+    then: "A, B and C report the same threadId and Thread/get returns the three ids."
+    sources:
+      - "james:ThreadGetContract#addRelatedMailsInAThreadThenGetThatThreadShouldReturnExactThreadObjectWithEmailIdsSortedByArrivalDate"
+      - "cyrus:JMAPEmail/thread_get"
+      - "stalwart:mail/thread_get.rs"
+      - "stalwart:mail/thread_merge.rs"
+      - "rfc:8621 3"
+
+  - id: THR-017
+    title: "The same subject without a shared reference does not thread"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Three messages with subjects 'Hello', 'Re: Hello' and 'Fwd: Hello', each with its own Message-ID and no In-Reply-To or References."
+    when: "Email/get is called for their threadId."
+    then: "The three threadIds are different and each thread has one Email."
+    sources:
+      - "james:ThreadGetContract#addThreeMailsWithRelatedSubjectButNonIdenticalMimeMessageIDThenGetThatThreadShouldNotReturnUnrelatedMails"
+      - "rfc:8621 3"
+
+  - id: THR-018
+    title: "A shared reference with a different subject starts a new thread"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Message A with Message-ID <a@x> and subject 'Invoice 42'."
+    when: "Message B is delivered with In-Reply-To <a@x> and subject 'Lunch on Friday?'."
+    then: "B has a threadId different from A's. Thread/get for A's thread returns only A."
+    sources:
+      - "james:ThreadGetContract#addThreeMailsWithIdenticalMimeMessageIDButNonRelatedSubjectThenGetThatThreadShouldNotReturnUnrelatedMails"
+      - "cyrus:JMAPEmail/email_draft_reply_new_subject_new_thrid"
+      - "rfc:8621 3"
+
+  - id: THR-019
+    title: "Reply, forward and list tag prefixes and white space are ignored when comparing subjects"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Message A with Message-ID <a@x> and subject 'Budget   review'."
+    when: "Messages referencing <a@x> are delivered with subjects 'Re: Budget review', 'Fwd: Re: Budget review', 'FW: Budget review', '[finance-list] Re: Budget review', 'Re: [EXTERNAL] Budget review', 'Budget review (fwd)' and 'RE:  Budget\treview'."
+    then: "All eight messages share one threadId."
+    sources:
+      - "rfc:8621 3"
+      - "wildduck:lib/message-handler.js normalizeSubject"
+      - "cyrus:JMAPEmail/thread_get"
+    notes: "Localised prefixes (AW:, SV:, Antw:) are not stripped by normalizeSubject today; a reply from such a client starts a new thread. Recorded as current behaviour, not asserted."
+
+  - id: THR-020
+    title: "Subjects that differ only in Unicode normalisation or MIME encoding are the same"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Message A with a subject containing 'é' in composed form, sent as raw UTF-8."
+    when: "A reply referencing A is delivered whose subject is RFC 2047 encoded (base64) and uses the decomposed form of the same character."
+    then: "Both messages share one threadId."
+    sources:
+      - "cyrus:JMAPEmail/thread_get_unorm_subject"
+    notes: "Encoded word decoding is done before comparison today; Unicode normalisation of the subject is not. Decision needed whether to add NFC normalisation for new messages (existing messages are never re-threaded)."
+
+  - id: THR-021
+    title: "Message ids are compared without angle brackets"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Message A with Message-ID <a@x>."
+    when: "A reply is delivered whose In-Reply-To header is 'a@x' without angle brackets, with the same subject."
+    then: "The reply has the same threadId as A."
+    sources:
+      - "cyrus:JMAPEmail/thread_get_nobracket_message_id"
+      - "wildduck:lib/message-handler.js getThreadIdAsync"
+
+  - id: THR-022
+    title: "A reply that arrives before its parent ends up in the same thread"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Reply B (In-Reply-To <a@x>, subject 'Re: Topic') is delivered first and gets threadId T."
+    when: "The parent A (Message-ID <a@x>, subject 'Topic') is delivered afterwards."
+    then: "A gets threadId T. B's threadId is still T and B's Email id is unchanged. Thread/get returns both, ordered by receivedAt (B first)."
+    sources:
+      - "rfc:8621 3"
+      - "stalwart:mail/thread_merge.rs"
+      - "cyrus:JMAPEmail/thread_latearrival_drafts"
+
+  - id: THR-023
+    title: "A message linking two existing threads does not merge them"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp]
+    given: "Messages A (<a@x>) and B (<b@x>) with the same subject and no references, in threads T1 and T2, with Email ids EA and EB."
+    when: "Message C is delivered with References '<a@x> <b@x>' and the same subject."
+    then: "C joins exactly one of T1 or T2. EA and EB still exist with their original ids and threadIds (T1 and T2), nothing is reported destroyed in Email/changes, and both threads are still found by Thread/get."
+    sources:
+      - "stalwart:mail/thread_merge.rs"
+      - "rfc:8621 3"
+      - "wildduck:brief ids"
+    notes: "Stalwart merges the threads by deleting and reinserting Emails with new ids, which the RFC permits. WildDuck never re-threads existing messages."
+
+  - id: THR-024
+    title: "Threads are per account"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "The same message (same Message-ID, same subject) delivered to users A and B, and a reply delivered to both."
+    when: "Each user calls Email/get for threadId and Thread/get."
+    then: "Each user sees one thread with two of their own Email ids. A's thread id is notFound for B and the reverse."
+    sources:
+      - "cyrus:JMAPEmail/thread_get_shared"
+      - "wildduck:lib/message-handler.js getThreadIdAsync"
+
+  - id: THR-025
+    title: "A reply after the thread record has expired starts a new thread and leaves the old one intact"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, db, time]
+    given: "Message A in thread T1; the thread lookup record for T1 has expired (180 days of inactivity, simulated by removing it from the threads collection)."
+    when: "A reply to A with the same subject is delivered."
+    then: "The reply gets a new threadId T2. A keeps T1, Thread/get for T1 still returns A, and Thread/changes reports T2 as created and nothing as destroyed."
+    sources:
+      - "wildduck:jmap-report 4.3"
+      - "wildduck:lib/message-handler.js getThreadIdAsync"
+    notes: "The Thread object is derived from messages, not from the threads collection, so expiry of the lookup record must never make an existing thread disappear."
+
+  - id: THR-026
+    title: "threadId never changes for an existing Email"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap, api]
+    given: "A thread T of two messages E1 and E2 in INBOX."
+    when: "Over IMAP flags are changed on E1, E1 is moved to another mailbox with MOVE, the target mailbox is renamed; through the REST API E2 is moved to Trash; further replies are delivered."
+    then: "After every step Email/get for E1 and E2 returns the same Email ids with threadId T, and Thread/get for T lists them (plus the new replies)."
+    sources:
+      - "rfc:8621 3"
+      - "wildduck:brief ids"
+      - "cyrus:JMAPEmail/email_draft_subject_keeps_thrid"
+
+  - id: THR-027
+    title: "An IMAP COPY adds a new Email to the same thread"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "A thread T with one message E1 in INBOX; state S1."
+    when: "The message is copied to 'Projects' over IMAP COPY, then Thread/get and Thread/changes sinceState S1 are called."
+    then: "emailIds holds two ids: E1 and a new Email id E2 whose mailboxIds is 'Projects' and whose threadId is T. Thread/changes lists T in updated."
+    sources:
+      - "wildduck:brief ids"
+    notes: "On servers with multi mailbox Emails a copy is the same Email in two mailboxes. In WildDuck it is a second Email, so a thread can list the same message twice."
+
+  - id: THR-028
+    title: "A draft reply belongs to the thread it replies to"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "Message A in INBOX with thread T."
+    when: "A draft with In-Reply-To pointing at A and subject 'Re: ' plus A's subject is appended to Drafts over IMAP with the \\Draft flag."
+    then: "The draft has threadId T and is listed last in Thread/get emailIds. totalThreads is 1 for both INBOX and Drafts, and unreadThreads for Drafts is 0 even though the draft is not \\Seen."
+    sources:
+      - "cyrus:JMAPEmail/thread_get"
+      - "cyrus:JMAPEmail/thread_latearrival_drafts"
+      - "rfc:8621 2"
+
+  - id: THR-029
+    title: "A draft created over JMAP threads like a delivered message and the sent copy stays in the thread"
+    method: Thread/get
+    spec: "RFC 8621 3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [lmtp, jmap]
+    given: "Message A in INBOX with thread T."
+    when: "Email/set creates a draft in Drafts with inReplyTo and references set to A's messageId and a 'Re:' subject; later the draft is moved to Sent with $draft removed (as onSuccessUpdateEmail does)."
+    then: "created returns threadId T for the draft. After the move the Email id and threadId are unchanged, and Thread/get for T lists A and the reply with mailboxIds INBOX and Sent."
+    sources:
+      - "cyrus:JMAPEmail/thread_get"
+      - "cyrus:JMAPEmail/email_draft_reply_new_subject_new_thrid"
+      - "cyrus:JMAPEmail/email_draft_subject_keeps_thrid"
+
+  # ------------------------------------------------------------- Thread/changes
+  - id: THR-030
+    title: "Thread/changes with the current state reports nothing"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "State S from Thread/get; no activity afterwards."
+    when: "Thread/changes is called with sinceState S."
+    then: "The response has accountId, oldState S, newState S, hasMoreChanges false and created, updated and destroyed as empty arrays. It has no updatedProperties key."
+    sources:
+      - "james:ThreadChangesContract#shouldReturnEmptyWhenKnownState"
+      - "cyrus:JMAPEmail/thread_changes"
+      - "stalwart:compliance/thread.rs#changes_no_changes"
+      - "stalwart:compliance/thread.rs#changes_response_structure"
+      - "jmapio:thread/changes-no-changes"
+      - "jmapio:thread/changes-response-structure"
+      - "fastmail:t/Thread/changes/no-changes.t"
+
+  - id: THR-031
+    title: "A message that starts a new thread is reported as a created thread"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "State S1."
+    when: "A message unrelated to any existing thread is delivered, then Thread/changes and Email/changes are called with sinceState S1."
+    then: "Thread/changes lists the new threadId in created and nothing else. Email/changes lists the new Email id in created, and both methods return the same newState."
+    sources:
+      - "cyrus:JMAPEmail/thread_changes"
+      - "stalwart:compliance/thread.rs#changes_after_new_email"
+      - "jmapio:thread/changes-after-new-email"
+      - "fastmail:t/Thread/changes/changes.t"
+
+  - id: THR-032
+    title: "A reply joining an existing thread is reported as updated, not created"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Thread T with one message; state S1."
+    when: "A reply that threads with it is delivered, then Thread/changes is called with sinceState S1."
+    then: "updated is [T], created and destroyed are empty. Thread/get for T returns two emailIds."
+    sources:
+      - "cyrus:JMAPEmail/thread_changes"
+      - "fastmail:t/Thread/changes/changes.t"
+
+  - id: THR-033
+    title: "Removing one message of several updates the thread; removing the last destroys it"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "Thread T with two messages M1 and M2; state S1."
+    when: "M1 is flagged \\Deleted and expunged over IMAP and Thread/changes sinceState S1 is called (S2); then M2 is expunged the same way and Thread/changes sinceState S2 is called."
+    then: "The first response lists T in updated and Thread/get returns [M2]. The second lists T in destroyed and Thread/get returns T in notFound."
+    sources:
+      - "stalwart:compliance/thread.rs#changes_after_email_destroy"
+      - "jmapio:thread/changes-after-email-destroy"
+      - "cyrus:JMAPEmail/thread_changes"
+      - "legacy-proxy:test/compliance/known-failures.txt"
+    notes: "The journal EXPUNGE entry carries the thread id, so the fold can tell that no undeleted message of the thread is left. The legacy proxy lists this case as a known failure because it cannot."
+
+  - id: THR-034
+    title: "Destroying the last Email over JMAP destroys the thread"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [lmtp, jmap]
+    given: "Thread T with a single Email E; state S1."
+    when: "Email/set destroys E, then Thread/changes sinceState S1 and Thread/get ids [T] are called."
+    then: "Thread/changes lists T in destroyed and Thread/get returns T in notFound. A later reply to the destroyed message with the same subject may reuse thread id T (the lookup record still exists), in which case T is reported as created again."
+    sources:
+      - "stalwart:compliance/thread.rs#changes_after_email_destroy"
+      - "jmapio:thread/changes-after-email-destroy"
+      - "wildduck:brief emails"
+    notes: "Reuse of a destroyed thread id is a WildDuck peculiarity: the id is the threads collection id, which outlives the messages. Clients must handle created for an id they saw destroyed; this is consistent with the \\Deleted toggle in THR-035."
+
+  - id: THR-035
+    title: "Setting and clearing \\Deleted on the only message destroys and recreates the thread with the same id"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "Thread T with a single message E; state S1."
+    when: "\\Deleted is stored on the message over IMAP and Thread/changes sinceState S1 is called (S2); then the flag is removed and Thread/changes sinceState S2 is called."
+    then: "The first response lists T in destroyed. The second lists T in created, and Thread/get returns T with emailIds [E], the same Email id as before."
+    sources:
+      - "wildduck:brief emails"
+
+  - id: THR-036
+    title: "A thread created and emptied within the window is not reported"
+    method: Thread/changes
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "State S1."
+    when: "A new single message thread is delivered and its message is expunged over IMAP, then Thread/changes is called with sinceState S1."
+    then: "The thread id is in none of created, updated or destroyed, and newState differs from S1."
+    sources:
+      - "rfc:8620 5.2"
+
+  - id: THR-037
+    title: "Moving a message between mailboxes does not create or destroy threads"
+    method: Thread/changes
+    spec: "RFC 8621 3.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "Thread T with two messages in INBOX; state S1."
+    when: "One message is moved to 'Projects' over IMAP MOVE, then Thread/changes sinceState S1 is called."
+    then: "created and destroyed are empty. updated is empty or holds only T. Thread/get returns the same two Email ids in the same order."
+    sources:
+      - "wildduck:brief state and changes"
+      - "legacy-proxy:test/compliance/known-failures.txt"
+    notes: "A move is one journal step with the same root, so it must not fold into a destroyed thread followed by a created one."
+
+  - id: THR-038
+    title: "A flag change advances the state without changing any thread's membership"
+    method: Thread/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "Thread T with one message; state S1."
+    when: "\\Seen is stored on the message over IMAP, then Thread/changes is called with sinceState S1."
+    then: "newState differs from S1 (shared state). created and destroyed are empty; updated is empty or holds only T."
+    sources:
+      - "wildduck:brief state and changes"
+      - "rfc:8620 5.2"
+
+  - id: THR-039
+    title: "maxChanges and hasMoreChanges page through thread changes"
+    method: Thread/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "State S1, then five unrelated messages delivered (five new threads)."
+    when: "Thread/changes is called with sinceState S1 and maxChanges 2, repeatedly with each returned newState until hasMoreChanges is false; and once with maxChanges 0."
+    then: "No response holds more than two ids, hasMoreChanges is true until the last page, every intermediate newState differs from the previous one, and the union of created is the five thread ids. maxChanges 0 answers invalidArguments."
+    sources:
+      - "cyrus:JMAPEmail/thread_changes_maxchanges_duplicate_modseqs"
+      - "cyrus:JMAPEmail/thread_changes_maxchanges_too_small_duplicate_modseqs"
+      - "fastmail:t/Thread/changes/max-changes-has-more-changes.t"
+      - "rfc:8620 5.2"
+
+  - id: THR-040
+    title: "An unknown or expired sinceState answers cannotCalculateChanges"
+    method: Thread/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, time]
+    given: "State S1; a message is delivered; the journal retention then passes."
+    when: "Thread/changes is called with sinceState S1, and separately with a random string as sinceState."
+    then: "Both calls return an error invocation of type cannotCalculateChanges."
+    sources:
+      - "james:ThreadChangesContract#shouldReturnCannotCalculateChanges"
+      - "cyrus:JMAPEmail/thread_changes"
+      - "rfc:8620 5.2"

@@ -1,0 +1,1098 @@
+# Expected results of fastmail/JMAP-TestSuite against WildDuck, per test file.
+# Read README.md in this directory first. This file is data for a CI gate, it contains no code.
+#
+# Suite:    https://github.com/fastmail/JMAP-TestSuite
+# Commit:   0319ec8b1841f040fd313531a3df12a74c4b7bf7 (pinned; re-derive this file when the pin moves)
+# Licence:  none (the repository has no LICENSE file). Run it as an external tool at the pinned commit, never vendor or copy it.
+# Run:      JMAP_SERVER_ADAPTER_FILE=<wildduck.json> prove -Ilib -r t   with a WildDuck adapter kept outside both repositories (see README.md)
+#
+# Fields
+#   id            path of the test file under t/
+#   subtests      number of named subtest blocks in the file (0 means one unnamed test body)
+#   capabilities  capability URNs the file passes to require_capabilities; the suite skips the file when one is not advertised
+#   pristine      true when the file declares attr pristine => 1 (needs pristine_account from the adapter)
+#   phase         WildDuck plan phase (0 to 7) from which the file must pass. Omitted for never and skip.
+#                 Before that phase the file either fails or is skipped by the suite (capability not advertised yet).
+#   expect        pass   must pass from phase on (prove reports the file ok, subtests skipped inside it are fine)
+#                 never  fails by design; reason names the WildDuck constraint
+#                 skip   the suite itself skips the whole file: capability never advertised, or no second account (pool_account_pair)
+#   reason        for never and skip, and for a pass that depends on a condition worth knowing
+suite: fastmail/JMAP-TestSuite
+url: "https://github.com/fastmail/JMAP-TestSuite"
+commit: "0319ec8b1841f040fd313531a3df12a74c4b7bf7"
+licence: "none (no LICENSE file in the repository)"
+run: "JMAP_SERVER_ADAPTER_FILE=<wildduck.json> prove -Ilib -r t"
+tests:
+  - id: "AddressBook/changes/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "AddressBook/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: true
+    phase: 5
+    expect: pass
+  - id: "AddressBook/get/basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "AddressBook/set/create.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "AddressBook/set/destroy.t"
+    subtests: 8
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: true
+    phase: 5
+    expect: pass
+    reason: "The two address books per card subtest is skipped by the suite when the server refuses the create."
+  - id: "AddressBook/set/on-destroy-remove-contacts.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "AddressBook/set/on-success-set-is-default.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "AddressBook/set/update.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "Blob/convert/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:blob2"]
+    pristine: false
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:blob2 (a draft extension beyond RFC 9404, outside the plan)."
+  - id: "Blob/copy/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: the WildDuck adapter has no pool_account_pair because WildDuck has no sharing and no second account in a session."
+  - id: "Blob/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core"]
+    pristine: true
+    phase: 1
+    expect: pass
+    reason: "Needs pristine_account for the second, unrelated account. Methods not implemented yet are tolerated only when they answer unknownMethod for the own account too; a /copy must answer accountNotFound for a foreign accountId and fromAccountNotFound for a foreign fromAccountId."
+  - id: "Blob/get/basic.t"
+    subtests: 6
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:blob"]
+    pristine: false
+    phase: 4
+    expect: pass
+    reason: "The digest subtest runs only when supportedDigestAlgorithms includes sha-256."
+  - id: "Blob/get/chunks.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:blob2"]
+    pristine: false
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:blob2 (a draft extension beyond RFC 9404, outside the plan)."
+  - id: "Blob/lookup/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:blob"]
+    pristine: true
+    phase: 4
+    expect: pass
+    reason: "Runs only when supportedTypeNames lists Email, Thread or Mailbox."
+  - id: "Blob/set/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:blob2"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:blob2 (a draft extension beyond RFC 9404, outside the plan)."
+  - id: "Blob/upload/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:blob"]
+    pristine: false
+    phase: 4
+    expect: pass
+  - id: "Calendar/changes/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "Calendar/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: true
+    phase: 6
+    expect: pass
+  - id: "Calendar/get/an-entity.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "Calendar/get/no-ids.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "Calendar/set/create.t"
+    subtests: 5
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "Calendar/set/destroy.t"
+    subtests: 7
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "Calendar/set/update.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/changes/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/copy/basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: the WildDuck adapter has no pool_account_pair because WildDuck has no sharing and no second account in a session."
+  - id: "CalendarEvent/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: true
+    phase: 6
+    expect: pass
+    reason: "CalendarEvent/parse (phase 7) may answer unknownMethod as long as it does so for the own account too."
+  - id: "CalendarEvent/get/basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/query/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/query/expand-recurrences.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/queryChanges/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/set/create.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/set/destroy.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "CalendarEvent/set/update.t"
+    subtests: 10
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"]
+    pristine: false
+    phase: 6
+    expect: pass
+  - id: "ContactCard/changes/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "ContactCard/copy/basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: the WildDuck adapter has no pool_account_pair because WildDuck has no sharing and no second account in a session."
+  - id: "ContactCard/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: true
+    phase: 5
+    expect: pass
+  - id: "ContactCard/get/basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "ContactCard/query/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "ContactCard/queryChanges/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "ContactCard/set/create.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "ContactCard/set/destroy.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "ContactCard/set/update.t"
+    subtests: 8
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:contacts"]
+    pristine: false
+    phase: 5
+    expect: pass
+  - id: "Email/changes/cannot-calculate-changes.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Email/changes/changes.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Exact lists: an imported Email only in created even if the journal also holds a flag entry for it."
+  - id: "Email/changes/max-changes-has-more-changes.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "With maxChanges 1 the intermediate newState must be usable as sinceState and the last page must end on exactly the state Email/get reports; mailbox creations in between must not count as Email changes."
+  - id: "Email/changes/no-changes.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/copy/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: the WildDuck adapter has no pool_account_pair because WildDuck has no sharing and no second account in a session."
+  - id: "Email/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+    reason: "Needs pristine_account for the second, unrelated account. Methods not implemented yet are tolerated only when they answer unknownMethod for the own account too; a /copy must answer accountNotFound for a foreign accountId and fromAccountNotFound for a foreign fromAccountId."
+  - id: "Email/get/attachments.t"
+    subtests: 5
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/body-properties.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/body-structure-and-attachments.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/fetch-all-body-values.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/fetch-html-body-values.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/fetch-text-body-values.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/has-attachment.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/header-header-field-name.t"
+    subtests: 8
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/html-body.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/max-body-value-bytes.t"
+    subtests: 5
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/no-ids.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/properties.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/get/text-body.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/import/bad-values.t"
+    subtests: 15
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/import/download-after-import.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "The uploaded blob must still download byte for byte after Email/import consumed it, so import must not delete the upload."
+  - id: "Email/import/good-imports.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    expect: never
+    reason: "An Email is in exactly one mailbox (maxMailboxesPerEmail is 1): the \"multiple mailboxes\" subtest imports one message into two mailboxes and expects it created."
+  - id: "Email/import/invalid-email.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/import/one-fails-another-succeeds.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/query/filtering.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    expect: never
+    reason: "Threading rule: the replies carry References but a different subject, and WildDuck threads only on a shared reference AND the same normalised subject, so each reply is its own thread and the allInThreadHaveKeyword and someInThreadHaveKeyword expectations cannot hold (every query also sorts by subject and one filters on the stop word \"here\", both phase 4 matters)."
+  - id: "Email/query/no-existing-entities.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+  - id: "Email/query/sorting.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Email/queryChanges/simple.t"
+    subtests: 5
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 4
+    expect: pass
+    reason: "Needs queryChanges for a text filter with a subject sort. Covered by the general cached queryChanges design (decided 2026-11-11)."
+  - id: "Email/set/create/attachments-using-blob-id.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/attachments.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/blob-not-found.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/body-structure-cannot-duplicate-headers-from-email.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/body-structure-subparts.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/body-structure.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/cannot-have-blobid-and-partid.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/content-transfer-encoding-not-allowed.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/created-response-required-properties.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Creates an Email from mailboxIds alone: the MIME builder must accept an Email without headers or body."
+  - id: "Email/set/create/email-body-part-must-be-present.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/email-body-value-restrictions.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/empty-set-fields-are-null.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/header-header-field-name.t"
+    subtests: 7
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/headers-property-forbidden-in-body-structure.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/headers-property-forbidden.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/html-body-using-blob-id.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/html-body.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/minimum-properties-required.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-charset-with-partid.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-content-headers-top-level.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-date-server-provides-one.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-duplicate-header-representations.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-duplicate-structural-representations.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-message-id-server-provides-one.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/no-size-with-partid.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/only-one-part-in-html-body.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/only-one-part-in-text-body.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/size-with-blob-id-must-match.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/text-body-using-blob-id.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/create/text-body.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/destroy/all-mailboxes.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/if-in-state.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Email/set/nonexistent-id.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Email/set/update/email-keywords.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "The keyword is sent as $Flagged and must come back as $flagged; a new Email may carry no keyword other than $hasattachment or $hasnoattachment."
+  - id: "Email/set/update/keyword-set-clear.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Email/set/update/one-folder-to-another.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "One variant moves with a two key patch (old mailboxId to null, new one to true): the patch must be applied as a whole and the Email id must stay the same."
+  - id: "EmailSubmission/changes/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"]
+    pristine: true
+    phase: 3
+    expect: pass
+  - id: "EmailSubmission/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"]
+    pristine: true
+    phase: 3
+    expect: pass
+  - id: "EmailSubmission/get/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"]
+    pristine: true
+    phase: 3
+    expect: pass
+    reason: "The draft is sent from <accountId>@localhost, which the user does not own, so EmailSubmission/set answers forbiddenFrom and the suite skips the dependent subtest. Email/set create must tolerate the stray charset key inside the bodyValues entry."
+  - id: "EmailSubmission/query/basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"]
+    pristine: true
+    phase: 3
+    expect: pass
+  - id: "Identity/changes/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Runs only once urn:ietf:params:jmap:submission is advertised; advertise it from phase 2 for Identity, otherwise this file is skipped until phase 3."
+  - id: "Identity/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "Runs only once urn:ietf:params:jmap:submission is advertised; advertise it from phase 2 for Identity, otherwise this file is skipped until phase 3."
+  - id: "Identity/get/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Runs only once urn:ietf:params:jmap:submission is advertised; advertise it from phase 2 for Identity, otherwise this file is skipped until phase 3."
+  - id: "Identity/set/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Runs only once urn:ietf:params:jmap:submission is advertised; advertise it from phase 2 for Identity, otherwise this file is skipped until phase 3. Destroying the main identity must answer notDestroyed with type forbidden."
+  - id: "MDN/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:mdn"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:mdn (RFC 9007 is outside the plan)."
+  - id: "MDN/parse/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mdn", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:mdn (RFC 9007 is outside the plan)."
+  - id: "Mailbox/changes/cannot-calculate-changes.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/changes/changed-properties.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Requires updatedProperties to list exactly totalEmails, unreadEmails, totalThreads, unreadThreads when only message changes touched the mailbox; RFC 8621 2.2 would allow null, the suite does not."
+  - id: "Mailbox/changes/container-state-tracking.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "Accepts cannotCalculateChanges from Mailbox/queryChanges, so it does not wait for phase 4."
+  - id: "Mailbox/changes/max-changes-has-more-changes.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Same exact state arithmetic as Email/changes/max-changes-has-more-changes.t, with the state string shared between Email, Thread and Mailbox."
+  - id: "Mailbox/changes/no-changes.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/changes/with-changes.t"
+    subtests: 5
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+    reason: "Needs pristine_account for the second, unrelated account. Methods not implemented yet are tolerated only when they answer unknownMethod for the own account too; a /copy must answer accountNotFound for a foreign accountId and fromAccountNotFound for a foreign fromAccountId."
+  - id: "Mailbox/get/limiting-properties-in-response.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    expect: never
+    reason: "Mailbox subscription default: the suite expects isSubscribed false on a mailbox the user just created, while WildDuck subscribes created mailboxes (IMAP and REST API do the same) and RFC 8621 section 2 says it SHOULD default to true."
+  - id: "Mailbox/get/no-existing-entities.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+  - id: "Mailbox/get/some-entities.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    expect: never
+    reason: "Mailbox subscription default: the suite expects isSubscribed false on a mailbox the user just created, while WildDuck subscribes created mailboxes (IMAP and REST API do the same) and RFC 8621 section 2 says it SHOULD default to true."
+  - id: "Mailbox/query/filtering-with-filter-conditions.t"
+    subtests: 6
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/query/filtering-with-filter-operators.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "Expected order is a byte wise comparison of names across role and user mailboxes (INBOX and Sent Mail before aaa), so Mailbox/query name sort must be i;octet like, not case insensitive."
+  - id: "Mailbox/query/no-existing-entities.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+  - id: "Mailbox/query/sorting-and-limiting.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/queryChanges/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 4
+    expect: pass
+    reason: "Asserts canCalculateChanges true on Mailbox/query."
+  - id: "Mailbox/set/create/all-settable-fields-provided.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/create/defaults-omitted.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/create/empty-set-fields-are-null.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/create/immutable-fields.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/create/missing-required-fields.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/destroy/empty-set-fields-are-null.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/destroy/good-destroy-no-messages.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/destroy/mailbox-has-child-error.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/destroy/mailbox-has-email-error.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/destroy/on-destroy-remove-messages-true-mail-in-other-boxes.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    expect: never
+    reason: "An Email is in exactly one mailbox (maxMailboxesPerEmail is 1): the fixture imports one message into two mailboxes and the helper dies when the import is rejected."
+  - id: "Mailbox/set/destroy/on-destroy-remove-messages-true-mail-only-here.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/if-in-state.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/nonexistent-id.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "Mailbox/set/update/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Principal/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:principals"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:principals (RFC 9670 is out of scope, no sharing)."
+  - id: "Principal/get/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:principals"]
+    pristine: false
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:principals (RFC 9670 is out of scope, no sharing)."
+  - id: "Principal/getAvailability/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:principals", "urn:ietf:params:jmap:calendars", "urn:ietf:params:jmap:principals:availability"]
+    pristine: true
+    expect: skip
+    reason: "Skipped by the suite: WildDuck does not advertise urn:ietf:params:jmap:principals and offers no free busy lookup."
+  - id: "Quota/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:quota"]
+    pristine: true
+    expect: pass
+    phase: 4
+  - id: "Quota/get/basic.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:quota"]
+    pristine: true
+    expect: pass
+    phase: 4
+  - id: "Quota/query/basic.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:quota"]
+    pristine: true
+    expect: pass
+    phase: 4
+  - id: "SearchSnippet/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+    reason: "Needs pristine_account for the second, unrelated account. Methods not implemented yet are tolerated only when they answer unknownMethod for the own account too; a /copy must answer accountNotFound for a foreign accountId and fromAccountNotFound for a foreign fromAccountId."
+  - id: "SearchSnippet/get/basic.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "Requires <mark> in the subject snippet, a list entry (with null subject and preview) for a non matching Email, and null values for an empty filter."
+  - id: "Thread/changes/changes.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Exact lists: a new thread only in created, a reply only in updated, never both."
+  - id: "Thread/changes/max-changes-has-more-changes.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "Same exact state arithmetic as Email/changes/max-changes-has-more-changes.t, with the state string shared between Email, Thread and Mailbox."
+  - id: "Thread/changes/no-changes.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Thread/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 1
+    expect: pass
+    reason: "Needs pristine_account for the second, unrelated account. Methods not implemented yet are tolerated only when they answer unknownMethod for the own account too; a /copy must answer accountNotFound for a foreign accountId and fromAccountNotFound for a foreign fromAccountId."
+  - id: "Thread/get/empty-list.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 1
+    expect: pass
+  - id: "Thread/get/few-messages.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "Thread/get/unknown-ids.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+  - id: "VacationResponse/foreign-account.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:vacationresponse"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "Runs only once urn:ietf:params:jmap:vacationresponse is advertised."
+  - id: "VacationResponse/get/basic.t"
+    subtests: 1
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:vacationresponse"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "VacationResponse/set/basic.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:vacationresponse"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "basic.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "core/accountId-required.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 1
+    expect: pass
+  - id: "core/backrefs-simple.t"
+    subtests: 3
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "core/create-and-reference-in-one-request.t"
+    subtests: 4
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: true
+    phase: 2
+    expect: pass
+    reason: "Moves with a mailboxIds object keyed by a creation id reference (#newbox)."
+  - id: "core/download.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "The download Content-Type must be exactly the type from the URL (text/plain, no charset parameter); a Content-Disposition, if sent, must carry the name from the URL."
+  - id: "core/jmap-session-resource.t"
+    subtests: 0
+    capabilities: []
+    pristine: false
+    phase: 1
+    expect: pass
+    reason: "Exact match: the session object may carry no top level property beyond the RFC 8620 ones, the core capability object exactly the eight RFC limits, the mail capability value must be an empty object and the mail account capability exactly the six RFC properties."
+  - id: "core/upload.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core"]
+    pristine: false
+    phase: 2
+    expect: pass
+    reason: "The upload response type must be exactly text/plain, without added parameters."
+  - id: "getMessageUpdates-sinceState.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 1
+    expect: pass
+    reason: "Only requires a JMAP level answer (a method error is fine) to a malformed Email/queryChanges, never an HTTP error."
+  - id: "getMessages-htmlBody.t"
+    subtests: 0
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
+  - id: "previews.t"
+    subtests: 2
+    capabilities: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
+    pristine: false
+    phase: 2
+    expect: pass
