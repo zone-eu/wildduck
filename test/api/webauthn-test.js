@@ -144,6 +144,7 @@ describe('API WebAuthn', function () {
     let registrationResponse;
     let accessToken;
     let credentialId;
+    let passwordOnlyToken;
 
     after(async () => {
         if (!user) {
@@ -168,6 +169,13 @@ describe('API WebAuthn', function () {
         expect(response.body.success).to.be.true;
         expect(response.body.id).to.match(/^[0-9a-f]{24}$/);
         user = response.body.id;
+    });
+
+    it('should POST /authenticate expect success / token issued before any second factor', async () => {
+        const response = await server.post('/authenticate').send({ username, password, scope: 'master', token: true }).expect(200);
+        expect(response.body.token).to.be.a('string');
+        passwordOnlyToken = response.body.token;
+        await server.get(`/users/me?accessToken=${passwordOnlyToken}`).expect(200);
     });
 
     it('should POST /users/{user}/2fa/webauthn/registration-challenge expect success', async () => {
@@ -204,6 +212,11 @@ describe('API WebAuthn', function () {
         expect(attestationResponse.body.response.success).to.be.true;
         expect(attestationResponse.body.response.rawId).to.equal(registrationResponse.rawId);
         expect(attestationResponse.body.response.authenticatorAttachment).to.equal('cross-platform');
+    });
+
+    it('should GET /users/me expect failure / the first second factor ends password only sessions', async () => {
+        const response = await server.get(`/users/me?accessToken=${passwordOnlyToken}`);
+        expect(response.status).to.be.oneOf([401, 403]);
     });
 
     it('should GET /users/{user}/2fa/webauthn/credentials expect success / expect registered credential', async () => {
