@@ -69,5 +69,8 @@ jobs:
                   APPCONF_dbs_redis: redis://127.0.0.1:6379/1
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
                   JMAP_RESULTS: 1
+                  # the test server logs every protocol line at the default level, which made the job log
+                  # pass the size GitHub keeps and hid the test results
+                  APPCONF_log_level: warn
             - name: Check JMAP catalogue coverage
               run: node test/jmap/tools/check-coverage.js
