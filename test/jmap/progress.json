@@ -1,17 +1,215 @@
 {
     "comment": "Finished work packages of docs/jmap/implementation-plan.md and the catalogue scenarios each one must keep passing. ids accepts single ids and ranges (WDP-001..WDP-005); select picks by prefix, phase and method. Checked by tools/check-coverage.js.",
     "packages": [
-        { "package": "0.2", "ids": ["WDP-001"] },
-        { "package": "0.3", "ids": ["WDP-002..WDP-005", "WDP-012"] },
-        { "package": "0.4", "ids": ["WDP-006", "WDP-009", "WDP-010"] },
-        { "package": "0.5", "ids": ["WDP-007", "WDP-008", "WDP-011"] },
-        { "package": "0.6", "ids": ["WDP-020..WDP-022", "WDP-027"] },
-        { "package": "0.7", "ids": ["WDP-023", "WDP-028"] },
-        { "package": "0.8", "ids": ["WDP-024"] },
-        { "package": "0.9", "ids": ["WDP-025", "WDP-026"] },
-        { "package": "0.10", "ids": ["WDP-040..WDP-043"] },
-        { "package": "0.11", "ids": ["WDP-050", "WDP-051"] },
-        { "package": "0.12", "ids": ["WDP-013"] },
-        { "package": "Milestone 0", "select": [{ "phase": 0 }] }
+        {
+            "package": "0.2",
+            "ids": ["WDP-001"]
+        },
+        {
+            "package": "0.3",
+            "ids": ["WDP-002..WDP-005", "WDP-012"]
+        },
+        {
+            "package": "0.4",
+            "ids": ["WDP-006", "WDP-009", "WDP-010"]
+        },
+        {
+            "package": "0.5",
+            "ids": ["WDP-007", "WDP-008", "WDP-011"]
+        },
+        {
+            "package": "0.6",
+            "ids": ["WDP-020..WDP-022", "WDP-027"]
+        },
+        {
+            "package": "0.7",
+            "ids": ["WDP-023", "WDP-028"]
+        },
+        {
+            "package": "0.8",
+            "ids": ["WDP-024"]
+        },
+        {
+            "package": "0.9",
+            "ids": ["WDP-025", "WDP-026"]
+        },
+        {
+            "package": "0.10",
+            "ids": ["WDP-040..WDP-043"]
+        },
+        {
+            "package": "0.11",
+            "ids": ["WDP-050", "WDP-051"]
+        },
+        {
+            "package": "0.12",
+            "ids": ["WDP-013"]
+        },
+        {
+            "package": "Milestone 0",
+            "select": [
+                {
+                    "phase": 0
+                }
+            ]
+        },
+        {
+            "package": "1.1",
+            "ids": ["WDS-001", "WDS-002", "WDS-004"]
+        },
+        {
+            "package": "1.2",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Auth"
+                }
+            ]
+        },
+        {
+            "package": "1.3",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Session"
+                }
+            ],
+            "ids": ["WDS-003"]
+        },
+        {
+            "package": "1.4",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Request"
+                },
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Core/echo"
+                }
+            ]
+        },
+        {
+            "package": "1.5",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.8",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 1,
+                    "method": "Mailbox/get"
+                }
+            ],
+            "ids": ["WDX-010"]
+        },
+        {
+            "package": "1.9",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.10",
+            "select": [
+                {
+                    "prefix": "THR",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.13",
+            "select": [
+                {
+                    "prefix": "EGET",
+                    "phase": 1
+                }
+            ],
+            "ids": ["WDX-003", "WDX-005"]
+        },
+        {
+            "package": "1.14",
+            "select": [
+                {
+                    "prefix": "ECHG",
+                    "phase": 1
+                }
+            ],
+            "ids": ["WDX-001", "WDX-002", "WDX-004"]
+        },
+        {
+            "package": "1.15",
+            "select": [
+                {
+                    "prefix": "EQRY",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.16",
+            "select": [
+                {
+                    "prefix": "SNIP",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.17",
+            "select": [
+                {
+                    "prefix": "BLOB",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.18",
+            "select": [
+                {
+                    "prefix": "ESRC",
+                    "phase": 1
+                },
+                {
+                    "prefix": "EDLV",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "Milestone 1",
+            "select": [
+                {
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "2.1",
+            "ids": ["BLOB-024..BLOB-032", "BLOB-035..BLOB-038", "BLOB-041..BLOB-044"]
+        },
+        {
+            "package": "2.11",
+            "select": [
+                {
+                    "prefix": "IDN"
+                }
+            ]
+        }
     ]
 }

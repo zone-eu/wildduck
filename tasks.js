@@ -525,10 +525,12 @@ async function runTasks() {
             } catch (err) {
                 endMetric('error');
                 await taskHandler.release(task, false);
+                // a failed task goes back to the queue: pause before taking the next one
+                await timer(consts.TASK_IDLE_INTERVAL);
             }
+            // a queue with more tasks is worked through without a pause; an empty one idles above
         } catch (err) {
             log.error('Tasks', 'Failed to process task queue error=%s', err.message);
-        } finally {
             await timer(consts.TASK_IDLE_INTERVAL);
         }
     }
