@@ -32,9 +32,9 @@ function fakeDb(data) {
 
 const headersOf = lines => new Headers(Buffer.from(lines.join('\r\n') + '\r\n\r\n'));
 
-async function check(to, data = {}, userData = { _id: user, fromWhitelist: [] }) {
+async function check(to, data = {}, userData = { _id: user, fromWhitelist: [] }, recipient = 'delivered@example.com') {
     const db = fakeDb(data);
-    const result = await isExplicitRecipient({ db, userData, recipient: 'delivered@example.com' }, headersOf([`To: ${to}`, 'Subject: test']));
+    const result = await isExplicitRecipient({ db, userData, recipient }, headersOf([`To: ${to}`, 'Subject: test']));
     return { result, queries: db.queries };
 }
 
@@ -79,5 +79,17 @@ describe('Autoreply recipient check', () => {
         const { result, queries } = await check('list@lists.example', { users: [{ _id: user, fromWhitelist: ['list@lists.example'] }] }, { _id: user });
         expect(result).to.be.true;
         expect(queries).to.deep.equal(['users']);
+    });
+
+    // a forwarded address (Haraka) has no user: the stored address is the recipient, and may be a wildcard
+    it('matches a forwarded address through alias domains and wildcards without a user', async () => {
+        const forwarded = (to, recipient) => check(to, { aliases }, null, recipient);
+        expect((await forwarded('fwd@alias.example', 'fwd@example.com')).result).to.be.true;
+        expect((await forwarded('anyone@example.com', '*@example.com')).result).to.be.true;
+        expect((await forwarded('anyone@alias.example', '*@example.com')).result).to.be.true;
+        expect((await forwarded('sales-team@example.com', 'sales*@example.com')).result).to.be.true;
+        expect((await forwarded('other@alias.example', 'fwd@example.com')).result).to.be.false;
+        const { queries } = await forwarded('other@elsewhere.example', 'fwd@example.com');
+        expect(queries).to.deep.equal(['domainaliases']);
     });
 });
