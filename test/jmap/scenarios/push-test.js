@@ -3,7 +3,8 @@
 'use strict';
 
 // Catalogue file push.yaml: the event source stream (ESRC), the EmailDelivery state (EDLV) and the
-// withdrawn PushSubscription interim scenario. Web Push (PUSH) arrives in phase 4.
+// withdrawn PushSubscription interim scenario. Web Push (PUSH, phase 4) is in push-subscription-test.js
+// and web-push-test.js.
 
 const crypto = require('crypto');
 const net = require('net');

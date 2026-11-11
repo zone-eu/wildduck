@@ -1893,7 +1893,7 @@ scenarios:
       - "rfc:8621 1.5.1"
       - "james:WebPushContract#shouldNotPushEmailDeliveryChangeWhenUserCreatesDraftEmail"
   - id: PUSH-064
-    title: "A subscription for EmailDelivery is pushed on delivery only"
+    title: "A subscription for EmailDelivery is pushed for every new Email"
     method: "WebPush"
     spec: "RFC 8621 1.5"
     level: must
@@ -1902,11 +1902,12 @@ scenarios:
     seed: [lmtp, api]
     given: "A verified subscription with types [EmailDelivery]."
     when: "The user submits a message through the REST API (sent copy stored), then a message is delivered to the user over LMTP."
-    then: "Nothing is pushed for the submission. The delivery pushes a StateChange whose only type is EmailDelivery."
+    then: "The submission pushes a StateChange whose only type is EmailDelivery, because the stored Sent copy is a new Email, and the delivery pushes another one whose only type is EmailDelivery."
     sources:
       - "james:WebPushContract#shouldPushEmailDeliveryChangeWhenUserReceivesEmail"
       - "james:WebPushContract#shouldNotPushEmailDeliveryChangeWhenUserSendsEmail"
       - "rfc:8621 1.5.1"
+    notes: "Corrected 2026-11-11: the EmailDelivery decision (plan 1.2) counts every Email added to the store, including the Sent copy of a REST submission, as EDLV-010 asserts for the event source."
   - id: PUSH-065
     title: "Every verified subscription of the user receives the push"
     method: "WebPush"

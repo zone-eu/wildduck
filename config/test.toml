@@ -53,3 +53,21 @@ type = "softfail"
 [attachments]
 # the attachment tests use small payloads and expect them in the configured object store
 minObjectSize = 0
+
+[jmap.push]
+# the scenario tests run a local push service (test/jmap/harness/push-receiver.js) on push.wildduck.test,
+# resolved by a test DNS server, and change limits and delays to observable values
+maxPerUser = 3
+createRate = 5
+verificationTimeout = 60
+attempts = 3
+retryDelay = 1
+maxRetryDelay = 8
+coalesce = 0.3
+vapidRefresh = 1
+allowHosts = ["push.wildduck.test"]
+ca = ["./test/jmap/fixtures/push-receiver.cert"]
+
+[jmap.push.testDns]
+server = "127.0.0.1:8153"
+domains = ["wildduck.test"]

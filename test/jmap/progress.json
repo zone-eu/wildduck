@@ -316,6 +316,19 @@
             ]
         },
         {
+            "package": "4.1",
+            "ids": ["PUSH-002..PUSH-031", "PUSH-043..PUSH-055"]
+        },
+        {
+            "package": "4.2",
+            "select": [
+                {
+                    "prefix": "PUSH",
+                    "phase": 4
+                }
+            ]
+        },
+        {
             "package": "Phase 2 core",
             "select": [
                 {
