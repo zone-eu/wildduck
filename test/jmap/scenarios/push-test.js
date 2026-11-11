@@ -19,6 +19,8 @@ const FilterHandler = require('../../../lib/filter-handler');
 
 const MAIL_TYPES = ['Email', 'Mailbox', 'Thread'];
 const ALL_TYPES = ['Email', 'Mailbox', 'Thread', 'EmailDelivery'];
+// every type a types=* stream carries, mail or not
+const STAR_TYPES = [...ALL_TYPES, 'Identity'];
 // how long "no event arrives" is observed when the scenario does not name a time
 const QUIET = 2000;
 
@@ -586,7 +588,7 @@ describe('JMAP push (push.yaml)', () => {
             await append(user);
             const es = await openStream(user, {}, { headers: { 'Last-Event-ID': stateFor(user, old) } });
             const event = await es.next('state', 1000);
-            expect(Object.keys(changedOf(event, user)).sort()).to.deep.equal([...ALL_TYPES].sort());
+            expect(Object.keys(changedOf(event, user)).sort()).to.deep.equal([...STAR_TYPES].sort());
             const states = await getStates(user);
             for (const type of MAIL_TYPES) {
                 expect(changedOf(event, user)[type], type).to.equal(states[type]);
@@ -604,7 +606,7 @@ describe('JMAP push (push.yaml)', () => {
                 const es = await openStream(user, {}, { headers: { 'Last-Event-ID': lastEventId } });
                 const event = await es.next('state', 1000);
                 expect(Object.keys(event.json.changed), lastEventId).to.deep.equal([user.accountId]);
-                expect(Object.keys(changedOf(event, user)).sort()).to.deep.equal([...ALL_TYPES].sort());
+                expect(Object.keys(changedOf(event, user)).sort()).to.deep.equal([...STAR_TYPES].sort());
                 const states = await getStates(user);
                 for (const type of MAIL_TYPES) {
                     expect(changedOf(event, user)[type], type).to.equal(states[type]);
