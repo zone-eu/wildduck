@@ -299,6 +299,41 @@ describe('Calendar alert triggers', () => {
         expect(alerts.nextTrigger(Object.assign({}, event, { alerts: {} }), [], T)).to.equal(null);
     });
 
+    it('finds the next trigger of a dense rule with far apart offsets without a wide expansion', () => {
+        const event = {
+            start: '2027-01-01T00:00:00',
+            timeZone: 'Europe/Tallinn',
+            duration: 'PT1M',
+            recurrenceRule: { frequency: 'minutely' },
+            alerts: { week: alert('-P7D'), start: alert('PT0S'), late: { '@type': 'Alert', trigger: { offset: 'P30D', relativeTo: 'end' } } }
+        };
+        const started = Date.now();
+        expect(alerts.nextTrigger(event, [], T)).to.equal(T + 60000);
+        expect(alerts.nextTrigger(Object.assign({}, event, { alerts: { week: alert('-P7D') } }), [], T)).to.equal(T + 60000);
+        // the triggers of every offset in a short window, each from a narrow expansion
+        const triggers = alerts.triggersBetween(event, [], T, T + 60000);
+        expect(triggers.map(trigger => trigger.alertId).sort()).to.deep.equal(['late', 'start', 'week']);
+        expect(Date.now() - started).to.be.below(2000);
+    });
+
+    it('settles for a time to look again when a dense rule has no occurrence near', () => {
+        // February 30 never comes: a minutely rule is searched a bounded stretch ahead
+        const event = Object.assign({}, at, { recurrenceRule: { frequency: 'minutely', byMonth: ['2'], byMonthDay: [30] }, alerts: { a: alert('-PT5M') } });
+        const next = alerts.nextTrigger(event, [], T);
+        expect(next).to.be.above(T + 3600000);
+        expect(alerts.triggersBetween(event, [], T, next)).to.deep.equal([]);
+    });
+
+    it('answers no trigger for a counted rule that ended', () => {
+        const event = Object.assign({}, at, {
+            start: '2026-01-01T00:00:00',
+            recurrenceRule: { frequency: 'minutely', count: 5000 },
+            alerts: { a: alert('-PT5M') }
+        });
+        expect(alerts.nextTrigger(event, [], T)).to.equal(null);
+        expect(alerts.nextTrigger(event, [], Date.parse('2026-01-01T00:00:00Z'))).to.equal(Date.parse('2026-01-01T00:01:00Z'));
+    });
+
     it('spreads users over the jitter window', () => {
         const settings = alerts.settingsOf({ jitter: 30 });
         const offsets = new Set(Array.from({ length: 50 }, () => alerts.jitterOf(new ObjectId(), settings)));

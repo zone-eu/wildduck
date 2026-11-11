@@ -731,4 +731,50 @@ describe('Calendar alerts (CALR)', function () {
             expect(emailBox.requests.slice(before).map(entry => emailBox.json(entry)['@type'])).to.not.include('CalendarAlert');
         });
     });
+
+    describe('quota, concurrent changes and dense rules', () => {
+        const storedEvent = async ctx => (await schedulerDeps()).database.collection('calendarevents').findOne({ user: new seed.ObjectId(ctx.user.id) });
+
+        it('an email alert that does not fit in the storage quota is not delivered', async () => {
+            const ctx = await h.setupUser();
+            await h.createEvent(ctx, atT({ alerts: { m1: offsetAlert('PT0S', { action: 'email' }) } }));
+            await api('PUT', `/users/${ctx.user.id}`, { quota: 1 });
+            const fired = await tick(ctx, T);
+            expect(fired.map(entry => [entry.alertId, entry.delivered])).to.deep.equal([['m1', false]]);
+            expect(await inbox(ctx)).to.deep.equal([]);
+        });
+
+        it('a write conditional on a modSeq that moved on changes nothing', async () => {
+            const ctx = await h.setupUser();
+            const event = await h.createEvent(ctx, atT({ alerts: { m1: offsetAlert('PT0S', { action: 'email' }) } }));
+            const doc = await storedEvent(ctx);
+            await h.update(ctx, event.id, { title: 'Changed meanwhile' });
+            const { EventStore } = require('../../../lib/calendar/events'); // eslint-disable-line global-require
+            const store = new EventStore({ database: (await schedulerDeps()).database });
+            const stale = Object.assign(JSON.parse(doc.data), { title: 'Stale write' });
+            expect(await store.replace(doc.user, doc._id, stale, doc.calendarIds, {}, { modSeq: doc.modSeq })).to.equal(false);
+            expect((await h.fetch1(ctx, event.id)).title).to.equal('Changed meanwhile');
+            // the acknowledgement reads the event again and keeps the change
+            await tick(ctx, T);
+            const object = await h.fetch1(ctx, event.id);
+            expect(object.title).to.equal('Changed meanwhile');
+            expect(object.alerts.m1.acknowledged).to.equal(utcDate(T));
+        });
+
+        it('a minutely rule with a reminder a week ahead is scheduled to its next minute', async () => {
+            const ctx = await h.setupUser();
+            const started = Date.now();
+            await h.createEvent(
+                ctx,
+                atT({
+                    start: local(T + 30 * DAY),
+                    duration: 'PT1M',
+                    recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'minutely' },
+                    alerts: { w: offsetAlert('-P7D') }
+                })
+            );
+            expect(Date.now() - started).to.be.below(5000);
+            expect((await storedEvent(ctx)).alertAt.getTime()).to.equal(T + 23 * DAY);
+        });
+    });
 });
