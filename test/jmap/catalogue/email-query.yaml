@@ -2934,6 +2934,7 @@ scenarios:
     sources:
       - "jmapio:email/query-changes-filter-null-accepted"
       - "cyrus:JMAPEmail/email_querychanges_zerosince"
+    notes: "The Junk email is appended over IMAP (LMTP delivers to the Inbox unless a filter moves it)."
   - id: EQRY-193
     title: "queryChanges validates filter and sort like Email/query"
     method: Email/queryChanges
@@ -2958,12 +2959,12 @@ scenarios:
     seed: [imap]
     given: "Thread T1 with A1, A2 unflagged and thread T2 with B1; query {inMailbox: Inbox} sorted [someInThreadHaveKeyword $flagged descending, receivedAt descending], uncollapsed, state Q1."
     when: "IMAP STORE +FLAGS (\\Flagged) on A1; queryChanges since Q1. Also for filter {someInThreadHaveKeyword: '$flagged'} from its own state."
-    then: "Sort case: A1 and A2 both appear in removed and in added at their new indexes ahead of B1. Filter case: added contains both A1 and A2. An email expunged before Q1 never appears in removed."
+    then: "Sort case: applying the response to the old list gives the new order, with the A1 and A2 thread ahead of B1; either A1 and A2 or B1 are reported in removed and re-added at their new indexes. Filter case: added contains both A1 and A2. An email expunged before Q1 never appears in removed."
     sources:
       - "cyrus:JMAPEmail/email_querychanges_threadkeyword"
       - "cyrus:JMAPEmail/email_querychanges_threadkeyword_expunged"
       - "cyrus:JMAPEmail/email_querychanges_sortflagged_topmessage"
-    notes: "Acceptable alternative: canCalculateChanges false for thread keyword queries, in which case this scenario asserts cannotCalculateChanges."
+    notes: "Corrected 2026-11-11: RFC 8620 5.6 asks for a change set that turns the old list into the new one, not for every email whose sort key changed; WildDuck reports the smallest such set (the ids outside the longest run that kept its order), which here may be B1 alone. The alternative of canCalculateChanges false is not taken: thread keyword queries are cached like any other."
   - id: EQRY-195
     title: "queryChanges with a string sort reports the index under that sort"
     method: Email/queryChanges
@@ -3003,7 +3004,8 @@ scenarios:
     seed: [db, imap]
     given: "Mailbox with 50000 emails and state Q1; then 2000 deliveries and 2000 expunges are journalled."
     when: "Email/queryChanges since Q1 with maxChanges null; then with maxChanges 500."
-    then: "The first returns the 4000 changes (or cannotCalculateChanges if a configured server cap is exceeded, never a timeout or partial result). The second returns tooManyChanges."
+    then: "The first returns, without a timeout or a server error, the changes for the part of the list the client was sent (the result window of Q1, here the first 1000 ids): applied to that list they give the beginning of the current result, and every new email in that range is in added. The second returns tooManyChanges."
     sources:
       - "wildduck:plan 4.5"
       - "rfc:8620 5.6"
+    notes: "Corrected 2026-11-11: the query cache keeps the result ids as far as some call read them (plan 3.4), so queryChanges describes that part of the list, read again with room for new entries, instead of all 4000 changes of a 50000 entry mailbox."

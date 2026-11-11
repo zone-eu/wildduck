@@ -1,0 +1,39 @@
+# Email/query sorting on from, to and subject
+
+Design note for work package 4.5 of the [implementation plan](implementation-plan.md), 2026-11-11.
+
+## Problem
+
+RFC 8621 4.4.2 defines nine Email sort properties. `receivedAt`, `sentAt` and `size` map to stored fields with indexes (`by_idate`, `by_hdate`, `by_size`, `user_idate`). `hasKeyword` is a computed key over the flag fields. The other five have no stored, indexable value:
+
+- `from` and `to`: the name of the first address of the last From or To field, or its email when the name is empty;
+- `subject`: the RFC 5256 base subject (without `Re:`, `Fwd:`, `[list]` tags and a trailing `(fwd)`), compared with a collation (`i;unicode-casemap` by default, so `apple` and `Äpfel` sort next to each other);
+- `someInThreadHaveKeyword` and `allInThreadHaveKeyword`: a property of the whole thread, which changes when any message of the thread changes.
+
+Phase 1 sorted these with keys computed inside the aggregation, over every message that matched the filter. That is correct but unbounded: a subject sort over a 200,000 message Inbox reads all 200,000 documents (each several kilobytes with its MIME tree) for every page, and the thread keyword keys used `distinct('thread')` over all of the account's messages with the keyword, which fails at 16 MB on large accounts.
+
+## Options
+
+| Option                                                                                                                                                | Write cost                                                                                                              | Read cost                                                                                | Storage                                                                                                                              | Notes                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Derived sort keys stored on every message (`sortFrom`, `sortTo`, `sortSubject`) plus compound indexes `{mailbox, key, _id}` and `{user, key, _id}` | Every writer (MessageHandler, IMAP APPEND and COPY, the Haraka and ZoneMTA plugins, restore) computes three more fields | Index backed, a page costs the page                                                      | Six more indexes on a collection of about a billion documents, each in the tens of GB, plus a migration that rewrites every document | Collation is fixed at write time; a second collation needs more keys. The thread keyword sorts are still not covered: they change with every flag change in the thread |
+| B. Derived keys stored, no indexes                                                                                                                    | As A                                                                                                                    | Unchanged: without an index the database still reads every candidate document to sort it | Three fields per document                                                                                                            | Saves CPU on key computation only, the I/O is the same                                                                                                                 |
+| C. OpenSearch backed sorting                                                                                                                          | None in MongoDB                                                                                                         | Index backed for indexed accounts                                                        | Keyword sub fields in the search index                                                                                               | Only for accounts with the indexing feature; others still need a fallback                                                                                              |
+| D. Bounded in memory sorting                                                                                                                          | None                                                                                                                    | At most N documents read per query, with the sorted list cached under the query state    | None                                                                                                                                 | Large unfiltered results are refused                                                                                                                                   |
+
+## Decision
+
+Option D. WildDuck stores about a billion messages: the cost of A falls on every deployment and every write whether or not anybody sorts by subject, and B does not remove the read cost that is the actual problem. C helps only part of the accounts and is a natural later addition on top of D.
+
+- Email/query with a `from`, `to`, `subject`, `someInThreadHaveKeyword` or `allInThreadHaveKeyword` comparator reads the matching messages, at most `[jmap.query] memoryLimit` (default 10,000), with a projection of the few fields the keys need (`subject`, the indexed `from` and `to` header values, dates, size, thread). It computes the keys in Node (base subject, first address name, collation keys) and sorts there, so every advertised collation is honoured.
+- A result larger than the limit answers `unsupportedSort` with a description asking for a narrower filter, before anything is sorted. Clients typically sort one mailbox or a search result, which is far below the limit.
+- The sorted id list is stored under the query state (`lib/jmap/query-cache.js`, 10 minutes by default), so paging through the list and the following `Email/queryChanges` read it once instead of sorting again.
+- Thread keyword values are computed for the candidate threads only: one aggregation over the messages of those threads. The same approach bounds the thread keyword filters (work package 4.4): the filter is first evaluated with each thread condition replaced by its most permissive value, and only the threads of those candidates are examined. When there are more candidates than the limit, the threads that decide the condition across the account are used if there are few of them (for example the threads with a flagged message), otherwise the filter answers `unsupportedFilter`.
+- `emailQuerySortOptions` lists all nine properties: each works for any result within the limit.
+
+## Consequences
+
+- No schema change, no migration, no new index, nothing on the write path; IMAP, POP3, the REST API and the plugins are unaffected.
+- The `from` and `to` keys come from the indexed header values, which MessageHandler stores decoded and lowercase; the comparison is case insensitive under every supported collation, so the lowercase form does not change the order.
+- Per query cost is bounded by the limit and `queryTimeout`. Operators can lower `memoryLimit` on small machines or raise it where memory allows.
+- If production use shows that large unfiltered string sorts are common, option C can be added for indexed accounts without changing the API.

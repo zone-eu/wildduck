@@ -4,7 +4,14 @@
 // Shared helpers of the Email/query scenario files (catalogue file email-query.yaml).
 
 const { expect } = require('chai');
+const config = require('@zone-eu/wild-config');
+const Redis = require('ioredis');
+const log = require('npmlog');
 const { api, accounts, seed, fixtures, jmap } = require('../harness');
+const redisUrl = require('../../../lib/redis-url');
+const { createApp } = require('../../../lib/jmap/server');
+const types = require('../../../lib/jmap/types');
+const UserHandler = require('../../../lib/user-handler');
 
 /**
  * A test user with extra mailboxes (created in the given order, so a parent comes before its child),
@@ -96,6 +103,89 @@ async function resolveIds(user, placed) {
     });
 }
 
+/** Messages of one thread: the first starts it, the others reply to it */
+function threadMessages(name, count, options = {}) {
+    const root = `<${name}.${Date.now()}@thread.example>`;
+    return Array.from({ length: count }, (item, i) =>
+        rawMessage(
+            Object.assign(
+                {
+                    subject: i ? `Re: Thread ${name}` : `Thread ${name}`,
+                    messageId: i ? `<${name}.${i}.${Date.now()}@thread.example>` : root,
+                    headers: i ? [`In-Reply-To: ${root}`, `References: ${root}`] : []
+                },
+                options
+            )
+        )
+    );
+}
+
+/** Delivers a raw message over LMTP to the user and answers its Email id (found by its Message-ID) */
+async function deliverTo(ctx, raw) {
+    const messageId = /^Message-ID: <([^>]+)>/im.exec(raw.toString());
+    expect(messageId, 'the message needs a Message-ID').to.exist;
+    await seed.deliver(ctx.user.address, raw);
+    const db = await seed.db();
+    const doc = await db.collection('messages').findOne({ user: new seed.ObjectId(ctx.user.id), msgid: `<${messageId[1]}>` }, { projection: { root: true } });
+    expect(doc, `delivered ${messageId[1]}`).to.exist;
+    return `M${(doc.root || doc._id).toString()}`;
+}
+
+/**
+ * A JMAP service in the test process on the test server's database, with other [jmap] options (for
+ * example small query limits). Answers {method(name, args): like JmapClient.method, close()}.
+ */
+async function inProcess(ctx, options) {
+    const database = await seed.db();
+    // the service logs every request, keep the test output clean
+    const logLevel = log.level;
+    log.level = 'silent';
+    const redis = new Redis(typeof config.dbs.redis === 'string' ? redisUrl(config.dbs.redis) : config.dbs.redis);
+    const app = createApp(
+        { database, users: database, redis, userHandler: new UserHandler({ database, users: database, redis }), modules: types.modules, routes: types.routes },
+        Object.assign({}, config.jmap, options, {
+            accessSecret: config.api.accessControl.secret,
+            roles: config.api.roles,
+            tokenLifetime: config.api.accessControl.tokenLifetime
+        })
+    );
+    const token = await accounts.createToken(ctx.user);
+    const accountId = `u${ctx.user.id}`;
+    return {
+        async method(name, args) {
+            const res = await app.inject({
+                method: 'POST',
+                url: '/jmap/api',
+                headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+                payload: JSON.stringify({ using: [jmap.URN.core, jmap.URN.mail], methodCalls: [[name, Object.assign({ accountId }, args), 'c0']] })
+            });
+            expect(res.statusCode).to.equal(200);
+            const [[responseName, response]] = JSON.parse(res.body).methodResponses;
+            if (responseName === 'error') {
+                const err = new Error(`${name} answered ${response.type}`);
+                err.type = response.type;
+                throw err;
+            }
+            return response;
+        },
+        async close() {
+            await app.close();
+            redis.disconnect();
+            log.level = logLevel;
+        }
+    };
+}
+
+/** Applies a /queryChanges response to a cached id list (RFC 8620 5.6): removed first, then added by ascending index */
+function applyChanges(list, changes) {
+    const removed = new Set(changes.removed);
+    const result = list.filter(id => !removed.has(id));
+    for (const item of [...changes.added].sort((a, b) => a.index - b.index)) {
+        result.splice(item.index, 0, item.id);
+    }
+    return result;
+}
+
 /** Runs an IMAP command on one mailbox of the user and logs out */
 const imapIn = (ctx, path, fn) =>
     seed.withImap(ctx.user, async client => {
@@ -129,4 +219,23 @@ const day = (n, hours = 0) => new Date(Date.UTC(2024, 0, n, 10 + hours, 0, 0));
 /** JMAP UTCDate of a Date */
 const utc = date => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
-module.exports = { setup, rawMessage, sizedMessage, withHeaders, append, resolveIds, imapIn, query, idsOf, errorOf, emails, ids, day, utc };
+module.exports = {
+    setup,
+    rawMessage,
+    sizedMessage,
+    withHeaders,
+    append,
+    resolveIds,
+    threadMessages,
+    deliverTo,
+    applyChanges,
+    inProcess,
+    imapIn,
+    query,
+    idsOf,
+    errorOf,
+    emails,
+    ids,
+    day,
+    utc
+};
