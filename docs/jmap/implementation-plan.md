@@ -1,6 +1,6 @@
 # JMAP implementation plan
 
-Status: work package 0.1 done. Branch `jmap`, draft pull request open. Next up: work package 0.2.
+Status: phases 0 to 6 implemented and tested (2403 catalogue scenarios pass, jmapio and Fastmail gates at phase 6). Open: the finishing work packages F.2 to F.6. Branch `jmap`, draft pull request open.
 
 This is the working plan for adding JMAP to WildDuck. It is meant to be executed over many sessions: every work item has a checkbox, and section 10 is the progress log. Read sections 2 and 4 before touching code; they define how every change is made and tested.
 
@@ -105,7 +105,7 @@ Docs only or catalogue only commits skip steps 4, 5 and 7 but still run the cata
 At the end of each work package additionally:
 
 - `npm run test:jmap:coverage` (section 4.3): no catalogue scenario of a finished work package may be without a test.
-- From milestone 2 on, `npm run test:jmap:compliance` (the jmapio suite against its expectation file).
+- From milestone 2 on, `npm run test:jmap:jmapio` (the jmapio suite against its expectation file).
 - Push, watch CI, update the progress log in section 10.
 
 ### 2.3 Commit conventions
@@ -156,7 +156,6 @@ lib/jmap/
   email-body.js               MIME tree to bodyStructure, textBody, htmlBody, attachments, bodyValues
   email-builder.js            Email object to MIME (Email/set create)
   email-search.js             FilterCondition and Comparator to MongoDB and OpenSearch queries
-  snippet.js                  SearchSnippet highlighting
   push/eventsource.js         EventSource endpoint over the notifier
   push/subscriptions.js       PushSubscription store, binding to credentials
   push/webpush.js             RFC 8291 encryption, RFC 8030 delivery, SSRF checks
@@ -173,8 +172,8 @@ lib/calendar/recurrence.js    recurrence expansion
 lib/calendar/alerts.js        alert scheduling
 lib/schemas/jscontact.js      JSContact Card schema for the existing Ajv setup
 lib/schemas/jscalendar.js     JSCalendar Event schema
-lib/tasks/root-migration.js   one off migration of message roots
-lib/tasks/upload-cleanup.js   removal of expired uploads
+lib/message-roots.js          root lookups and the per user root repair (migrations/database/messages_root_repair.js)
+lib/storage-handler.js        temporary uploads, removed by the garbage collector (removeExpiredUploads)
 ```
 
 Everything that writes mail goes through `MessageHandler`, `MailboxHandler`, `UserHandler`, `StorageHandler` and `Maildropper`, so IMAP, the REST API and JMAP stay consistent, journaled, quota accounted and audited. Type modules contain protocol logic only.
@@ -188,7 +187,7 @@ Everything that writes mail goes through `MessageHandler`, `MailboxHandler`, `Us
 
 ### 3.4 State and changes
 
-- **Journal types (Email, Thread, Mailbox).** One state string per account: `s` plus the 24 hex id of the newest journal entry written for the user, plus 8 hex characters of a keyed checksum over the account id, so a state from another account is rejected. The newest id is kept as a persisted anchor in a per user `jmapstate` document (`lib/journal-state.js`). It is maintained lazily when a state is read, with `$max`, and its lookups are bounded by the previous anchor, so no write path (IMAP, POP3, LMTP, the REST API, the Haraka and ZoneMTA plugins) pays for it. It never moves backwards and does not change when journal entries expire; an anchor older than the retention with nothing newer is replaced by a fresh id.
+- **Journal types (Email, Thread, Mailbox).** One state string per account: the 24 hex id of the newest journal entry written for the user, plus 8 hex characters of a keyed checksum over the account id, so a state from another account is rejected. The newest id is kept as a persisted anchor in a per user `jmapstate` document (`lib/journal-state.js`). It is maintained lazily when a state is read, with `$max`, and its lookups are bounded by the previous anchor, so no write path (IMAP, POP3, LMTP, the REST API, the Haraka and ZoneMTA plugins) pays for it. It never moves backwards and does not change when journal entries expire; an anchor older than the retention with nothing newer is replaced by a fresh id.
 - **`/changes`.** Scan `{user, _id > since}` in the journal, fold per `root`: EXISTS is created, EXPUNGE destroyed, FETCH updated, an EXPUNGE and EXISTS with the same root (a move) is updated; created then destroyed inside the window is dropped. A `sinceState` older than the retention window minus a margin answers `cannotCalculateChanges`. `maxChanges` cuts on journal ids, which are the intermediate states.
 - **EmailDelivery.** A second anchor in `jmapstate`, from the newest EXISTS entry whose `origin` is not a move (every new Email).
 - **Owned types.** Identity, EmailSubmission, PushSubscription where needed, AddressBook, ContactCard, Calendar, CalendarEvent, ParticipantIdentity use `lib/jmap/changelog.js`: a per user, per type monotonically increasing sequence stored on each document, and tombstones kept 30 days. The state is the highest sequence; `/changes` is a range scan. Writers outside the JMAP worker that affect these types (address changes through the REST API, the address register written when mail is sent) call the same module.
@@ -211,16 +210,16 @@ Everything that writes mail goes through `MessageHandler`, `MailboxHandler`, `Us
 
 ### 3.8 New collections and indexes
 
-| Collection                                      | Purpose                                                                            | Phase |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------- | ----- |
-| `jmapstate`                                     | Per user anchors (journal, delivery) and owned type sequences                      | 0     |
-| `jmapchanges`                                   | Owned change log entries and tombstones (TTL 30 days on tombstones)                | 2     |
-| `jmapidentities`                                | Identity fields not present on addresses (name override, replyTo, bcc, signatures) | 2     |
-| `jmapsubmissions`                               | EmailSubmission records                                                            | 3     |
-| `jmappush`                                      | PushSubscription records                                                           | 4     |
-| `addressbooks`, `contacts`                      | Contacts                                                                           | 5     |
-| `calendars`, `calendarevents`, `calendaralerts` | Calendars                                                                          | 6     |
-| `jmapparticipants`                              | ParticipantIdentity ids and change sequence, derived from the addresses            | 6     |
+| Collection                                                    | Purpose                                                                            | Phase |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----- |
+| `jmapstate`                                                   | Per user anchors (journal, delivery) and owned type sequences                      | 0     |
+| `jmapchanges`                                                 | Owned change log entries and tombstones (TTL 30 days on tombstones)                | 2     |
+| `jmapidentities`                                              | Identity fields not present on addresses (name override, replyTo, bcc, signatures) | 2     |
+| `jmapsubmissions`                                             | EmailSubmission records                                                            | 3     |
+| `jmappush`                                                    | PushSubscription records                                                           | 4     |
+| `addressbooks`, `contacts`                                    | Contacts                                                                           | 5     |
+| `calendars`, `calendarevents` (alert due times on the events) | Calendars                                                                          | 6     |
+| `jmapparticipants`                                            | ParticipantIdentity ids and change sequence, derived from the addresses            | 6     |
 
 New indexes on existing collections: `by_root` (`{root: 1}`, partial) on `messages` and `archived`, and `user_idate` (`{user: 1, idate: -1, _id: -1}`) for account wide listing, all three built only where JMAP is enabled (`feature: jmap` in `indexes.yaml`); two small partial indexes on `storage.files` for temporary uploads; the journal TTL becomes configurable (applied with `collMod`). The index review of 2026-10-05 listed `user_messages_by_thread` and `by_idate` as drop candidates; JMAP reads both, so they stay.
 
@@ -293,14 +292,13 @@ Rules for scenario tests:
 
 New npm scripts:
 
-| Script                 | Does                                                                                                                                   |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `test:jmap`            | Scenario and unit targets against a running test server (through Grunt, like the other targets)                                        |
-| `test:jmap:unit`       | Unit, fuzz and property tests, no server                                                                                               |
-| `test:jmap:coverage`   | Scenario run plus the catalogue coverage check                                                                                         |
-| `test:jmap:compliance` | jmapio suite: fetch at the pinned commit into a cache directory, build, run against the test server, compare with the expectation file |
-| `test:jmap:fastmail`   | Fastmail suite in a container with the WildDuck adapter, compare with the expectation file                                             |
-| `test:jmap:catalogue`  | Catalogue validator and overview build                                                                                                 |
+| Script                | Does                                                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `test:jmap`           | Scenario target against a test server (through Grunt); the JMAP unit tests run in the Grunt unit target                                |
+| `test:jmap:coverage`  | Scenario run plus the catalogue coverage check                                                                                         |
+| `test:jmap:jmapio`    | jmapio suite: fetch at the pinned commit into a cache directory, build, run against the test server, compare with the expectation file |
+| `test:jmap:fastmail`  | Fastmail suite in a container with the WildDuck adapter, compare with the expectation file                                             |
+| `test:jmap:catalogue` | Catalogue validator and overview build                                                                                                 |
 
 Grunt: a `shell:mocha-jmap` target for `test/jmap/**/*-test.js`, excluded from the `mocha-api` glob and added to the `default` and `testonly` task lists; `shell:mocha-jmap-unit` added to `proto`. `config/test.toml` enables the JMAP service on its own port and shortens the journal retention, upload expiry and cache TTLs used by `time` scenarios.
 
@@ -380,7 +378,7 @@ Each work package ends with the end of package steps of section 2.2. Scenario id
 - [x] **1.13 Email/get.** Wiring, properties handling, limits, body value budget. `EGET` complete (184), `WDX-003`, `WDX-005`.
 - [x] **1.14 Email/changes.** Every origin of change across IMAP, POP3, REST API, delivery and background tasks. `ECHG` phase 1 (107), `WDX-001`, `WDX-002`, `WDX-004`.
 - [x] **1.15 Email/query.** `lib/jmap/email-search.js`: filters, operators, sorts, paging, anchors, `collapseThreads`, `calculateTotal`, query state; `unsupportedFilter` and `unsupportedSort` where phase 4 will add support. `EQRY` phase 1 (152).
-- [x] **1.16 SearchSnippet/get.** `lib/jmap/snippet.js`. `SNIP` (21).
+- [x] **1.16 SearchSnippet/get.** `lib/jmap/types/searchsnippet.js`. `SNIP` (21).
 - [x] **1.17 Blobs and download.** `lib/jmap/blob.js`, the download endpoint. `BLOB` phase 1 (28).
 - [x] **1.18 EventSource and EmailDelivery.** `lib/jmap/push/eventsource.js`. `ESRC` phase 1 (50), `EDLV` phase 1 (16).
 - [ ] **1.19 Operations and first interop.** Access log, slow query handling (`WDS-005`, `WDS-006`); `jmap-jam` interop test; read only runs with aerc and meli recorded in the interop log; first benchmark run.
@@ -425,15 +423,10 @@ Each work package ends with the end of package steps of section 2.2. Scenario id
 - [x] **4.7 RFC 9404.** Blob/upload, Blob/get, Blob/lookup, capability. `BLOB` phase 4 (36), `EIMP` and `EPAR` phase 4.
 - [x] **4.8 Quota.** Quota/get, query, changes, queryChanges over `users.quota` and `storageUsed`. `QUOTA` (22).
 - [x] **4.9 IMAP OBJECTID.** EMAILID, THREADID, MAILBOXID reporting the JMAP ids, also SEARCH EMAILID and THREADID and the MAILBOXID response codes of SELECT and CREATE. `WDX-006`.
-- [ ] **4.1 PushSubscription store.** `jmappush`, PushSubscription/get and set, binding to credentials, limits. `PUSH` store scenarios.
-- [ ] **4.2 Web Push delivery.** Verification, RFC 8291 encryption checked against the RFC test vector, VAPID, BullMQ delivery with backoff, expiry, SSRF protection, a local receiver for tests. Remaining `PUSH` (87).
 - [x] **4.3 queryChanges.** `lib/jmap/query-cache.js`; Email/queryChanges and Mailbox/queryChanges. `EQRY` queryChanges scenarios, `MBX` phase 4 (10). The query state carries a keyed fingerprint of the arguments; the ids a call reads (up to `[jmap.queryCache] maxIds`) are kept in Redis under it; queryChanges reads the current list as far as the cached one went and reports the smallest change set (ids outside the longest run that kept its order).
 - [x] **4.4 Thread keyword filters and sorts.** `allInThreadHaveKeyword`, `someInThreadHaveKeyword`, `noneInThreadHaveKeyword`. `EQRY` thread keyword scenarios. Bounded: decided for the candidate threads of the rest of the filter (at most `[jmap.query] memoryLimit` messages), else by the threads that decide the condition when they are few, else `unsupportedFilter`; no unbounded `distinct`.
 - [x] **4.5 Sorts on from, to and subject.** Starts with a short design note (derived sort keys on new and migrated messages, or OpenSearch backed sorting with an in memory fallback for bounded result sets); `emailQuerySortOptions` lists only what works. `EQRY` sort scenarios. Decided in `docs/jmap/email-sorting.md`: bounded in memory sorting with RFC 5256 base subjects and the advertised collations, the sorted list cached under the query state; a larger result answers `unsupportedSort`.
 - [x] **4.6 Body search through OpenSearch.** Finish the query path that is commented out in `lib/api/messages.js`, for indexed users; analyzer that keeps short terms. `EQRY` full body search scenarios (45 in phase 4 in total). `lib/jmap/fulltext.js`: text and body conditions of accounts with the indexing feature go to the search index (phrase per term, all terms required; the standard analyzer keeps short terms); the indexer now indexes the whole stored plain text. The REST API search path is unchanged.
-- [ ] **4.7 RFC 9404.** Blob/upload, Blob/get, Blob/lookup, capability. `BLOB` phase 4 (36), `EIMP` and `EPAR` phase 4.
-- [ ] **4.8 Quota.** Quota/get, query, changes, queryChanges over `users.quota` and `storageUsed`. `QUOTA` (22).
-- [ ] **4.9 IMAP OBJECTID.** EMAILID, THREADID, MAILBOXID reporting the JMAP ids. `WDX-006`.
 - [ ] **Milestone 4.** All 204 phase 4 scenarios pass; jmapio 298; Fastmail 97. Second benchmark run. Mutation run on `lib/jmap/` core modules.
 
 ### Phase 5: contacts
@@ -539,7 +532,6 @@ Rollback: disabling the service is enough. The schema additions (new fields, new
 | 2026-11-11 | Review, phase 4              | Phase 4 review fixes: Blob range reads stream past the offset (only the range is held) and `maxSizeBlobGet` defaults to 16 MB; the query cache keeps all lists of a user in one Redis hash with a byte and entry budget, written by one Lua call, and only windows near the start of a list are cached; Web Push change detection moved to the write side (`ImapNotifier.fire` checks the Redis set of users with verified subscriptions, every worker claims due users), states read once per change and passed to the sends, the users set rebuilt with an index backed cursor; `i;ascii-numeric` keys without padding, in memory sorts counted before reading, OpenSearch text conditions as filters with the newest matches kept, Email/query filters built once per request; hidden settings (`jmap:` keys, not enumerable rows) answered only to roles that write settings, encrypted settings stored as encrypted. `SEARCH EMAILID` checked with explain: by_root and `_id`, no mailbox scan. 1774 scenarios pass (with EQRY-065 on OpenSearch), jmapio gate at phase 4 passes (299 passed) |
 | 2026-11-12 | 6.3 decision                 | `rrule-temporal` approved as the recurrence dependency, pinned exactly, used only behind our wrapper (`docs/jmap/recurrence-options.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 2026-11-12 | 5.1 to 5.8, Milestone 5      | Contacts: `lib/contact-handler.js`, JSContact validation (`lib/schemas/jscontact.js`, RFC 9553 examples as unit tests), AddressBook and ContactCard get, changes, set, query, queryChanges, copy errors, media blobs (`Bc`, sniffed) with Blob/lookup, the address register as read only book `Aregister` fed into the change log by the mail path and REST API, push of both types. Shared: change log over several collections, array member patches, prefixed ids in the query cache, event ids with a digest of the owned states. 254 phase 5 scenarios pass; Fastmail phase 5: 116 passed, gate passed; jmapio phase 4: 299 passed. Bulwark: F.5b                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| 2026-11-12 | 6.3 decision                 | `rrule-temporal` approved as the recurrence dependency, pinned exactly, used only behind our wrapper (`docs/jmap/recurrence-options.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 2026-11-12 | 6.3, 6.5 to 6.8, Milestone 6 | Recurrence engine over `rrule-temporal` 2.2.8 (76 unit tests with a brute force oracle), CalendarEvent get, set, changes and copy with synthetic instance ids, query and queryChanges with expansion, alerts with a scheduler on an indexed next-alert time, CalendarAlert over event streams and Web Push, email alerts into the INBOX, CalendarEventNotification answering empty. 160 CEV, 77 CEQ, 42 CALR and the 7 remaining CAL pass (375 phase 6 scenarios); full scenario run green; Fastmail at phase 6: all calendar files pass; jmapio gate at phase 6 passes (299). Catalogue corrections: CEV-095 (a participant id can not hold "~", the escape is tested on keywords), BLOB-050 (CalendarEvent is a blob referencing type from phase 6). CAL-008 needed no change: CalendarEventNotification/get exists (CEV-161) and answers accountNotFound                                                                                                                                                                                                                                        |
 | 2026-11-12 | Review, phase 6              | Phase 6 review and audit fixes: the next alert trigger is searched per range of close offsets in bounded windows from the first instance under one budget (32 windows, 4000 instances, 50 ms; a minutely rule with a reminder a week ahead never finished before), with a time to look again when it runs out; the scheduler claims an event before any work; email alerts within the storage quota; acknowledgements conditional on modSeq with retry; the scheduler reads JSCalendar text 50 events at a time, takes full batches within a time budget, renews its lock and parks failing events; recurrence expansions that must fail are refused before they walk (maxIterations 5000, set positions over 10000 slots a day); participant links checked, data: URIs within the upload quota and only after every link is valid; CalendarEvent/query expansions share a time budget (maxQueryExpansionTime); CalendarAlert Web Push checks the subscription credentials; owned push states from one jmapstate read; CalendarEvent/set split into named steps                                    |
 | 2026-11-12 | F.1                          | `docs/in-depth/jmap.md` (capabilities, every `config/jmap.toml` key, authentication, discovery, reverse proxy, limits, push, search, ids, deviations from the external suite expectation files, operations: rollout, root repair, journal retention, feature gated indexes, collections, capacity, monitoring), JMAP in `protocol-support.md`, README, docs index and CLAUDE.md. Open: the wildduck-docs site (separate repository)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |

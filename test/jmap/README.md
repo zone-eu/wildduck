@@ -1,6 +1,6 @@
 # JMAP test portfolio
 
-WildDuck has no JMAP implementation yet. This directory defines what it will be tested against, so that development starts with the guardrails in place. It holds no test code: the catalogue is the specification the tests are written from, phase by phase.
+The JMAP test portfolio and the tests built from it. The catalogue (`catalogue/*.yaml`) is the specification: every scenario has a test in `scenarios/` registered with `scenario('ID', fn)`, `unit/` holds the unit tests, `harness/` the test helpers, and `external/` the expectation files and runners of the two independent conformance suites. The implementation lives in `lib/jmap/` (see `docs/in-depth/jmap.md`).
 
 Build and open `overview.html` (`node test/jmap/tools/build-overview.js`) for the readable version (research summary, phase gates, coverage matrix, findings, and every scenario with a filter).
 

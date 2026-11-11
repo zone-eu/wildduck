@@ -13,6 +13,10 @@ secure = false
 # (apiUrl, downloadUrl, uploadUrl, eventSourceUrl). Must be set when the service is behind a proxy.
 #baseUrl = "https://jmap.example.com"
 
+# take the client address from X-Forwarded-For (authentication log, failed login counters, message
+# metadata). Enable only when the listener is reachable solely through a proxy that sets the header
+trustProxy = false
+
 # Time limit in milliseconds for the database work of one Email/query call. A query that runs longer
 # answers serverUnavailable. Defaults to three times the message search limit of the REST API (9000)
 #queryTimeout = 9000
@@ -27,6 +31,9 @@ maxCallsInRequest = 32
 # equal to the mailbox limit, so Mailbox/get with ids null always fits
 maxObjectsInGet = 1500
 maxObjectsInSet = 500
+# octets of body values one Email/get call returns at most; values past it come back empty with
+# isTruncated true (RFC 8621 4.2 maxBodyValueBytes still applies per value)
+maxBodyValueBytesPerRequest = 33554432
 # temporary uploads per user, oldest are deleted first when a new upload does not fit
 uploadQuota = 209715200
 # how long an unreferenced upload is kept, in seconds (RFC 8620 6.1: at least one hour)
@@ -158,6 +165,8 @@ pushLimit = 120
 pushWindow = 3600
 emailLimit = 30
 emailWindow = 86400
+# events with a due alert read per scheduler run
+batch = 500
 [push]
 # Web Push for PushSubscription (RFC 8620 7.2, RFC 8030, RFC 8291 encryption, RFC 8292 VAPID). Push
 # requests go out from the JMAP workers through the BullMQ queue jmap_push. The VAPID key pair is made
@@ -196,3 +205,15 @@ vapidRefresh = 60
 allowHosts = []
 # extra trusted certificate files for push services, on top of the default ones (tests only)
 #ca = ["/path/to/ca.pem"]
+
+# Browser origins (exact Origin values) that get CORS headers, for web clients served from another origin
+#[cors]
+#origins = ["https://webmail.example.com"]
+
+# HTTPS certificate when secure = true; without this section the global [tls] section is used. Certificates
+# managed by WildDuck (CertHandler, ACME) are selected by server name
+#[tls]
+#key = "/path/to/key.pem"
+#cert = "/path/to/cert.pem"
+#ca = ["/path/to/ca.pem"]
+#dhparam = "/path/to/dhparam.pem"
