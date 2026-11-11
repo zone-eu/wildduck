@@ -764,7 +764,7 @@ function createApp(options = {}) {
         webauthnRoutes(db, app, userHandler, mcpTokenHandler);
         updatesRoutes(db, app, notifier);
         authRoutes(db, app, userHandler, mcpTokenHandler);
-        autoreplyRoutes(db, app);
+        autoreplyRoutes(db, app, notifier);
         submitRoutes(db, app, messageHandler, userHandler, settingsHandler);
         auditRoutes(db, app, auditHandler);
         domainaliasRoutes(db, app);
