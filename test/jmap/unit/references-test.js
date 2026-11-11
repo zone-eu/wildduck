@@ -38,8 +38,22 @@ describe('JMAP result references', () => {
     });
 
     it('fails with invalidResultReference for paths that do not resolve', () => {
-        for (const path of ['/missing', '/ids/2', '/ids/01', '/ids/-1', '/list/*/missing', 'ids', '/ids/x', '/__proto__', '/constructor', '/list/0/__proto__/x']) {
-            expect(typeOf(() => evaluatePointer(value, path)), path).to.equal('invalidResultReference');
+        for (const path of [
+            '/missing',
+            '/ids/2',
+            '/ids/01',
+            '/ids/-1',
+            '/list/*/missing',
+            'ids',
+            '/ids/x',
+            '/__proto__',
+            '/constructor',
+            '/list/0/__proto__/x'
+        ]) {
+            expect(
+                typeOf(() => evaluatePointer(value, path)),
+                path
+            ).to.equal('invalidResultReference');
         }
     });
 
@@ -55,13 +69,19 @@ describe('JMAP result references', () => {
             ['error', { type: 'serverFail' }, 'c1']
         ];
         expect(typeOf(() => resolveReferences({ '#ids': { resultOf: 'c0', name: 'Email/get', path: '/ids' } }, responses))).to.equal('invalidResultReference');
-        expect(typeOf(() => resolveReferences({ '#ids': { resultOf: 'c9', name: 'Email/query', path: '/ids' } }, responses))).to.equal('invalidResultReference');
-        expect(typeOf(() => resolveReferences({ '#ids': { resultOf: 'c1', name: 'Email/query', path: '/ids' } }, responses))).to.equal('invalidResultReference');
+        expect(typeOf(() => resolveReferences({ '#ids': { resultOf: 'c9', name: 'Email/query', path: '/ids' } }, responses))).to.equal(
+            'invalidResultReference'
+        );
+        expect(typeOf(() => resolveReferences({ '#ids': { resultOf: 'c1', name: 'Email/query', path: '/ids' } }, responses))).to.equal(
+            'invalidResultReference'
+        );
         expect(typeOf(() => resolveReferences({ '#ids': 'c0' }, responses))).to.equal('invalidResultReference');
     });
 
     it('rejects an argument given both plain and as a reference', () => {
         const responses = [['Email/query', { ids: [] }, 'c0']];
-        expect(typeOf(() => resolveReferences({ ids: [], '#ids': { resultOf: 'c0', name: 'Email/query', path: '/ids' } }, responses))).to.equal('invalidArguments');
+        expect(typeOf(() => resolveReferences({ ids: [], '#ids': { resultOf: 'c0', name: 'Email/query', path: '/ids' } }, responses))).to.equal(
+            'invalidArguments'
+        );
     });
 });

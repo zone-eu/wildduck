@@ -24,7 +24,8 @@ describe('JMAP body structure', () => {
     });
 
     it('splits multipart/alternative into text and html bodies', () => {
-        const raw = 'Content-Type: multipart/alternative; boundary=b\n\n--b\nContent-Type: text/plain\n\nplain\n--b\nContent-Type: text/html\n\n<p>html</p>\n--b--\n';
+        const raw =
+            'Content-Type: multipart/alternative; boundary=b\n\n--b\nContent-Type: text/plain\n\nplain\n--b\nContent-Type: text/html\n\n<p>html</p>\n--b--\n';
         const root = bodyStructure(tree(raw), ROOT);
         expect(root).to.include({ partId: null, blobId: null, type: 'multipart/alternative' });
         expect(ids(root.subParts)).to.deep.equal(['1', '2']);
@@ -54,7 +55,7 @@ describe('JMAP body structure', () => {
             '--r--',
             '--m',
             'Content-Type: application/pdf; name="report.pdf"',
-            'Content-Disposition: attachment; filename*=UTF-8\'\'r%C3%A4port.pdf',
+            "Content-Disposition: attachment; filename*=UTF-8''r%C3%A4port.pdf",
             'Content-Transfer-Encoding: base64',
             '',
             'JVBERi0xLjQ=',
@@ -71,7 +72,8 @@ describe('JMAP body structure', () => {
     });
 
     it('does not descend into message/rfc822 parts', () => {
-        const raw = 'Content-Type: multipart/mixed; boundary=m\n\n--m\nContent-Type: text/plain\n\nsee attached\n--m\nContent-Type: message/rfc822\n\nSubject: inner\n\ninner body\n--m--\n';
+        const raw =
+            'Content-Type: multipart/mixed; boundary=m\n\n--m\nContent-Type: text/plain\n\nsee attached\n--m\nContent-Type: message/rfc822\n\nSubject: inner\n\ninner body\n--m--\n';
         const root = bodyStructure(tree(raw), ROOT);
         expect(root.subParts[1]).to.include({ partId: '2', type: 'message/rfc822', subParts: null });
         expect(ids(parseStructure(root).attachments)).to.deep.equal(['2']);
