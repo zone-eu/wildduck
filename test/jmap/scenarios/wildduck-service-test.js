@@ -382,6 +382,9 @@ describe('JMAP service (wildduck.yaml)', () => {
                 jmapstate: await db.collection('jmapstate').countDocuments({ _id: user }),
                 jmapidentities: await db.collection('jmapidentities').countDocuments({ user }),
                 jmapchanges: await db.collection('jmapchanges').countDocuments({ user }),
+                jmapparticipants: await db.collection('jmapparticipants').countDocuments({ user }),
+                calendars: await db.collection('calendars').countDocuments({ user }),
+                calendarevents: await db.collection('calendarevents').countDocuments({ user }),
                 uploads: await db.collection('storage.files').countDocuments({ 'metadata.user': user, 'metadata.expires': { $exists: true } })
             };
         }
@@ -403,6 +406,21 @@ describe('JMAP service (wildduck.yaml)', () => {
             const created = await client.method('Identity/set', { create: { extra: { email: user.address, name: 'Extra' } } }, USING);
             await client.method('Identity/set', { destroy: [created.created.extra.id] }, USING);
             await client.method('VacationResponse/set', { update: { singleton: { isEnabled: true, textBody: 'away' } } }, USING);
+            // calendar data: the default calendar, the participant identity and an event (CalendarEvent/set follows in 6.5)
+            const calendarUsing = [URN.core, URN.calendars];
+            await client.method('ParticipantIdentity/get', {}, calendarUsing);
+            const calendar = (await client.method('Calendar/get', {}, calendarUsing)).list[0];
+            await (
+                await seed.db()
+            )
+                .collection('calendarevents')
+                .insertOne({
+                    user: new seed.ObjectId(user.id),
+                    calendarIds: [new seed.ObjectId(calendar.id.slice(1))],
+                    uid: 'wds-007',
+                    createdSeq: 0,
+                    modSeq: 0
+                });
             const before = await jmapDocuments(user.id);
             for (const [collection, count] of Object.entries(before)) {
                 expect(count, collection).to.be.above(0);
@@ -412,7 +430,15 @@ describe('JMAP service (wildduck.yaml)', () => {
             const db = await seed.db();
             // the user-delete task removes the placeholder of the deleted user last
             await clock.waitFor(async () => !(await db.collection('deletedusers').findOne({ _id: new seed.ObjectId(user.id) })), { timeout: 30000 });
-            expect(await jmapDocuments(user.id)).to.deep.equal({ jmapstate: 0, jmapidentities: 0, jmapchanges: 0, uploads: 0 });
+            expect(await jmapDocuments(user.id)).to.deep.equal({
+                jmapstate: 0,
+                jmapidentities: 0,
+                jmapchanges: 0,
+                jmapparticipants: 0,
+                calendars: 0,
+                calendarevents: 0,
+                uploads: 0
+            });
 
             expect((await new JmapClient(`Bearer ${token}`).raw('/jmap/session')).status).to.equal(401);
             expect((await forUser(user).raw('/jmap/session')).status).to.equal(401);
