@@ -46,6 +46,9 @@ safetyWindow = 2000
 # Most ids in one /changes response. A larger maxChanges from the client, or none, is capped to this
 # (equal to maxObjectsInGet, so the ids always fit a following /get)
 maxChanges = 1500
+# seconds the journal retention setting (const:journal:time) is kept in memory instead of read for
+# every state
+retentionCacheTime = 60
 # Most journal entries read for one /changes response. A long run of changes to a few ids is answered
 # with an intermediate state instead of a scan of the whole run
 scanLimit = 10000

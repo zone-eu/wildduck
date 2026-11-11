@@ -36,6 +36,8 @@ port = 8091
 [jmap.changes]
 # the test server runs a single process, exact change lists keep the scenario assertions strict
 safetyWindow = 0
+# scenarios change the journal retention in the database and expect it to apply at once
+retentionCacheTime = 0
 # a small cap, so paging without maxChanges is testable (ECHG-089)
 maxChanges = 100
 
