@@ -6,11 +6,19 @@
 // SetErrors of a create, recipient limits shared with the REST API, and injection safety of the
 // envelope.
 
+const fs = require('fs');
+const path = require('path');
 const { expect } = require('chai');
 const { scenario, api, accounts, seed, outbound } = require('../harness');
 const { startInstance, stopInstance } = require('../harness/instance');
 const h = require('./submission-helpers');
 const { append, message } = require('./email-get-helpers');
+const { docOf, rawOf } = require('./email-set-helpers');
+
+const PUB_KEY = fs.readFileSync(path.join(__dirname, '..', '..', 'fixtures', 'user2-public.key'), 'utf8');
+
+/** The body of a message, after the header */
+const bodyOf = raw => raw.slice(raw.indexOf('\r\n\r\n') + 4);
 
 /** Sends through the REST submit endpoint to the given number of recipients */
 const restSubmit = (ctx, count) =>
@@ -282,18 +290,16 @@ describe('EmailSubmission rules', function () {
 
     scenario('SUB-056', async () => {
         const address = 'üser@example.net';
-        const before = await h.queuedMessages(ctx);
         const id = await h.appendRaw(ctx, Buffer.from([`From: ${ctx.user.address}`, `To: ${address}`, 'Subject: unicode local part', '', 'Body'].join('\r\n')));
-        const byHeader = h.expectNotCreated(await h.submitEmail(ctx, id), 'invalidRecipients');
-        expect(byHeader.invalidRecipients).to.deep.equal([address]);
         const envelope = { mailFrom: { email: ctx.user.address }, rcptTo: [{ email: address }] };
-        const byEnvelope = h.expectNotCreated(await h.submitEmail(ctx, id, { envelope }), 'invalidRecipients');
-        expect(byEnvelope.invalidRecipients).to.deep.equal([address]);
-        await h.expectNothingQueued(ctx, before);
-        const session = await ctx.client.session();
-        expect(session.accounts[ctx.client.accountId].accountCapabilities['urn:ietf:params:jmap:submission'].submissionExtensions).to.not.have.property(
-            'SMTPUTF8'
-        );
+        for (const extra of [{}, { envelope }]) {
+            const created = h.expectCreated(await h.submitEmail(ctx, id, extra));
+            const { envelope: stored } = await h.getSubmission(ctx, created.id, ['envelope']);
+            expect(stored.rcptTo.map(entry => entry.email)).to.deep.equal([address]);
+            // the queue entry keeps the address in UTF-8, the MTA delivers it with SMTPUTF8
+            const entries = await outbound.entries(await h.queueIdOf(created.id));
+            expect(entries.map(entry => entry.recipient)).to.deep.equal([address]);
+        }
     });
 
     describe('recipient limits', () => {
@@ -401,5 +407,76 @@ describe('EmailSubmission rules', function () {
         expect(error.description).to.be.a('string');
         expect(response.newState).to.equal(state);
         await h.expectNothingQueued(own, []);
+    });
+
+    scenario('SUB-142', async () => {
+        const own = await h.sender();
+        const db = await seed.db();
+        // stored before the account turned encryption on, encrypted when it is moved afterwards
+        const moved = await h.createDraft(own, { mailbox: own.mb.Archive, keywords: { $seen: true } });
+        await api('PUT', `/users/${own.user.id}`, { pubKey: PUB_KEY, encryptMessages: true });
+        const added = await h.createDraft(own, { mailbox: own.mb.INBOX, keywords: { $seen: true } });
+        const update = await own.client.method('Email/set', { update: { [moved.id]: { mailboxIds: { [own.mb.INBOX]: true } } } });
+        expect(update.updated, JSON.stringify(update)).to.have.property(moved.id);
+        // an older WildDuck left no mark, only its armor comment
+        const legacy = await h.createDraft(own, { mailbox: own.mb.INBOX, keywords: { $seen: true } });
+        const legacyDoc = await docOf(own, legacy.id);
+        await db.collection('messages').updateOne({ _id: legacyDoc._id, mailbox: legacyDoc.mailbox, uid: legacyDoc.uid }, { $unset: { encryptedAtRest: '' } });
+
+        for (const email of [added, moved]) {
+            const doc = await docOf(own, email.id);
+            expect(doc.encryptedAtRest, email.id).to.equal(true);
+            expect(doc.mimeTree.parsedHeader['content-type'].value).to.equal('multipart/encrypted');
+        }
+        expect((await docOf(own, legacy.id)).encryptedAtRest).to.equal(undefined);
+        expect(await rawOf(own, legacy.blobId)).to.include('Comment: Plaintext message encrypted by WildDuck Mail Server');
+
+        const counter = await h.recipientsUsed(own);
+        for (const email of [added, moved, legacy]) {
+            const error = h.expectNotCreated(await h.submitEmail(own, email.id), 'invalidEmail');
+            expect(error.properties, email.id).to.deep.equal(['emailId']);
+            expect(error.description).to.match(/stored encrypted/);
+            expect(error.description).to.match(/can not be sent/);
+        }
+        await h.expectNothingQueued(own, [], counter);
+    });
+
+    scenario('SUB-143', async () => {
+        const own = await h.sender();
+        const armored = [
+            '-----BEGIN PGP MESSAGE-----',
+            'Comment: Encrypted by the client for the recipient',
+            '',
+            'hQEMA0Wn4xyP7k1bAQf/client+ciphertext',
+            '=Ab12',
+            '-----END PGP MESSAGE-----'
+        ];
+        const raw = Buffer.from(
+            [
+                `From: ${own.user.address}`,
+                'To: rcpt@example.net',
+                'Subject: client encrypted',
+                'MIME-Version: 1.0',
+                'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="enc1"',
+                '',
+                '--enc1',
+                'Content-Type: application/pgp-encrypted',
+                '',
+                'Version: 1',
+                '',
+                '--enc1',
+                'Content-Type: application/octet-stream; name="encrypted.asc"',
+                '',
+                ...armored,
+                '--enc1--',
+                ''
+            ].join('\r\n')
+        );
+        const id = await h.appendRaw(own, raw);
+        expect((await docOf(own, id)).encryptedAtRest).to.equal(undefined);
+        const created = h.expectCreated(await h.submitEmail(own, id));
+        const queued = (await outbound.message(await h.queueIdOf(created.id))).toString('binary');
+        expect(queued).to.match(/^Content-Type: multipart\/encrypted; protocol="application\/pgp-encrypted"; boundary="enc1"\r$/m);
+        expect(bodyOf(queued)).to.equal(bodyOf(raw.toString('binary')));
     });
 });

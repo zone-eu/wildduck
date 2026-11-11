@@ -27,6 +27,17 @@ async function delayed(ctx, options = {}) {
     return { draft, id: created.id, created, queueId: await h.queueIdOf(created.id) };
 }
 
+/**
+ * A delayed submission whose release time has come and whose queue entries the MTA locked. The MTA
+ * takes due entries only, so a submission is looked at from its release on.
+ */
+async function started(ctx, options = {}) {
+    const submission = await delayed(ctx, Object.assign({ hold: 1 }, options));
+    await clock.delay(1100);
+    await outbound.lock(submission.queueId);
+    return submission;
+}
+
 /** The REST view of the message of an Email */
 async function restMessage(ctx, emailId) {
     const doc = await (await seed.db()).collection('messages').findOne({ user: new seed.ObjectId(ctx.user.id), root: new seed.ObjectId(emailId.slice(1)) });
@@ -263,8 +274,7 @@ describe('EmailSubmission delayed send and undo', function () {
     });
 
     scenario('SUB-105', async () => {
-        const { id, queueId } = await delayed(ctx);
-        await outbound.lock(queueId);
+        const { id } = await started(ctx);
         expect((await h.getSubmission(ctx, id)).undoStatus).to.equal('final');
         const state = await h.submissionState(ctx);
         const res = await h.submissionSet(ctx, { update: { [id]: { undoStatus: 'canceled' } } });
@@ -371,8 +381,7 @@ describe('EmailSubmission delayed send and undo', function () {
     });
 
     scenario('SUB-112', async () => {
-        const first = await delayed(ctx);
-        await outbound.lock(first.queueId);
+        const first = await started(ctx);
         const second = await delayed(ctx);
         await h.submissionSet(ctx, { update: { [second.id]: { undoStatus: 'canceled' } } });
         expect((await h.getSubmission(ctx, first.id)).undoStatus).to.equal('final');

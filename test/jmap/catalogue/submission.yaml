@@ -893,7 +893,7 @@ scenarios:
     sources:
       - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8"
       - "cyrus:JMAPEmailSubmission/emailsubmission_smtputf8_mismatch"
-    notes: "Decided 2026-11-11: both paths give invalidRecipients. Envelope addresses need an ASCII dot-atom local part (only the domain may be internationalised, it is queued in its A-label form), and SMTPUTF8 is not advertised."
+    notes: "Revised 2026-11-11 (first decided as invalidRecipients on both paths): both paths create the submission. A UTF-8 local part that is otherwise a valid dot-atom is accepted (RFC 6531 3.3), kept unchanged in the queue entry and delivered by the MTA with SMTPUTF8, as for the REST submit endpoint; the domain is queued in its A-label form. Spaces, controls, quotes and brackets stay refused. submissionExtensions does not list SMTPUTF8, since no MAIL FROM parameter is needed or accepted for it."
 
   - id: SUB-057
     title: "Reject more recipients than allowed per message"
@@ -2230,3 +2230,32 @@ scenarios:
     sources:
       - "rfc:8620 7.1"
       - "rfc:8621 1.5"
+
+  - id: SUB-142
+    title: "Refuse to send an Email that WildDuck stored encrypted"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api, db]
+    given: "An account with encryptMessages and a PGP key. A message stored after it was encrypted for the account (marked on the message document), and one encrypted by an older WildDuck without the marker (only the armor comment of WildDuck in the encrypted part)."
+    when: "Each is submitted with a valid identity and recipients."
+    then: "Both creates fail with invalidEmail, properties [\"emailId\"] and a description saying the message is stored encrypted and can not be sent. Nothing is queued."
+    sources:
+      - "rfc:8621 7.5"
+    notes: "Encryption at rest protects the stored copy; sending it would hand recipients a message only the account owner can read. Decided 2026-11-11."
+
+  - id: SUB-143
+    title: "Send a client composed encrypted message unchanged"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, imap]
+    given: "A draft composed by the client as multipart/encrypted (PGP/MIME, encrypted for the recipient), stored without the WildDuck marker or armor comment."
+    when: "It is submitted."
+    then: "The create succeeds and the queued message carries the multipart/encrypted body exactly as stored."
+    sources:
+      - "rfc:8621 7.5"
