@@ -1227,7 +1227,7 @@ scenarios:
       - "wildduck:jmap-report 5.2"
 
   - id: MBX-076
-    title: "Journal expiry alone does not change the state"
+    title: "After the journal retention passes with no activity the state is replaced, not reused"
     method: Mailbox/changes
     spec: "RFC 8620 5.1"
     level: wd
@@ -1236,11 +1236,11 @@ scenarios:
     seed: [imap, time]
     given: "A mailbox is created over IMAP and state S is read afterwards. The journal retention then passes with no further activity, so every journal entry of the user has expired."
     when: "Mailbox/get and Mailbox/changes with sinceState S are called."
-    then: "Mailbox/get still reports state S, and Mailbox/changes with sinceState S returns no changes with newState S instead of cannotCalculateChanges."
+    then: "Mailbox/get reports a new state S2 different from S. Mailbox/changes with sinceState S answers cannotCalculateChanges, and Mailbox/changes with sinceState S2 returns no changes with newState S2. A further Mailbox/get still reports S2."
     sources:
       - "wildduck:jmap-report 5.2"
       - "wildduck:brief state and changes"
-    notes: "Needs the persisted per user state anchor. A sinceState equal to the anchor is answered without reading the journal."
+    notes: "Changed 2026-11-11 to follow WDP-026: an anchor older than the journal retention with nothing newer is replaced by a fresh one, because changes made after it may have expired unseen. Reusing S would hide such changes. The original expectation (S stays valid) is unsafe for that reason. Simulated by aging the stored anchor and removing the journal entries of the user."
 
   - id: MBX-077
     title: "Mailbox/changes with a foreign accountId answers accountNotFound"
