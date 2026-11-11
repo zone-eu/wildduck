@@ -383,6 +383,7 @@ async function markAsSeen(session, messages) {
                 flags: message.flags.concat('\\Seen'),
                 thread: message.thread,
                 message: new ObjectId(message.id),
+                root: message.root,
                 modseq: mailboxData.modifyIndex,
                 // Indicate that unseen values are changed. Not sure how much though
                 unseenChange: true
