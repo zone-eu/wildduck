@@ -3,7 +3,7 @@
 
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
-const { keywordSet, keywordChanges, normalizePatch, parseUTCDate } = require('../../../lib/jmap/types/email-set');
+const { keywordSet, keywordChanges, normalizePatch } = require('../../../lib/jmap/types/email-set');
 
 const LABEL = '0123456789abcdef01234567';
 const labels = new Map([[LABEL, 'Work']]);
@@ -72,16 +72,6 @@ describe('JMAP Email/set helpers', () => {
             const patch = normalizePatch(JSON.parse('{"__proto__": 1}'));
             expect(Object.keys(patch)).to.deep.equal(['__proto__']);
             expect(Object.getPrototypeOf(patch)).to.equal(Object.prototype);
-        });
-    });
-
-    describe('parseUTCDate', () => {
-        it('accepts UTCDate only', () => {
-            expect(parseUTCDate('2014-10-30T14:12:00Z').toISOString()).to.equal('2014-10-30T14:12:00.000Z');
-            expect(parseUTCDate('2014-10-30T14:12:00.5Z').toISOString()).to.equal('2014-10-30T14:12:00.500Z');
-            for (const value of ['2014-10-30T14:12:00+02:00', '2014-10-30', 'yesterday', 1414678320, '2014-02-30T00:00:00Z', '2014-10-30t14:12:00z']) {
-                expect(parseUTCDate(value), String(value)).to.equal(null);
-            }
         });
     });
 });

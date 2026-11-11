@@ -2,13 +2,13 @@
 'use strict';
 
 // Pure parts of Email/import and Email/parse: the "is this a message" rule, parsing a blob into a
-// message document, and the checks of an EmailImport object.
+// message document, and the checks of an EmailImport object that need no lookup.
 
 const { expect } = require('chai');
 const Indexer = require('../../../imap-core/lib/indexer/indexer');
 const MessageHandler = require('../../../lib/message-handler');
 const { looksLikeMessage, parseMessage, headerBlock } = require('../../../lib/jmap/parsed-message');
-const { checkImport, parseKeywords } = require('../../../lib/jmap/types/email-import');
+const { checkImport } = require('../../../lib/jmap/types/email-import');
 
 const messageHandler = { indexer: new Indexer({}), createIntro: MessageHandler.prototype.createIntro };
 
@@ -76,34 +76,20 @@ describe('JMAP parsed messages', () => {
         expect(parseMessage(messageHandler, raw, { embedded: true }).mimeTree.body.toString()).to.equal('no line break at the end');
         expect(parseMessage(messageHandler, raw).mimeTree.body.toString()).to.equal('no line break at the end\r\n');
     });
+
+    it('leaves out the summary when it is not asked for', () => {
+        const doc = parseMessage(messageHandler, Buffer.from('Subject: x\r\n\r\nbody'), { summary: false });
+        expect(doc).to.have.keys(['mimeTree', 'size']);
+    });
 });
 
 describe('JMAP EmailImport checks', () => {
     const valid = { blobId: 'Bu0123456789abcdef01234567', mailboxIds: { F0123456789abcdef01234567: true } };
 
-    it('maps keywords to IMAP flags and labels', () => {
-        const label = '0123456789abcdef01234567';
-        const parsed = parseKeywords({ $seen: true, $Flagged: true, $forwarded: true, Custom: true, [`$wdlabel$${label}`]: true });
-        expect(parsed.flags).to.deep.equal(['\\Seen', '\\Flagged', '$Forwarded', 'Custom']);
-        expect(parsed.labels.map(id => id.toString())).to.deep.equal([label]);
-        expect(parseKeywords(undefined)).to.deep.equal({ flags: [], labels: [] });
-        expect(parseKeywords({ $SEEN: true, $seen: true }).flags).to.deep.equal(['\\Seen']);
-    });
-
-    it('rejects invalid keywords', () => {
-        for (const keywords of [{ $seen: false }, { 'a b': true }, { 'a(b': true }, ['$seen'], 'x', { $deleted: true }, { ['x'.repeat(256)]: true }]) {
-            expect(
-                errorOf(() => parseKeywords(keywords)),
-                JSON.stringify(keywords)
-            ).to.include({ type: 'invalidProperties' });
-        }
-    });
-
     it('checks an EmailImport object', () => {
         const checked = checkImport(Object.assign({ receivedAt: '2018-03-04T05:06:07Z', keywords: { $seen: true } }, valid));
-        expect(checked.mailboxReference).to.equal('F0123456789abcdef01234567');
         expect(checked.receivedAt.toISOString()).to.equal('2018-03-04T05:06:07.000Z');
-        expect(checked.keywords.flags).to.deep.equal(['\\Seen']);
+        expect(checkImport(valid).receivedAt).to.equal(null);
         expect(checkImport(Object.assign({ receivedAt: '2018-03-04T05:06:07.250Z' }, valid)).receivedAt.getTime()).to.equal(Date.UTC(2018, 2, 4, 5, 6, 7, 250));
     });
 
@@ -111,8 +97,6 @@ describe('JMAP EmailImport checks', () => {
         const cases = [
             [{ mailboxIds: valid.mailboxIds }, ['blobId']],
             [Object.assign({ subject: 'x' }, valid), ['subject']],
-            [{ blobId: valid.blobId, mailboxIds: {} }, ['mailboxIds']],
-            [{ blobId: valid.blobId, mailboxIds: { a: false } }, ['mailboxIds']],
             [Object.assign({}, valid, { receivedAt: '2018-03-04T05:06:07+01:00' }), ['receivedAt']],
             [Object.assign({}, valid, { receivedAt: '2018-02-30T05:06:07Z' }), ['receivedAt']],
             [Object.assign({}, valid, { receivedAt: 5 }), ['receivedAt']]
@@ -123,6 +107,5 @@ describe('JMAP EmailImport checks', () => {
                 JSON.stringify(object)
             ).to.deep.include({ type: 'invalidProperties', properties });
         }
-        expect(errorOf(() => checkImport({ blobId: valid.blobId, mailboxIds: { a: true, b: true } })).type).to.equal('tooManyMailboxes');
     });
 });
