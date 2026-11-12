@@ -7,7 +7,7 @@
 const { expect } = require('chai');
 const { MongoClient, ObjectId } = require('mongodb');
 const config = require('@zone-eu/wild-config');
-const { ChangeLog } = require('../../../lib/jmap/changelog');
+const { ChangeLog, changeLogFor } = require('../../../lib/jmap/changelog');
 
 const formatId = id => `I${id}`;
 
@@ -228,5 +228,67 @@ describe('JMAP owned change log', function () {
             () => Promise.reject(new Error('accepted a number')),
             err => expect(err.type).to.equal('invalidArguments')
         );
+    });
+
+    it('keeps an old state usable while nothing changed since', async () => {
+        await create();
+        const { seq } = await log.current(user, 'Identity');
+        const old = Date.now() - 31 * 24 * 3600 * 1000;
+        await database.collection('jmapstate').updateOne({ _id: user }, { $set: { 'seqTime.Identity': new Date(old) } });
+        const quiet = log.formatState(`u${user}`, 'Identity', { seq, time: old });
+        expect(await changes(quiet)).to.deep.include({ newState: quiet, hasMoreChanges: false, created: [] });
+    });
+
+    it('has no more changes when they fill maxChanges exactly', async () => {
+        const s0 = await state();
+        const ids = [await create(), await create()];
+        const result = await changes(s0, 2);
+        expect(result.hasMoreChanges).to.be.false;
+        expect(result.newState).to.equal(await state());
+        expect(result.created.sort()).to.deep.equal(ids.map(formatId).sort());
+    });
+
+    it('reports the window ids again up to maxChanges less one', async () => {
+        const windowed = new ChangeLog({ database, secret: 'unit', safetyWindow: 32 });
+        const early = [];
+        for (let i = 0; i < 5; i++) {
+            early.push(await create());
+        }
+        const s0 = await windowed.state(user, `u${user}`, 'Identity');
+        const fresh = await create();
+        const result = await windowed.changes({
+            user,
+            accountId: `u${user}`,
+            type: 'Identity',
+            collection: 'jmapunitobjects',
+            sinceState: s0,
+            maxChanges: 3,
+            formatId
+        });
+        expect(result.hasMoreChanges).to.be.false;
+        expect(result.created).to.deep.equal([formatId(fresh)]);
+        // the two most recently changed ids of the window
+        expect(result.updated.sort()).to.deep.equal(early.slice(3).map(formatId).sort());
+    });
+
+    it('reads entries only up to the given sequence', async () => {
+        const a = await create();
+        const b = await create();
+        const { seq } = await log.current(user, 'Identity');
+        const sources = [{ collection: 'jmapunitobjects', formatId }];
+        expect((await log.entriesSince(sources, user, 'Identity', 0, 10, formatId, seq - 1)).map(entry => entry.id)).to.deep.equal([formatId(a)]);
+        expect((await log.entriesSince(sources, user, 'Identity', 0, 10, formatId)).map(entry => entry.id)).to.deep.equal([formatId(a), formatId(b)]);
+    });
+
+    it('creates the change log of the service once, with the configured safety window', () => {
+        const contextOf = changes => ({ deps: { database }, options: Object.assign({ accessSecret: 'unit' }, changes ? { changes } : {}) });
+        const configured = contextOf({ ownedSafetyWindow: 5 });
+        const changeLog = changeLogFor(configured);
+        expect(changeLog).to.be.instanceOf(ChangeLog);
+        expect(changeLog.safetyWindow).to.equal(5);
+        expect(changeLogFor(configured)).to.equal(changeLog);
+        expect(changeLogFor(contextOf({ ownedSafetyWindow: 0 })).safetyWindow).to.equal(0);
+        expect(changeLogFor(contextOf({})).safetyWindow).to.equal(32);
+        expect(changeLogFor(contextOf(null)).safetyWindow).to.equal(32);
     });
 });

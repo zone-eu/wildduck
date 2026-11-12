@@ -65,3 +65,17 @@ describe('JMAP keywords', () => {
         });
     });
 });
+
+describe('JMAP UTCDate edge cases', () => {
+    it('takes only primitive strings', () => {
+        expect(parseUTCDate(new String('2014-10-30T14:12:00Z'))).to.be.null; // eslint-disable-line no-new-wrappers
+        expect(parseUTCDate(1414678320000)).to.be.null;
+    });
+
+    it('formats missing dates as null', () => {
+        expect(formatUTCDate(undefined)).to.be.null;
+        expect(formatUTCDate(false)).to.be.null;
+        expect(formatUTCDate(null)).to.be.null;
+        expect(formatUTCDate(0)).to.equal('1970-01-01T00:00:00Z');
+    });
+});

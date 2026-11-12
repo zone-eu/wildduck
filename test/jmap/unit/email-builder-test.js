@@ -4,7 +4,7 @@
 const { expect } = require('chai');
 const crypto = require('crypto');
 const Indexer = require('../../../imap-core/lib/indexer/indexer');
-const { planEmail, buildEmail, encodeDate } = require('../../../lib/jmap/email-builder');
+const { planEmail, buildEmail, encodeDate, encodeAddress, MAX_DEPTH } = require('../../../lib/jmap/email-builder');
 const { headerFields, headerValue, parseHeaderProperty } = require('../../../lib/jmap/email-headers');
 const { bodyStructure, parseStructure } = require('../../../lib/jmap/email-body');
 
@@ -378,5 +378,166 @@ describe('JMAP email builder', () => {
             expect(get('header:Subject:asText'), JSON.stringify(subject)).to.equal(subject.normalize('NFC'));
             expect(get('header:From:asAddresses'), JSON.stringify(name)).to.deep.equal([{ name: name && name.normalize('NFC'), email: 'a@example.com' }]);
         }
+    });
+});
+
+describe('JMAP email builder, edge cases', () => {
+    const value = (text, field) => {
+        const line = text.split('\r\n').find(item => item.toLowerCase().startsWith(`${field.toLowerCase()}:`));
+        return line && line.slice(field.length + 1).trim();
+    };
+
+    it('encodes valid addresses and refuses anything else', () => {
+        expect(encodeAddress({ email: 'a@example.com' })).to.equal('a@example.com');
+        expect(encodeAddress({ email: 'a@example.com', name: 'Bob' })).to.equal('Bob <a@example.com>');
+        expect(encodeAddress({ email: 'a@example.com', name: null })).to.equal('a@example.com');
+        expect(encodeAddress({ email: 'a@bücher.example' })).to.equal('a@xn--bcher-kva.example');
+        for (const address of [
+            null,
+            'a@example.com',
+            { email: 5 },
+            { email: 'a@example.com', name: 5 },
+            { email: '@example.com' },
+            { email: 'a@' },
+            { email: 'a b@c' }
+        ]) {
+            expect(encodeAddress(address), JSON.stringify(address)).to.be.null;
+        }
+    });
+
+    it('writes the domain of a stored address in punycode', async () => {
+        const { text } = await build({ to: [{ email: 'a@bücher.example', name: 'Bob' }] });
+        expect(value(text, 'To')).to.equal('Bob <a@xn--bcher-kva.example>');
+    });
+
+    it('writes a draft address that is not one with its name', async () => {
+        const plan = planEmail({ to: [{ email: 'not an address', name: 'Bob' }] });
+        expect(plan.headers[0].lines).to.deep.equal(['To: Bob <not an address>']);
+    });
+
+    describe('rejects', () => {
+        const cases = [
+            ['an address email that is not a string', { to: [{ email: 5 }] }, ['to']],
+            ['an address of white space', { to: [{ email: '  ' }] }, ['to']],
+            ['a typed address with a name that is not a string', { to: [{ email: 'not an address', name: 5 }] }, ['to']],
+            ['a group name that is not a string', { 'header:To:asGroupedAddresses': [{ name: 5, addresses: [] }] }, ['header:To:asGroupedAddresses']],
+            ['a group that is not an object', { 'header:To:asGroupedAddresses': [null] }, ['header:To:asGroupedAddresses']],
+            ['a group without an address list', { 'header:To:asGroupedAddresses': [{ name: 'G', addresses: 'x' }] }, ['header:To:asGroupedAddresses']],
+            ['a subject that is not a string', { subject: 5 }, ['subject']],
+            ['message ids that are not a list', { messageId: 'a@b' }, ['messageId']],
+            ['a message id with a space', { messageId: ['a b@c'] }, ['messageId']],
+            ['URLs that are not a list', { 'header:List-Help:asURLs': 'http://x' }, ['header:List-Help:asURLs']],
+            ['a URL with a space', { 'header:List-Help:asURLs': ['http://x/a b'] }, ['header:List-Help:asURLs']],
+            ['a bad charset', { attachments: [{ blobId: 'B', charset: 'a b' }] }, ['attachments']],
+            ['a language that is not a list', { attachments: [{ blobId: 'B', language: 'en' }] }, ['attachments']],
+            ['a bad language tag', { attachments: [{ blobId: 'B', language: ['e n'] }] }, ['attachments']],
+            [
+                'a multipart part with content',
+                { bodyStructure: { type: 'multipart/mixed', partId: 't', subParts: [{ partId: 't' }] }, bodyValues: { t: { value: 'x' } } },
+                ['bodyStructure']
+            ],
+            ['sub parts on a leaf part', { textBody: [{ partId: 't', subParts: [] }], bodyValues: { t: { value: 'x' } } }, ['textBody']],
+            ['a charset on a part with a partId', { textBody: [{ partId: 't', charset: 'utf-8' }], bodyValues: { t: { value: 'x' } } }, ['textBody']],
+            [
+                'a header on the Email and its htmlBody',
+                { subject: 'a', htmlBody: [{ partId: 'p', 'header:Subject': ' b' }], bodyValues: { p: { value: 'x' } } },
+                ['htmlBody']
+            ]
+        ];
+        for (const [title, input, properties] of cases) {
+            it(title, () => rejects(input, properties));
+        }
+    });
+
+    it('checks the date and time fields of a date', () => {
+        expect(encodeDate('2019-05-02T10:60:00Z')).to.equal(null);
+        expect(encodeDate('2019-05-02T24:00:00Z')).to.equal(null);
+        // a leap second is a valid second
+        expect(encodeDate('2016-12-31T12:00:60Z')).to.equal('Sat, 31 Dec 2016 12:00:60 +0000');
+    });
+
+    it('allows a raw line of exactly 998 octets', () => {
+        const first = ` ${'a'.repeat(998 - 'X-Test: '.length)}`;
+        expect(`X-Test:${first}`).to.have.length(998);
+        expect(planEmail({ 'header:X-Test': `${first}\r\n b` }).headers[0].lines).to.deep.equal([`X-Test:${first}\r\n b`]);
+        rejects({ 'header:X-Test': `${first}a\r\n b` }, ['header:X-Test']);
+    });
+
+    it('allows the largest and deepest body structure', () => {
+        const wide = { type: 'multipart/mixed', subParts: Array.from({ length: 249 }, () => ({ partId: 't' })) };
+        expect(planEmail({ bodyStructure: wide, bodyValues: { t: { value: 'x' } } }).body.subParts).to.have.length(249);
+        wide.subParts.push({ partId: 't' });
+        rejects({ bodyStructure: wide, bodyValues: { t: { value: 'x' } } }, ['bodyStructure']);
+
+        const nest = depth => {
+            let part = { partId: 't' };
+            for (let i = 1; i < depth; i++) {
+                part = { type: 'multipart/mixed', subParts: [part] };
+            }
+            return { bodyStructure: part, bodyValues: { t: { value: 'x' } } };
+        };
+        expect(() => planEmail(nest(MAX_DEPTH))).to.not.throw();
+        rejects(nest(MAX_DEPTH + 1), ['bodyStructure']);
+    });
+
+    it('writes the language, location and charset of an attachment', async () => {
+        const { text } = await build(
+            { attachments: [{ blobId: 'B', type: 'text/plain', charset: 'iso-8859-1', language: ['en', 'et'], location: 'http://example.com/a' }] },
+            { B: { content: Buffer.from('abc') } }
+        );
+        expect(text).to.include('Content-Language: en, et');
+        expect(text).to.include('Content-Location: http://example.com/a');
+        expect(text).to.match(/Content-Type: text\/plain; charset=iso-8859-1/);
+        expect(text).to.not.include('name=');
+    });
+
+    it('puts only inline parts with a cid next to the html', async () => {
+        const { structure } = await build(
+            {
+                htmlBody: [{ partId: 'h' }],
+                bodyValues: { h: { value: '<p>x</p>' } },
+                attachments: [
+                    { blobId: 'A', type: 'image/png', cid: 'c1', disposition: 'attachment' },
+                    { blobId: 'B', type: 'image/png', disposition: 'inline' }
+                ]
+            },
+            { A: { content: Buffer.from('a') }, B: { content: Buffer.from('b') } }
+        );
+        expect(structure.type).to.equal('multipart/mixed');
+        expect(structure.subParts.map(part => part.type)).to.deep.equal(['text/html', 'image/png', 'image/png']);
+    });
+
+    it('writes body values with CRLF line breaks only', async () => {
+        const { raw } = await build({ textBody: [{ partId: 't' }], bodyValues: { t: { value: 'a\r\nb\nc\rd' } } });
+        const text = raw.toString();
+        expect(text).to.include('a\r\nb\r\nc\r\nd');
+        expect(/[^\r]\n|\r[^\n]/.test(text)).to.be.false;
+    });
+
+    it('writes part header values as given', async () => {
+        const { text } = await build(
+            { attachments: [{ blobId: 'B', type: 'application/octet-stream', 'header:X-A': 'abc', 'header:X-Long': ' aaa\r\n bbb' }] },
+            { B: { content: Buffer.from('b') } }
+        );
+        expect(text).to.include('\r\nX-A: abc\r\n');
+        expect(text).to.include('\r\nX-Long: aaa\r\n bbb\r\n');
+    });
+
+    it('writes an attached message with a byte of 0x80 as 8bit', async () => {
+        const { text } = await build(
+            { attachments: [{ blobId: 'B1', type: 'message/rfc822' }] },
+            { B1: { content: Buffer.from([0x53, 0x3a, 0x20, 0x80, 0x0d, 0x0a]), type: null } }
+        );
+        expect(/Content-Type: message\/rfc822[^]*?Content-Transfer-Encoding: (\S+)/i.exec(text)[1]).to.equal('8bit');
+    });
+
+    it('generates the missing header fields next to given ones, with a Message-ID in the domain of From', async () => {
+        const { text } = await build({ subject: 'x', from: [{ email: 'a@from.example' }], textBody: [{ partId: 't' }], bodyValues: { t: { value: 'x' } } });
+        const header = headerSection(text);
+        expect(value(header, 'Date')).to.equal('Fri, 02 Jan 2026 03:04:05 +0000');
+        expect(value(header, 'MIME-Version')).to.equal('1.0');
+        expect(value(header, 'Message-ID')).to.match(/^<[0-9a-f-]+@from\.example>$/);
+        // the message is CRLF throughout
+        expect(/[^\r]\n|\r[^\n]/.test(text)).to.be.false;
     });
 });

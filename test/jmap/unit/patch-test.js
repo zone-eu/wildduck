@@ -132,3 +132,26 @@ describe('JMAP PatchObject', () => {
         expect(() => applyPatch({ a: { b: 1, c: 2 } }, { 'a/b': 3, 'a/c': 4 })).to.not.throw();
     });
 });
+
+describe('JMAP PatchObject edge cases', () => {
+    it('refuses a pointer that is not a string', () => {
+        fails(() => parsePointer(5), 'invalidPatch');
+        fails(() => parsePointer(null), 'invalidPatch');
+    });
+
+    it('tells a missing parent from a parent that is not an object', () => {
+        expect(fails(() => applyPatch({}, { 'a/b': 1 }), 'invalidPatch').description).to.equal('a/b: parent does not exist');
+        expect(fails(() => applyPatch({ a: null }, { 'a/b': 1 }), 'invalidPatch').description).to.equal('a/b: parent does not exist');
+        expect(fails(() => applyPatch({ a: 5 }, { 'a/b': 1 }), 'invalidPatch').description).to.equal('a/b: can not patch inside a value that is not an object');
+    });
+
+    it('replaces only existing array members, never with null, when arrays are allowed', () => {
+        const card = deepFreeze({ list: ['a', 'b'] });
+        expect(applyPatch(card, { 'list/1': 'c' }, { arrays: true }).object.list).to.deep.equal(['a', 'c']);
+        expect(card.list).to.deep.equal(['a', 'b']);
+        for (const key of ['list/2', 'list/5', 'list/01', 'list/-']) {
+            fails(() => applyPatch(card, { [key]: 'c' }, { arrays: true }), 'invalidPatch');
+        }
+        fails(() => applyPatch(card, { 'list/0': null }, { arrays: true }), 'invalidPatch');
+    });
+});

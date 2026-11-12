@@ -61,3 +61,19 @@ describe('strict JSON for JMAP requests', () => {
         expect(fails(Buffer.from(JSON.stringify({ using: [] }), 'utf16le'))).to.be.true;
     });
 });
+
+describe('strict JSON edge cases', () => {
+    it('accepts surrogate pairs at both ends of the ranges', () => {
+        expect(parse('"\\udbff\\udfff"')).to.equal('􏿿');
+        expect(parse('"\\ud800\\udc00"')).to.equal('𐀀');
+    });
+
+    it('refuses a high surrogate followed by something that only looks like an escape', () => {
+        expect(fails('"\\ud800xudc00"')).to.be.true;
+    });
+
+    it('counts depth by nesting, not by the number of containers', () => {
+        const siblings = `[${Array.from({ length: MAX_DEPTH * 2 }, () => '{"a":[]}').join(',')}]`;
+        expect(parse(siblings)).to.have.length(MAX_DEPTH * 2);
+    });
+});

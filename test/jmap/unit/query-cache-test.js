@@ -96,6 +96,28 @@ describe('JMAP query cache', () => {
             // an upToId that is not in the list is ignored
             expect(diff(before, after, { upToId: 'nope' }).removed).to.deep.equal(['e2']);
         });
+
+        it('reports nothing for a list of one unchanged id', () => {
+            expect(diff(['a'], ['a'])).to.deep.equal({ removed: [], added: [], length: 1 });
+        });
+
+        it('ends a partial list at a kept id in the first or the last place', () => {
+            // only the first id is still kept: the client list ends there
+            expect(diff(['a', 'b'], ['a', 'x', 'y'], { partial: true })).to.deep.equal({ removed: ['b'], added: [], length: 1 });
+            // the last id of the new list is kept: everything up to it is applied
+            expect(diff(['a', 'b'], ['x', 'a', 'b'], { partial: true })).to.deep.equal({ removed: [], added: [{ id: 'x', index: 0 }], length: 3 });
+        });
+
+        it('applies upToId at the first place and at the place of a removed id', () => {
+            // upToId is the first id: a removal behind it is left out
+            expect(diff(['a', 'b', 'c'], ['a', 'c'], { upToId: 'a' }).removed).to.deep.equal([]);
+            // upToId names the removed id itself: its removal is reported
+            expect(diff(['a', 'b', 'c'], ['a', 'c'], { upToId: 'b' }).removed).to.deep.equal(['b']);
+            // the changes end at upToId in the new list
+            expect(diff(['a', 'b', 'c'], ['n', 'a', 'b', 'c'], { upToId: 'b' })).to.deep.equal({ removed: [], added: [{ id: 'n', index: 0 }], length: 3 });
+            // upToId kept at the first place of the new list
+            expect(diff(['a', 'b'], ['a', 'n', 'b'], { upToId: 'a' })).to.deep.equal({ removed: [], added: [], length: 1 });
+        });
     });
 
     describe('query states', () => {
@@ -124,6 +146,13 @@ describe('JMAP query cache', () => {
                 .to.throw()
                 .with.property('type', 'cannotCalculateChanges');
         });
+
+        it('tells definitions with different values apart', () => {
+            expect(canonical({ a: 1 })).to.not.equal(canonical({ a: 2 }));
+            expect(canonical('x')).to.equal('"x"');
+            expect(canonical(undefined)).to.equal('null');
+            expect(canonical({ a: undefined })).to.equal(canonical({ a: null }));
+        });
     });
 
     describe('settings', () => {
@@ -132,6 +161,9 @@ describe('JMAP query cache', () => {
             expect(() => checkSettings({ queryCache: { maxIds: 100 }, query: { memoryLimit: 101 } })).to.throw(/memoryLimit/);
             expect(() => checkSettings({ queryCache: { maxIds: 100 }, query: { memoryLimit: 100 } })).to.not.throw();
             expect(() => checkSettings({})).to.not.throw();
+            // exactly one full list of maxIds ids (12 bytes each) and the entry overhead (42 bytes)
+            expect(() => checkSettings({ queryCache: { maxIds: 100, maxBytes: 1242 } })).to.not.throw();
+            expect(() => checkSettings({ queryCache: { maxIds: 100, maxBytes: 1241 } })).to.throw(/maxBytes/);
         });
     });
 
@@ -180,6 +212,20 @@ describe('JMAP query cache', () => {
             await store(context, stateOf(1), { ids: [], complete: false });
             expect((await load(context, stateOf(1))).complete).to.be.true;
             expect(await load(context, stateOf(2))).to.equal(null);
+        });
+
+        it('keeps a list that fills the byte budget exactly', async () => {
+            // 5 ids: 1 + 60 + 41 bytes
+            const context = fresh({ maxBytes: 102 });
+            const list = { ids: Array.from({ length: 5 }, (item, i) => id(i)), complete: true };
+            await store(context, stateOf(3), list);
+            expect(await load(context, stateOf(3))).to.deep.equal(list);
+        });
+
+        it('ignores a cached value of a length that is not a list', async () => {
+            const context = fresh();
+            await redis.hset(`jmap:qc:${context.account.user}`, stateOf(4), Buffer.from([1, 2, 3, 4, 5]));
+            expect(await load(context, stateOf(4))).to.equal(null);
         });
 
         it('does not keep a list longer than maxIds', async () => {

@@ -106,3 +106,72 @@ describe('JMAP header forms', () => {
         expect(Date.now() - started).to.be.below(500);
     });
 });
+
+describe('JMAP header forms, edge cases', () => {
+    it('reads the last instance of a field for every convenience property', () => {
+        const fields = h.headerFields({
+            header: [
+                'Message-ID: <a@x>',
+                'Message-ID: <b@x>',
+                'In-Reply-To: <a@x>',
+                'In-Reply-To: <b@x>',
+                'References: <a@x>',
+                'References: <b@x>',
+                'Sender: a@x',
+                'Sender: b@x',
+                'From: a@x',
+                'From: b@x',
+                'To: a@x',
+                'To: b@x',
+                'Cc: a@x',
+                'Cc: b@x',
+                'Bcc: a@x',
+                'Bcc: b@x',
+                'Reply-To: a@x',
+                'Reply-To: b@x',
+                'Subject: a',
+                'Subject: b',
+                'Date: Mon, 1 Jan 2024 00:00:00 +0000',
+                'Date: Tue, 2 Jan 2024 00:00:00 +0000'
+            ]
+        });
+        const expected = {
+            messageId: ['b@x'],
+            inReplyTo: ['b@x'],
+            references: ['b@x'],
+            sender: [{ name: null, email: 'b@x' }],
+            from: [{ name: null, email: 'b@x' }],
+            to: [{ name: null, email: 'b@x' }],
+            cc: [{ name: null, email: 'b@x' }],
+            bcc: [{ name: null, email: 'b@x' }],
+            replyTo: [{ name: null, email: 'b@x' }],
+            subject: 'b',
+            sentAt: '2024-01-02T00:00:00Z'
+        };
+        expect(Object.keys(h.CONVENIENCE).sort()).to.deep.equal(Object.keys(expected).sort());
+        for (const [property, value] of Object.entries(expected)) {
+            expect(h.headerValue(fields, h.CONVENIENCE[property]), property).to.deep.equal(value);
+        }
+    });
+
+    it('skips header lines without a field name', () => {
+        expect(h.headerFields({ header: [': no name', 'A: b'] })).to.deep.equal([{ name: 'A', value: ' b' }]);
+    });
+
+    it('decodes only encoded words that stand alone', () => {
+        expect(h.decodeWords('x=?utf-8?Q?a?= y')).to.equal('x=?utf-8?Q?a?= y');
+        expect(h.decodeWords('x =?utf-8?Q?a?=y')).to.equal('x =?utf-8?Q?a?=y');
+    });
+
+    it('keeps text between encoded words and drops white space between words of other charsets', () => {
+        expect(h.decodeWords('=?utf-8?Q?a?= x =?utf-8?Q?b?=')).to.equal('a x b');
+        expect(h.decodeWords('=?utf-8?Q?a?= =?iso-8859-1?Q?b?=')).to.equal('ab');
+    });
+
+    it('reads two and three digit years like RFC 5322 4.3', () => {
+        expect(h.asDate('1 Jan 49 00:00 +0000')).to.equal('2049-01-01T00:00:00Z');
+        expect(h.asDate('1 Jan 50 00:00 +0000')).to.equal('1950-01-01T00:00:00Z');
+        expect(h.asDate('1 Jan 999 00:00 +0000')).to.equal('2899-01-01T00:00:00Z');
+        expect(h.asDate('1 Jan 1000 00:00 +0000')).to.equal('1000-01-01T00:00:00Z');
+    });
+});

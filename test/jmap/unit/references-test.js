@@ -109,3 +109,11 @@ describe('JMAP result references', () => {
         expect(Date.now() - started).to.be.below(500);
     });
 });
+
+describe('JMAP result reference paths', () => {
+    it('refuses a path without the leading slash', () => {
+        expect(typeOf(() => evaluatePointer({ ids: ['a'] }, 'ids'))).to.equal('invalidResultReference');
+        expect(typeOf(() => evaluatePointer({ ids: ['a'] }, 'xids'))).to.equal('invalidResultReference');
+        expect(typeOf(() => evaluatePointer({ ids: ['a'] }, 5))).to.equal('invalidResultReference');
+    });
+});
