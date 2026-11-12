@@ -245,6 +245,14 @@ function mutantsFromSurvivors(file) {
     }
     console.log(`\nkilled ${killed}, survived ${survivors.length}, mutation score ${((100 * killed) / mutants.length).toFixed(1)}%`);
     let report = path.join(os.tmpdir(), PROFILE_NAME === 'indexer' ? 'wildduck-mutation-survivors.json' : `wildduck-mutation-survivors-${PROFILE_NAME}.json`);
-    fs.writeFileSync(report, JSON.stringify(survivors.map(({ source, ...m }) => m), null, 2)); // eslint-disable-line no-unused-vars
+    // the mutated source is left out of the report
+    fs.writeFileSync(
+        report,
+        JSON.stringify(
+            survivors.map(mutant => Object.assign({}, mutant, { source: undefined })),
+            null,
+            2
+        )
+    );
     console.log(`survivors written to ${report}`);
 })();
