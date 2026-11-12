@@ -7,6 +7,7 @@ let config = require('@zone-eu/wild-config');
 //let testServer = require('./test-server.js');
 let testClient = require('./test-client.js');
 let exec = require('child_process').exec;
+const { execFile } = require('child_process');
 
 let chai = require('chai');
 let chunks = require('./fixtures/chunks');
@@ -37,8 +38,15 @@ describe('IMAP Protocol integration tests', function () {
     });
 
     after(function (done) {
-        //mongosh "$DBNAME" --eval "db.getCollectionNames().forEach(function(key){db[key].deleteMany({});})" > /dev/null
-        exec('mongosh ' + config.dbs.dbname + ' --eval "db.getCollectionNames().forEach(function(key){db[key].deleteMany({});})"', err => {
+        // Later suites reuse the running API, so preserve its startup-seeded roles.
+        const resetQuery = `
+            db.getCollectionNames().forEach(function(name) {
+                if (name !== 'roles') {
+                    db.getCollection(name).deleteMany({});
+                }
+            });
+        `;
+        execFile('mongosh', [config.dbs.dbname, '--eval', resetQuery], err => {
             if (err) {
                 return done(err);
             }

@@ -104,6 +104,10 @@
         {
             "name": "Health",
             "description": "Service health checks."
+        },
+        {
+            "name": "Roles",
+            "description": "Persistent API role management"
         }
     ],
     "components": {

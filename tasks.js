@@ -33,6 +33,7 @@ const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
 const taskLabelDelete = require('./lib/tasks/label-delete');
+const taskRoleDelete = require('./lib/tasks/role-delete');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 
 let messageHandler;
@@ -521,6 +522,8 @@ function processTask(task, data, callback) {
     }
 
     switch (task.type) {
+        case 'role-delete':
+            return taskRoleDelete(task, data, { loggelf }, err => callback(err, !err));
         case 'label-delete':
             return taskLabelDelete(task, data, { messageHandler, loggelf }, err => callback(err, !err));
         case 'restore':

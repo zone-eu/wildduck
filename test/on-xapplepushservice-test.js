@@ -25,6 +25,7 @@ describe('on-xapplepushservice handler', function () {
 
     let mongoClient;
     let database;
+    let originalDatabase;
     let user;
     let inboxId;
     let notesId;
@@ -58,6 +59,7 @@ describe('on-xapplepushservice handler', function () {
         });
 
     before(async () => {
+        originalDatabase = db.database;
         mongoClient = await MongoClient.connect(config.dbs.mongo);
         database = mongoClient.db();
         // share the connection with the handler's db singleton (same module instance)
@@ -65,12 +67,17 @@ describe('on-xapplepushservice handler', function () {
     });
 
     after(async () => {
-        if (user) {
-            await database.collection('pushsubscriptions').deleteMany({ user });
-            await database.collection('mailboxes').deleteMany({ user });
-        }
-        if (mongoClient) {
-            await mongoClient.close();
+        try {
+            if (user) {
+                await database.collection('pushsubscriptions').deleteMany({ user });
+                await database.collection('mailboxes').deleteMany({ user });
+            }
+        } finally {
+            // Later suites must retain their shared connection after this client's closure.
+            db.database = originalDatabase;
+            if (mongoClient) {
+                await mongoClient.close();
+            }
         }
     });
 

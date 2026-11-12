@@ -8,6 +8,7 @@ const ObjectId = require('mongodb').ObjectId;
 const { Fido2Lib } = require('fido2-lib');
 const speakeasy = require('speakeasy');
 const config = require('@zone-eu/wild-config');
+const roles = require('../../lib/roles');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -18,6 +19,18 @@ const totpRoutes = require('../../lib/api/2fa/totp');
 const UserHandler = require('../../lib/user-handler');
 const { compileRouteValidator } = require('../../lib/fastify/validation');
 require('../../lib/schemas/json-schemas'); // registers the shared wd:* schemas
+
+const userRoleUsers = {
+    collection() {
+        return {
+            async findOne() {
+                return { _id: 'user', name: 'user', permissions: config.api.roles.user, isSystem: true };
+            }
+        };
+    }
+};
+
+const getUserRole = () => roles.forUser('user', {}, userRoleUsers);
 
 // captures native fastify route registrations: server.route({method, url, config, handler})
 function routeCollector(routes) {
@@ -358,7 +371,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', sess, ip: '192.0.2.1' },
-                role: 'user',
+                role: await getUserRole(),
                 user: user.toString(),
                 accessToken: {
                     user: user.toString(),
@@ -436,7 +449,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', sess: 'sess-123', ip: '192.0.2.1' },
-                role: 'user',
+                role: await getUserRole(),
                 user: user.toString(),
                 accessToken: {
                     user: user.toString(),
@@ -497,7 +510,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp' },
-                role: 'user',
+                role: await getUserRole(),
                 user: user.toString(),
                 accessToken: {
                     user: user.toString(),
@@ -536,7 +549,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', token: tokenId },
-                role: 'user',
+                role: await getUserRole(),
                 user: user.toString(),
                 accessToken: { user: user.toString() },
                 validate: assertGranted
@@ -589,7 +602,7 @@ describe('Master token MCP exchange', function () {
             {
                 route: { spec: route.spec },
                 params: { scope: 'mcp', token: tokenId, sess: 'sess-123', ip: '192.0.2.1' },
-                role: 'user',
+                role: await getUserRole(),
                 user: user.toString(),
                 accessToken: { user: user.toString() },
                 validate: assertGranted

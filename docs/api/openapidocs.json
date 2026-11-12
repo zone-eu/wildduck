@@ -272,6 +272,36 @@
                                                 "title": "GetUsersResult",
                                                 "additionalProperties": true,
                                                 "properties": {
+                                                    "role": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 128,
+                                                        "description": "Stored role name or null.",
+                                                        "nullable": true
+                                                    },
+                                                    "permissions": {
+                                                        "type": "object",
+                                                        "description": "Stored resource restrictions or null.",
+                                                        "additionalProperties": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "create": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "read": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "update": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "delete": {
+                                                                    "type": "boolean"
+                                                                }
+                                                            },
+                                                            "additionalProperties": false
+                                                        },
+                                                        "nullable": true
+                                                    },
                                                     "id": {
                                                         "type": "string",
                                                         "description": "Users unique ID (24byte hex)"
@@ -386,6 +416,36 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "role": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 128,
+                                        "description": "Role name; null restores the user role.",
+                                        "nullable": true
+                                    },
+                                    "permissions": {
+                                        "type": "object",
+                                        "description": "Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "properties": {
+                                                "create": {
+                                                    "type": "boolean"
+                                                },
+                                                "read": {
+                                                    "type": "boolean"
+                                                },
+                                                "update": {
+                                                    "type": "boolean"
+                                                },
+                                                "delete": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
+                                        "nullable": true
+                                    },
                                     "username": {
                                         "type": "string",
                                         "minLength": 1,
@@ -854,6 +914,36 @@
                                     "title": "GetUserResponse",
                                     "additionalProperties": true,
                                     "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 128,
+                                            "description": "Stored role name or null.",
+                                            "nullable": true
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Stored resource restrictions or null.",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "create": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "read": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "update": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "delete": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "additionalProperties": false
+                                            },
+                                            "nullable": true
+                                        },
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
                                         },
@@ -1040,6 +1130,36 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "role": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 128,
+                                        "description": "Role name; null restores the user role.",
+                                        "nullable": true
+                                    },
+                                    "permissions": {
+                                        "type": "object",
+                                        "description": "Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "properties": {
+                                                "create": {
+                                                    "type": "boolean"
+                                                },
+                                                "read": {
+                                                    "type": "boolean"
+                                                },
+                                                "update": {
+                                                    "type": "boolean"
+                                                },
+                                                "delete": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
+                                        "nullable": true
+                                    },
                                     "existingPassword": {
                                         "type": "string",
                                         "maxLength": 256,
@@ -13357,6 +13477,36 @@
                                     "type": "object",
                                     "title": "PreAuthCheckResponse",
                                     "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 128,
+                                            "description": "Stored role name or null.",
+                                            "nullable": true
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Stored resource restrictions or null.",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "create": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "read": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "update": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "delete": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "additionalProperties": false
+                                            },
+                                            "nullable": true
+                                        },
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
                                         },
@@ -13491,6 +13641,36 @@
                                     "type": "object",
                                     "title": "AuthenticateResponse",
                                     "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 128,
+                                            "description": "Stored role name or null.",
+                                            "nullable": true
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Stored resource restrictions or null.",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "create": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "read": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "update": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "delete": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "additionalProperties": false
+                                            },
+                                            "nullable": true
+                                        },
                                         "success": {
                                             "$ref": "#/components/schemas/successRes"
                                         },
@@ -17985,6 +18165,582 @@
                     }
                 }
             }
+        },
+        "/roles": {
+            "get": {
+                "operationId": "getRoles",
+                "summary": "List roles",
+                "tags": [
+                    "Roles"
+                ],
+                "description": "Lists active roles with pagination.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 250,
+                            "default": 20
+                        },
+                        "in": "query",
+                        "name": "limit",
+                        "required": false,
+                        "description": "How many records to return"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 1024
+                        },
+                        "in": "query",
+                        "name": "next",
+                        "required": false
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 1024
+                        },
+                        "in": "query",
+                        "name": "previous",
+                        "required": false
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetRolesResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "total": {
+                                            "$ref": "#/components/schemas/totalRes"
+                                        },
+                                        "page": {
+                                            "$ref": "#/components/schemas/pageRes"
+                                        },
+                                        "previousCursor": {
+                                            "$ref": "#/components/schemas/previousCursorRes"
+                                        },
+                                        "nextCursor": {
+                                            "$ref": "#/components/schemas/nextCursorRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "description": "Unique role name"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "description": {
+                                                        "type": "string"
+                                                    },
+                                                    "permissions": {
+                                                        "type": "object",
+                                                        "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                                        "additionalProperties": {
+                                                            "type": "object",
+                                                            "additionalProperties": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "string",
+                                                                    "minLength": 1,
+                                                                    "maxLength": 256
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "isSystem": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "updated": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "name",
+                                                    "description",
+                                                    "permissions",
+                                                    "isSystem",
+                                                    "created",
+                                                    "updated"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "total",
+                                        "page",
+                                        "previousCursor",
+                                        "nextCursor",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "createRole",
+                "summary": "Create a role",
+                "tags": [
+                    "Roles"
+                ],
+                "description": "Creates a persistent custom role.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 128
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "maxLength": 1024,
+                                        "default": ""
+                                    },
+                                    "permissions": {
+                                        "type": "object",
+                                        "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "name",
+                                    "permissions"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "RoleResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Unique role name"
+                                        },
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "description": {
+                                            "type": "string"
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 256
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "isSystem": {
+                                            "type": "boolean"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        },
+                                        "updated": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name",
+                                        "description",
+                                        "permissions",
+                                        "isSystem",
+                                        "created",
+                                        "updated"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/roles/{role}": {
+            "get": {
+                "operationId": "getRole",
+                "summary": "Get a role",
+                "tags": [
+                    "Roles"
+                ],
+                "description": "Returns one active role.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                        },
+                        "in": "path",
+                        "name": "role",
+                        "required": true,
+                        "description": "Unique role name"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "RoleResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Unique role name"
+                                        },
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "description": {
+                                            "type": "string"
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 256
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "isSystem": {
+                                            "type": "boolean"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        },
+                                        "updated": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name",
+                                        "description",
+                                        "permissions",
+                                        "isSystem",
+                                        "created",
+                                        "updated"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "operationId": "updateRole",
+                "summary": "Update a role",
+                "tags": [
+                    "Roles"
+                ],
+                "description": "Updates a custom role description and replaces its permissions.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "maxLength": 1024
+                                    },
+                                    "permissions": {
+                                        "type": "object",
+                                        "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 256
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                        },
+                        "in": "path",
+                        "name": "role",
+                        "required": true,
+                        "description": "Unique role name"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "RoleResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Unique role name"
+                                        },
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "description": {
+                                            "type": "string"
+                                        },
+                                        "permissions": {
+                                            "type": "object",
+                                            "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 256
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "isSystem": {
+                                            "type": "boolean"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        },
+                                        "updated": {
+                                            "type": "string",
+                                            "format": "date-time"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name",
+                                        "description",
+                                        "permissions",
+                                        "isSystem",
+                                        "created",
+                                        "updated"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "deleteRole",
+                "summary": "Delete a role",
+                "tags": [
+                    "Roles"
+                ],
+                "description": "Tombstones a custom role and schedules removal of user assignments. System roles cannot be deleted.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                        },
+                        "in": "path",
+                        "name": "role",
+                        "required": true,
+                        "description": "Unique role name"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteRoleResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        }
+                                    },
+                                    "required": [
+                                        "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "servers": [
@@ -18089,6 +18845,10 @@
         {
             "name": "Health",
             "description": "Service health checks."
+        },
+        {
+            "name": "Roles",
+            "description": "Persistent API role management"
         }
     ]
 }
