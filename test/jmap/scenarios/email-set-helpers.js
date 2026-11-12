@@ -173,7 +173,7 @@ const rawOf = async (ctx, blobId) => (await download(ctx.client, blobId)).toStri
 /** Uploads bytes, answers the upload response */
 async function upload(ctx, content, type = 'application/octet-stream') {
     const res = await ctx.client.raw(`/jmap/upload/${ctx.client.accountId}/`, { method: 'POST', headers: { 'Content-Type': type }, body: content });
-    expect(res.status, res.body.toString()).to.equal(201);
+    expect(res.status, res.body.toString()).to.equal(200);
     return res.json;
 }
 

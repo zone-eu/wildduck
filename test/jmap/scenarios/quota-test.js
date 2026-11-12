@@ -397,7 +397,7 @@ describe('JMAP Quota (quota.yaml, RFC 9425)', function () {
             body: big,
             headers: { 'Content-Type': 'message/rfc822' }
         });
-        expect(upload.status).to.equal(201);
+        expect(upload.status).to.equal(200);
         const entry = { blobId: upload.json.blobId, mailboxIds: { [inbox]: true } };
         const failed = await method(fresh.client, 'Email/import', { emails: { i: entry } });
         expect(failed.notCreated.i.type).to.equal('overQuota');
@@ -421,7 +421,7 @@ describe('JMAP Quota (quota.yaml, RFC 9425)', function () {
             body: crypto.randomBytes(1024 * 1024),
             headers: { 'Content-Type': 'application/octet-stream' }
         });
-        expect(res.status).to.equal(201);
+        expect(res.status).to.equal(200);
         const quotas = await quotaGet(fresh.client);
         expect(quotas.list).to.have.length(1);
         expect(quotas.list[0].used).to.equal(used);

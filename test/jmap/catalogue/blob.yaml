@@ -386,7 +386,7 @@ scenarios:
     seed: [none]
     given: "An authenticated user."
     when: "POST 24 octets of text to the expanded uploadUrl with Content-Type text/plain."
-    then: "HTTP 201 with Content-Type application/json and a single JSON object: accountId equals the account id, blobId is a string, type starts with text/plain, size is the number 24."
+    then: "HTTP 200 with Content-Type application/json and a single JSON object: accountId equals the account id, blobId is a string, type starts with text/plain, size is the number 24."
     sources:
       - "rfc:8620 6.1"
       - "james:UploadContract#shouldUploadFileAndAllowToDownloadIt"
@@ -394,7 +394,7 @@ scenarios:
       - "fastmail:t/core/upload.t"
       - "jmapio:binary/upload-basic"
       - "stalwart:compliance/binary upload-basic"
-    notes: "The RFC only says a successful request; 201 is what James and Cyrus return. Clients accept any 2xx."
+    notes: "The RFC only says a successful request. James and Cyrus answer 201, Stalwart 200; WildDuck answers 200 because go-jmap (aerc) accepts nothing else, see BLOB-086."
 
   - id: BLOB-025
     title: "An uploaded blobId is a valid, upload typed JMAP Id"
@@ -457,7 +457,7 @@ scenarios:
     seed: [none]
     given: "An authenticated user."
     when: "A file is uploaded with no Content-Type header, and with an empty one."
-    then: "HTTP 201 and type is application/octet-stream."
+    then: "HTTP 200 and type is application/octet-stream."
     sources:
       - "cyrus:JMAPCore/blob_upload_type"
 
@@ -471,7 +471,7 @@ scenarios:
     seed: [none]
     given: "An authenticated user."
     when: "An empty body is uploaded with Content-Type text/plain, then downloaded."
-    then: "HTTP 201 with size 0 and a blobId; the download answers 200 with an empty body."
+    then: "HTTP 200 with size 0 and a blobId; the download answers 200 with an empty body."
     sources:
       - "cyrus:JMAPEmail/misc_upload_zero"
       - "rfc:9404 4"
@@ -1368,3 +1368,18 @@ scenarios:
       - "cyrus:JMAPEmail/blob_get"
       - "wildduck:brief ids"
     notes: "Adapted: Cyrus blob ids are content hashes, so one blob maps to several Emails and Mailboxes. WildDuck blob ids name the Email, so the reverse lookup is always one to one."
+
+  - id: BLOB-086
+    title: "A successful upload answers 200 OK"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "An RFC 5322 message is uploaded the way go-jmap does it (Content-Type application/json), and the blob is imported into the Drafts mailbox with Email/import."
+    then: "The upload answers exactly 200 with the JSON upload object; Email/import creates the Email from the blob."
+    sources:
+      - "wildduck:F.5 aerc interop run"
+    notes: "RFC 8620 names no status code for a successful upload. aerc 0.22 (go-jmap 0.5.3) treats every status but 200 as an error, so with 201 it could not send or postpone a message. jmapio, the Fastmail suite, jmap-jam, meli and Bulwark accept any 2xx."

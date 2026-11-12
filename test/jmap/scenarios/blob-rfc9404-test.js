@@ -140,7 +140,7 @@ async function emailOf(client, emailId, properties = ['blobId', 'size', 'threadI
 async function foreignUpload() {
     const { client } = await setupUser();
     const res = await client.raw(`/jmap/upload/${client.accountId}/`, { method: 'POST', body: 'foreign data', headers: { 'Content-Type': 'text/plain' } });
-    expect(res.status).to.equal(201);
+    expect(res.status).to.equal(200);
     return res.json.blobId;
 }
 

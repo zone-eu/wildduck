@@ -399,7 +399,7 @@ describe('JMAP service (wildduck.yaml)', () => {
                 body: 'uploaded blob',
                 headers: { 'Content-Type': 'text/plain' }
             });
-            expect(upload.status).to.equal(201);
+            expect(upload.status).to.equal(200);
             // a signature on the main identity, and an extra identity destroyed again (a tombstone)
             const [main] = (await client.method('Identity/get', {}, USING)).list;
             await client.method('Identity/set', { update: { [main.id]: { textSignature: 'Regards' } } }, USING);
@@ -410,17 +410,13 @@ describe('JMAP service (wildduck.yaml)', () => {
             const calendarUsing = [URN.core, URN.calendars];
             await client.method('ParticipantIdentity/get', {}, calendarUsing);
             const calendar = (await client.method('Calendar/get', {}, calendarUsing)).list[0];
-            await (
-                await seed.db()
-            )
-                .collection('calendarevents')
-                .insertOne({
-                    user: new seed.ObjectId(user.id),
-                    calendarIds: [new seed.ObjectId(calendar.id.slice(1))],
-                    uid: 'wds-007',
-                    createdSeq: 0,
-                    modSeq: 0
-                });
+            await (await seed.db()).collection('calendarevents').insertOne({
+                user: new seed.ObjectId(user.id),
+                calendarIds: [new seed.ObjectId(calendar.id.slice(1))],
+                uid: 'wds-007',
+                createdSeq: 0,
+                modSeq: 0
+            });
             const before = await jmapDocuments(user.id);
             for (const [collection, count] of Object.entries(before)) {
                 expect(count, collection).to.be.above(0);

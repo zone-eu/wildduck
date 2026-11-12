@@ -17,7 +17,7 @@ const TRACE_HEADERS = new Set(['received', 'return-path', 'delivered-to', 'x-ori
 
 async function upload(ctx, content, type) {
     const res = await ctx.client.raw(`/jmap/upload/${ctx.client.accountId}/`, { method: 'POST', headers: { 'Content-Type': type }, body: content });
-    expect(res.status, res.body.toString()).to.equal(201);
+    expect(res.status, res.body.toString()).to.equal(200);
     return res.json.blobId;
 }
 

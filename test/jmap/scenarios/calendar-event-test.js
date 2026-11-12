@@ -19,7 +19,7 @@ const near = value => expect(Math.abs(Date.parse(value) - Date.now()), `${value}
 
 async function upload(ctx, body, type) {
     const res = await ctx.client.raw(`/jmap/upload/${ctx.client.accountId}/`, { method: 'POST', headers: { 'Content-Type': type }, body });
-    expect(res.status).to.equal(201);
+    expect(res.status).to.equal(200);
     return res.json.blobId;
 }
 

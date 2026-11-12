@@ -72,7 +72,7 @@ describe('Upload', function () {
 
     scenario('BLOB-024', async () => {
         const res = await upload(client, 'twenty four octets here!', { 'Content-Type': 'text/plain' });
-        expect(res.status).to.equal(201);
+        expect(res.status).to.equal(200);
         expect(res.headers.get('content-type')).to.match(/^application\/json/);
         expect(res.json.accountId).to.equal(client.accountId);
         expect(res.json.blobId).to.be.a('string');
@@ -109,16 +109,16 @@ describe('Upload', function () {
     scenario('BLOB-028', async () => {
         // fetch adds a Content-Type for a string body, a Uint8Array body has none
         const none = await upload(client, new Uint8Array(Buffer.from('no type')));
-        expect(none.status).to.equal(201);
+        expect(none.status).to.equal(200);
         expect(none.json.type).to.equal('application/octet-stream');
         const empty = await upload(client, 'empty type', { 'Content-Type': '' });
-        expect(empty.status).to.equal(201);
+        expect(empty.status).to.equal(200);
         expect(empty.json.type).to.equal('application/octet-stream');
     });
 
     scenario('BLOB-029', async () => {
         const res = await upload(client, '', { 'Content-Type': 'text/plain' });
-        expect(res.status).to.equal(201);
+        expect(res.status).to.equal(200);
         expect(res.json.size).to.equal(0);
         const downloaded = await download(client, res.json.blobId);
         expect(downloaded.status).to.equal(200);
@@ -186,7 +186,7 @@ describe('Upload', function () {
         const c = await session(fresh);
         const before = (await api('GET', `/users/${fresh.id}`)).limits.quota.used;
         const res = await upload(c, crypto.randomBytes(1024 * 1024), { 'Content-Type': 'application/octet-stream' });
-        expect(res.status).to.equal(201);
+        expect(res.status).to.equal(200);
         expect((await api('GET', `/users/${fresh.id}`)).limits.quota.used).to.equal(before);
     });
 
@@ -202,13 +202,29 @@ describe('Upload', function () {
         const blobIds = [];
         for (let total = 0; total < max; total += piece) {
             const res = await upload(c, Buffer.alloc(Math.min(piece, max - total), 1), { 'Content-Type': 'application/octet-stream' });
-            expect(res.status).to.equal(201);
+            expect(res.status).to.equal(200);
             blobIds.push(res.json.blobId);
         }
         for (const blobId of blobIds) {
             const res = await c.raw(`/jmap/download/${c.accountId}/${blobId}/x?type=application/octet-stream`, { method: 'HEAD' });
             expect(res.status, blobId).to.equal(200);
         }
+    });
+
+    scenario('BLOB-086', async () => {
+        // what aerc (go-jmap) sends when it saves a draft or sends a message: the raw message labelled as JSON
+        const raw = 'From: a@example.com\r\nTo: b@example.com\r\nSubject: BLOB-086\r\nMessage-ID: <blob-086@example.com>\r\n\r\nHello\r\n';
+        const res = await upload(client, raw, { 'Content-Type': 'application/json' });
+        expect(res.status).to.equal(200);
+        expect(res.json).to.include({ accountId: client.accountId, type: 'application/json', size: raw.length });
+
+        const drafts = `F${(await accounts.mailboxes(user))['\\Drafts'].id}`;
+        const imported = await client.method('Email/import', {
+            emails: { draft: { blobId: res.json.blobId, mailboxIds: { [drafts]: true }, keywords: { $draft: true } } }
+        });
+        expect(imported.notCreated, JSON.stringify(imported.notCreated)).to.equal(null);
+        const [email] = (await client.method('Email/get', { ids: [imported.created.draft.id], properties: ['subject', 'mailboxIds'] })).list;
+        expect(email).to.deep.include({ subject: 'BLOB-086', mailboxIds: { [drafts]: true } });
     });
 
     describe('expiry', () => {
@@ -265,7 +281,7 @@ describe('Upload', function () {
             const fresh = await accounts.createUser();
             const c = await session(fresh);
             const exact = await upload(c, Buffer.alloc(LIMIT, 1), { 'Content-Type': 'application/octet-stream' }, c.accountId, instance.url);
-            expect(exact.status).to.equal(201);
+            expect(exact.status).to.equal(200);
             expect(exact.json.size).to.equal(LIMIT);
             const before = await temporaryFiles(fresh);
             const db = await seed.db();
@@ -321,7 +337,7 @@ describe('Upload', function () {
             // fits only once U1 and U2 are gone
             const fourth = crypto.randomBytes(4090);
             const res = await upload(c, fourth, { 'Content-Type': 'application/octet-stream' }, c.accountId, instance.url);
-            expect(res.status).to.equal(201);
+            expect(res.status).to.equal(200);
             expect((await download(c, sent[0].blobId, instance.url)).status).to.equal(404);
             expect((await download(c, sent[1].blobId, instance.url)).status).to.equal(404);
             expect(Buffer.compare((await download(c, sent[2].blobId, instance.url)).body, sent[2].body)).to.equal(0);
@@ -340,12 +356,12 @@ describe('Upload', function () {
             const third = await upload(c, 'one too many', { 'Content-Type': 'text/plain' }, c.accountId, instance.url);
             expect(third.status).to.equal(429);
             expect(third.json).to.include({ type: 'urn:ietf:params:jmap:error:limit', limit: 'maxConcurrentUpload' });
-            expect((await upload(oc, 'other user', { 'Content-Type': 'text/plain' }, oc.accountId, instance.url)).status).to.equal(201);
+            expect((await upload(oc, 'other user', { 'Content-Type': 'text/plain' }, oc.accountId, instance.url)).status).to.equal(200);
             held[0].finish();
-            expect((await held[0].response).status).to.equal(201);
-            expect((await upload(c, 'room again', { 'Content-Type': 'text/plain' }, c.accountId, instance.url)).status).to.equal(201);
+            expect((await held[0].response).status).to.equal(200);
+            expect((await upload(c, 'room again', { 'Content-Type': 'text/plain' }, c.accountId, instance.url)).status).to.equal(200);
             held[1].finish();
-            expect((await held[1].response).status).to.equal(201);
+            expect((await held[1].response).status).to.equal(200);
         });
     });
 });

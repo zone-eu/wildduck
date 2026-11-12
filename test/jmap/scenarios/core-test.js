@@ -1685,8 +1685,8 @@ describe('JMAP core (core.yaml)', () => {
                 });
             expect(await send('https://evil.example')).to.equal(403);
             expect(await send('null')).to.equal(403);
-            expect(await send(`http://${host}`)).to.equal(201);
-            expect(await send(null)).to.equal(201);
+            expect(await send(`http://${host}`)).to.equal(200);
+            expect(await send(null)).to.equal(200);
         });
 
         scenario('CORE-136', async () => {

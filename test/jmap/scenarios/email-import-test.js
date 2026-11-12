@@ -19,7 +19,7 @@ const EMAIL_ID = /^M[0-9a-f]{24}$/;
 /** Uploads a body and answers the blob id */
 async function upload(client, body, type = 'message/rfc822', base = jmap.JMAP_URL) {
     const res = await client.raw(`${base}/jmap/upload/${client.accountId}/`, { method: 'POST', body, headers: { 'Content-Type': type } });
-    expect(res.status, res.body.toString()).to.equal(201);
+    expect(res.status, res.body.toString()).to.equal(200);
     return res.json.blobId;
 }
 

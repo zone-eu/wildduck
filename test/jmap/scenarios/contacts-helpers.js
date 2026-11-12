@@ -173,7 +173,7 @@ async function registerCards(c) {
 /** Uploads a blob, answers the upload response */
 async function upload(c, content, type) {
     const res = await c.raw(`/jmap/upload/${c.accountId}/`, { method: 'POST', headers: { 'Content-Type': type }, body: content });
-    expect(res.status, res.body.toString()).to.equal(201);
+    expect(res.status, res.body.toString()).to.equal(200);
     return res.json;
 }
 
