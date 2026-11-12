@@ -188,6 +188,22 @@ describe('Email/query sorting (email-query.yaml)', () => {
             expect(await sorted(ctx, [{ property: 'receivedAt', collation: 'i;ascii-casemap' }])).to.deep.equal(plain);
             expect(await sorted(ctx, [{ property: 'receivedAt', collation: 'i;nonexistent' }])).to.deep.equal(plain);
         });
+
+        scenario('EQRY-198', async () => {
+            const ctx = await setup(['Beta', 'Alpha']);
+            await append(ctx, [
+                { date: day(2), raw: rawMessage({ subject: 'banana' }) },
+                { date: day(1), raw: rawMessage({ subject: 'cherry' }) },
+                { date: day(3), raw: rawMessage({ subject: 'apple' }) }
+            ]);
+            // the comparator exactly as meli 0.9 sends it
+            expect(await sorted(ctx, [{ collation: null, isAscending: false, property: 'receivedAt' }])).to.deep.equal(await sorted(ctx, desc('receivedAt')));
+            expect(await sorted(ctx, [{ property: 'receivedAt', isAscending: null, collation: null }])).to.deep.equal(await sorted(ctx, asc('receivedAt')));
+            expect(await sorted(ctx, [{ property: 'subject', collation: null }])).to.deep.equal(await sorted(ctx, [{ property: 'subject' }]));
+
+            const names = async sort => (await ctx.client.method('Mailbox/query', { sort })).ids;
+            expect(await names([{ property: 'name', collation: null, isAscending: null }])).to.deep.equal(await names([{ property: 'name' }]));
+        });
     });
 
     describe('invalid comparators', () => {

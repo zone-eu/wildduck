@@ -3009,3 +3009,19 @@ scenarios:
       - "wildduck:plan 4.5"
       - "rfc:8620 5.6"
     notes: "Corrected 2026-11-11: the query cache keeps the result ids as far as some call read them (plan 3.4), so queryChanges describes that part of the list, read again with room for new entries, instead of all 4000 changes of a 50000 entry mailbox."
+  - id: EQRY-198
+    title: "A Comparator with collation or isAscending null is read as one without them"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails with distinct receivedAt and subjects, and mailboxes Alpha and Beta."
+    when: "Email/query sorted by [{collation: null, isAscending: false, property: 'receivedAt'}], by [{property: 'receivedAt', isAscending: null, collation: null}] and by [{property: 'subject', collation: null}]; Mailbox/query sorted by [{property: 'name', collation: null, isAscending: null}]."
+    then: "Each succeeds with the order of the same sort without the null properties: receivedAt descending, receivedAt ascending, subject, name."
+    sources:
+      - "wildduck:F.5 meli interop run"
+      - "cyrus:imap/jmap_api.c comparator parsing"
+      - "rfc:8620 5.5"
+    notes: "collation and isAscending are optional and typed String and Boolean, so null is strictly invalid. meli 0.9 sends collation: null in every sort and could not list any mailbox while WildDuck answered invalidArguments. Cyrus and Stalwart read null as absent, as WildDuck already does for position and anchorOffset. Applies to every /query method with a sort."

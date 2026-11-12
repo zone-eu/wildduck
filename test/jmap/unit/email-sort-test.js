@@ -101,6 +101,21 @@ describe('JMAP Email/query sorts', () => {
             expect(parseSort([{ property: 'size', collation: 'i;nonexistent' }]).definition[0]).to.not.have.property('collation');
         });
 
+        it('reads null collation and isAscending as absent', () => {
+            const sort = [{ property: 'subject', collation: null, isAscending: null }];
+            expect(parseSort(sort).definition).to.deep.equal(parseSort([{ property: 'subject' }]).definition);
+            expect(parseSort([{ collation: null, isAscending: false, property: 'receivedAt' }]).definition).to.deep.equal(parseSort(null).definition);
+            // the argument itself is not changed
+            expect(sort[0]).to.have.property('collation', null);
+            // other values are still checked
+            expect(() => parseSort([{ property: 'subject', collation: 5 }]))
+                .to.throw()
+                .with.property('type', 'invalidArguments');
+            expect(() => parseSort([{ property: 'subject', isAscending: 'no' }]))
+                .to.throw()
+                .with.property('type', 'invalidArguments');
+        });
+
         it('rejects bad comparators', () => {
             expect(() => parseSort([{ property: 'subject', collation: 'i;nonexistent' }]))
                 .to.throw()
