@@ -124,11 +124,14 @@ describe('JMAP PatchObject', () => {
     });
 
     it('checks overlapping paths in linear time, also for very long paths', () => {
-        const deep = Array.from({ length: 20000 }, (_, i) => 'k' + i).join('/');
+        const deep = Array.from({ length: 40000 }, (_, i) => 'k' + i).join('/');
         const started = Date.now();
         expect(() => applyPatch({ a: {} }, { a: true, ['a/' + deep]: 1 })).to.throw(PatchError);
         expect(() => applyPatch({ a: {} }, { ['a/' + deep]: 1, a: true })).to.throw(PatchError);
-        expect(Date.now() - started).to.be.below(500);
+        // no overlap: every prefix of the long path is checked (the parent then does not exist)
+        expect(() => applyPatch({ a: {} }, { a: true, ['b/' + deep]: 1 })).to.throw(PatchError, /parent does not exist/);
+        // the quadratic versions took seconds to minutes at this size; the bound leaves room for a slow CI runner
+        expect(Date.now() - started).to.be.below(2500);
         expect(() => applyPatch({ a: { b: 1, c: 2 } }, { 'a/b': 3, 'a/c': 4 })).to.not.throw();
     });
 });

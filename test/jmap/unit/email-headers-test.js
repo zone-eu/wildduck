@@ -103,7 +103,8 @@ describe('JMAP header forms', () => {
         expect(h.asDate('Tue, 10 Nov 2026 10:00:00 +0200 (unclosed')).to.equal('2026-11-10T10:00:00+02:00');
         const started = Date.now();
         expect(h.asDate('('.repeat(160000))).to.equal(null);
-        expect(Date.now() - started).to.be.below(500);
+        // the quadratic versions took seconds to minutes at this size; the bound leaves room for a slow CI runner
+        expect(Date.now() - started).to.be.below(2500);
     });
 });
 

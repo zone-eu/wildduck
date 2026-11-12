@@ -1325,8 +1325,8 @@ describe('Calendar recurrence', function () {
             expect(withinBudget(() => expandEvent(secondly, { from: utc('2026-02-01T00:00:00Z'), to: utc('2026-02-02T00:00:00Z') }))).to.equal('limit');
             expect(withinBudget(() => expandEvent(secondly, { from: utc('2026-02-01T00:00:00Z') }))).to.equal('limit');
             expect(withinBudget(() => expandEvent(secondly, {}))).to.equal('limit');
-            // one hour of a secondly rule is fine
-            expect(withinBudget(() => expandEvent(secondly, { from: utc('2026-02-01T00:00:00Z'), to: utc('2026-02-01T01:00:00Z') }))).to.equal(3599);
+            // one hour of a secondly rule is fine: 3599 real instances, not a refused expansion, so a budget of its own
+            expect(withinBudget(() => expandEvent(secondly, { from: utc('2026-02-01T00:00:00Z'), to: utc('2026-02-01T01:00:00Z') }), 1000)).to.equal(3599);
             const hours = Array.from({ length: 24 }, (_, i) => i);
             const sixty = Array.from({ length: 60 }, (_, i) => i);
             const slots = event('1900-01-01T00:00:00', { frequency: 'daily', byHour: hours, byMinute: sixty, bySecond: sixty });

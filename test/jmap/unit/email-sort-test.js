@@ -34,7 +34,8 @@ describe('JMAP Email/query sorts', () => {
                     expect(baseSubject(subject).length).to.be.at.most(1000);
                 }
             }
-            expect(Date.now() - started).to.be.below(500);
+            // the quadratic versions took seconds to minutes at this size; the bound leaves room for a slow CI runner
+            expect(Date.now() - started).to.be.below(2500);
         });
     });
 

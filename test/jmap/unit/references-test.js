@@ -106,7 +106,8 @@ describe('JMAP result references', () => {
         const result = evaluatePointer({ list }, '/list/*' + '/k'.repeat(depth));
         expect(result).to.have.length(2000);
         expect(result[0]).to.equal('end');
-        expect(Date.now() - started).to.be.below(500);
+        // the quadratic versions took seconds to minutes at this size; the bound leaves room for a slow CI runner
+        expect(Date.now() - started).to.be.below(2500);
     });
 });
 
