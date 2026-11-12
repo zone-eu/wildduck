@@ -206,7 +206,9 @@ allowHosts = []
 # extra trusted certificate files for push services, on top of the default ones (tests only)
 #ca = ["/path/to/ca.pem"]
 
-# Browser origins (exact Origin values) that get CORS headers, for web clients served from another origin
+# Browser origins (exact Origin values) that get CORS headers, for web clients served from another origin.
+# Other requests than GET and HEAD from an origin that is not listed here, not the baseUrl origin and not the
+# host the request was sent to are refused (cross site request protection)
 #[cors]
 #origins = ["https://webmail.example.com"]
 
