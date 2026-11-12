@@ -160,6 +160,11 @@ describe('JMAP Web Push', () => {
                 '64:ff9b::a01:203',
                 '2002:7f00:1::1',
                 'ff02::1',
+                '::ffff:0:7f00:1',
+                '::ffff:0:127.0.0.1',
+                '::1:2:3:4',
+                '100::1',
+                '4000::1',
                 'not an address'
             ]) {
                 expect(webpush.isPublicAddress(address), address).to.be.false;

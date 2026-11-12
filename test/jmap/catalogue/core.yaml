@@ -2170,3 +2170,17 @@ scenarios:
     sources:
       - "cyrus:JMAPCore/loginject_via_logheaders"
       - "wildduck:ionosphere apps/server/test/jmap-header-injection.test.ts"
+
+  - id: CORE-137
+    title: "Requests answered without authentication are answered before their body is read"
+    method: Request
+    spec: "RFC 8620 3.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "No credentials."
+    when: "A POST to the session resource (405), a POST to an unknown path (404) and an OPTIONS request each announce a body of 10 MB but send only its first bytes."
+    then: "Each is answered at once with its status and Connection: close, without waiting for the rest of the body."
+    sources:
+      - "wildduck:security audit 2026-11 F.2"

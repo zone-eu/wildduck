@@ -5,6 +5,7 @@
 // Catalogue file core.yaml: session, authentication, the request envelope, Core/echo and result references.
 
 const http = require('http');
+const net = require('net');
 const crypto = require('crypto');
 const { expect } = require('chai');
 const config = require('@zone-eu/wild-config');
@@ -1594,6 +1595,41 @@ describe('JMAP core (core.yaml)', () => {
                 const disallowed = await send(client.authorization, JSON.stringify(echo({})), 'https://evil.example');
                 expect(disallowed.headers.get('access-control-allow-origin')).to.be.null;
             });
+        });
+
+        scenario('CORE-137', async () => {
+            const { hostname, port } = new URL(JMAP_URL);
+            // announces a 10 MB body, sends 1 KB of it and reads the answer
+            const answerOf = (method, path) =>
+                new Promise((resolve, reject) => {
+                    const socket = net.connect(Number(port), hostname, () => {
+                        socket.write(`${method} ${path} HTTP/1.1\r\nHost: ${hostname}\r\nContent-Type: application/json\r\nContent-Length: 10485760\r\n\r\n`);
+                        socket.write('x'.repeat(1024));
+                    });
+                    let data = '';
+                    const timer = setTimeout(() => {
+                        socket.destroy();
+                        reject(new Error(`${method} ${path}: no answer while the body was pending`));
+                    }, 3000);
+                    socket.on('data', chunk => {
+                        data += chunk;
+                        if (data.includes('\r\n\r\n')) {
+                            clearTimeout(timer);
+                            socket.destroy();
+                            resolve(data.slice(0, data.indexOf('\r\n\r\n')));
+                        }
+                    });
+                    socket.on('error', reject);
+                });
+            for (const [method, path, status] of [
+                ['POST', '/jmap/session', 405],
+                ['POST', '/jmap/no-such-path', 404],
+                ['OPTIONS', '/jmap/api/', 204]
+            ]) {
+                const head = await answerOf(method, path);
+                expect(head, `${method} ${path}`).to.match(new RegExp(`^HTTP/1\\.1 ${status} `));
+                expect(head, `${method} ${path}`).to.match(/\r\nconnection: close/i);
+            }
         });
 
         scenario('CORE-136', async () => {
