@@ -158,14 +158,30 @@ Every sampled message already has a root, so the optional `messages_root_repair`
 
 ### Indexes
 
-`messages` has about 110.8 GB of indexes per shard (2.4 TB in total), 71.4 GB per shard of it the `fulltext` text index. The JMAP indexes, estimated from existing indexes with the same shape:
+`messages` has about 110.8 GB of indexes per shard (2.4 TB in total), 71.4 GB per shard of it the `fulltext` text index. The JMAP indexes, scaled from the ratios measured on the sharded test cluster below (`by_root` about half of `_id_`, `user_idate` about 1.65 times `_id_`) and from the existing index of the most similar shape:
 
-| Index                                      | Like                                                     | Per shard    | 22 shards   |
-| ------------------------------------------ | -------------------------------------------------------- | ------------ | ----------- |
-| `messages.by_root` `{root}`                | `_id_`, 1.37 GB                                          | about 1.4 GB | about 30 GB |
-| `messages.user_idate` `{user, idate, _id}` | `by_idate` 1.14 GB, `user_messages_by_thread_id` 2.04 GB | 1.5 to 2 GB  | 33 to 44 GB |
-| `archived.by_root`                         | `archived._id_`, 24 MB                                   |              | under 1 GB  |
+| Index                                      | Estimate per shard                                                 | 22 shards   |
+| ------------------------------------------ | ------------------------------------------------------------------ | ----------- |
+| `messages.by_root` `{root}`                | 0.7 GB (half of `_id_`, 1.37 GB)                                   | about 15 GB |
+| `messages.user_idate` `{user, idate, _id}` | 1.5 to 2.3 GB (between `by_idate`, 1.14 GB, and 1.65 times `_id_`) | 33 to 50 GB |
+| `archived.by_root`                         |                                                                    | under 1 GB  |
 
-About 65 to 75 GB in total, 3% on top of the current `messages` indexes. The index review of 2026-10-05 found about 179 GiB of redundant `messages` indexes (`mailbox_uid_shard`, `by_idate_reverse_uid`, `mailbox_uid_reverse` and others); dropping those first more than pays for the JMAP indexes.
+About 50 to 65 GB in total, 2 to 3% on top of the current `messages` indexes. The index review of 2026-10-05 found about 179 GiB of redundant `messages` indexes (`mailbox_uid_shard`, `by_idate_reverse_uid`, `mailbox_uid_reverse` and others); dropping those first more than pays for the JMAP indexes.
+
+### Collector check on the sharded test cluster
+
+The fixed collector ran against the two shard test cluster (`test/jmap/sharded/`, `messages` sharded on `{mailbox, uid}`) with a seeded database of known content: 5,000 users with 100 messages each over 20 mailboxes, 1% moved (root different from `_id`), 1% legacy copies sharing a root, 30,000 journal entries over three hours, and `by_root`, `user_idate` and `user_messages_by_thread` built.
+
+| Check                                    | Seeded                        | Collector                                                         |
+| ---------------------------------------- | ----------------------------- | ----------------------------------------------------------------- |
+| `messages` documents, summed over shards | 504,994 (252,538 and 252,456) | 504,994 over 2 shards                                             |
+| Journal entries, per hour                | 30,000, 10,000                | 30,000, 9,975                                                     |
+| Sampled messages without root            | 0                             | 0 of 20,000                                                       |
+| Root different from `_id`                | 1.98%                         | 2.03%                                                             |
+| Shared roots among 200 probes            | expected about 4              | 1                                                                 |
+| `{user, root}` count across both shards  |                               | p50 1.0 ms, p95 1.7 ms, p99 2.2 ms                                |
+| Index sizes (`_id_` = 1)                 |                               | `by_root` 0.49, `user_messages_by_thread` 0.47, `user_idate` 1.65 |
+
+A lookup by root asks every shard, so on production it costs one round trip to each of the 22 shards in parallel instead of two; the latency there is still to be measured with the same script once `by_root` exists, before deciding on a mapping collection.
 
 Raw output: `measurements.json` of 2026-11-12 (kept outside the repository).
