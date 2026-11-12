@@ -17,13 +17,25 @@ describe('JMAP Email/query sorts', () => {
             ['  spaced \t  out  ', 'spaced out'],
             ['[only a blob]', '[only a blob]'],
             ['Re:', ''],
-            ['', '']
+            ['', ''],
+            ['x (fwd) (FWD)  (fwd)', 'x'],
+            ['[fwd: [fwd: Re: deep] (fwd)]', 'deep']
         ];
         for (const [subject, base] of cases) {
             it(`${JSON.stringify(subject)} -> ${JSON.stringify(base)}`, () => {
                 expect(baseSubject(subject)).to.equal(base);
             });
         }
+
+        it('computes keys of crafted long subjects in bounded time', () => {
+            const started = Date.now();
+            for (const subject of ['(fwd) '.repeat(32000) + 'x', '[fwd: '.repeat(40000), 'Re: '.repeat(50000) + 'y', '[a'.repeat(100000)]) {
+                for (let i = 0; i < 20; i++) {
+                    expect(baseSubject(subject).length).to.be.at.most(1000);
+                }
+            }
+            expect(Date.now() - started).to.be.below(500);
+        });
     });
 
     describe('addressKey', () => {
