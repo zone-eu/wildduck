@@ -121,18 +121,51 @@ The first JMAP request of an account checks once that every message has a root (
 
 The earlier checks (`roots-sharded-test.js`) still pass: a lookup by root finds a message moved to the other shard, prefers the new copy while both exist, and the root repair works across shards.
 
-## Production measurements
+## Production measurements (2026-11-12)
 
-Pending: run the collector against mongos with a read only user and paste the result here.
+`scripts/jmap/measure-production.js` against the production mongos (MongoDB 6.0, 22 shards), database `zonemail`, read only, with secondaries preferred. The first run reported the `$collStats` document of one shard only for the sharded `messages` and `archived` collections (fixed since: the script now sums every shard); the per shard numbers below are multiplied by 22, which matches the known total of about 1.0 billion messages. `journal` is not sharded, so its numbers are complete.
 
-```bash
-MONGO_URI='mongodb://...' DB_NAME=wildduck node scripts/jmap/measure-production.js > measurements.json
-```
+### Journal
 
-It reports, with bounded queries only:
+| Measure                        | Value                                                |
+| ------------------------------ | ---------------------------------------------------- |
+| Entries per hour               | 598,957 (about 166 per second, 14.4 million per day) |
+| Entries kept now (TTL 3 hours) | 1,787,069                                            |
+| Size now                       | 362 MB data, 386 MB indexes (748 MB)                 |
+| Per entry                      | about 420 bytes with indexes                         |
 
-- collection and index sizes of `messages`, `archived` and `journal`
-- journal entries per hour and the resulting per day estimate, with the current TTL
-- on a sample of messages: how many have no root, how many have a root different from `_id` (moved), and, once the `by_root` index exists, how many probed roots are shared and the latency of a `{user, root}` count across the shards
+The branch adds `root` to message entries and `origin` to EXISTS entries, about 30 bytes, so plan for roughly 450 bytes per entry. The journal size at other retentions:
 
-The results decide the journal retention to recommend (`const:journal:time`), the size budget of the new indexes (`by_root`, `user_idate`), and whether a `{user, root}` to location mapping collection is needed for shard targeted lookups (only if the lookup latency across all shards is too high).
+| `const:journal:time` | Entries      | Size with indexes |
+| -------------------- | ------------ | ----------------- |
+| 3 hours (default)    | 1.8 million  | 0.8 GB            |
+| 24 hours             | 14.4 million | 6.5 GB            |
+| 72 hours             | 43 million   | 19 GB             |
+| 7 days               | 101 million  | 45 GB             |
+
+The journal is not sharded: all of it lives on the primary shard of the database, and its indexes (about half of the size) want to stay in that shard's cache. **Recommendation: 24 hours** when JMAP is enabled. A client offline overnight then still gets `/changes` instead of a full resynchronisation, at about 6.5 GB on one shard. Going beyond 72 hours puts more than 10 GB of journal indexes into one shard's cache and should wait for a measured need.
+
+### Roots
+
+| Measure                                           | Value                                                                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Messages sampled                                  | 20,000 (`$sample`)                                                                                                    |
+| Without `root`                                    | 0                                                                                                                     |
+| `root` different from `_id` (moved at some point) | 1,219 (6.1%)                                                                                                          |
+| Shared roots, `{user, root}` lookup latency       | not measured: there is no `by_root` index yet, and without it every probe would scan a user's messages on every shard |
+
+Every sampled message already has a root, so the optional `messages_root_repair` migration is not needed for missing roots; `ensureUserRoots` still checks each user on first JMAP use for roots shared by old IMAP copies. Run the script again after `by_root` is built: it then probes 200 roots and reports how many are shared and the latency of a lookup across all shards. Only if that latency is too high is a `{user, root}` to location mapping collection worth building; until then it is not.
+
+### Indexes
+
+`messages` has about 110.8 GB of indexes per shard (2.4 TB in total), 71.4 GB per shard of it the `fulltext` text index. The JMAP indexes, estimated from existing indexes with the same shape:
+
+| Index                                      | Like                                                     | Per shard    | 22 shards   |
+| ------------------------------------------ | -------------------------------------------------------- | ------------ | ----------- |
+| `messages.by_root` `{root}`                | `_id_`, 1.37 GB                                          | about 1.4 GB | about 30 GB |
+| `messages.user_idate` `{user, idate, _id}` | `by_idate` 1.14 GB, `user_messages_by_thread_id` 2.04 GB | 1.5 to 2 GB  | 33 to 44 GB |
+| `archived.by_root`                         | `archived._id_`, 24 MB                                   |              | under 1 GB  |
+
+About 65 to 75 GB in total, 3% on top of the current `messages` indexes. The index review of 2026-10-05 found about 179 GiB of redundant `messages` indexes (`mailbox_uid_shard`, `by_idate_reverse_uid`, `mailbox_uid_reverse` and others); dropping those first more than pays for the JMAP indexes.
+
+Raw output: `measurements.json` of 2026-11-12 (kept outside the repository).

@@ -484,7 +484,7 @@ curl -X POST http://127.0.0.1:8080/settings/const:journal:time \
   -d '{"value": 604800000}'
 ```
 
-The JMAP service reads the new value within `changes.retentionCacheTime` seconds. The TTL index `journal_autoexpire` is changed in place with `collMod` at the next start (no index rebuild). The retention applies to every user, and the journal grows in proportion to it: measure entries per day with `scripts/jmap/measure-production.js` before choosing a long retention. Owned types (identities, submissions, contacts, calendars) keep their own tombstones for 30 days independently of this setting.
+The JMAP service reads the new value within `changes.retentionCacheTime` seconds. The TTL index `journal_autoexpire` is changed in place with `collMod` at the next start (no index rebuild). The retention applies to every user, and the journal grows in proportion to it: measure entries per day with `scripts/jmap/measure-production.js` before choosing a long retention. On a cluster writing about 600,000 journal entries an hour, 24 hours of retention takes about 6.5 GB, 72 hours about 19 GB, all on the primary shard because the journal is not sharded; 24 hours is a good start (see `docs/jmap/performance.md`). Owned types (identities, submissions, contacts, calendars) keep their own tombstones for 30 days independently of this setting.
 
 ### Indexes
 

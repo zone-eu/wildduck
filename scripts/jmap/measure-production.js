@@ -15,17 +15,26 @@ const SAMPLE = Number(process.env.SAMPLE) || 20000;
 const LOOKUPS = Number(process.env.LOOKUPS) || 200;
 const READ = { readPreference: 'secondaryPreferred', maxTimeMS: 120000 };
 
+// Through mongos, $collStats answers one document per shard of a sharded collection: the sizes are summed
 async function collectionStats(db, name) {
-    const [stats] = await db
+    const perShard = await db
         .collection(name)
         .aggregate([{ $collStats: { storageStats: {} } }], READ)
         .toArray()
-        .catch(() => [null]);
-    if (!stats) {
+        .catch(() => []);
+    if (!perShard.length) {
         return null;
     }
-    const storage = stats.storageStats;
-    return { count: storage.count, size: storage.size, totalIndexSize: storage.totalIndexSize, indexSizes: storage.indexSizes };
+    const total = { shards: perShard.length, count: 0, size: 0, totalIndexSize: 0, indexSizes: {} };
+    for (const { storageStats: storage } of perShard) {
+        total.count += Number(storage.count);
+        total.size += Number(storage.size);
+        total.totalIndexSize += Number(storage.totalIndexSize);
+        for (const [index, size] of Object.entries(storage.indexSizes || {})) {
+            total.indexSizes[index] = (total.indexSizes[index] || 0) + Number(size);
+        }
+    }
+    return total;
 }
 
 // journal entries written in the last hour, from the ObjectId time of _id
