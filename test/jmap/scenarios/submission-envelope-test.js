@@ -212,6 +212,39 @@ describe('EmailSubmission envelope', function () {
         h.expectCreated(await h.submit(ctx, Object.assign({}, base, { threadId })));
     });
 
+    scenario('SUB-144', async () => {
+        const draft = await h.createDraft(ctx);
+        const before = await h.queuedMessages(ctx);
+        // the create exactly as meli 0.9 sends it
+        const res = await h.submit(
+            ctx,
+            { emailId: draft.id, envelope: null, identityId: ctx.identity.id, undoStatus: 'final' },
+            {
+                onSuccessDestroyEmail: null,
+                onSuccessUpdateEmail: { '#s1': { 'keywords/$draft': null, [`mailboxIds/${ctx.mb.Sent}`]: true, [`mailboxIds/${ctx.mb.Drafts}`]: null } }
+            }
+        );
+        const created = h.expectCreated(res);
+        expect((await h.queuedMessages(ctx)).length).to.equal(before.length + 1);
+        // the value the client sent is ignored: the server sets its own and reports what differs
+        const submission = await h.getSubmission(ctx, created.id);
+        expect(submission.undoStatus).to.be.oneOf(['pending', 'final']);
+        if (submission.undoStatus !== 'final') {
+            expect(created.undoStatus).to.equal(submission.undoStatus);
+        }
+        expect(created.envelope).to.deep.equal(submission.envelope);
+        const email = await h.emailOf(ctx, draft.id, ['mailboxIds', 'keywords']);
+        expect(email.mailboxIds).to.deep.equal({ [ctx.mb.Sent]: true });
+        expect(email.keywords).to.not.have.property('$draft');
+
+        // canceled stays refused (SUB-025)
+        const other = await h.createDraft(ctx);
+        h.expectProperties(
+            h.expectNotCreated(await h.submit(ctx, { emailId: other.id, identityId: ctx.identity.id, undoStatus: 'canceled' }), 'invalidProperties'),
+            ['undoStatus']
+        );
+    });
+
     scenario('SUB-026', async () => {
         const own = await h.sender();
         const responses = await h.calls(own, [

@@ -2259,3 +2259,20 @@ scenarios:
     then: "The create succeeds and the queued message carries the multipart/encrypted body exactly as stored."
     sources:
       - "rfc:8621 7.5"
+
+  - id: SUB-144
+    title: "Ignore undoStatus pending or final on create"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap]
+    given: "A sendable draft in Drafts and an identity."
+    when: "EmailSubmission/set create {emailId, envelope: null, identityId, undoStatus: final} with onSuccessUpdateEmail moving the Email to Sent and clearing $draft, then a create with undoStatus canceled."
+    then: "The first is created and queued; its undoStatus is the one the server sets, created reports undoStatus when it differs from final and the derived envelope, and the Email is in Sent without $draft. The second gives notCreated of type invalidProperties naming undoStatus."
+    sources:
+      - "wildduck:F.5 meli interop run"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 7"
+    notes: "undoStatus is server set on create (RFC 8621 7), so a client should not send it. meli 0.9 sends final on every create and does not check notCreated, so with WildDuck refusing the value it silently never sent anything. Stalwart ignores the value; Cyrus refuses any. WildDuck ignores pending and final, which both describe an ordinary send, and keeps refusing canceled (SUB-025)."
