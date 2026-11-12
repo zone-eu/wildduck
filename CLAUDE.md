@@ -481,7 +481,7 @@ The default Grunt task runs this sequence:
 | `pop3` | `test/pop3-*-test.js` | No |
 | `api` | `test/**/*-test.js` (minus JMAP, POP3 and unit files) | Yes |
 | `unit` | listed unit files, including `test/jmap/unit/*-test.js` | No |
-| `mocha-jmap` | `test/jmap/scenarios/**/*-test.js` (`test/jmap/.mocharc.js`) | Yes |
+| `mocha-jmap` | `test/jmap/scenarios/**/*-test.js`, `test/jmap/interop/**/*-test.js` (`test/jmap/.mocharc.js`) | Yes |
 
 **`grunt proto`** runs only `imap-unit` + `pop3` (no server needed, fast).
 
@@ -510,6 +510,7 @@ The default Grunt task runs this sequence:
 - `scenarios/<area>-test.js` - one `scenario('ID', async ctx => ...)` per catalogue id (`harness/scenario.js`); an unknown or duplicate id fails at load time. Each test creates its own users and seeds with the mechanism the catalogue names (LMTP, IMAP, REST API, database, JMAP); do not replace IMAP or REST seeding with JMAP calls
 - `harness/` - `client.js` (raw JMAP over `fetch`, Bearer and Basic), `accounts.js`, `seed.js`, `api.js`, `fixtures.js`, `clock.js`, `outbound.js` (ZoneMTA stand in), `push.js` (local push service), `sse.js`, `instance.js` (extra in process JMAP instances with other config)
 - `unit/` - pure module tests, run in the `unit` target
+- `interop/` - client interop tests (`jmap-jam-test.js`, the jmap-jam library against the test server), run with the scenarios in `mocha-jmap`; real client rounds are recorded in `docs/jmap/interop-log.md`
 - `tools/check-coverage.js` - `npm run test:jmap:coverage`: every scenario of a work package listed in `progress.json` must have a passing test
 - `external/` - expectation files for jmapio/jmap-test-suite and fastmail/JMAP-TestSuite (pinned commits, never vendored); run with `npm run test:jmap:jmapio` and `npm run test:jmap:fastmail` (`scripts/jmap/run-*.js`, Fastmail in a container). A `never` test that passes is a failure too. CI: `.github/workflows/jmap-compliance.yml`
 - `sharded/` (`npm run test:jmap:sharded`, docker compose two shard cluster), `bench/`

@@ -49,6 +49,7 @@
         "grunt-eslint": "24.3.0",
         "grunt-shell-spawn": "0.5.0",
         "imapflow": "2.10.0",
+        "jmap-jam": "0.13.8",
         "mailparser": "3.14.1",
         "mocha": "12.0.3",
         "supertest": "7.3.1"

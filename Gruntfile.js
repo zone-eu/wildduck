@@ -111,7 +111,7 @@ module.exports = function (grunt) {
                 options: mochaOutput
             },
             'mocha-jmap': {
-                // JMAP catalogue scenarios; JMAP_RESULTS=1 records results for tools/check-coverage.js
+                // JMAP catalogue scenarios and client interop tests; JMAP_RESULTS=1 records results for tools/check-coverage.js
                 command: 'npx mocha --config test/jmap/.mocharc.js',
                 options: mochaOutput
             },

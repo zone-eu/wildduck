@@ -31,7 +31,7 @@ node test/jmap/tools/build-overview.js             # regenerate overview.html
 | B   | Scenario catalogue: WildDuck's own conformance tests over plain HTTP, many of them seeding or mutating over IMAP, LMTP or the REST API | `catalogue/*.yaml`                     | Every commit, from phase 1                              |
 | C   | jmapio/jmap-test-suite, black box, RFC 8620 and 8621                                                                                   | `external/jmapio-expectations.yaml`    | From the end of phase 2 (it seeds through JMAP writes)  |
 | D   | fastmail/JMAP-TestSuite, black box, adds Blob, contacts, calendars                                                                     | `external/fastmail-expectations.yaml`  | Nightly, through a WildDuck adapter                     |
-| E   | Client interop: jmap-jam, aerc, meli, Ltt.rs, Bulwark Webmail, Twake Mail, Cypht                                                       | `overview.html` section 7              | End of each phase                                       |
+| E   | Client interop: jmap-jam (automated, `interop/`), aerc, meli, Ltt.rs, Bulwark Webmail, Twake Mail, Cypht                               | `docs/jmap/interop-log.md`             | End of each phase                                       |
 
 In phase 1 only layers A and B can run, so the phase 1 scenarios carry that gate alone.
 
@@ -75,7 +75,7 @@ Source prefixes: `james`, `cyrus`, `stalwart`, `jmapio`, `fastmail`, `tmail`, `l
 ## Running the scenario tests
 
 ```bash
-npm run test:jmap            # start a test server, run test/jmap/scenarios, stop the server
+npm run test:jmap            # start a test server, run test/jmap/scenarios and test/jmap/interop, stop the server
 npm run test:jmap:coverage   # the same, then check that every scenario of a finished work package passed
 npm run test:jmap:catalogue  # validate the catalogue and the expectation files, build overview.html
 ```
