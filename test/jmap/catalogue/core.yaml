@@ -2184,3 +2184,31 @@ scenarios:
     then: "Each is answered at once with its status and Connection: close, without waiting for the rest of the body."
     sources:
       - "wildduck:security audit 2026-11 F.2"
+
+  - id: CORE-138
+    title: "Concurrent downloads are limited per user on a counter of their own"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [jmap]
+    given: "A user with an uploaded blob, holding maxConcurrentRequests downloads at once."
+    when: "The user starts one more download, and sends an API request."
+    then: "The extra download gets HTTP 429 with a limit problem (maxConcurrentRequests); the API request succeeds; once the downloads end, the download succeeds."
+    sources:
+      - "wildduck:security audit 2026-11 F.2"
+
+  - id: CORE-139
+    title: "State changing requests from a foreign browser origin are refused"
+    method: Request
+    spec: "RFC 8620 3.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [jmap]
+    given: "An authenticated user."
+    when: "An upload is sent with valid credentials and an Origin header of another site, of the literal null, of the server's own host, and without Origin."
+    then: "The foreign and null origins get HTTP 403 before authentication and nothing is stored; the same host and the request without Origin succeed."
+    sources:
+      - "wildduck:security audit 2026-11 F.2"

@@ -1632,6 +1632,63 @@ describe('JMAP core (core.yaml)', () => {
             }
         });
 
+        scenario('CORE-138', async () => {
+            const owner = await accounts.createUser();
+            const ownerClient = forUser(owner);
+            const session = await ownerClient.session();
+            const { maxConcurrentRequests } = session.capabilities[URN.core];
+            const uploaded = await ownerClient.raw(`/jmap/upload/${ownerClient.accountId}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: 'download me'
+            });
+            const path = `/jmap/download/${ownerClient.accountId}/${uploaded.json.blobId}/f.txt`;
+            // the download slots of the user are all taken
+            const redis = redisClient();
+            const key = `jmap:dlc:${owner.id}`;
+            await redis.set(key, maxConcurrentRequests);
+            try {
+                const over = await ownerClient.raw(path);
+                expect(expectProblem(over, 429, 'limit').limit).to.equal('maxConcurrentRequests');
+                expect(Number(await redis.get(key))).to.equal(maxConcurrentRequests);
+                expect((await ownerClient.request(echo({}))).status).to.equal(200);
+            } finally {
+                await redis.set(key, 0);
+            }
+            const ok = await ownerClient.raw(path);
+            expect(ok.status).to.equal(200);
+            expect(ok.body.toString()).to.equal('download me');
+            // the slot is given back once the response is done
+            await clock.waitFor(async () => Number(await redis.get(key)) === 0, { message: 'the download slot was not released' });
+        });
+
+        scenario('CORE-139', async () => {
+            const owner = await accounts.createUser();
+            const ownerClient = forUser(owner);
+            await ownerClient.session();
+            const { host } = new URL(JMAP_URL);
+            const send = origin =>
+                new Promise((resolve, reject) => {
+                    const req = http.request(`${JMAP_URL}/jmap/upload/${ownerClient.accountId}/`, {
+                        method: 'POST',
+                        headers: Object.assign(
+                            { 'Content-Type': 'text/plain', Authorization: basic(owner.username, owner.password) },
+                            origin ? { Origin: origin } : {}
+                        )
+                    });
+                    req.on('response', res => {
+                        res.resume();
+                        res.on('end', () => resolve(res.statusCode));
+                    });
+                    req.on('error', reject);
+                    req.end('cross site');
+                });
+            expect(await send('https://evil.example')).to.equal(403);
+            expect(await send('null')).to.equal(403);
+            expect(await send(`http://${host}`)).to.equal(201);
+            expect(await send(null)).to.equal(201);
+        });
+
         scenario('CORE-136', async () => {
             const records = instance.captureLog();
             const { app, url } = await instance.startInstance();
