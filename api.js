@@ -72,6 +72,7 @@ const webhooksRoutes = require('./lib/api/webhooks');
 const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
+const rolesRoutes = require('./lib/api/roles');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
@@ -306,6 +307,7 @@ function createApp(options = {}) {
     };
 
     const app = buildServer();
+    app.addHook('onReady', async () => roles.initialize());
 
     // named route registry, served by the test-only /api-methods route and
     // used by the test overview generator
@@ -436,7 +438,7 @@ function createApp(options = {}) {
         if (config.api.accessToken) {
             tokenRequired = true;
             if (config.api.accessToken === accessToken) {
-                request.role = 'root';
+                request.role = await roles.forUser('root');
                 request.user = 'root';
                 return;
             }
@@ -474,7 +476,7 @@ function createApp(options = {}) {
                 // Every MCP token holder reaches this listener from the same socket, so a budget
                 // here would also let one of them spend everyone else's.
                 authenticated = await mcpTokenHandler.authenticate(bearerToken);
-                request.role = roles.forUser(authenticated.role, authenticated.user);
+                request.role = authenticated.roleSnapshot || (await roles.forUser(authenticated.role, authenticated.user));
             } catch {
                 return fail();
             }
@@ -516,7 +518,7 @@ function createApp(options = {}) {
                     throw err;
                 }
 
-                if (tokenData && tokenData.user && tokenData.role && config.api.roles[tokenData.role]) {
+                if (tokenData && tokenData.user && tokenData.role) {
                     let signData;
                     if ('authVersion' in tokenData) {
                         // cast value to number
@@ -625,9 +627,10 @@ function createApp(options = {}) {
                         return fail();
                     }
 
+                    let userData;
                     if (/^[0-9a-f]{24}$/i.test(request.user)) {
                         let tokenAuthVersion = Number(tokenData.authVersion) || 0;
-                        let userData = await db.users.collection('users').findOne(
+                        userData = await db.users.collection('users').findOne(
                             {
                                 _id: new ObjectId(request.user)
                             },
@@ -642,13 +645,13 @@ function createApp(options = {}) {
                             // locked out account, existing tokens must not keep working
                             return fail();
                         }
-                        try {
-                            request.role = roles.forUser(tokenData.role, userData);
-                        } catch {
-                            return fail();
-                        }
                     }
 
+                    try {
+                        request.role = await roles.forUser(tokenData.role, userData);
+                    } catch {
+                        return fail();
+                    }
                     // pass
                     return;
                 }
@@ -661,7 +664,7 @@ function createApp(options = {}) {
         }
 
         // allow all
-        request.role = 'root';
+        request.role = await roles.forUser('root');
         request.user = 'root';
     });
 
@@ -885,6 +888,7 @@ function createApp(options = {}) {
         settingsRoutes(db, app, settingsHandler);
         healthRoutes(db, app, loggelf);
         mcpTokensRoutes(app, mcpTokenHandler);
+        rolesRoutes(db, app);
     });
 
     if (process.env.NODE_ENV === 'test') {

@@ -15,9 +15,7 @@ const crypto = require('crypto');
 const config = require('@zone-eu/wild-config');
 // yargs 18 is ESM only at its root, the yargs/yargs factory still loads from CommonJS
 const yargs = require('yargs/yargs')(process.argv.slice(2));
-const util = require('util');
-
-const dbconnect = util.promisify(db.connect);
+const roles = require('../lib/roles');
 
 let argv = yargs
     .usage('Usage: $0 <command> [options]')
@@ -33,12 +31,12 @@ let argv = yargs
                 })
                 .option('role', {
                     alias: 'r',
-                    describe: 'Choose role',
-                    choices: Object.keys(config.api.roles),
+                    describe: 'Active role name',
                     demandOption: true
                 }),
         async argv => {
-            await dbconnect();
+            await db.connect();
+            await roles.resolveTokenRole(argv.role);
 
             let accessToken = crypto.randomBytes(20).toString('hex');
             let tokenHash = crypto
@@ -89,7 +87,7 @@ let argv = yargs
                 demandOption: true
             }),
         async argv => {
-            await dbconnect();
+            await db.connect();
 
             let accessToken = argv.token;
 
@@ -124,7 +122,7 @@ let argv = yargs
                 demandOption: true
             }),
         async argv => {
-            await dbconnect();
+            await db.connect();
 
             let user = argv.user;
             let tokens = await db.redis.smembers('tn:user:' + user);

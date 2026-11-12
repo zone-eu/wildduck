@@ -5,8 +5,10 @@ const { ObjectId } = require('mongodb');
 const McpTokenHandler = require('../lib/mcp-token-handler');
 const consts = require('../lib/consts');
 const roles = require('../lib/roles');
+const config = require('@zone-eu/wild-config');
 
 const expect = chai.expect;
+const roleDefinitions = config.api.roles;
 
 function matchesId(left, right) {
     return left && right && left.toString() === right.toString();
@@ -25,23 +27,31 @@ class TokenCollection {
     }
 
     async findOne(query) {
-        return this.entries.find(entry => (!query.hash || entry.hash === query.hash) && (!query._id || matchesId(entry._id, query._id))) || null;
+        const entry = this.entries.find(candidate => {
+            const matchesHash = !query.hash || candidate.hash === query.hash;
+            const matchesIdFilter = !query._id || matchesId(candidate._id, query._id);
+            return matchesHash && matchesIdFilter;
+        });
+        return entry || null;
     }
 
     async countDocuments(query) {
-        return this.entries.filter(entry => matchesId(entry.user, query.user)).length;
+        const matchingEntries = this.entries.filter(entry => matchesId(entry.user, query.user));
+        return matchingEntries.length;
     }
 
     find(query, options) {
-        let values = this.entries.filter(entry => matchesId(entry.user, query.user));
+        const values = this.entries.filter(entry => matchesId(entry.user, query.user));
         return {
             sort() {
                 return this;
             },
             async toArray() {
                 return values.map(entry => {
-                    let value = { ...entry };
-                    if (options && options.projection && options.projection.hash === false) delete value.hash;
+                    const value = { ...entry };
+                    if (options?.projection?.hash === false) {
+                        delete value.hash;
+                    }
                     return value;
                 });
             }
@@ -49,17 +59,21 @@ class TokenCollection {
     }
 
     async findOneAndDelete(query) {
-        let index = this.entries.findIndex(entry => matchesId(entry._id, query._id) && matchesId(entry.user, query.user));
-        if (index < 0) return { value: null };
-        let [value] = this.entries.splice(index, 1);
+        const index = this.entries.findIndex(entry => matchesId(entry._id, query._id) && matchesId(entry.user, query.user));
+        if (index < 0) {
+            return { value: null };
+        }
+        const [value] = this.entries.splice(index, 1);
         return { value };
     }
 
     async updateOne(query, update) {
         this.updates.push({ query, update });
-        let entry = this.entries.find(candidate => matchesId(candidate._id, query._id));
-        if (!entry) return { modifiedCount: 0 };
-        let threshold = query.$or && query.$or[1] && query.$or[1].used && query.$or[1].used.$lte;
+        const entry = this.entries.find(candidate => matchesId(candidate._id, query._id));
+        if (!entry) {
+            return { modifiedCount: 0 };
+        }
+        const threshold = query.$or?.[1]?.used?.$lte;
         if (!entry.used || (threshold && entry.used <= threshold)) {
             Object.assign(entry, update.$set);
             return { modifiedCount: 1 };
@@ -69,7 +83,7 @@ class TokenCollection {
 }
 
 function createFixture(options = {}) {
-    let user = {
+    const user = {
         _id: new ObjectId(),
         username: 'alice',
         unameview: 'alice',
@@ -77,40 +91,77 @@ function createFixture(options = {}) {
         authVersion: 4,
         ...options.user
     };
-    let tokens = new TokenCollection();
-    let address = { addrview: 'alice@example.com', user: user._id };
-    let usersCollection = {
+    const tokens = new TokenCollection();
+    const address = { addrview: 'alice@example.com', user: user._id };
+    const usersCollection = {
         async findOne(query) {
-            if (query._id && matchesId(query._id, user._id)) return user;
-            if (query.unameview === user.unameview) return user;
+            if (query._id && matchesId(query._id, user._id)) {
+                return user;
+            }
+            if (query.unameview === user.unameview) {
+                return user;
+            }
             return null;
         }
     };
-    let addressesCollection = {
+    const addressesCollection = {
         async findOne(query) {
-            return query.addrview === address.addrview ? address : null;
+            if (query.addrview === address.addrview) {
+                return address;
+            }
+            return null;
         }
     };
-    let database = {
+    const roleCollection = {
+        async findOne(query) {
+            for (const [name, permissions] of Object.entries(roleDefinitions)) {
+                if (query._id === name) {
+                    return {
+                        _id: name,
+                        name,
+                        description: '',
+                        permissions,
+                        isSystem: true,
+                        deleted: false,
+                        systemSource: name
+                    };
+                }
+            }
+            return null;
+        }
+    };
+    const database = {
         collection(name) {
-            if (name === 'mcptokens') return tokens;
-            if (name === 'users') return usersCollection;
-            if (name === 'addresses') return addressesCollection;
+            if (name === 'mcptokens') {
+                return tokens;
+            }
+            if (name === 'users') {
+                return usersCollection;
+            }
+            if (name === 'addresses') {
+                return addressesCollection;
+            }
+            if (name === 'roles') {
+                return roleCollection;
+            }
             throw new Error(`Unexpected collection ${name}`);
         }
     };
-    let authlog = [];
+    const authlog = [];
     // Stands in for UserHandler.checkAddress: a username maps to unameview, an address goes
     // through address resolution. The handler must work through this seam, not around it.
-    let userHandler = {
+    const userHandler = {
         async checkAddress(value) {
             if (!value.includes('@')) {
                 return { unameview: value.toLowerCase() };
             }
-            return address.addrview === value ? { _id: address.user } : false;
+            if (address.addrview === value) {
+                return { _id: address.user };
+            }
+            return false;
         }
     };
-    let handler = new McpTokenHandler({
+    const handler = new McpTokenHandler({
         users: database,
         userHandler,
         counters: options.counters,
@@ -206,12 +257,12 @@ describe('MCP token handler', () => {
         const fixture = createFixture();
         const created = await fixture.handler.create(fixture.user._id, { description: 'Client' });
         const first = await fixture.handler.authenticate(created.token);
-        const admittedRole = roles.forUser(first.role, first.user);
+        const admittedRole = await roles.forUser(first.role, first.user, fixture.database);
         expect(roles.can(admittedRole).readOwn('labels').granted).to.equal(true);
 
         fixture.user.permissions = { labels: { read: false } };
         const second = await fixture.handler.authenticate(created.token);
-        expect(roles.can(roles.forUser(second.role, second.user)).readOwn('labels').granted).to.equal(false);
+        expect(roles.can(await roles.forUser(second.role, second.user, fixture.database)).readOwn('labels').granted).to.equal(false);
         expect(roles.can(admittedRole).readOwn('labels').granted).to.equal(true);
 
         fixture.user.permissions = { labels: { read: 'false' } };
@@ -468,7 +519,8 @@ describe('MCP token handler', () => {
         expect(fixture.authlog.pop()).to.include({ result: 'stale' });
 
         let reminted = await fixture.handler.create(fixture.user._id, { description: 'Codex again' });
-        expect((await fixture.handler.authenticate(reminted.token)).role).to.equal('mcp:read');
+        const authenticated = await fixture.handler.authenticate(reminted.token);
+        expect(authenticated.role).to.equal('mcp:read');
     });
 
     it('does not expose database failures as invalid credentials', async () => {

@@ -24,13 +24,18 @@ describe('API user role and permission policies', function () {
     const users = [];
     let mcpTokenId;
 
-    const request = (method, url, token = rootToken.accessToken, payload) =>
-        app.inject({
+    const request = (method, url, token = rootToken.accessToken, payload) => {
+        const options = {
             method,
             url,
-            headers: { 'x-access-token': token, ...(payload ? { 'content-type': 'application/json' } : {}) },
-            ...(payload ? { payload: JSON.stringify(payload) } : {})
-        });
+            headers: { 'x-access-token': token }
+        };
+        if (payload) {
+            options.headers['content-type'] = 'application/json';
+            options.payload = JSON.stringify(payload);
+        }
+        return app.inject(options);
+    };
     const makeToken = async (role, id) => {
         const token = await createRoleToken(role, id);
         tokenHashes.push(token.tokenHash);
@@ -158,7 +163,9 @@ describe('API user role and permission policies', function () {
         const boundReaderToken = await makeToken('api:read', user);
 
         for (const token of [rootToken, ownToken, readerToken, boundReaderToken]) {
-            const details = await request('GET', `/users/${token === ownToken || token === boundReaderToken ? 'me' : user}`, token.accessToken);
+            const isUserBound = token === ownToken || token === boundReaderToken;
+            const targetUser = isUserBound ? 'me' : user;
+            const details = await request('GET', `/users/${targetUser}`, token.accessToken);
             expect(details.statusCode).to.equal(200);
             expect(details.json()).to.deep.include(policy);
             const listing = await request('GET', `/users?query=${username}`, token.accessToken);
@@ -209,10 +216,11 @@ describe('API user role and permission policies', function () {
         expect(asp.statusCode).to.equal(200);
         for (const path of ['/preauth', '/authenticate']) {
             for (const token of [rootToken, ownManagerToken, managerToken, authOnlyToken]) {
-                const response = await request('POST', path, token.accessToken, {
-                    username: authUsername,
-                    ...(path === '/authenticate' ? { password } : {})
-                });
+                const requestBody = { username: authUsername };
+                if (path === '/authenticate') {
+                    requestBody.password = password;
+                }
+                const response = await request('POST', path, token.accessToken, requestBody);
                 expect(response.statusCode).to.equal(200);
                 if (token === authOnlyToken) {
                     expect(response.json()).not.to.have.any.keys('role', 'permissions');
@@ -285,7 +293,6 @@ describe('API user role and permission policies', function () {
     it('rejects malformed policy values', async () => {
         for (const payload of [
             { role: 'unknown-role' },
-            { permissions: { unknownResource: { read: false } } },
             { permissions: { labels: { publish: false } } },
             { permissions: { labels: { create: 'false' } } }
         ]) {
@@ -293,6 +300,13 @@ describe('API user role and permission policies', function () {
             expect(response.statusCode).to.equal(400);
             expect(response.json().code).to.equal('InputValidationError');
         }
+    });
+
+    it('keeps unused resource restrictions without affecting supported resources', async () => {
+        await setPolicy({ permissions: { unknownResource: { read: false } } });
+        const response = await request('GET', `/users/${user}`, ownToken.accessToken);
+        expect(response.statusCode).to.equal(200);
+        expect(response.json().permissions).to.deep.equal({ unknownResource: { read: false } });
     });
 
     it('keeps permission updates isolated to the targeted user', async () => {

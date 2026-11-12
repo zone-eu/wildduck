@@ -23,6 +23,22 @@ collections:
                   configString: block_compressor=zlib
 
 indexes:
+    # Role names are permanent identities, including deletion tombstones.
+    - collection: roles
+      type: users
+      index:
+          name: role_name
+          unique: true
+          key:
+              name: 1
+
+    - collection: users
+      type: users
+      index:
+          name: user_role
+          key:
+              role: 1
+
     # Indexes for the user collection
 
     - collection: users

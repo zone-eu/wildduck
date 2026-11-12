@@ -1,5 +1,12 @@
 {
     "root": {
+        "roles": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
         "addresslisting": {
             "read:any": ["*"]
         },
