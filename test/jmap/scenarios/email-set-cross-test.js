@@ -235,6 +235,16 @@ describe('Email/set seen from elsewhere', function () {
                     { headers: { 'X-Access-Token': token.accessToken } }
                 );
                 await deleteRoleToken(token.tokenHash);
+                // the audit task copies the messages the account already has; it must be done before the actions
+                // below, or whether it sees a message, and in which mailbox, depends on when it runs
+                const db = await seed.db();
+                await clock.waitFor(
+                    async () => {
+                        const auditData = await db.collection('audits').findOne({ _id: new seed.ObjectId(audit.id) });
+                        return auditData && auditData.import && auditData.import.status === 'imported';
+                    },
+                    { timeout: 90000, message: 'the audit import did not finish' }
+                );
                 return Object.assign(ctx, { audit: audit.id });
             };
             const viaJmap = await setup();
@@ -268,7 +278,7 @@ describe('Email/set seen from elsewhere', function () {
 
             expect(eventsOf(viaJmap).sort()).to.deep.equal(eventsOf(viaImap).sort());
             const db = await seed.db();
-            // an audit copy where a message enters a mailbox: the store and the move to Junk
+            // an audit copy where a message is stored (a move is not audited again)
             const audits = async ctx =>
                 (
                     await db
@@ -277,8 +287,8 @@ describe('Email/set seen from elsewhere', function () {
                         .sort({ _id: 1 })
                         .toArray()
                 ).map(file => file.metadata.mailboxPath);
-            expect(await audits(viaJmap)).to.deep.equal(['INBOX', junkPath]);
-            expect(await audits(viaImap)).to.deep.equal(['INBOX', junkPath]);
+            expect(await audits(viaJmap)).to.deep.equal(['INBOX']);
+            expect(await audits(viaImap)).to.deep.equal(['INBOX']);
         });
     });
 
