@@ -10,7 +10,7 @@ const { expect } = require('chai');
 const { MongoClient, ObjectId, MinKey } = require('mongodb');
 const { resolveRoots, repairUserRoots } = require('../../../lib/message-roots');
 
-const URL = process.env.JMAP_SHARDED_MONGO || 'mongodb://127.0.0.1:27117';
+const URL = process.env.JMAP_SHARDED_MONGO || `mongodb://127.0.0.1:${process.env.JMAP_SHARDED_PORT || 27117}`;
 const DB_NAME = 'wildduck-sharded';
 const NS = `${DB_NAME}.messages`;
 
