@@ -157,7 +157,7 @@ const apps = [];
  * worker), with event source limits for the scenario. `scale` speeds up the stream timers (ping,
  * maximum lifetime) by that factor, so scenarios about long intervals run in seconds.
  */
-async function startApp(eventSource = {}, scale = 1) {
+async function startApp(eventSource = {}, scale = 1, extra = {}) {
     if (!db.database) {
         await db.connect();
     }
@@ -165,7 +165,7 @@ async function startApp(eventSource = {}, scale = 1) {
     if (scale !== 1) {
         deps.timers = { setTimeout: (fn, ms) => setTimeout(fn, ms / scale), clearTimeout };
     }
-    const app = createApp(deps, appOptions(eventSource));
+    const app = createApp(deps, Object.assign(appOptions(eventSource), extra));
     await app.listen({ port: 0, host: '127.0.0.1' });
     const entry = { app, deps, base: `http://127.0.0.1:${app.server.address().port}`, scale };
     apps.push(entry);
@@ -319,6 +319,23 @@ describe('JMAP push (push.yaml)', () => {
             }
             // nothing listens: the connection is refused, so no stream can exist
             expect(failure, 'connection refused').to.be.an('error');
+        });
+
+        scenario('ESRC-053', async () => {
+            const origin = 'https://webmail.example';
+            const cors = await startApp({}, 1, { cors: { origins: [origin] } });
+
+            const allowed = await openStream(user, {}, { base: cors.base, headers: { Origin: origin } });
+            expect(allowed.headers.get('content-type')).to.match(/^text\/event-stream/);
+            expect(allowed.headers.get('access-control-allow-origin')).to.equal(origin);
+            expect(allowed.headers.get('vary')).to.match(/\bOrigin\b/);
+            // the stream works: a change arrives as a state event
+            await append(user);
+            expect(Object.keys(changedOf(await allowed.next(), user))).to.include('Email');
+
+            const other = await openStream(user, {}, { base: cors.base, headers: { Origin: 'https://evil.example' } });
+            expect(other.headers.get('content-type')).to.match(/^text\/event-stream/);
+            expect(other.headers.get('access-control-allow-origin')).to.be.null;
         });
 
         scenario('EDLV-017', async () => {

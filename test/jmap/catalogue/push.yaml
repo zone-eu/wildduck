@@ -736,6 +736,20 @@ scenarios:
     sources:
       - "cyrus:JMAPCore/eventsource_disabled"
       - "legacy-proxy:test/unit/gmail-push.spec.ts"
+  - id: ESRC-053
+    title: "The event stream carries the CORS headers of an allowed origin"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [none]
+    given: "CORS is enabled for the JMAP listener with an allowed origin."
+    when: "GET the event source URL with valid credentials and the Origin header set, once with the allowed origin and once with another origin."
+    then: "Both answers are a 200 event stream. The first carries Access-Control-Allow-Origin with the allowed origin and Vary including Origin, so a browser client on that origin can read the stream. The second has no Access-Control-Allow-Origin."
+    sources:
+      - "wildduck:F.5b Bulwark interop run"
+    notes: "The stream is written after the reply is hijacked, so headers set by hooks are lost unless they are copied into the response head. Found with Bulwark Webmail, whose push connection runs cross origin."
   - id: EDLV-001
     title: "A delivered message changes the EmailDelivery state"
     method: "EventSource"
