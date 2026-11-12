@@ -1,6 +1,6 @@
 # JMAP implementation plan
 
-Status: phases 0 to 6 implemented and tested (2403 catalogue scenarios pass, jmapio and Fastmail gates at phase 6). Open: the finishing work packages F.3 to F.6. Branch `jmap`, draft pull request open.
+Status: phases 0 to 6 implemented and tested (2412 catalogue scenarios pass, jmapio and Fastmail gates at phase 6), documentation, security audit and performance work done. Open: F.4 to F.6 and F.5b. Branch `jmap`, draft pull request open.
 
 This is the working plan for adding JMAP to WildDuck. It is meant to be executed over many sessions: every work item has a checkbox, and section 10 is the progress log. Read sections 2 and 4 before touching code; they define how every change is made and tested.
 
