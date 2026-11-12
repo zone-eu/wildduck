@@ -9,7 +9,14 @@ DBNAME="$1"
 APIURL="http://127.0.0.1:${2:-${APPCONF_api_port:-8080}}"
 
 echo "Clearing DB"
-mongosh "$DBNAME" --eval "db.getCollectionNames().forEach(function(key){db[key].deleteMany({});})" > /dev/null
+# The running API loads system roles at startup only; keep its authorization catalog.
+mongosh "$DBNAME" --eval "
+db.getCollectionNames().forEach(function(name) {
+    if (name !== 'roles') {
+        db.getCollection(name).deleteMany({});
+    }
+});
+" > /dev/null
 
 echo "Creating user"
 USERRESPONSE=`curl --silent -XPOST $APIURL/users \
