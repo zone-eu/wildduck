@@ -205,6 +205,9 @@ describe('JMAP Web Push', () => {
 
         it('resolves with c-ares and a per query timeout by default (NV-25)', async () => {
             const resolve = webpush.publicResolver(100);
+            // one c-ares resolver per timeout value
+            expect(webpush.publicResolver(100)).to.equal(resolve);
+            expect(webpush.publicResolver(200)).to.not.equal(resolve);
             let failed = null;
             // a name under the reserved .invalid TLD never resolves; the answer (or the timeout) comes back quickly
             await resolve('push.example.invalid').catch(err => (failed = err));
