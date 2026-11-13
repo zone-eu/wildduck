@@ -913,11 +913,13 @@ indexes:
     - collection: storage.files
       type: gridfs # index applies to gridfs database
       index:
-          # temporary uploads (JMAP): the upload quota of a user, see StorageHandler.makeRoom
+          # temporary uploads (JMAP): the upload quota of a user, see StorageHandler.makeRoom (length
+          # makes the usage aggregate a covered query)
           name: user_temporary_files
           key:
               metadata.user: 1
               metadata.expires: 1
+              length: 1
           partialFilterExpression:
               metadata.expires:
                   $exists: true
