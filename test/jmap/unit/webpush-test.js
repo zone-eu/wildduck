@@ -13,7 +13,7 @@ const net = require('net');
 const path = require('path');
 const { expect } = require('chai');
 const webpush = require('../../../lib/jmap/push/webpush');
-const { outcomeOf, retryAfterOf, changedTypes, wantedTypes, backoff } = require('../../../lib/jmap/push/delivery');
+const { outcomeOf, retryAfterOf, changedTypes, wantedTypes, waitsForRetry, backoff } = require('../../../lib/jmap/push/delivery');
 const { readStates } = require('../../../lib/jmap/push/states');
 const { pushSettings } = require('../../../lib/jmap/push/settings');
 const { generate, load } = require('../../../lib/jmap/push/vapid');
@@ -268,6 +268,25 @@ describe('JMAP Web Push', () => {
                 expect(outcomeOf({ status, headers: {} }).kind, String(status)).to.equal('failed');
             }
             expect(outcomeOf({ error: new webpush.TargetError('private') }).kind).to.equal('failed');
+        });
+
+        it('drops a retry the subscription moved past, and holds other pushes while a retry is scheduled', () => {
+            const now = new Date();
+            const later = new Date(now.getTime() + 5000);
+            const earlier = new Date(now.getTime() - 5);
+            // the retry scheduled for attempt 2 runs while the subscription is at attempt 2
+            expect(waitsForRetry({ attempt: 2, retryAt: earlier }, 2, now)).to.equal(false);
+            // a change was pushed just after retryAt (the retry job ran late), was throttled again and
+            // scheduled attempt 3: the late retry of attempt 2 must not push a second time at once
+            expect(waitsForRetry({ attempt: 3, retryAt: later }, 2, now)).to.equal(true);
+            // a later push succeeded (attempt reset): the retry has nothing left to do
+            expect(waitsForRetry({ attempt: 0, retryAt: null }, 2, now)).to.equal(true);
+            // a retry job queued by an older version (retry: true) still runs
+            expect(waitsForRetry({ attempt: 3, retryAt: later }, true, now)).to.equal(false);
+            // a change waits for a scheduled retry, and is pushed once its time has come
+            expect(waitsForRetry({ attempt: 1, retryAt: later }, false, now)).to.equal(true);
+            expect(waitsForRetry({ attempt: 1, retryAt: earlier }, false, now)).to.equal(false);
+            expect(waitsForRetry({}, false, now)).to.equal(false);
         });
 
         it('reads Retry-After as seconds or a date, capped at an hour', () => {
