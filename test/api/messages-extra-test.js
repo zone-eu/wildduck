@@ -298,6 +298,47 @@ describe('Messages extra tests', function () {
         archivedId = response.body.results[0].id;
     });
 
+    it('should POST /users/{user}/archived/messages/{message}/restore expect failure / mailbox of another user', async () => {
+        // the target mailbox must belong to the user of the archived message (audit NV-01)
+        const otherName = `messagesextraother-${testTag}`;
+        const other = (
+            await server
+                .post('/users')
+                .send({ username: otherName, password: 'secretpassword', address: `${otherName}@web.zone.test` })
+                .expect(200)
+        ).body.id;
+        try {
+            const otherInbox = (await server.get(`/users/${other}/mailboxes`).expect(200)).body.results.find(entry => entry.path === 'INBOX').id;
+            const response = await server.post(`/users/${user}/archived/messages/${archivedId}/restore`).send({ mailbox: otherInbox }).expect(404);
+            expect(response.body.code).to.equal('NoSuchMailbox');
+
+            const otherMessages = await server.get(`/users/${other}/mailboxes/${otherInbox}/messages`).expect(200);
+            expect(otherMessages.body.results).to.be.empty;
+            // still archived, so the restore below can take it back to its own mailbox
+            const archive = await server.get(`/users/${user}/archived/messages`).expect(200);
+            expect(archive.body.results.map(entry => entry.id)).to.include(archivedId);
+        } finally {
+            await server.delete(`/users/${other}`).expect(200);
+        }
+    });
+
+    it('should POST /users/{user}/archived/messages/{message}/restore expect success / own mailbox given', async () => {
+        // a second archived message, restored to an explicitly named mailbox of the same user
+        const extra = await server
+            .post(`/users/${user}/mailboxes/${inbox}/messages`)
+            .send({
+                from: { address: 'extra-sender@example.com' },
+                to: [{ address: 'extra-recipient@example.com' }],
+                subject: `restore target ${testTag}`,
+                text: 'x'
+            })
+            .expect(200);
+        await server.delete(`/users/${user}/mailboxes/${inbox}/messages/${extra.body.message.id}`).expect(200);
+        const archived = (await server.get(`/users/${user}/archived/messages`).expect(200)).body.results.find(entry => entry.id !== archivedId);
+        const response = await server.post(`/users/${user}/archived/messages/${archived.id}/restore`).send({ mailbox: inbox }).expect(200);
+        expect(response.body.mailbox).to.equal(inbox);
+    });
+
     it('should POST /users/{user}/archived/messages/{message}/restore expect success', async () => {
         const response = await server.post(`/users/${user}/archived/messages/${archivedId}/restore`).send({}).expect(200);
 
