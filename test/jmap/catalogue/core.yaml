@@ -2212,3 +2212,31 @@ scenarios:
     then: "The foreign and null origins get HTTP 403 before authentication and nothing is stored; the same host and the request without Origin succeed."
     sources:
       - "wildduck:security audit 2026-11 F.2"
+
+  - id: CORE-140
+    title: "Bearer tokens with a role other than user are refused"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user, a token issued by POST /authenticate, and a token for the same user with the restricted role api:read, signed with the access control secret."
+    when: "GET the session resource and send Core/echo with each token."
+    then: "The issued token succeeds. The api:read token gets HTTP 401 with the Basic and Bearer challenges and no session data."
+    sources:
+      - "wildduck:security audit 2026-11 NV-02"
+
+  - id: CORE-141
+    title: "Bearer tokens without a recorded assurance state are refused"
+    method: Auth
+    spec: "WildDuck design"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A user token in the shape issued before 2026-10-06: role user, a lifetime, a valid signature, but no mfaRequired, mfaVerified or passwordChangeRequired fields. The same token without a lifetime is tried too."
+    when: "GET the session resource with each token, and GET /users/me of the REST API with the first."
+    then: "JMAP answers HTTP 401 for both, while the REST API still accepts the token."
+    sources:
+      - "wildduck:security audit 2026-11 NV-03"

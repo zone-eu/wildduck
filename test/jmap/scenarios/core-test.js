@@ -11,7 +11,7 @@ const { expect } = require('chai');
 const config = require('@zone-eu/wild-config');
 const Redis = require('ioredis');
 const speakeasy = require('speakeasy');
-const { scenario, api, accounts, seed, fixtures, clock, jmap } = require('../harness');
+const { scenario, api, API_URL, accounts, seed, fixtures, clock, jmap } = require('../harness');
 const instance = require('../harness/instance');
 const redisUrl = require('../../../lib/redis-url');
 
@@ -380,6 +380,54 @@ describe('JMAP core (core.yaml)', () => {
             expect((await bearer(token).request(echo({}))).status).to.equal(200);
             await api('DELETE', '/authenticate', null, { headers: { 'X-Access-Token': token } });
             expect((await bearer(token).request(echo({}))).status).to.equal(401);
+        });
+
+        // A token record for the user written straight to Redis, signed like UserHandler.setAuthToken signs,
+        // with `fields` over those of a token POST /authenticate issued (null removes a field)
+        async function craftedToken(owner, fields) {
+            const issued = await accounts.createToken(owner);
+            const record = await redisClient().hgetall(`tn:token:${crypto.createHash('sha256').update(issued).digest('hex')}`);
+            const data = Object.assign({}, record, fields);
+            Object.keys(data)
+                .filter(key => data[key] === null)
+                .forEach(key => delete data[key]);
+            const token = crypto.randomBytes(20).toString('hex');
+            const signed = { token, user: data.user, authVersion: Number(data.authVersion) || 0, role: data.role };
+            for (const key of ['mfaRequired', 'mfaVerified', 'passwordChangeRequired'].filter(key => key in data)) {
+                signed[key] = data[key];
+            }
+            data.s = crypto.createHmac('sha256', config.api.accessControl.secret).update(JSON.stringify(signed)).digest('hex');
+            const key = `tn:token:${crypto.createHash('sha256').update(token).digest('hex')}`;
+            await redisClient().multi().hset(key, data).expire(key, 3600).exec();
+            return { issued, token };
+        }
+
+        // the session resource and an API request are both refused with the challenges
+        async function expectRefusedToken(token) {
+            const sessionRes = await bearer(token).raw('/.well-known/jmap');
+            expectChallenge(sessionRes);
+            expect(sessionRes.json || {}).to.not.have.property('accounts');
+            expectChallenge(await bearer(token).request(echo({})));
+        }
+
+        scenario('CORE-140', async () => {
+            const owner = await accounts.createUser();
+            const { issued, token } = await craftedToken(owner, { role: 'api:read' });
+            expect((await bearer(issued).raw('/.well-known/jmap')).status).to.equal(200);
+            expect((await bearer(issued).request(echo({}))).status).to.equal(200);
+            await expectRefusedToken(token);
+        });
+
+        scenario('CORE-141', async () => {
+            const owner = await accounts.createUser();
+            const legacy = { mfaRequired: null, mfaVerified: null, passwordChangeRequired: null };
+            const { token } = await craftedToken(owner, legacy);
+            const { token: endless } = await craftedToken(owner, Object.assign({ ttl: null }, legacy));
+            // the REST API still takes the token
+            const me = await fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+            expect(me.status).to.equal(200);
+            await expectRefusedToken(token);
+            await expectRefusedToken(endless);
         });
 
         scenario('CORE-031', async () => {
