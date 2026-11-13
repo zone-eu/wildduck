@@ -37,7 +37,7 @@ const SERVER_INSTRUCTIONS_PARTIAL =
 
 const SERVER_INSTRUCTIONS_WRITE =
     UNTRUSTED_MAIL_INSTRUCTIONS +
-    'It can manage the authenticated user’s messages, drafts, labels, mailboxes, filters, addresses and autoreply. ' +
+    "It can manage the authenticated user's messages, drafts, labels, mailboxes, filters, addresses and autoreply. " +
     'It cannot submit or forward messages or set filter forwarding targets. Writes may delete mail or affect future incoming mail; ' +
     'autoreplies can send automatic replies. Use writes only when explicitly requested by the user.';
 

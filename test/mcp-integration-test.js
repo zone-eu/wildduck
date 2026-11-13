@@ -775,6 +775,24 @@ describe('MCP service integration', function () {
         await api('DELETE', `/users/${user.id}/filters/${filter.id}`);
     });
 
+    it('preserves mailbox IDs when reading by ID or path with every MCP role', async () => {
+        for (const credential of [token, writeToken, fullWriteToken, sendToken]) {
+            const connected = await connectClient(credential.token);
+
+            try {
+                for (const mailbox of [inbox.id, inbox.path]) {
+                    const result = await connected.callTool({ name: 'get_mailbox', arguments: { mailbox } });
+
+                    expect(result.isError, `${credential.role}: ${mailbox}`).to.not.equal(true);
+                    expect(result.structuredContent.id).to.equal(inbox.id);
+                    expect(result.structuredContent.path).to.equal(inbox.path);
+                }
+            } finally {
+                await connected.close();
+            }
+        }
+    });
+
     it('performs full own-account mail and address CRUD through the real API', async () => {
         let connected = await connectClient(fullWriteToken.token);
         let call = async (name, args) => {
