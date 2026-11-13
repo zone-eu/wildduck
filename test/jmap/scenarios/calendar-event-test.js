@@ -841,6 +841,56 @@ describe('CalendarEvent get and set (CEV, part 1)', function () {
             (await instance.connect()).gridfs.collection('storage.files').countDocuments({ 'metadata.user': new seed.ObjectId(ctx.user.id) });
         const dataLink = { '@type': 'Link', rel: 'enclosure', href: 'data:text/plain;base64,aGVsbG8=' };
 
+        describe('links in recurrence overrides (R-2)', () => {
+            const RID = '2026-01-12T09:00:00';
+            const linkOf = blobId => ({ '@type': 'Link', rel: 'enclosure', blobId });
+            const expired = ctx => ({
+                'metadata.user': new seed.ObjectId(ctx.user.id),
+                'metadata.expires': { $lt: new Date(Date.now() + 2 * 24 * 3600 * 1000) }
+            });
+            const storage = async () => {
+                const db = await instance.connect();
+                return new StorageHandler({ database: db.database, gridfs: db.gridfs });
+            };
+
+            it('uploads named by override links in every form stay pinned', async () => {
+                const ctx = await h.setupUser();
+                const ids = [];
+                for (const name of ['map', 'pointer', 'nested', 'leaf']) {
+                    ids.push(await upload(ctx, Buffer.from(`override ${name}`), 'text/plain'));
+                }
+                const base = Object.assign({}, h.WEEKLY, {
+                    links: { att: { '@type': 'Link', rel: 'enclosure', href: 'https://example.com/a' } },
+                    locations: { l1: { '@type': 'Location', name: 'Room' } }
+                });
+                const { id } = await h.createEvent(ctx, base);
+                // a patch may not hold a pointer and one below it, so each form gets an instance of its own
+                const overrides = {
+                    '2026-01-12T09:00:00': { links: { m: linkOf(ids[0]) } },
+                    '2026-01-19T09:00:00': { 'links/p': linkOf(ids[1]) },
+                    '2026-01-26T09:00:00': { 'locations/l1/links': { n: linkOf(ids[2]) } },
+                    '2026-02-02T09:00:00': { 'links/att/blobId': ids[3] }
+                };
+                const { error } = await h.tryUpdate(ctx, id, { recurrenceOverrides: overrides });
+                expect(error, JSON.stringify(error)).to.not.exist;
+                await (await storage()).removeUploads(expired(ctx));
+                for (const blobId of ids) {
+                    expect((await download(ctx, blobId)).status, blobId).to.equal(200);
+                }
+            });
+
+            it('an unknown blobId in an override answers invalidProperties', async () => {
+                const ctx = await h.setupUser();
+                const other = await h.setupUser();
+                const foreign = await upload(other, Buffer.from('not yours'), 'text/plain');
+                const { id } = await h.createEvent(ctx, h.WEEKLY);
+                for (const patch of [{ 'links/x': linkOf('Bnope') }, { links: { x: linkOf(foreign) } }, { 'links/x/blobId': 'Bnope' }]) {
+                    const { error } = await h.tryUpdate(ctx, id, { recurrenceOverrides: { [RID]: patch } });
+                    h.expectInvalidAt(error, `recurrenceOverrides/${RID}`);
+                }
+            });
+        });
+
         it('a participant link must name an upload of the account', async () => {
             const ctx = await h.setupUser();
             const other = await h.setupUser();

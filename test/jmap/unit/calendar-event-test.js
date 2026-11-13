@@ -8,7 +8,7 @@
 const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const model = require('../../../lib/jmap/calendar-event-model');
-const { searchOf, blobsOf } = require('../../../lib/calendar/events');
+const { searchOf, blobsOf, linkEntries } = require('../../../lib/calendar/events');
 const { parseText, textMatches } = require('../../../lib/jmap/types/calendar-event-query');
 const alerts = require('../../../lib/calendar/alerts');
 const { DEFAULT_LIMITS } = require('../../../lib/calendar-handler');
@@ -224,6 +224,28 @@ describe('CalendarEvent search text', () => {
             locations: { l: { links: { c: { blobId: 'Bm123' } } } }
         });
         expect(blobs.map(id => id.toString())).to.deep.equal([file.toString()]);
+    });
+
+    it('finds the uploads the links of overrides name, in every patch form (R-2)', () => {
+        const files = Array.from({ length: 6 }, () => new ObjectId());
+        const link = file => ({ blobId: `Bu${file}` });
+        const event = {
+            recurrenceOverrides: {
+                '2026-01-12T09:00:00': { links: { a: link(files[0]) } },
+                '2026-01-19T09:00:00': { 'links/b': link(files[1]), 'participants/p/links/c': link(files[2]) },
+                '2026-01-26T09:00:00': { 'locations/l~1x': { links: { d: link(files[3]) } }, 'links/e/blobId': `Bu${files[4]}` },
+                '2026-02-02T09:00:00': { participants: { p: { links: { f: link(files[5]) } } }, 'links/g/href': 'https://example.com' }
+            }
+        };
+        expect(blobsOf(event).map(id => id.toString())).to.have.members(files.map(id => id.toString()));
+        const entries = linkEntries(event);
+        const leaf = entries.find(entry => entry.leaf);
+        expect(leaf.leaf).to.equal('recurrenceOverrides/2026-01-26T09:00:00/links~1e~1blobId');
+        leaf.link.blobId = 'Bu000000000000000000000000';
+        expect(event.recurrenceOverrides['2026-01-26T09:00:00']['links/e/blobId']).to.equal('Bu000000000000000000000000');
+        expect(entries.find(entry => entry.link === event.recurrenceOverrides['2026-01-19T09:00:00']['links/b']).path).to.equal(
+            'recurrenceOverrides/2026-01-19T09:00:00/links~1b'
+        );
     });
 
     it('matches tokens, plural endings and quoted phrases', () => {
