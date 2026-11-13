@@ -160,17 +160,18 @@ Result ids of queries are kept in Redis under their query state so `/queryChange
 
 ### `[jmap.calendars]`
 
-| Key                        | Default                  | Meaning                                                                      |
-| -------------------------- | ------------------------ | ---------------------------------------------------------------------------- |
-| `maxCalendars`             | `1000`                   | Calendars per account; `Calendar/set` create answers `overQuota` beyond it   |
-| `maxCalendarsPerEvent`     | `1`                      | Calendars one event may be in, advertised as `maxCalendarsPerEvent`          |
-| `maxEventsPerAccount`      | `50000`                  | Events per account                                                           |
-| `maxParticipantsPerEvent`  | `500`                    | Participants per event, advertised                                           |
-| `minDateTime`              | `"1900-01-01T00:00:00Z"` | Earliest date-time an event may use, advertised                              |
-| `maxDateTime`              | `"2199-12-31T23:59:59Z"` | Latest date-time an event may use, advertised                                |
-| `maxExpandedQueryDuration` | `"P366D"`                | Longest window `CalendarEvent/query` may expand recurrences over, advertised |
-| `defaultName`              | `"Calendar"`             | Name of the default calendar a user gets on first calendar access            |
-| `maxEventSize`             | `262144` (256 KB)        | Largest stored event, in octets of JSON                                      |
+| Key                        | Default                  | Meaning                                                                                                                                                                                          |
+| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `maxCalendars`             | `1000`                   | Calendars per account; `Calendar/set` create answers `overQuota` beyond it                                                                                                                       |
+| `maxCalendarsPerEvent`     | `1`                      | Calendars one event may be in, advertised as `maxCalendarsPerEvent`                                                                                                                              |
+| `maxEventsPerAccount`      | `50000`                  | Events per account                                                                                                                                                                               |
+| `maxParticipantsPerEvent`  | `500`                    | Participants per event, advertised                                                                                                                                                               |
+| `minDateTime`              | `"1900-01-01T00:00:00Z"` | Earliest date-time an event may use, advertised                                                                                                                                                  |
+| `maxDateTime`              | `"2199-12-31T23:59:59Z"` | Latest date-time an event may use, advertised                                                                                                                                                    |
+| `maxExpandedQueryDuration` | `"P366D"`                | Longest window `CalendarEvent/query` may expand recurrences over, advertised                                                                                                                     |
+| `defaultName`              | `"Calendar"`             | Name of the default calendar a user gets on first calendar access                                                                                                                                |
+| `maxEventSize`             | `262144` (256 KB)        | Largest stored event, in octets of JSON                                                                                                                                                          |
+| `maxQueryEventBytes`       | `67108864` (64 MB)       | Octets of stored events one `CalendarEvent/query` may read (every event when expanding recurrences, recurring events under a time range); past it the query answers `cannotCalculateOccurrences` |
 
 ### `[jmap.alerts]`
 
@@ -317,7 +318,7 @@ Besides the advertised limits:
 - One response budget per request (`limits.maxResponseBytes`, 64 MB): every `/get` call of the request draws what it returns, estimated from stored values without rendering (the stored JSON size of events and cards, header and body value lengths of Emails, blob octets, the Email ids of Threads, and 256 octets per object). A call that does not fit in what is left answers `requestTooLarge`; the calls before it keep their results. Body values of `Email/get` are truncated (`isTruncated`) instead. Per call caps such as `maxBodyValueBytesPerRequest`, `maxSizeBlobGet` and the 64 MB of a `ContactCard/get` apply within it.
 - An id given more than once in a `/get` call is answered once, in `list` or in `notFound` (RFC 8620 5.1).
 - `Email/query` filters are limited to 10 levels and 100 conditions; a larger filter answers `unsupportedFilter`.
-- Recurrence expansion is limited to 10,000 instances per window and 20,000 iterations per rule; beyond that `cannotCalculateOccurrences`.
+- Recurrence expansion is limited to 10,000 instances per window and 20,000 iterations per rule; beyond that `cannotCalculateOccurrences`. A `CalendarEvent/query` reads the stored events it must expand or range test in batches and keeps only the ids of the matches; when they add up to more than `calendars.maxQueryEventBytes` (64 MB) it answers `cannotCalculateOccurrences` before reading any.
 - The mail limits of WildDuck apply as for every other way of writing mail: the storage quota, the 1500 mailbox limit, the daily recipient limits (shared with the REST API and ZoneMTA through the `wdr:` counter) and the message size limit.
 
 ## Push

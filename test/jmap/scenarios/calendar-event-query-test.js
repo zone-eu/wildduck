@@ -949,5 +949,37 @@ describe('CalendarEvent/query and /queryChanges (CEQ)', function () {
                 await instance.stopInstance(spent.app);
             }
         });
+
+        scenario('CEQ-078', async () => {
+            // weekly events of about 9 KB each: two fit in 20,000 octets, three do not
+            const limited = await instance.startInstance({
+                calendars: Object.assign({}, config.jmap.calendars, { maxQueryEventBytes: 20000 }),
+                alerts: { enabled: false }
+            });
+            try {
+                const ctx = await h.setupUser({}, limited.url);
+                const single = await h.createEvent(ctx, utc('Single', '2026-01-10T10:00:00', 'PT1H', { description: 'x'.repeat(9000) }));
+                // an expanding query reads every event, so the single one there is small
+                const small = await h.createEvent(ctx, utc('Small', '2026-03-10T10:00:00', 'PT1H'));
+                const weekly = [];
+                for (const title of ['One', 'Two']) {
+                    weekly.push((await h.createEvent(ctx, Object.assign({}, WEEKLY, { title, description: 'x'.repeat(9000) }))).id);
+                }
+                // the single event is answered from its stored times, the two weekly ones fit
+                expect(sorted(await ids(ctx, { filter: JANUARY }))).to.deep.equal(sorted([single.id, ...weekly]));
+                // March: the large single event is not a candidate there
+                const march = { after: '2026-03-01T00:00:00', before: '2026-04-01T00:00:00' };
+                expect(await h.expand(ctx, march)).to.have.length(1 + 2 * 5);
+                expect((await h.expand(ctx, march)).includes(small.id)).to.equal(true);
+
+                await h.createEvent(ctx, Object.assign({}, WEEKLY, { title: 'Three', description: 'x'.repeat(9000) }));
+                await h.expectError(h.evQuery(ctx, { filter: JANUARY }), 'cannotCalculateOccurrences');
+                await h.expectError(h.evQuery(ctx, { filter: JANUARY, expandRecurrences: true }), 'cannotCalculateOccurrences');
+                // a query that needs no stored event still answers
+                expect(await ids(ctx, { filter: { title: 'Single' } })).to.deep.equal([single.id]);
+            } finally {
+                await instance.stopInstance(limited.app);
+            }
+        });
     });
 });

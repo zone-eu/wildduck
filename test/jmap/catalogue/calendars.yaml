@@ -5233,6 +5233,21 @@ scenarios:
       - "wildduck:plan 10.3 owned change log"
     notes: "CalendarEvent/queryChanges has no expandRecurrences argument, and synthetic ids are not in the change log. The draft example in 8.1 also shows canCalculateChanges false."
 
+  - id: CEQ-078
+    title: "Refuse a query whose candidate events are too large to calculate"
+    method: "CalendarEvent/query"
+    spec: "draft-ietf-jmap-calendars-33 5.8"
+    level: wd
+    phase: 6
+    applies: "yes"
+    seed: [jmap]
+    given: "An instance with [jmap.calendars] maxQueryEventBytes 20000. A single event on 2026-01-10 and two weekly events from 2026-01-05, each with a description of 9000 octets, and a small single event on 2026-03-10."
+    when: "Query January without expandRecurrences and March with it; create a third weekly event of the same size and query January with and without expandRecurrences; then query by title only."
+    then: "January answers the large single event and both weekly events; March expanded answers eleven instances, the small event among them. With the third weekly event both January queries answer cannotCalculateOccurrences. The title query, which needs no stored event, answers the large single event."
+    sources:
+      - "wildduck:security audit 2026-11 NV-16"
+    notes: "The guard sums the stored size of the events whose JSCalendar text the query must read (recurring events under a range or expansion, every event when expanding). A single event under a range filter is answered from its stored times and does not count."
+
   - id: CALR-001
     title: "Push a CalendarAlert when a display alert with an offset trigger fires"
     method: "EventSource"
