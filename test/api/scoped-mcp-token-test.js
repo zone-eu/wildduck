@@ -146,6 +146,35 @@ describe('Scoped MCP token exchange', function () {
         expect(session.token).to.match(/^wdmcp_\d[a-f0-9]{72}$/);
     });
 
+    it('selects the opt-in role for direct login and master exchange, and rejects invalid selections', async () => {
+        const direct = await server.post('/authenticate').send({
+            username: account.username, password: account.password, scope: 'mcp', token: true, mcpRole: 'mcp:write_partial'
+        }).expect(200);
+        const master = await loginMaster(account);
+        const exchanged = await server.post('/authenticate/mcp').set('Authorization', `Bearer ${master.token}`)
+            .send({ mcpRole: 'mcp:write_partial' }).expect(200);
+        for (const session of [direct.body, exchanged.body]) {
+            const data = await db.redis.hgetall(McpTokenHandler.sessionKey(session.token));
+            expect(data.role).to.equal('mcp:write_partial');
+            const client = new Client({ name: 'scoped-role-test', version: '1.0.0' });
+            try {
+                await client.connect(new StreamableHTTPClientTransport(new URL(MCP_URL), {
+                    requestInit: { headers: { Authorization: `Bearer ${session.token}` } }
+                }));
+                const tools = (await client.listTools()).tools.map(tool => tool.name);
+                expect(tools).to.include.members(['get_account', 'create_filter', 'create_mailbox', 'set_autoreply']);
+            } finally {
+                await client.close();
+            }
+        }
+        for (const mcpRole of ['mcp:full', '', null]) {
+            await server.post('/authenticate/mcp').set('Authorization', `Bearer ${master.token}`).send({ mcpRole }).expect(400);
+            await server.post('/authenticate').send({ username: account.username, password: account.password, scope: 'mcp', token: true, mcpRole }).expect(400);
+        }
+        await server.post('/authenticate').send({ username: account.username, password: account.password, token: true, mcpRole: 'mcp:read' }).expect(400);
+        await server.post('/authenticate/imap').set('Authorization', `Bearer ${master.token}`).send({ mcpRole: 'mcp:write_partial' }).expect(400);
+    });
+
     it('should POST /authenticate/:scope expect failure for an unsupported scope', async () => {
         const master = await loginMaster(account);
         const response = await server.post('/authenticate/imap').set('Authorization', `Bearer ${master.token}`);
@@ -228,6 +257,17 @@ describe('Scoped MCP token exchange', function () {
         const body = await response.json();
         expect(body.error.code).to.equal(-32001);
         expect(await db.redis.ttl(sessionKey)).to.be.at.most(0);
+    });
+
+    it('should reject self-revocation with an MCP session and leave it usable', async () => {
+        const master = await loginMaster(account);
+        const session = await mintMcpSession(master.token);
+
+        const response = await server.delete('/authenticate').set('Authorization', `Bearer ${session.token}`);
+
+        expect(response.status).to.equal(403);
+        expect(response.body.code).to.equal('InvalidToken');
+        expect((await mcpCall(session.token, 'initialize')).status).to.equal(200);
     });
 
     it('should DELETE /authenticate/mcp/:token expect success with any current master token of the same user', async () => {

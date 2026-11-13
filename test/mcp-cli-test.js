@@ -34,6 +34,21 @@ describe('MCP token CLI', () => {
         expect(connections).to.equal(0);
     });
 
+    it('rejects an unsupported role before connecting', async () => {
+        let connections = 0;
+        let parser = buildParser(['create', 'alice', '--description', 'Client', '--role', 'mcp:full'], {
+            connect: async () => connections++
+        });
+        let thrown;
+        try {
+            await parser.parseAsync();
+        } catch (err) {
+            thrown = err;
+        }
+        expect(thrown).to.be.instanceOf(Error);
+        expect(connections).to.equal(0);
+    });
+
     it('runs create, list, and revoke through the same direct handler interface', async () => {
         const userId = '507f191e810c19729de860ea';
         const tokenId = '507f1f77bcf86cd799439011';
@@ -59,20 +74,24 @@ describe('MCP token CLI', () => {
         let dependencies = { connect: async () => handler, print: value => output.push(value) };
 
         await buildParser(['create', 'alice@example.com', '--description', 'Codex', '--expires', '2027-01-01T00:00:00Z'], dependencies).parseAsync();
+        await buildParser(['create', 'alice@example.com', '--description', 'Writer', '--role', 'mcp:write_partial'], dependencies).parseAsync();
         await buildParser(['list', 'alice'], dependencies).parseAsync();
         await buildParser(['revoke', userId, tokenId], dependencies).parseAsync();
 
         expect(calls).to.deep.equal([
             ['resolveUser', 'alice@example.com'],
-            ['create', userId, { description: 'Codex', expires: '2027-01-01T00:00:00Z' }],
+            ['create', userId, { description: 'Codex', expires: '2027-01-01T00:00:00Z', role: 'mcp:read' }],
+            ['resolveUser', 'alice@example.com'],
+            ['create', userId, { description: 'Writer', expires: undefined, role: 'mcp:write_partial' }],
             ['resolveUser', 'alice'],
             ['list', userId],
             ['resolveUser', userId],
             ['revoke', userId, tokenId]
         ]);
-        expect(output).to.have.length(3);
+        expect(output).to.have.length(4);
         expect(output[0]).to.include({ user: userId, id: tokenId });
-        expect(output[1]).to.deep.equal({ user: userId, results: [{ id: tokenId }] });
-        expect(output[2]).to.deep.equal({ success: true, user: userId, id: tokenId });
+        expect(output[1]).to.include({ user: userId, id: tokenId });
+        expect(output[2]).to.deep.equal({ user: userId, results: [{ id: tokenId }] });
+        expect(output[3]).to.deep.equal({ success: true, user: userId, id: tokenId });
     });
 });

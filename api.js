@@ -77,20 +77,7 @@ const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
 
-// The only routes an MCP credential may reach, by route name and method. Read routes map to
-// the resource whose field allowlist shapes the response. The sole non-read route revokes the
-// credential that authenticated that same request.
-const MCP_ROUTES = new Map([
-    ['getuser', { method: 'GET', resource: 'users' }],
-    ['getuseraddresses', { method: 'GET', resource: 'addresses' }],
-    ['getmailboxes', { method: 'GET', resource: 'mailboxes' }],
-    ['getmailbox', { method: 'GET', resource: 'mailboxes' }],
-    ['getuserlabels', { method: 'GET', resource: 'labels', listKey: 'labels' }],
-    ['getmessages', { method: 'GET', resource: 'messages' }],
-    ['getmessage', { method: 'GET', resource: 'messages' }],
-    ['searchmessages', { method: 'GET', resource: 'messages' }],
-    ['invalidateaccesstoken', { method: 'DELETE' }]
-]);
+const MCP_ROUTES = require('./lib/mcp-access');
 
 // logged param values are truncated to 128 chars, so there is no point in
 // rendering more than that per nested value
@@ -349,6 +336,21 @@ function createApp(options = {}) {
     // resource fields (an error body does not) is decided by roles.filterResponseBody. Registered
     // ahead of the payload stash so the Gelf line logs what was actually sent.
     app.decorateRequest('wdResponseFieldFilter', null);
+    app.decorateRequest('wdMcpToken', false);
+
+    app.addHook('preValidation', async (request, reply) => {
+        if (!request.wdMcpToken) {
+            return;
+        }
+
+        const name = String(request.routeOptions.config.name || '').toLowerCase();
+        // Reject targets before defaults/empty-value conversion, in every input carrier.
+        const hasTargets = [request.params, request.query, request.body].some(values => values && values.action && Object.hasOwn(values.action, 'targets'));
+        if (['createfilter', 'updatefilter'].includes(name) && hasTargets) {
+            return reply.code(403).send({ error: 'MCP cannot set filter forwarding targets', code: 'MissingPrivileges' });
+        }
+    });
+
     app.addHook('preSerialization', async (request, reply, payload) => {
         let filter = request.wdResponseFieldFilter;
         return filter ? roles.filterResponseBody(filter.permission, payload, filter.listKey) : payload;
@@ -454,12 +456,10 @@ function createApp(options = {}) {
             tokenRequired = true;
 
             // A role alone is too coarse to describe what an agent may reach. `read:own` on
-            // messages and users also covers the raw RFC822 source, the archive, the address
-            // register, the journal stream and PUT /users/:user/logout, which is a state change
-            // guarded by readOwn('users'). So the credential is additionally pinned to the exact
-            // routes the MCP tools dispatch to, plus self-revocation: adding a route under an
-            // existing grant cannot widen what an agent token reaches, and the read-only promise
-            // belongs to the credential rather than to the client that happens to be using it.
+            // messages and users also covers the archive, journal stream and account operations.
+            // The credential is additionally pinned to the exact
+            // routes the MCP tools dispatch to: adding a route under an
+            // existing grant cannot widen what an agent token reaches.
             let mcpRoute = MCP_ROUTES.get(String(routeConfig.name || '').toLowerCase());
             if (!mcpRoute || request.method !== mcpRoute.method) {
                 return fail();
@@ -478,24 +478,25 @@ function createApp(options = {}) {
                 return fail();
             }
 
+            if (mcpRoute.levels && !mcpRoute.levels.includes(authenticated.role)) {
+                return fail();
+            }
+
+            request.wdMcpToken = true;
             request.role = authenticated.role;
             request.user = authenticated.user._id.toString();
 
             if (mcpRoute.resource) {
-                // config/roles.json is meant to be the single declaration of what an agent may
-                // see, so the allowlist is enforced at the exit of the API (the preSerialization
-                // hook below) rather than in the MCP service that usually calls it. A level with
-                // no read grant for the resource has no allowlist to apply: refused rather than
-                // answered unfiltered, so the next entry added to MCP_ROUTES cannot leak.
-                let permission = roles.can(request.role).readOwn(mcpRoute.resource);
+                // Enforce the route grant before dispatch. Read field allowlists also apply at
+                // the API exit, so presenting this credential directly preserves the same bounds.
+                let permission = roles.can(request.role)[mcpRoute.action || 'readOwn'](mcpRoute.resource);
                 if (!permission.granted) {
                     return fail();
                 }
-                request.wdResponseFieldFilter = { permission, listKey: mcpRoute.listKey };
-            } else {
-                request.accessToken = {
-                    revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
-                };
+
+                if (!mcpRoute.action) {
+                    request.wdResponseFieldFilter = { permission, listKey: mcpRoute.listKey };
+                }
             }
 
             return;

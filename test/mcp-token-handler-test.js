@@ -383,6 +383,86 @@ describe('MCP token handler', () => {
         expect(authenticated.role).to.equal('mcp:read');
     });
 
+    it('preserves the opt-in role on personal tokens and signed sessions', async () => {
+        let fixture = createFixture();
+        let created = await fixture.handler.create(fixture.user._id, { description: 'Writes', role: 'mcp:write_partial' });
+        expect((await fixture.handler.authenticate(created.token)).role).to.equal('mcp:write_partial');
+
+        let stored;
+        fixture.handler.redis = {
+            multi() {
+                return {
+                    hmset(key, data) {
+                        stored = { ...data };
+                        return this;
+                    },
+                    expire() {
+                        return this;
+                    },
+                    async exec() {
+                        return [];
+                    }
+                };
+            },
+            async hgetall() {
+                return { ...stored };
+            },
+            async expire() {},
+            async del() {}
+        };
+        let defaultToken = await fixture.handler.createSession(fixture.user._id);
+        expect((await fixture.handler.authenticate(defaultToken)).role).to.equal('mcp:read');
+
+        for (const role of ['mcp:write_partial', 'mcp:write', 'mcp:send']) {
+            const token = await fixture.handler.createSession(fixture.user._id, { mcpRole: role });
+
+            expect(stored.role).to.equal(role);
+            expect((await fixture.handler.authenticate(token)).role).to.equal(role);
+
+            stored.role = 'mcp:read';
+            await expectCode(fixture.handler.authenticate(token), 'InvalidMcpToken');
+        }
+
+        for (let mcpRole of ['mcp:full', '', false]) {
+            await expectCode(fixture.handler.createSession(fixture.user._id, { mcpRole }), 'InputValidationError');
+        }
+    });
+
+    it('grants only the three supported own writes while preserving read allowlists', () => {
+        for (let resource of ['users', 'addresses', 'mailboxes', 'labels', 'messages', 'filters', 'autoreplies']) {
+            expect(roles.can('mcp:write_partial').readOwn(resource).attributes).to.have.members(roles.can('mcp:read').readOwn(resource).attributes);
+        }
+        for (let resource of ['users', 'addresses', 'mailboxes', 'labels', 'messages', 'filters', 'autoreplies', 'mcptokens']) {
+            for (let action of ['create', 'update', 'delete']) {
+                let allowed = (action === 'create' && ['filters', 'mailboxes'].includes(resource)) || (action === 'update' && resource === 'autoreplies');
+                expect(roles.can('mcp:write_partial')[`${action}Own`](resource).granted, `${action} ${resource}`).to.equal(allowed);
+                expect(roles.can('mcp:write_partial')[`${action}Any`](resource).granted).to.equal(false);
+            }
+        }
+    });
+
+    for (const role of ['mcp:write', 'mcp:send']) {
+        it(`preserves ${role} on personal tokens and grants only mail/address resources`, async () => {
+            const fixture = createFixture();
+            const created = await fixture.handler.create(fixture.user._id, { description: role, role });
+
+            expect((await fixture.handler.authenticate(created.token)).role).to.equal(role);
+
+            for (const resource of ['messages', 'labels', 'mailboxes', 'filters', 'autoreplies', 'addresses']) {
+                for (const action of ['create', 'read', 'update', 'delete']) {
+                    expect(roles.can(role)[`${action}Own`](resource).granted, `${action} ${resource}`).to.equal(true);
+                    expect(roles.can(role)[`${action}Any`](resource).granted).to.equal(false);
+                }
+            }
+
+            for (const resource of ['users', 'asps', 'mcptokens', 'storage']) {
+                for (const action of ['create', 'update', 'delete']) {
+                    expect(roles.can(role)[`${action}Own`](resource).granted).to.equal(false);
+                }
+            }
+        });
+    }
+
     it('caps how many tokens one user may hold', async () => {
         let fixture = createFixture();
 
