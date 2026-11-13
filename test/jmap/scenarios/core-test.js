@@ -14,6 +14,7 @@ const speakeasy = require('speakeasy');
 const { scenario, api, API_URL, accounts, seed, fixtures, clock, jmap } = require('../harness');
 const instance = require('../harness/instance');
 const redisUrl = require('../../../lib/redis-url');
+const { append } = require('./email-get-helpers');
 
 const { JmapClient, forUser, basic, URN, JMAP_URL } = jmap;
 const ERROR = 'urn:ietf:params:jmap:error:';
@@ -1764,6 +1765,95 @@ describe('JMAP core (core.yaml)', () => {
                 expect(record.message).to.not.match(/[\r\n]/);
             }
             await instance.stopInstance(app);
+        });
+    });
+
+    describe('security audit follow up', () => {
+        const ALL = [URN.core, URN.mail, URN.submission, URN.contacts, URN.calendars];
+        const LUNCH = { title: 'Lunch', start: '2026-03-10T12:00:00', timeZone: 'Europe/Tallinn', duration: 'PT1H' };
+
+        // creates an event and a card, answers {calendarEvent, contactCard} ids
+        async function seedOwned(c, description = '') {
+            const [calendar] = (await c.method('Calendar/get', { ids: null }, ALL)).list;
+            const book = (await c.method('AddressBook/get', { ids: null }, ALL)).list.find(entry => entry.isDefault);
+            const events = await c.method(
+                'CalendarEvent/set',
+                { create: { e: Object.assign({ calendarIds: { [calendar.id]: true }, description }, LUNCH) } },
+                ALL
+            );
+            const cards = await c.method('ContactCard/set', { create: { k: { addressBookIds: { [book.id]: true }, name: { full: 'Dup' } } } }, ALL);
+            expect(events.created, JSON.stringify(events.notCreated)).to.have.property('e');
+            expect(cards.created, JSON.stringify(cards.notCreated)).to.have.property('k');
+            return { calendar: calendar.id, book: book.id, calendarEvent: events.created.e.id, contactCard: cards.created.k.id };
+        }
+
+        scenario('CORE-143', async () => {
+            const user = await accounts.createUser();
+            const c = forUser(user);
+            await c.session();
+            const owned = await seedOwned(c);
+            const [mailbox] = (await c.method('Mailbox/get', { ids: null }, ALL)).list;
+            const [identity] = (await c.method('Identity/get', { ids: null }, ALL)).list;
+            for (const [name, id] of [
+                ['CalendarEvent/get', owned.calendarEvent],
+                ['ContactCard/get', owned.contactCard],
+                ['Calendar/get', owned.calendar],
+                ['AddressBook/get', owned.book],
+                ['Mailbox/get', mailbox.id],
+                ['Identity/get', identity.id],
+                ['EmailSubmission/get', null],
+                ['ParticipantIdentity/get', null],
+                ['CalendarEventNotification/get', null]
+            ]) {
+                const ids = id ? [id, id, 'Xmissing', id, 'Xmissing'] : ['Xmissing', 'Xmissing'];
+                const res = await c.method(name, { ids }, ALL);
+                expect(
+                    res.list.map(object => object.id),
+                    name
+                ).to.deep.equal(id ? [id] : []);
+                expect(res.notFound, name).to.deep.equal(['Xmissing']);
+            }
+            const [[, push]] = await c.call([['PushSubscription/get', { ids: ['Xmissing', 'Xmissing'] }, 'p']], ALL);
+            expect(push.notFound).to.deep.equal(['Xmissing']);
+        });
+
+        scenario('CORE-144', async () => {
+            // a stored event of about 2.7 KB, three /get calls of it do not fit in 7000 octets
+            const { url, app } = await instance.startInstance({ limits: Object.assign({}, config.jmap.limits, { maxResponseBytes: 7000 }) });
+            try {
+                const user = await accounts.createUser();
+                const c = new JmapClient(basic(user.username, user.password));
+                const raw = c.raw.bind(c);
+                c.raw = (path, init) => raw(path.startsWith('http') ? path : url + path, init);
+                await c.session();
+                const { calendarEvent } = await seedOwned(c, 'x'.repeat(2500));
+                const get = callId => ['CalendarEvent/get', { accountId: true, ids: [calendarEvent] }, callId];
+                const responses = await c.call([get('a'), get('b'), get('c'), ['Core/echo', { ok: true }, 'd'], get('e')], ALL);
+                expect(responses.map(([name, , callId]) => `${callId}:${name}`)).to.deep.equal([
+                    'a:CalendarEvent/get',
+                    'b:CalendarEvent/get',
+                    'c:error',
+                    'd:Core/echo',
+                    'e:error'
+                ]);
+                expect(responses[2][1].type).to.equal('requestTooLarge');
+                expect(responses[1][1].list).to.have.length(1);
+
+                // the budget belongs to one request: the next request starts with a full one
+                expect((await c.call([get('a'), get('b')], ALL)).map(([name]) => name)).to.deep.equal(['CalendarEvent/get', 'CalendarEvent/get']);
+
+                // body values are truncated to what is left instead of failing the call
+                const { id: emailId } = await append(user, `From: a@example.com\r\nTo: b@example.com\r\nSubject: s\r\n\r\n${'b'.repeat(3000)}\r\n`);
+                const values = await c.call(
+                    [get('a'), get('b'), ['Email/get', { accountId: true, ids: [emailId], properties: ['bodyValues'], fetchTextBodyValues: true }, 'm']],
+                    ALL
+                );
+                const [value] = Object.values(values[2][1].list[0].bodyValues);
+                expect(value.isTruncated).to.equal(true);
+                expect(Buffer.byteLength(value.value)).to.be.below(7000 - 2 * 2500);
+            } finally {
+                await instance.stopInstance(app);
+            }
         });
     });
 });

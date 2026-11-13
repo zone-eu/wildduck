@@ -2240,3 +2240,32 @@ scenarios:
     then: "JMAP answers HTTP 401 for both, while the REST API still accepts the token."
     sources:
       - "wildduck:security audit 2026-11 NV-03"
+
+  - id: CORE-143
+    title: "An id given more than once in a /get call is answered once"
+    method: Request
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 6
+    applies: yes
+    seed: [jmap]
+    given: "A user with a calendar event, a contact card, the default calendar and address book, a mailbox and an identity."
+    when: "CalendarEvent/get, ContactCard/get, Calendar/get, AddressBook/get, Mailbox/get and Identity/get are called with the id three times and an unknown id twice; EmailSubmission/get, ParticipantIdentity/get, CalendarEventNotification/get and PushSubscription/get with an unknown id twice."
+    then: "Each list holds the object once and each notFound holds the unknown id once."
+    sources:
+      - "rfc:8620 5.1"
+      - "wildduck:security audit 2026-11 NV-15"
+  - id: CORE-144
+    title: "The /get calls of one request share one response budget"
+    method: Request
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 6
+    applies: yes
+    seed: [jmap, imap]
+    given: "An instance with limits.maxResponseBytes 7000 and a stored event of about 2.7 KB."
+    when: "One request calls CalendarEvent/get of the event three times, Core/echo, and CalendarEvent/get again; a second request calls it twice; a third calls it twice and then Email/get with text body values of a 3000 octet message."
+    then: "The first two calls answer the event, the third and the fifth answer requestTooLarge, Core/echo answers. The second request answers both calls. In the third the body value is truncated (isTruncated true) to what is left of the budget."
+    sources:
+      - "wildduck:security audit 2026-11 NV-15"
+    notes: "The responses of all method calls are held until the request ends, so a per call limit alone lets 32 calls hold 32 times as much."

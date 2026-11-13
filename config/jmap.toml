@@ -34,6 +34,11 @@ maxObjectsInSet = 500
 # octets of body values one Email/get call returns at most; values past it come back empty with
 # isTruncated true (RFC 8621 4.2 maxBodyValueBytes still applies per value)
 maxBodyValueBytesPerRequest = 33554432
+# octets the /get calls of one request return together. The responses of all method calls are held
+# until the request ends, so every /get draws from this one budget (estimated from stored sizes); a call
+# that does not fit in what is left answers requestTooLarge, Email/get body values are truncated
+# instead. Per call limits such as maxBodyValueBytesPerRequest apply within it
+maxResponseBytes = 67108864
 # temporary uploads per user, oldest are deleted first when a new upload does not fit
 uploadQuota = 209715200
 # most temporary uploads per user (pinned ones included), the oldest are deleted first when a new
