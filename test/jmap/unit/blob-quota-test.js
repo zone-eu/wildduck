@@ -165,6 +165,12 @@ describe('IMAP OBJECTID', () => {
         expect(searchCondition('threadid', 'garbage')).to.equal(null);
     });
 
+    it('adds the user to a THREADID condition so the {user, thread} index applies (NV-26)', () => {
+        const user = new ObjectId();
+        expect(searchCondition('threadid', `T${thread}`, user)).to.deep.equal({ user, thread });
+        expect(searchCondition('emailid', `M${root}`, user)).to.deep.equal({ $or: [{ root }, { _id: root, root: { $exists: false } }] });
+    });
+
     it('answers EMAILID and THREADID as lists, or NIL', () => {
         const query = [{ item: 'emailid' }, { item: 'threadid' }];
         expect(imapTools.getQueryResponse(query, { root, thread }, { objectIds })).to.deep.equal([

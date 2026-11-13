@@ -145,4 +145,45 @@ describe('IMAP OBJECTID (wildduck.yaml)', function () {
         const [afterMove] = (await client.method('Email/get', { ids: [email.id], properties: ['mailboxIds'] })).list;
         expect(afterMove.mailboxIds).to.deep.equal({ [createdId[1]]: true });
     });
+
+    it('SEARCH THREADID finds the messages of the thread on the {user, thread} index (NV-26)', async () => {
+        const owner = await accounts.createUser();
+        const session = new RawImap();
+        await session.connect();
+        try {
+            expect(tagged(await session.run(`LOGIN ${owner.username} ${owner.password}`))).to.match(/^T\d+ OK/);
+            await seed.withImap(owner, async append => {
+                for (const subject of ['First thread', 'Second thread']) {
+                    const message = [
+                        'From: sender@example.net',
+                        `To: ${owner.address}`,
+                        `Subject: ${subject}`,
+                        `Message-ID: <${crypto.randomBytes(6).toString('hex')}@objectid.example>`,
+                        '',
+                        'Hello',
+                        ''
+                    ].join('\r\n');
+                    await append.append('INBOX', Buffer.from(message));
+                }
+            });
+            await session.run('SELECT INBOX');
+            const threadOf = async seq => /THREADID \((T[0-9a-f]{24})\)/.exec((await session.run(`FETCH ${seq} (THREADID)`)).join('\n'))[1];
+            const [first, second] = [await threadOf(1), await threadOf(2)];
+            expect(first).to.not.equal(second);
+            expect(await session.run(`SEARCH THREADID ${first}`)).to.include('* SEARCH 1');
+            expect(await session.run(`SEARCH NOT THREADID ${first}`)).to.include('* SEARCH 2');
+
+            // the query on-search builds for the key: the planner picks user_messages_by_thread
+            const { searchCondition } = require('../../../lib/object-ids'); // eslint-disable-line global-require
+            const db = await seed.db();
+            const inbox = await db.collection('mailboxes').findOne({ user: new seed.ObjectId(owner.id), path: 'INBOX' });
+            const explained = await db
+                .collection('messages')
+                .find({ mailbox: inbox._id, $and: [searchCondition('threadid', first, inbox.user)] })
+                .explain();
+            expect(JSON.stringify(explained.queryPlanner.winningPlan)).to.include('user_messages_by_thread');
+        } finally {
+            session.close();
+        }
+    });
 });
