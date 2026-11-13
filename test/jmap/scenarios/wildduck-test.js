@@ -342,7 +342,7 @@ describe('JMAP backend prerequisites (wildduck.yaml)', () => {
             const cleanup = async (db, redis, user) => {
                 await db.collection('messages').deleteMany({ user });
                 await db.collection('jmap.state').deleteOne({ _id: user });
-                await redis.del(`jmap:roots:lock:${user}`, `jmap:roots:failed:${user}`);
+                await redis.del(`jmap:roots:lock:${user}`);
             };
 
             it('parallel first calls of a user run one repair, the others skip it', async () => {
