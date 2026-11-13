@@ -170,6 +170,45 @@ describe('API under database outages', function () {
             }
         });
 
+        it('does not report a token as revoked when Redis failed to delete it', async () => {
+            // audit NV-05: DELETE /authenticate answered success while the token stayed usable
+            const { accessToken, tokenHash } = await createRoleToken('user', fixtures.ids.user);
+            try {
+                const multi = db.redis.multi.bind(db.redis);
+                patch(db.redis, 'multi', (...args) => {
+                    const pipeline = multi(...args);
+                    let deleting = false;
+                    const del = pipeline.del.bind(pipeline);
+                    const exec = pipeline.exec.bind(pipeline);
+                    pipeline.del = (...keys) => {
+                        deleting = true;
+                        return del(...keys);
+                    };
+                    pipeline.exec = async () => {
+                        if (deleting) {
+                            throw new Error('redis gone (injected)');
+                        }
+                        return exec();
+                    };
+                    return pipeline;
+                });
+                const res = await app.inject({ method: 'DELETE', url: '/authenticate', headers: { 'x-access-token': accessToken } });
+                expect(res.statusCode).to.equal(500);
+                expect(res.json()).to.include({ code: 'InternalDatabaseError' });
+                restoreAll();
+
+                // still usable, as reported; a retry once Redis is back revokes it
+                const still = await app.inject({ method: 'GET', url: `/users/${fixtures.ids.user}`, headers: { 'x-access-token': accessToken } });
+                expect(still.statusCode).to.equal(200);
+                const revoked = await app.inject({ method: 'DELETE', url: '/authenticate', headers: { 'x-access-token': accessToken } });
+                expect(revoked.statusCode).to.equal(200);
+                const gone = await app.inject({ method: 'GET', url: `/users/${fixtures.ids.user}`, headers: { 'x-access-token': accessToken } });
+                expect(gone.statusCode).to.equal(403);
+            } finally {
+                await deleteRoleToken(tokenHash);
+            }
+        });
+
         it('refuses a valid token while the account can not be read', async () => {
             const { accessToken, tokenHash } = await createRoleToken('user', fixtures.ids.user);
             try {
