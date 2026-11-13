@@ -15,6 +15,8 @@ const { scenario, api, API_URL, accounts, seed, fixtures, clock, jmap } = requir
 const instance = require('../harness/instance');
 const redisUrl = require('../../../lib/redis-url');
 const { append } = require('./email-get-helpers');
+const jmapService = require('../../../jmap');
+const { createApp } = require('../../../lib/jmap/server');
 
 const { JmapClient, forUser, basic, URN, JMAP_URL } = jmap;
 const ERROR = 'urn:ietf:params:jmap:error:';
@@ -1853,6 +1855,58 @@ describe('JMAP core (core.yaml)', () => {
                 expect(Buffer.byteLength(value.value)).to.be.below(7000 - 2 * 2500);
             } finally {
                 await instance.stopInstance(app);
+            }
+        });
+
+        scenario('CORE-142', async () => {
+            // an app with a method that runs until the test lets it finish
+            let started;
+            const running = new Promise(resolve => (started = resolve));
+            let finish;
+            const gate = new Promise(resolve => (finish = resolve));
+            const slow = {
+                capability: URN.core,
+                methods: {
+                    'Core/slow': async () => {
+                        started();
+                        await gate;
+                        return {};
+                    }
+                }
+            };
+            await instance.connect();
+            const deps = jmapService.createDeps();
+            deps.modules = [...deps.modules, slow];
+            const app = createApp(deps, Object.assign({}, config.jmap, { accessSecret: config.api.accessControl.secret, roles: config.api.roles }));
+            const port = await instance.freePort();
+            await app.listen({ port, host: '127.0.0.1' });
+            try {
+                const owner = await accounts.createUser();
+                const slots = async () => Number(await redisClient().get(`jmap:conc:${owner.id}`));
+                const body = JSON.stringify({ using: [URN.core], methodCalls: [['Core/slow', {}, 's']] });
+                const entry = rawRequest(`http://127.0.0.1:${port}/jmap/api/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(body),
+                        Authorization: basic(owner.username, owner.password)
+                    }
+                });
+                entry.req.end(body);
+                await running;
+                expect(await slots()).to.equal(1);
+
+                // the client goes away while the method runs: the work goes on, so the slot stays taken
+                entry.req.destroy();
+                await clock.delay(300);
+                expect(await slots()).to.equal(1);
+
+                // and is given back once the method is done
+                finish();
+                await clock.waitFor(async () => (await slots()) === 0, { message: 'the slot of the aborted request was not released' });
+            } finally {
+                finish();
+                await app.close();
             }
         });
     });

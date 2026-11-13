@@ -2269,3 +2269,18 @@ scenarios:
     sources:
       - "wildduck:security audit 2026-11 NV-15"
     notes: "The responses of all method calls are held until the request ends, so a per call limit alone lets 32 calls hold 32 times as much."
+  - id: CORE-142
+    title: "The concurrency slot of an aborted API request is held until its method calls finish"
+    method: Request
+    spec: "RFC 8620 2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [jmap]
+    given: "A JMAP app with a test method that runs until the test lets it finish."
+    when: "An API request calling it is sent completely; while the method runs the client closes the connection; then the method finishes."
+    then: "The jmap:conc counter of the user is 1 while the method runs, still 1 after the client went away, and 0 once the method has finished."
+    sources:
+      - "wildduck:security audit 2026-11 NV-14"
+    notes: "Releasing the slot when the client goes away would let a client run any number of slow requests at once by closing each one."
+
