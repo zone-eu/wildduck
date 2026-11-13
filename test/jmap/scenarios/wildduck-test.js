@@ -301,6 +301,42 @@ describe('JMAP backend prerequisites (wildduck.yaml)', () => {
             }
         });
 
+        it('thread counts with many \\Deleted messages give the same result on every path (NV-20)', async () => {
+            const counts = require('../../../lib/jmap/mailbox-counts'); // eslint-disable-line global-require
+            const db = await seed.db();
+            const user = new seed.ObjectId();
+            const mailbox = new seed.ObjectId();
+            const threads = Array.from({ length: 5 }, () => new seed.ObjectId());
+            // thread 0 and 4 only through \Deleted messages, 1 through both, 2 and 3 undeleted only
+            const layout = [
+                [0, false],
+                [1, false],
+                [1, true],
+                [2, true],
+                [3, true],
+                [3, true],
+                [4, false],
+                [4, false]
+            ];
+            let uid = 0;
+            await db
+                .collection('messages')
+                .insertMany(layout.map(([thread, undeleted]) => rawDoc(user, { mailbox, uid: ++uid, thread: threads[thread], undeleted, idate: new Date() })));
+            const saved = Object.assign({}, counts.LIMITS);
+            const mailboxData = { _id: mailbox, user };
+            const messages = db.collection('messages');
+            try {
+                expect(await counts.totalThreads(messages, mailboxData, { deleted: 4, totalEmails: 4 })).to.equal(3);
+                counts.LIMITS.threadBatch = 1;
+                expect(await counts.totalThreads(messages, mailboxData, { deleted: 4, totalEmails: 4 })).to.equal(3);
+                counts.LIMITS.deletedThreshold = 1;
+                expect(await counts.totalThreads(messages, mailboxData, { deleted: 5, totalEmails: 4 })).to.equal(3);
+            } finally {
+                Object.assign(counts.LIMITS, saved);
+                await messages.deleteMany({ user });
+            }
+        });
+
         describe('root repair lock (NV-27)', () => {
             const redisOf = async () => (await require('../harness/instance').connect()).redis; // eslint-disable-line global-require
             const cleanup = async (db, redis, user) => {
