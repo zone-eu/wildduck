@@ -1384,4 +1384,22 @@ describe('CalendarEvent properties, overrides and instances (CEV, part 2)', func
             expect(changes.destroyed).to.deep.equal([]);
         });
     });
+
+    describe('security audit follow up', () => {
+        // about 300 KB of unknown properties, over the 256 KB event limit: the size check answers before
+        // the per property validation, whose cost grows with the number of properties (NV-22)
+        const unknown = () => Object.fromEntries(Array.from({ length: 15000 }, (value, i) => [`x${String(i).padStart(6, '0')}`, 'abcdefgh']));
+
+        scenario('CEV-162', async () => {
+            const ctx = await h.setupUser();
+            const { error } = await h.tryCreate(ctx, Object.assign({}, LUNCH, unknown()));
+            expect(error.type).to.equal('tooLarge');
+
+            const { id, x } = await weeklyWithInstances(ctx);
+            const before = await h.fetch1(ctx, id);
+            expect((await h.tryUpdate(ctx, id, unknown())).error.type).to.equal('tooLarge');
+            expect((await h.tryUpdate(ctx, x['12'], unknown())).error.type).to.equal('tooLarge');
+            expect(await h.fetch1(ctx, id)).to.deep.equal(before);
+        });
+    });
 });

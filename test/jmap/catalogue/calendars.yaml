@@ -5966,3 +5966,18 @@ scenarios:
       - "rfc:draft-ietf-jmap-calendars-33 1.5.1"
       - "rfc:draft-ietf-jmap-calendars-33 7"
     notes: "The calendars capability covers this data type, so the methods must exist in phase 6. Without sharing and without scheduling there is no source of notifications: changes made by the user never create one."
+
+  - id: CEV-162
+    title: "Check the size of an event before validating its properties"
+    method: "CalendarEvent/set"
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 6
+    applies: "yes"
+    seed: [jmap]
+    given: "The default maximum event size of 256 KB."
+    when: "Create an event with 15,000 unknown properties (about 300 KB of JSON); update an existing weekly event with the same properties as a patch, then one of its instances."
+    then: "notCreated and both notUpdated entries carry type tooLarge, not invalidProperties. The existing event is unchanged."
+    sources:
+      - "rfc:8620 5.3"
+    notes: "Security audit NV-22: the invalid property filter was quadratic and ran before the size check, so a large object of unknown properties blocked the event loop."
