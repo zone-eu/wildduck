@@ -434,6 +434,10 @@
         {
             "package": "6.8",
             "ids": ["CEV-113", "CEV-114", "CAL-008", "CAL-060", "CAL-061"]
+        },
+        {
+            "package": "F.7",
+            "ids": ["CORE-140..CORE-144", "ESRC-054", "ESRC-055", "PUSH-089", "BLOB-087..BLOB-089", "CARD-177", "CARD-178", "CEV-162", "CEQ-078", "SUB-145..SUB-147", "MBX-223"]
         }
     ]
 }

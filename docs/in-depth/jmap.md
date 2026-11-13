@@ -470,6 +470,11 @@ These apply with the release, whether or not JMAP is enabled:
 - Every change notification makes one extra Redis call to check whether the user has a verified Web Push subscription.
 - Temporary uploads live in the storage bucket with `metadata.expires`; the REST storage API does not list them, and the garbage collector removes expired ones.
 - Deleting a user through the REST API takes the user's mail out of the outbound queue: mail held for a later send time (REST `sendTime`, JMAP `FUTURERELEASE`) and mail sent during the last day that is still retried. Entries being delivered at that moment are left alone. A restored user does not get that mail back, the stored copy stays in the mailbox.
+- An expired application specific password is refused at once on every protocol, instead of working until the TTL index removes it; using a temporary one no longer extends an expired one.
+- `POST /users/:user/archived/messages/:message/restore` with a `mailbox` of another user answers 404 `NoSuchMailbox`.
+- `DELETE /authenticate` answers 500 when the token could not be deleted from Redis, instead of success.
+- The daily recipient limit (`wdr:<user>`) is reserved atomically with the new script `ttlreserve`, so parallel submissions can not exceed it. Draft submit answers success once the message is queued, even when moving the draft to Sent fails afterwards.
+- Registering the first WebAuthn credential logs the user out everywhere, as enabling TOTP does.
 - Address changes and autoreply changes through the REST API, and address register updates on the mail path, feed the JMAP change logs of identities, participant identities, the VacationResponse and the register address book. This happens only in processes where `[jmap] enabled` is true, and only for users that have used JMAP.
 
 ### Root repair
@@ -525,7 +530,7 @@ db.messages.createIndex({ user: 1, idate: -1, _id: -1 }, { name: 'user_idate' })
 
 `by_root` is a single field index because roots are globally unique; queries always add the user condition. JMAP also reads `user_messages_by_thread` and the `by_idate` indexes, so these must not be dropped.
 
-The other new indexes are on new collections, on `addressregister` (`user_modseq`, partial, empty until JMAP writes it) and on `storage.files` for temporary uploads (`user_temporary_files`, `temporary_files_expiry`, partial), and are cheap to build at start up.
+The other new indexes are on new collections, on `addressregister` (`user_modseq`, partial, empty until JMAP writes it) and on `storage.files` for temporary uploads (`user_temporary_usage`, `temporary_files_expiry`, partial), and are cheap to build at start up.
 
 ### New collections
 

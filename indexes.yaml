@@ -917,7 +917,7 @@ indexes:
       index:
           # temporary uploads (JMAP): the upload quota of a user, see StorageHandler.makeRoom (length
           # makes the usage aggregate a covered query)
-          name: user_temporary_files
+          name: user_temporary_usage
           key:
               metadata.user: 1
               metadata.expires: 1
@@ -1275,3 +1275,8 @@ deleteindexes:
     # replaced by user_size, which also sums the media quota
     - collection: contacts.media
       index: user
+
+    # replaced by user_temporary_usage, which also covers the length of the uploads
+    - collection: storage.files
+      type: gridfs
+      index: user_temporary_files
