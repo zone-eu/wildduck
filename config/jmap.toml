@@ -205,7 +205,7 @@ attempts = 5
 retryDelay = 10
 maxRetryDelay = 600
 failureLimit = 5
-# seconds to wait for a push service to answer
+# seconds to wait for a push service to answer, and separately for the DNS lookup of its host
 timeout = 10
 # seconds changes are collected before they are pushed together
 coalesce = 1

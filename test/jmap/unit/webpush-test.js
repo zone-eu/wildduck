@@ -191,6 +191,25 @@ describe('JMAP Web Push', () => {
             });
             expect(exempt.address).to.equal('127.0.0.1');
         });
+
+        it('gives up on a resolver that never answers within the timeout (NV-25)', async () => {
+            const started = Date.now();
+            let failed = null;
+            await webpush
+                .resolveTarget(new URL('https://never.example/'), { resolve: () => new Promise(() => false), timeout: 50 })
+                .catch(err => (failed = err));
+            expect(failed).to.be.instanceOf(webpush.TargetError);
+            expect(failed.message).to.match(/ETIMEOUT/);
+            expect(Date.now() - started).to.be.below(1000);
+        });
+
+        it('resolves with c-ares and a per query timeout by default (NV-25)', async () => {
+            const resolve = webpush.publicResolver(100);
+            let failed = null;
+            // a name under the reserved .invalid TLD never resolves; the answer (or the timeout) comes back quickly
+            await resolve('push.example.invalid').catch(err => (failed = err));
+            expect(failed).to.be.an('error');
+        });
     });
 
     describe('push requests', () => {
