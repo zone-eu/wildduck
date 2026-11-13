@@ -750,6 +750,32 @@ scenarios:
     sources:
       - "wildduck:F.5b Bulwark interop run"
     notes: "The stream is written after the reply is hijacked, so headers set by hooks are lost unless they are copied into the response head. Found with Bulwark Webmail, whose push connection runs cross origin."
+  - id: ESRC-054
+    title: "An open stream checks its credential again and ends when it is no longer valid"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api, time]
+    given: "Two streams of one user, one with a Bearer token and one with the account password, on a listener whose timers run faster so the periodic credential check (every 5 minutes) comes after about a second."
+    when: "The token record is removed from Redis directly, without any notification (as when its idle TTL runs out or the secret changes)."
+    then: "The token's stream ends within a few seconds and a reconnect with the token gets HTTP 401. The account password stream stays open and still gets state events."
+    sources:
+      - "wildduck:security audit 2026-11 NV-09"
+  - id: ESRC-055
+    title: "The first WebAuthn credential of an account ends its streams"
+    method: "EventSource"
+    spec: "RFC 8620 7.3"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [api]
+    given: "A user without 2FA, with a stream over the account password and one over an application password."
+    when: "A WebAuthn credential is registered through the REST API, the account's first second factor."
+    then: "Both streams end at once, as when TOTP is enabled, and the account password is refused afterwards."
+    sources:
+      - "wildduck:security audit 2026-11 NV-09"
   - id: EDLV-001
     title: "A delivered message changes the EmailDelivery state"
     method: "EventSource"

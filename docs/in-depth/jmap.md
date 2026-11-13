@@ -321,6 +321,8 @@ Besides the advertised limits:
 
 A stream listens to the same change notifications as IMAP IDLE, fanned out between workers through Redis, and reads the states only when a change arrives. The event id is the mail state string, followed by a digest of the states of the other requested types. A client that reconnects with `Last-Event-ID` gets one event for the types that changed since, or for every requested type when the id is unknown or older than the journal retention.
 
+A stream ends as soon as its credential is revoked: the password or 2FA setup changes, the application password is deleted, the token is revoked, or the account is disabled, suspended or loses the `jmap` scope. Every open stream also checks its credential again every 5 minutes (one user read, plus one Redis read for a token or one application password read), so changes that send no notification, such as a token reaching its idle or maximum lifetime, an expiring application password or a new `api.accessControl.secret`, end the stream within that time.
+
 ### Web Push
 
 `PushSubscription/set` creates a subscription bound to the credential that created it (the application password, the account password and its `authVersion`, or the access token). Deleting that application password, changing the password or revoking the token removes the subscription. `PushSubscription/get` never returns `url` or `keys`.

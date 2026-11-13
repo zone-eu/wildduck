@@ -17,6 +17,7 @@ const db = require('../../../lib/db');
 const jmapService = require('../../../jmap');
 const { createApp } = require('../../../lib/jmap/server');
 const FilterHandler = require('../../../lib/filter-handler');
+const { SoftwareWebAuthnAuthenticator } = require('../../api/_webauthn');
 
 const MAIL_TYPES = ['Email', 'Mailbox', 'Thread'];
 const ALL_TYPES = ['Email', 'Mailbox', 'Thread', 'EmailDelivery'];
@@ -910,6 +911,50 @@ describe('JMAP push (push.yaml)', () => {
             await api('PUT', `/users/${user.id}`, { password: 'Jm4pScenario-Changed' });
             expect((await expectRevoked(withPassword, basic)).status).to.equal(401);
             expect((await expectRevoked(withToken, `Bearer ${token}`)).status).to.equal(401);
+        });
+
+        scenario('ESRC-054', async () => {
+            // default limits but a long lifetime, timers 300 times faster: the credential is checked about every second
+            const scaled = await startApp({ maxDuration: 36000 }, 300);
+            const user = await createUser();
+            const token = await accounts.createToken(user);
+            const authorization = `Bearer ${token}`;
+            const withToken = await openStream(null, {}, { authorization, base: scaled.base });
+            const unaffected = await openStream(user, {}, { base: scaled.base });
+            // gone from Redis without any notification, as when its idle TTL runs out
+            const redis = new Redis(config.dbs.redis);
+            try {
+                await redis.del(`tn:token:${crypto.createHash('sha256').update(token).digest('hex')}`);
+            } finally {
+                redis.disconnect();
+            }
+            await withToken.waitEnd(5000);
+            const again = await stream(null, {}, { authorization, base: scaled.base });
+            expectRefused(again, 401);
+            // the account password stream passed the same checks and stays open
+            expect(unaffected.ended).to.be.false;
+            await append(user);
+            expect(Object.keys(changedOf(await unaffected.next(), user))).to.include('Email');
+        });
+
+        scenario('ESRC-055', async () => {
+            const user = await createUser();
+            const es = await openStream(user);
+            const asp = await api('POST', `/users/${user.id}/asps`, { description: 'esrc-055', scopes: ['jmap'], generateMobileconfig: false });
+            const withAsp = await openStream(null, {}, { authorization: jmap.basic(user.username, asp.password) });
+            // the first second factor of the account is a WebAuthn credential
+            const authenticator = new SoftwareWebAuthnAuthenticator('example.com');
+            const { registrationOptions } = await api('POST', `/users/${user.id}/2fa/webauthn/registration-challenge`, {
+                description: 'esrc-055',
+                origin: 'https://example.com',
+                rpId: 'example.com',
+                authenticatorAttachment: 'cross-platform'
+            });
+            const attestation = authenticator.createRegistrationResponse(registrationOptions.challenge, 'https://example.com');
+            await api('POST', `/users/${user.id}/2fa/webauthn/registration-attestation`, Object.assign({ rpId: 'example.com' }, attestation));
+            // every stream of the account ends, as when TOTP is enabled
+            expect((await expectRevoked(es, basicOf(user))).status).to.equal(401);
+            await withAsp.waitEnd(5000);
         });
 
         scenario('ESRC-050', async () => {
