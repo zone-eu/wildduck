@@ -473,7 +473,7 @@ These apply with the release, whether or not JMAP is enabled:
 
 JMAP Email ids are message roots. Messages stored by old versions may lack a root, and IMAP copies made before this release share the root of their original. `ensureUserRoots` (`lib/message-roots.js`) fills missing roots and gives every legacy copy a root of its own (the oldest document keeps the shared root; a shared root must persist for a settle delay so a move in progress is not mistaken for a copy). It runs once per user and records `rootsChecked` in the user's `jmap.state` document.
 
-The JMAP service runs it for a user on first Email access. To do it for every user ahead of time, enable the migration in `config/migrations.toml`:
+The JMAP service runs it for a user on first Email access, one process at a time per user (Redis lock `jmap:roots:lock:<user>`): requests that find the lock taken keep using the legacy lookups meanwhile. A repair that fails (its writes are capped at two minutes each) is not tried again for that user for an hour (`jmap:roots:failed:<user>`). To do it for every user ahead of time, enable the migration in `config/migrations.toml`:
 
 ```toml
 [database.messagesRootRepair]

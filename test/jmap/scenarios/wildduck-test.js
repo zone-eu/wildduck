@@ -301,6 +301,64 @@ describe('JMAP backend prerequisites (wildduck.yaml)', () => {
             }
         });
 
+        describe('root repair lock (NV-27)', () => {
+            const redisOf = async () => (await require('../harness/instance').connect()).redis; // eslint-disable-line global-require
+            const cleanup = async (db, redis, user) => {
+                await db.collection('messages').deleteMany({ user });
+                await db.collection('jmap.state').deleteOne({ _id: user });
+                await redis.del(`jmap:roots:lock:${user}`, `jmap:roots:failed:${user}`);
+            };
+
+            it('parallel first calls of a user run one repair, the others skip it', async () => {
+                const db = await seed.db();
+                const redis = await redisOf();
+                const user = new seed.ObjectId();
+                await db.collection('messages').insertMany([rawDoc(user), rawDoc(user, { uid: 2 })]);
+                try {
+                    const results = await Promise.all(Array.from({ length: 6 }, () => ensureUserRoots(db, user, { settleMs: 0, redis })));
+                    expect(results.filter(result => result.repaired)).to.have.length(1);
+                    expect(results.filter(result => result.skipped)).to.have.length(5);
+                    expect(await rootsChecked(db, user)).to.be.true;
+                    expect(await redis.exists(`jmap:roots:lock:${user}`)).to.equal(0);
+                } finally {
+                    await cleanup(db, redis, user);
+                }
+            });
+
+            it('a failed repair is not tried again right away', async () => {
+                const db = await seed.db();
+                const redis = await redisOf();
+                const user = new seed.ObjectId();
+                await db.collection('messages').insertMany([rawDoc(user)]);
+                let repairs = 0;
+                // a database whose messages updateMany fails, as a repair over the time limit would
+                const failing = {
+                    collection: name => {
+                        const collection = db.collection(name);
+                        if (name !== 'messages') {
+                            return collection;
+                        }
+                        return Object.assign(Object.create(collection), {
+                            updateMany: async () => {
+                                repairs++;
+                                throw new Error('operation exceeded time limit');
+                            }
+                        });
+                    }
+                };
+                try {
+                    let failed = null;
+                    await ensureUserRoots(failing, user, { settleMs: 0, redis }).catch(err => (failed = err));
+                    expect(failed).to.be.an('error');
+                    expect(await ensureUserRoots(failing, user, { settleMs: 0, redis })).to.deep.equal({ repaired: false, skipped: true });
+                    expect(repairs).to.equal(1);
+                    expect(await rootsChecked(db, user)).to.be.false;
+                } finally {
+                    await cleanup(db, redis, user);
+                }
+            });
+        });
+
         scenario('WDP-011', async () => {
             const db = await seed.db();
             const shared = new seed.ObjectId();
