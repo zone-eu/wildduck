@@ -410,7 +410,8 @@ describe('JMAP Web Push delivery', function () {
             box.respond(...Array.from({ length: attempts * 2 }, () => ({ status: 500 })));
             await changeAndWait(user, box, 1 + attempts, 30000);
             await changeAndWait(user, box, 1 + attempts * 2, 30000);
-            expect((await storedOne(user)).failures).to.equal(2);
+            // the failure is recorded after the push service answered, so wait for it rather than read it at once
+            await clock.waitFor(async () => (await storedOne(user)).failures === 2, { message: 'two failed pushes are counted' });
             await changeAndWait(user, box, 2 + attempts * 2, 30000);
             await clock.waitFor(async () => (await storedOne(user)).failures === 0, { message: 'the counter is reset' });
             // five failed pushes in a row
