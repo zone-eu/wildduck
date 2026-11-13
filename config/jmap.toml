@@ -62,6 +62,11 @@ maxCards = 10000
 maxCardSize = 262144
 # largest photo, logo or sound of a card, in octets (also limited by limits.maxSizeUpload)
 maxMediaSize = 4194304
+# octets of all photos, logos and sounds of an account; every card that uses an upload or a data: URI
+# stores its own copy
+maxMediaBytes = 104857600
+# most photos, logos and sounds (media entries) of one card
+maxMediaPerCard = 20
 # most register entries shown as cards of the register book, the most recently used first
 maxRegisterCards = 10000
 

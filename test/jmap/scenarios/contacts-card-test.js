@@ -1017,5 +1017,48 @@ describe('ContactCard set and get (contacts.yaml)', function () {
             expect(res.notCreated.k.type).to.equal('tooLarge');
             expect(await db.collection('contacts.media').countDocuments({ user: new seed.ObjectId(other.id) })).to.equal(before);
         });
+
+        scenario('CARD-177', async () => {
+            const other = await h.createUser();
+            const limit = 2 * PNG.length + 10;
+            const url = await h.startInstance({ maxMediaBytes: limit });
+            const oc = await h.clientOn(url, other);
+            const uploaded = await h.upload(oc, PNG, 'image/png');
+            const target = (await defaultBook(oc)).id;
+            const create = {};
+            for (let i = 0; i < 4; i++) {
+                create[`k${i}`] = { addressBookIds: { [target]: true }, media: { p1: { kind: 'photo', blobId: uploaded.blobId } } };
+            }
+            const res = await setCards(oc, { create });
+            expect(Object.keys(res.created || {}).sort()).to.deep.equal(['k0', 'k1']);
+            expect(res.notCreated.k2.type).to.equal('overQuota');
+            expect(res.notCreated.k3.type).to.equal('overQuota');
+            // a later call reads the stored usage
+            const again = await tryCreate(oc, { media: { p1: { kind: 'photo', uri: h.dataUri(PNG, 'image/png') } } }, target);
+            expect(again.notCreated.k.type).to.equal('overQuota');
+
+            const db = await seed.db();
+            const media = await db
+                .collection('contacts.media')
+                .find({ user: new seed.ObjectId(other.id) })
+                .toArray();
+            expect(media).to.have.length(2);
+            expect(media.reduce((sum, doc) => sum + doc.size, 0)).to.be.at.most(limit);
+        });
+
+        scenario('CARD-178', async () => {
+            const other = await h.createUser();
+            const url = await h.startInstance({ maxMediaPerCard: 2 });
+            const oc = await h.clientOn(url, other);
+            const entry = n => ({ kind: 'photo', uri: `https://www.example.com/p${n}.png` });
+            const res = await tryCreate(oc, { media: { p1: entry(1), p2: entry(2), p3: entry(3) } });
+            expect(res.notCreated.k.type).to.equal('tooLarge');
+            expect(res.notCreated.k.properties).to.deep.equal(['media']);
+
+            const card = await roundTrip(oc, { media: { p1: entry(1), p2: entry(2) } });
+            const update = await setCards(oc, { update: { [card.id]: { 'media/p3': entry(3) } } });
+            expect(update.notUpdated[card.id].type).to.equal('tooLarge');
+            expect(Object.keys((await getCard(oc, card.id)).media)).to.have.length(2);
+        });
     });
 });

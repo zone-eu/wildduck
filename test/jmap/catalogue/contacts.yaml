@@ -4387,3 +4387,38 @@ scenarios:
       - 'cyrus:JMAPContacts/card_get_no_type_vcardparams'
       - 'wildduck:plan 10.1'
     notes: 'vCard import, export and CardDAV are outside the plan (section 10.1). The Cyrus tests that compare the stored vCard (card_get_v3, card_get_v4, card_set_derive_fn, card_set_name_check_vcard_props, card_apple_label_handling, card_get_apple_countrycode, card_get_param_rfc6868, card_set_importance_*, card_parse, carddav_*, dblookup_*) and the Stalwart CardDAV and ContactCard/parse sections have no counterpart here.'
+
+  - id: 'CARD-177'
+    title: 'Contact media beyond maxMediaBytes answers overQuota'
+    method: 'ContactCard/set'
+    spec: 'RFC 8620 5.3'
+    level: 'wd'
+    phase: 5
+    applies: 'yes'
+    seed:
+      - 'jmap'
+      - 'db'
+    given: 'A JMAP instance with [jmap.contacts] maxMediaBytes of two copies of a small PNG plus 10 octets, and that PNG uploaded once.'
+    when: 'One ContactCard/set call creates four cards whose photo is the blobId of the upload. A later call creates a card whose photo is the PNG as a data: URI.'
+    then: 'The first two cards are created, the other two are notCreated with type overQuota, and so is the card of the later call. The account has two media files, together no larger than maxMediaBytes.'
+    sources:
+      - 'rfc:8620 5.3'
+      - 'wildduck:security audit NV-17'
+    notes: 'Each card stores its own copy of an upload or data: URI, so one upload referenced by many cards multiplied storage without a limit. The usage is read once per call with an aggregate covered by the user_size index of contacts.media and counted on from there. Default 100 MB.'
+
+  - id: 'CARD-178'
+    title: 'A card with more media entries than maxMediaPerCard answers tooLarge'
+    method: 'ContactCard/set'
+    spec: 'RFC 8620 5.3'
+    level: 'wd'
+    phase: 5
+    applies: 'yes'
+    seed:
+      - 'jmap'
+    given: 'A JMAP instance with [jmap.contacts] maxMediaPerCard 2.'
+    when: 'Create a card with three media entries (https URIs). Then create one with two entries and add a third with an update.'
+    then: 'The create with three entries is notCreated with type tooLarge and properties ["media"]. The card with two entries is created; the update is notUpdated with type tooLarge and the card keeps two entries.'
+    sources:
+      - 'rfc:8620 5.3'
+      - 'wildduck:security audit NV-17'
+    notes: 'RFC 8620 5.3 names tooLarge for a server limit on the number of items in a property. The default is 20 entries per card.'

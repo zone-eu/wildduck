@@ -850,10 +850,11 @@ indexes:
 
     - collection: contacts.media
       index:
-          # removal with the user
-          name: user
+          # removal with the user, and the media quota (ContactHandler.mediaUsage sums size from the index)
+          name: user_size
           key:
               user: 1
+              size: 1
 
     - collection: addressregister
       index:
@@ -1262,3 +1263,7 @@ deleteindexes:
 
     - collection: addressregister
       index: by_name
+
+    # replaced by user_size, which also sums the media quota
+    - collection: contacts.media
+      index: user

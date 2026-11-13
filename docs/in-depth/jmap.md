@@ -100,6 +100,8 @@ These `[jmap]` keys are read by the code but not listed in `config/jmap.toml`:
 | `maxCards`               | `10000`           | Cards per account                                                                                                 |
 | `maxCardSize`            | `262144` (256 KB) | Largest card, in octets of JSON. Photos and other media are blobs and do not count                                |
 | `maxMediaSize`           | `4194304` (4 MB)  | Largest photo, logo or sound of a card (also limited by `limits.maxSizeUpload`)                                   |
+| `maxMediaBytes`          | `104857600`       | Octets (100 MB) of all photos, logos and sounds of an account, more is `overQuota`. Each card keeps its own copy  |
+| `maxMediaPerCard`        | `20`              | Media entries (photos, logos, sounds) of one card, more is `tooLarge`                                             |
 | `maxRegisterCards`       | `10000`           | Most address register entries shown as cards of the read only register address book, the most recently used first |
 
 ### `[jmap.auth]`

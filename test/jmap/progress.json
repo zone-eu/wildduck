@@ -389,7 +389,7 @@
         },
         {
             "package": "5.4",
-            "ids": ["CARD-001..CARD-022", "CARD-025", "CARD-026", "CARD-077..CARD-097", "CARD-104..CARD-110", "CARD-167..CARD-173", "CARD-175", "CARD-176"]
+            "ids": ["CARD-001..CARD-022", "CARD-025", "CARD-026", "CARD-077..CARD-097", "CARD-104..CARD-110", "CARD-167..CARD-173", "CARD-175..CARD-178"]
         },
         {
             "package": "5.5",
