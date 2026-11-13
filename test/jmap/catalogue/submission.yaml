@@ -2291,3 +2291,18 @@ scenarios:
     sources:
       - "wildduck:security audit 2026-11 NV-08"
     notes: "The limit was checked first and counted after the message was queued, so parallel requests all passed the check. The recipients are now reserved atomically before the message is queued (lib/lua/ttlreserve.lua) and given back when queueing fails."
+
+  - id: SUB-146
+    title: "Nothing that can fail runs after the message is queued"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7.5"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, db]
+    given: "A valid draft. Fault injection makes the submissions store insert fail, then, in a second create, every update after the queue insert (the record and the message) fail."
+    when: "The draft is submitted twice, once with each fault."
+    then: "The first create gives notCreated serverFail and the queue never sees an insert; nothing is queued or counted and no submission exists. The second create succeeds: the message is queued, its recipients counted and the submission is pending."
+    sources:
+      - "wildduck:security audit 2026-11 NV-07"
+    notes: "Once the message is in the queue the MTA may deliver it at any moment, so a failure after the insert must not turn it into notCreated (the client would retry and send twice). The recipients are reserved and the record stored before the insert, both undone when the insert fails."

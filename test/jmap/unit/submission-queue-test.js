@@ -125,6 +125,21 @@ describe('JMAP submission queue', function () {
         expect((await read(held)).undoStatus).to.equal('pending');
     });
 
+    it('keeps a submission whose message is still being queued pending, until queuingUntil', async () => {
+        // the record is stored before its message is queued (security audit NV-07)
+        const queuing = await pending({ queuingUntil: queue.queuingUntil() });
+        const stale = await pending({ queuingUntil: new Date(Date.now() - 1000) });
+        const lockedWhileQueuing = await pending({ queuingUntil: queue.queuingUntil() });
+        entries.delete(queuing.queueId);
+        entries.delete(stale.queueId);
+        entries.set(lockedWhileQueuing.queueId, { count: 2, locked: true });
+        expect(await queue.pollOnce(deps, 15)).to.equal(2);
+        expect((await read(queuing)).undoStatus).to.equal('pending');
+        expect((await read(stale)).undoStatus).to.equal('final');
+        expect((await read(lockedWhileQueuing)).undoStatus).to.equal('final');
+        expect(queue.queuingUntil().getTime() - Date.now()).to.be.within(9 * 60 * 1000, 10 * 60 * 1000);
+    });
+
     it('restarts the checks when the REST API sets a new delivery time', async () => {
         const doc = await pending({ checkDelay: 960 });
         // the user has used JMAP

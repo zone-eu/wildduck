@@ -6,6 +6,7 @@
 // scripts it uses (lib/lua/ttlreserve.lua next to lib/lua/ttlcounter.lua) against Redis.
 
 const crypto = require('crypto');
+const { PassThrough } = require('stream');
 const { expect } = require('chai');
 const Redis = require('ioredis');
 const config = require('@zone-eu/wild-config');
@@ -131,18 +132,78 @@ describe('outbound', () => {
             expect(drop.pushed).to.deep.equal([]);
         });
 
-        it('takes the message back and releases the reservation when the onQueued step fails', async () => {
-            const drop = maildropper();
-            const counter = counters(0);
-            const seen = [];
-            const onQueued = async id => {
-                seen.push(id);
-                throw new Error('record not stored');
+        // security audit NV-07: once the message is in the queue the MTA may deliver it, so every step that
+        // can fail runs before the queue insert, and a failure there leaves nothing behind
+
+        /** Records the order of the reservation, the prepare step, the push and what comes after */
+        function traced(options = {}) {
+            const events = [];
+            const drop = maildropper(options);
+            const push = drop.pushStream;
+            drop.pushStream = async pushOptions => {
+                events.push('push');
+                await push(pushOptions);
+                events.push('queued');
             };
-            const err = await rejection(queue({ maildropper: drop, counters: counter }, ['a@example.com'], onQueued));
+            const counter = counters(0, options);
+            const reserve = counter.asyncTTLReserve;
+            counter.asyncTTLReserve = async (key, count, max) => {
+                events.push(count > 0 ? 'reserve' : 'release');
+                return reserve(key, count, max);
+            };
+            const prepare = async id => {
+                events.push(`prepare ${id === undefined ? 'without id' : 'with id'}`);
+                if (options.failPrepare) {
+                    throw new Error('record not stored');
+                }
+                return async () => {
+                    events.push('undo');
+                    if (options.failUndo) {
+                        throw new Error('record not removed');
+                    }
+                };
+            };
+            return { events, drop, counter, prepare };
+        }
+
+        it('reserves and prepares before the queue insert, and does nothing after it', async () => {
+            const { events, drop, counter, prepare } = traced();
+            const seen = [];
+            const id = await queue({ maildropper: drop, counters: counter }, ['a@example.com'], async queueId => {
+                seen.push(queueId);
+                return prepare(queueId);
+            });
+            expect(events).to.deep.equal(['reserve', 'prepare with id', 'push', 'queued']);
+            expect(seen).to.deep.equal([id]);
+            expect(drop.pushed[0].id).to.equal(id);
+            expect(drop.canceled).to.deep.equal([]);
+            expect(drop.removed).to.deep.equal([]);
+        });
+
+        it('queues nothing and releases the reservation when the prepare step fails', async () => {
+            const { events, drop, counter, prepare } = traced({ failPrepare: true });
+            const err = await rejection(queue({ maildropper: drop, counters: counter }, ['a@example.com'], prepare));
             expect(err.message).to.equal('record not stored');
-            expect(seen).to.deep.equal([drop.pushed[0].id]);
-            expect(drop.canceled).to.deep.equal([drop.pushed[0].id]);
+            expect(events).to.deep.equal(['reserve', 'prepare with id', 'release']);
+            expect(drop.pushed).to.deep.equal([]);
+            expect(drop.canceled).to.deep.equal([]);
+            expect(counter.state.sent).to.equal(0);
+        });
+
+        it('undoes the prepare step, removes a half stored message and releases the reservation when the push fails', async () => {
+            const { events, drop, counter, prepare } = traced({ failPush: true });
+            const err = await rejection(queue({ maildropper: drop, counters: counter }, ['a@example.com'], prepare));
+            expect(err.code).to.equal('MessageRejected');
+            expect(events).to.deep.equal(['reserve', 'prepare with id', 'push', 'undo', 'release']);
+            expect(drop.removed).to.deep.equal([drop.pushed[0].id]);
+            expect(counter.state.sent).to.equal(0);
+        });
+
+        it('reports the push failure when the undo fails too', async () => {
+            const { events, drop, counter, prepare } = traced({ failPush: true, failUndo: true });
+            const err = await rejection(queue({ maildropper: drop, counters: counter }, ['a@example.com'], prepare));
+            expect(err.code).to.equal('MessageRejected');
+            expect(events).to.deep.equal(['reserve', 'prepare with id', 'push', 'undo', 'release']);
             expect(counter.state.sent).to.equal(0);
         });
 
@@ -154,6 +215,20 @@ describe('outbound', () => {
             expect(drop.removed).to.deep.equal([drop.pushed[0].id]);
             expect(counter.calls.map(call => call.count)).to.deep.equal([1, -1]);
             expect(counter.state.sent).to.equal(0);
+        });
+
+        it('destroys a message stream that is not queued', async () => {
+            const source = new PassThrough();
+            const err = await rejection(
+                outbound.queueMessage(
+                    { maildropper: maildropper(), counters: counters(49) },
+                    { user: 'u1', to: ['a@example.com', 'b@example.com'] },
+                    source,
+                    50
+                )
+            );
+            expect(err.code).to.equal('RateLimitedError');
+            expect(source.destroyed).to.be.true;
         });
     });
 

@@ -35,6 +35,38 @@ function failing(name, methods) {
         });
 }
 
+/**
+ * A database handle whose collections answer some methods with the given functions; each one gets the
+ * real collection and the arguments
+ */
+function intercepting(byCollection) {
+    return db =>
+        new Proxy(db, {
+            get(object, property) {
+                if (property !== 'collection') {
+                    const value = object[property];
+                    return typeof value === 'function' ? value.bind(object) : value;
+                }
+                return (collectionName, ...rest) => {
+                    const collection = db.collection(collectionName, ...rest);
+                    const methods = byCollection[collectionName];
+                    if (!methods) {
+                        return collection;
+                    }
+                    return new Proxy(collection, {
+                        get(target, name) {
+                            if (Object.hasOwn(methods, name)) {
+                                return (...args) => methods[name](target, ...args);
+                            }
+                            const value = target[name];
+                            return typeof value === 'function' ? value.bind(target) : value;
+                        }
+                    });
+                };
+            }
+        });
+}
+
 /** The parts of the account a rejected create must leave as they were */
 async function snapshot(ctx) {
     return {
@@ -88,6 +120,65 @@ describe('EmailSubmission safety', function () {
             expect((await h.call(own, 'EmailSubmission/get', {})).list).to.deep.equal([]);
             expect((await h.emailOf(own, draft.id, ['mailboxIds'])).mailboxIds).to.deep.equal({ [own.mb.Drafts]: true });
         }
+    });
+
+    scenario('SUB-146', async () => {
+        const own = await h.sender();
+        const fail = async () => {
+            throw new Error('injected failure');
+        };
+
+        // the record can not be stored: the message never reaches the queue
+        const draft = await h.createDraft(own);
+        const before = await snapshot(own);
+        const inserts = [];
+        let instance = await startInstance(
+            {},
+            {
+                database: intercepting({ 'jmap.submissions': { insertOne: fail } }),
+                senderDb: intercepting({
+                    [config.sender.collection]: {
+                        insertMany: (collection, ...args) => {
+                            inserts.push(args[0].length);
+                            return collection.insertMany(...args);
+                        }
+                    }
+                })
+            }
+        );
+        try {
+            const [[, res]] = await h.callsAt(instance.url, own, [
+                ['EmailSubmission/set', { create: { s1: { identityId: own.identity.id, emailId: draft.id } } }]
+            ]);
+            h.expectNotCreated(res, 'serverFail');
+        } finally {
+            await stopInstance(instance.app);
+        }
+        expect(inserts).to.deep.equal([]);
+        await expectUnchanged(own, before, { state: false });
+
+        // everything after the queue insert fails: the message is queued, so the create succeeds
+        const next = await snapshot(own);
+        instance = await startInstance(
+            {},
+            { database: intercepting({ 'jmap.submissions': { updateOne: fail, updateMany: fail }, messages: { updateOne: fail } }) }
+        );
+        let created;
+        try {
+            const [[, res]] = await h.callsAt(instance.url, own, [
+                ['EmailSubmission/set', { create: { s1: { identityId: own.identity.id, emailId: draft.id } } }]
+            ]);
+            created = h.expectCreated(res);
+        } finally {
+            await stopInstance(instance.app);
+        }
+        const record = await h.recordOf(created.id);
+        expect(record.undoStatus).to.equal('pending');
+        // the mark could not be removed; it only keeps missing queue entries from counting as delivered for a while
+        expect(record.queuingUntil).to.be.an.instanceof(Date);
+        expect(await h.queuedMessages(own)).to.have.members(next.queued.concat(record.queueId));
+        expect(await h.recipientsUsed(own)).to.equal(next.counter + 1);
+        expect((await h.getSubmission(own, created.id)).undoStatus).to.equal('pending');
     });
 
     scenario('SUB-064', async () => {
