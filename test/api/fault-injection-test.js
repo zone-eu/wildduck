@@ -281,6 +281,33 @@ describe('API under database outages', function () {
         expect(failures, failures.join('\n')).to.deep.equal([]);
     });
 
+    it('reports a submitted draft as sent when the move to Sent fails after queueing', async () => {
+        // the message is already queued: a failure after that must not be reported as a failed submission,
+        // and the queue id must still be recorded on the draft (user deletion finds queued mail by it)
+        const user = fixtures.ids.user;
+        const mailbox = fixtures.ids.mailbox;
+        const created = await app.inject({
+            method: 'POST',
+            url: `/users/${user}/mailboxes/${mailbox}/messages`,
+            payload: { draft: true, to: [{ address: 'move-fail@example.com' }], subject: 'move fails', text: 'queued anyway' }
+        });
+        expect(created.statusCode).to.equal(200);
+        const uid = created.json().message.id;
+
+        patch(MessageHandler.prototype, 'moveAsync', async () => {
+            throw outage();
+        });
+        const res = await app.inject({ method: 'POST', url: `/users/${user}/mailboxes/${mailbox}/messages/${uid}/submit`, payload: {} });
+        restoreAll();
+        expect(res.statusCode).to.equal(200);
+        const queueId = res.json().queueId;
+        expect(queueId).to.be.a('string');
+
+        const draft = await db.database.collection('messages').findOne({ mailbox: new mongodb.ObjectId(mailbox), uid });
+        expect(draft.outbound).to.include(queueId);
+        await app.inject({ method: 'DELETE', url: `/users/${user}/outbound/${queueId}` });
+    });
+
     it('answers a failed mark-as-seen with an error reply instead of a 200', async () => {
         patch(MessageHandler.prototype, 'updateAsync', async () => {
             throw outage();
