@@ -10,6 +10,7 @@ const chai = require('chai');
 const expect = chai.expect;
 chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
@@ -140,6 +141,32 @@ describe('ASPs tests', function () {
         const listResponse = await server.get(`/users/${user}/asps`).expect(200);
         expect(listResponse.body.success).to.be.true;
         expect(listResponse.body.results.length).to.be.equal(0);
+    });
+
+    it('should POST /authenticate expect failure / expired temporary asp', async () => {
+        // an expired ASP may still exist until the TTL index removes it: it must not log in or be renewed (audit NV-04)
+        const created = await server
+            .post(`/users/${user}/asps`)
+            .send({ description: 'temporary asp', scopes: ['imap'], ttl: 3600 })
+            .expect(200);
+        const username = (await server.get(`/users/${user}`).expect(200)).body.username;
+
+        await server.post('/authenticate').send({ username, password: created.body.password, scope: 'imap' }).expect(200);
+
+        const client = await MongoClient.connect(config.dbs.users || config.dbs.mongo);
+        try {
+            const asps = client.db(config.dbs.dbname).collection('asps');
+            const past = new Date(Date.now() - 60 * 1000);
+            await asps.updateOne({ _id: new ObjectId(created.body.id) }, { $set: { expires: past } });
+
+            const response = await server.post('/authenticate').send({ username, password: created.body.password, scope: 'imap' }).expect(403);
+            expect(response.body.success).to.not.be.true;
+
+            const stored = await asps.findOne({ _id: new ObjectId(created.body.id) });
+            expect(stored.expires.getTime()).to.equal(past.getTime());
+        } finally {
+            await client.close();
+        }
     });
 
     it('should DELETE /users/{user}/asps/{asp} expect failure / unknown asp', async () => {
