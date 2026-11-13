@@ -1435,5 +1435,40 @@ describe('JMAP Mailbox/set (mailbox.yaml)', function () {
                 await imap.logout().catch(() => imap.close());
             }
         });
+
+        scenario('MBX-223', async () => {
+            const instance = require('../harness/instance'); // eslint-disable-line global-require
+            const { user } = await setup();
+            const { app, url } = await instance.startInstance({ changes: Object.assign({}, config.jmap.changes, { scanLimit: 5 }) });
+            try {
+                const client = jmap.forUser(user);
+                const raw = client.raw.bind(client);
+                client.raw = (path, init) => raw(path.startsWith('http') ? path : url + path, init);
+                const since = await stateOf(client);
+                await seed.withImap(user, async imap => {
+                    for (let i = 0; i < 6; i++) {
+                        await imap.append('INBOX', Buffer.from(`From: a@example.com\r\nSubject: scan ${i}\r\n\r\nHello\r\n`));
+                    }
+                });
+                const late = (await mset(client, { create: { late: { name: 'Late' } } })).created.late.id;
+                const current = await stateOf(client);
+                const pages = [];
+                let state = since;
+                for (let i = 0; i < 10; i++) {
+                    const page = await client.method('Mailbox/changes', { sinceState: state });
+                    pages.push(page);
+                    state = page.newState;
+                    if (!page.hasMoreChanges) {
+                        break;
+                    }
+                }
+                expect(pages[0].hasMoreChanges).to.equal(true);
+                expect(pages[0].newState).to.not.equal(current);
+                expect(pages[pages.length - 1].hasMoreChanges).to.equal(false);
+                expect(pages.flatMap(page => page.created)).to.include(late);
+            } finally {
+                await instance.stopInstance(app);
+            }
+        });
     });
 });

@@ -3619,3 +3619,18 @@ scenarios:
     sources:
       - "cyrus:JMAPMailbox/mailbox_set_name_interop"
       - "wildduck:brief emails"
+
+  - id: MBX-223
+    title: "Mailbox/changes pages past the journal scan limit without losing mailbox changes"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "A JMAP service whose journal scan limit ([jmap.changes] scanLimit) is 5, and a state S1 of the user."
+    when: "Six messages are appended to the INBOX over IMAP, then a mailbox 'Late' is created over JMAP. Mailbox/changes is called with sinceState S1, and again with each newState while hasMoreChanges is true."
+    then: "The first page stops at the scan limit: hasMoreChanges is true and newState is not the current state. The pages together list the id of 'Late' in created, and the last page has hasMoreChanges false."
+    sources:
+      - "rfc:8620 5.2"
+      - "wildduck:security audit R-1"
