@@ -365,6 +365,30 @@ describe('EmailSubmission rules', function () {
         expect(await h.recipientsUsed(own)).to.equal(3);
     });
 
+    scenario('SUB-145', async () => {
+        const own = await h.sender();
+        await api('PUT', `/users/${own.user.id}`, { recipients: 800 });
+        await restSubmit(own, 400);
+        expect(await h.recipientsUsed(own)).to.equal(400);
+        const rcptTo = prefix => Array.from({ length: 400 }, (value, i) => ({ email: `${prefix}${i}@example.net` }));
+        const drafts = [];
+        for (let i = 0; i < 8; i++) {
+            drafts.push(await h.createDraft(own, { subject: `Parallel ${i}` }));
+        }
+        const before = await h.queuedMessages(own);
+        const results = await Promise.all(
+            drafts.map((draft, i) => h.submitEmail(own, draft.id, { envelope: { mailFrom: { email: own.user.address }, rcptTo: rcptTo(`p${i}x`) } }))
+        );
+        const created = results.filter(res => res.created && res.created.s1);
+        const refused = results.filter(res => res.notCreated && res.notCreated.s1);
+        expect(created.length, JSON.stringify(results.map(res => res.notCreated))).to.equal(1);
+        expect(refused.map(res => res.notCreated.s1.type)).to.deep.equal(Array(7).fill('rateLimit'));
+        expect(await h.recipientsUsed(own)).to.equal(800);
+        expect((await h.queuedMessages(own)).length).to.equal(before.length + 1);
+        const { list } = await h.call(own, 'EmailSubmission/get', {});
+        expect(list.map(entry => entry.id)).to.deep.equal([created[0].created.s1.id]);
+    });
+
     scenario('SUB-061', async () => {
         const own = await h.sender();
         const LIMIT = 4096;

@@ -2276,3 +2276,18 @@ scenarios:
       - "stalwart:mail/submission.rs"
       - "rfc:8621 7"
     notes: "undoStatus is server set on create (RFC 8621 7), so a client should not send it. meli 0.9 sends final on every create and does not check notCreated, so with WildDuck refusing the value it silently never sent anything. Stalwart ignores the value; Cyrus refuses any. WildDuck ignores pending and final, which both describe an ordinary send, and keeps refusing canceled (SUB-025)."
+
+  - id: SUB-145
+    title: "Parallel submissions do not pass the daily recipient limit together"
+    method: EmailSubmission/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A user whose recipients limit is 800 and who has sent to 400 recipients through the REST API, and eight drafts."
+    when: "Eight EmailSubmission/set requests run at the same time, each submitting one draft with an envelope of 400 recipients."
+    then: "Exactly one create succeeds; the other seven give notCreated of type rateLimit. The counter is at 800 and one message more is queued."
+    sources:
+      - "wildduck:security audit 2026-11 NV-08"
+    notes: "The limit was checked first and counted after the message was queued, so parallel requests all passed the check. The recipients are now reserved atomically before the message is queued (lib/lua/ttlreserve.lua) and given back when queueing fails."
