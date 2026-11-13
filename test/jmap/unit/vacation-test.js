@@ -136,11 +136,11 @@ describe('JMAP VacationResponse', () => {
             expect(new Set(results.map(result => result.seq))).to.deep.equal(new Set([2]));
         });
 
-        it('keeps the other sequences of the jmapstate document', async () => {
+        it('keeps the other sequences of the jmap.state document', async () => {
             const user = new ObjectId();
-            await database.collection('jmapstate').insertOne({ _id: user, seq: { Identity: 7 } });
+            await database.collection('jmap.state').insertOne({ _id: user, seq: { Identity: 7 } });
             await reconcile(database, user, DEFAULTS);
-            const doc = await database.collection('jmapstate').findOne({ _id: user });
+            const doc = await database.collection('jmap.state').findOne({ _id: user });
             expect(doc.seq).to.deep.equal({ Identity: 7, VacationResponse: 1 });
         });
     });

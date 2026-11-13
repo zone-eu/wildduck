@@ -109,7 +109,7 @@ describe('EmailSubmission read side', function () {
             // both were released longer ago than the retention (7 days in the test configuration)
             const old = new Date(Date.now() - 8 * 24 * 3600 * 1000);
             const db = await seed.db();
-            await db.collection('jmapsubmissions').updateMany({ _id: { $in: [x, p].map(id => new seed.ObjectId(id.slice(1))) } }, { $set: { sendAt: old } });
+            await db.collection('jmap.submissions').updateMany({ _id: { $in: [x, p].map(id => new seed.ObjectId(id.slice(1))) } }, { $set: { sendAt: old } });
             expect((await h.call(ctx, 'EmailSubmission/get', { ids: [x, p] })).notFound).to.deep.equal([x]);
             const changes = await h.call(ctx, 'EmailSubmission/changes', { sinceState: s1 });
             expect(changes.destroyed).to.deep.equal([x]);
@@ -178,7 +178,7 @@ describe('EmailSubmission read side', function () {
             // a state whose last change is older than the change log retention (30 days)
             const db = await seed.db();
             await db
-                .collection('jmapstate')
+                .collection('jmap.state')
                 .updateOne({ _id: new seed.ObjectId(ctx.user.id) }, { $set: { 'seqTime.EmailSubmission': new Date(Date.now() - 40 * 24 * 3600 * 1000) } });
             const expired = await h.submissionState(ctx);
             await submission(ctx);

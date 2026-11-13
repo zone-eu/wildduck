@@ -86,7 +86,7 @@ describe('journal anchors', function () {
         expect(next.journal.toString()).to.equal(anchor.toString());
         expect(next.delivery.toString()).to.equal(late.toString());
         expect(deliverySearches[0].toString() <= late.toString()).to.be.true;
-        expect((await database.collection('jmapstate').findOne({ _id: user })).settled).to.not.exist;
+        expect((await database.collection('jmap.state').findOne({ _id: user })).settled).to.not.exist;
     });
 
     it('starts the delivery search at the anchor once the second of the anchor is over', async () => {
@@ -107,7 +107,7 @@ describe('journal anchors', function () {
         deliverySearches = [];
         await anchors();
         expect(deliverySearches.map(String)).to.not.include(newest.toString());
-        const state = await database.collection('jmapstate').findOne({ _id: user });
+        const state = await database.collection('jmap.state').findOne({ _id: user });
         expect(state.settled.toString()).to.equal(newest.toString());
 
         // from now on the search starts at the anchor, the burst is not read again
@@ -123,7 +123,7 @@ describe('journal anchors', function () {
         await entry(old, 'EXISTS');
         await anchors();
         await anchors();
-        expect((await database.collection('jmapstate').findOne({ _id: user })).settled.toString()).to.equal(old.toString());
+        expect((await database.collection('jmap.state').findOne({ _id: user })).settled.toString()).to.equal(old.toString());
 
         const changed = new ObjectId();
         await entry(changed);

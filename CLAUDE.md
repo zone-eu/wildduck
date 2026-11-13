@@ -230,9 +230,9 @@ Optional JMAP server (RFC 8620, 8621, 9404, 9425, 9610, Web Push RFC 8030/8291/8
 
 **Ids** (`lib/jmap/ids.js`): letter prefix plus ObjectId hex. Email id is `M` + message `root`, which survives moves (a move makes a new `_id`); IMAP COPY gives a fresh root. Lookups by root go through `lib/message-roots.js` (`by_root` index, legacy docs without root read as `_id` until `ensureUserRoots` ran for the user).
 
-**State, mail types** (`lib/jmap/state.js`, `lib/journal-state.js`): Email, Thread and Mailbox share one state, the newest `journal` entry id of the user kept as a forward only anchor in `jmapstate`, plus an HMAC of the account. `/changes` folds journal entries per `root` (EXISTS created, EXPUNGE destroyed, EXPUNGE+EXISTS of one root is a move = updated). History reaches back `const:journal:time`.
+**State, mail types** (`lib/jmap/state.js`, `lib/journal-state.js`): Email, Thread and Mailbox share one state, the newest `journal` entry id of the user kept as a forward only anchor in `jmap.state`, plus an HMAC of the account. `/changes` folds journal entries per `root` (EXISTS created, EXPUNGE destroyed, EXPUNGE+EXISTS of one root is a move = updated). History reaches back `const:journal:time`.
 
-**State, owned types** (`lib/jmap/changelog.js`): Identity, EmailSubmission, AddressBook, ContactCard, Calendar, CalendarEvent, ParticipantIdentity number changes with a per user, per type sequence in `jmapstate`; objects carry `modSeq`, destroyed ones leave tombstones in `jmapchanges`. Writers outside the JMAP service (REST address, autoreply and address register changes) report through `identity-sync.js`, `vacation-sync.js`, `contacts-sync.js` (`owned-sync.js`: only when `[jmap] enabled` and the user has a `jmapstate` document).
+**State, owned types** (`lib/jmap/changelog.js`): Identity, EmailSubmission, AddressBook, ContactCard, Calendar, CalendarEvent, ParticipantIdentity number changes with a per user, per type sequence in `jmap.state`; objects carry `modSeq`, destroyed ones leave tombstones in `jmap.changes`. Writers outside the JMAP service (REST address, autoreply and address register changes) report through `identity-sync.js`, `vacation-sync.js`, `contacts-sync.js` (`owned-sync.js`: only when `[jmap] enabled` and the user has a `jmap.state` document).
 
 **Shared code rules**: every mail write goes through the existing handlers (`MessageHandler`, `MailboxHandler`, `StorageHandler`, `Maildropper`) so IMAP, REST and JMAP stay consistent. Changes under `lib/` outside `lib/jmap/` must keep the callback/promise APIs and tolerate missing new fields (plugins use these handlers).
 
@@ -287,7 +287,7 @@ Redis-based queues for ElasticSearch synchronization:
 
 **Outgoing Mail**: `zone-queue` (ZoneMTA queue for outbound messages, forwards, autoreplies)
 
-**JMAP**: `jmapstate`, `jmapchanges`, `jmapidentities`, `jmapsubmissions`, `jmappush`, `jmapparticipants`, `addressbooks`, `contacts`, `contactmedia`, `calendars`, `calendarevents`
+**JMAP** (namespaced with a dot): `jmap.state`, `jmap.changes`, `jmap.identities`, `jmap.submissions`, `jmap.push`, `jmap.participants`; **Contacts**: `contacts.books`, `contacts.cards`, `contacts.media`; **Calendars**: `calendars.calendars`, `calendars.events`
 
 **GridFS Buckets**: `audit.files`, `storage.files` (also JMAP temporary uploads, `metadata.expires`), `attachments.files`
 

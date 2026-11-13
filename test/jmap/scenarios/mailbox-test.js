@@ -1439,7 +1439,7 @@ describe('JMAP Mailbox (mailbox.yaml)', () => {
             const aged = seed.ObjectId.createFromTime(Math.floor((Date.now() - retention) / 1000) - 60);
             const userId = new seed.ObjectId(user.id);
             await db.collection('journal').deleteMany({ user: userId });
-            await db.collection('jmapstate').updateOne({ _id: userId }, { $set: { journal: aged, delivery: aged } }, { upsert: true });
+            await db.collection('jmap.state').updateOne({ _id: userId }, { $set: { journal: aged, delivery: aged } }, { upsert: true });
             const s = stateFor(user, aged);
 
             const s2 = await stateOf(client);

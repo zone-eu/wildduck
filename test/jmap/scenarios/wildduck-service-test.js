@@ -379,12 +379,12 @@ describe('JMAP service (wildduck.yaml)', () => {
             const db = await seed.db();
             const user = new seed.ObjectId(userId);
             return {
-                jmapstate: await db.collection('jmapstate').countDocuments({ _id: user }),
-                jmapidentities: await db.collection('jmapidentities').countDocuments({ user }),
-                jmapchanges: await db.collection('jmapchanges').countDocuments({ user }),
-                jmapparticipants: await db.collection('jmapparticipants').countDocuments({ user }),
-                calendars: await db.collection('calendars').countDocuments({ user }),
-                calendarevents: await db.collection('calendarevents').countDocuments({ user }),
+                'jmap.state': await db.collection('jmap.state').countDocuments({ _id: user }),
+                'jmap.identities': await db.collection('jmap.identities').countDocuments({ user }),
+                'jmap.changes': await db.collection('jmap.changes').countDocuments({ user }),
+                'jmap.participants': await db.collection('jmap.participants').countDocuments({ user }),
+                'calendars.calendars': await db.collection('calendars.calendars').countDocuments({ user }),
+                'calendars.events': await db.collection('calendars.events').countDocuments({ user }),
                 uploads: await db.collection('storage.files').countDocuments({ 'metadata.user': user, 'metadata.expires': { $exists: true } })
             };
         }
@@ -410,7 +410,7 @@ describe('JMAP service (wildduck.yaml)', () => {
             const calendarUsing = [URN.core, URN.calendars];
             await client.method('ParticipantIdentity/get', {}, calendarUsing);
             const calendar = (await client.method('Calendar/get', {}, calendarUsing)).list[0];
-            await (await seed.db()).collection('calendarevents').insertOne({
+            await (await seed.db()).collection('calendars.events').insertOne({
                 user: new seed.ObjectId(user.id),
                 calendarIds: [new seed.ObjectId(calendar.id.slice(1))],
                 uid: 'wds-007',
@@ -427,12 +427,12 @@ describe('JMAP service (wildduck.yaml)', () => {
             // the user-delete task removes the placeholder of the deleted user last
             await clock.waitFor(async () => !(await db.collection('deletedusers').findOne({ _id: new seed.ObjectId(user.id) })), { timeout: 30000 });
             expect(await jmapDocuments(user.id)).to.deep.equal({
-                jmapstate: 0,
-                jmapidentities: 0,
-                jmapchanges: 0,
-                jmapparticipants: 0,
-                calendars: 0,
-                calendarevents: 0,
+                'jmap.state': 0,
+                'jmap.identities': 0,
+                'jmap.changes': 0,
+                'jmap.participants': 0,
+                'calendars.calendars': 0,
+                'calendars.events': 0,
                 uploads: 0
             });
 

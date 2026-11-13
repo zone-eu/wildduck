@@ -168,7 +168,7 @@ async function expectRequests(box, count, ms = QUIET) {
 async function storedOf(user) {
     const db = await seed.db();
     return db
-        .collection('jmappush')
+        .collection('jmap.push')
         .find({ user: new seed.ObjectId(user.id) })
         .toArray();
 }
@@ -176,7 +176,7 @@ async function storedOf(user) {
 /** Changes a stored subscription (time travel and the like) */
 async function patchStored(id, $set) {
     const db = await seed.db();
-    await db.collection('jmappush').updateOne({ _id: new seed.ObjectId(id.slice(1)) }, { $set });
+    await db.collection('jmap.push').updateOne({ _id: new seed.ObjectId(id.slice(1)) }, { $set });
 }
 
 module.exports = {

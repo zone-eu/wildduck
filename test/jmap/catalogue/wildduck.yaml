@@ -257,7 +257,7 @@ scenarios:
     seed: [imap]
     given: "A user with changes in several mailboxes."
     when: "The anchors are read (lib/journal-state.js journalAnchors), then an entry with a smaller id is committed late, as by another server process, and they are read again."
-    then: "The journal anchor equals the newest journal id and is stored in jmapstate; the late entry with the smaller id does not move it back. The delivery anchor is the newest entry that added an Email, not a later flag change."
+    then: "The journal anchor equals the newest journal id and is stored in jmap.state; the late entry with the smaller id does not move it back. The delivery anchor is the newest entry that added an Email, not a later flag change."
     sources:
       - "wildduck:plan 5.2 persisted anchor"
     notes: "Changed 2026-11-11: anchors are maintained when a state is read, not on every journal write. That keeps every write path, including the Haraka and ZoneMTA plugins, free of an extra update."

@@ -472,7 +472,7 @@ scenarios:
     applies: "yes"
     seed: [db]
     given: "A user who has only used mail methods over JMAP."
-    when: "Inspect the calendars collection for the user, then call Calendar/get, then inspect again."
+    when: "Inspect the calendars.calendars collection for the user, then call Calendar/get, then inspect again."
     then: "There is no calendar document before the first calendar method call and exactly one afterwards."
     sources:
       - "wildduck:plan 10.2 Calendar"

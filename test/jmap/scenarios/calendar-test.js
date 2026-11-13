@@ -6,7 +6,7 @@
 // /changes and /set (CAL). ParticipantIdentity is in participant-identity-test.js.
 //
 // The scenarios that need CalendarEvent methods (CAL-008, 013, 041, 060, 061, 075, 076) are at the end.
-// The others that only need an event to exist seed it in the calendarevents collection.
+// The others that only need an event to exist seed it in the calendars.events collection.
 
 const crypto = require('crypto');
 const config = require('@zone-eu/wild-config');
@@ -82,7 +82,7 @@ async function updateOne(client, id, patch) {
 const byId = async (client, id) => (await calGet(client, { ids: [id] })).list[0];
 const objectIdOf = id => new seed.ObjectId(id.slice(1));
 
-/** Puts an event in the calendarevents collection directly; CalendarEvent/set arrives with work package 6.5 */
+/** Puts an event in the calendars.events collection directly; CalendarEvent/set arrives with work package 6.5 */
 async function seedEvent(user, calendarIds, extra = {}) {
     const db = await seed.db();
     const doc = Object.assign(
@@ -96,12 +96,12 @@ async function seedEvent(user, calendarIds, extra = {}) {
         },
         extra
     );
-    await db.collection('calendarevents').insertOne(doc);
+    await db.collection('calendars.events').insertOne(doc);
     return doc._id;
 }
 
-const eventExists = async id => !!(await (await seed.db()).collection('calendarevents').findOne({ _id: id }));
-const userCalendars = async user => (await seed.db()).collection('calendars').countDocuments({ user: new seed.ObjectId(user.id) });
+const eventExists = async id => !!(await (await seed.db()).collection('calendars.events').findOne({ _id: id }));
+const userCalendars = async user => (await seed.db()).collection('calendars.calendars').countDocuments({ user: new seed.ObjectId(user.id) });
 
 const alert = (offset, extra = {}) => Object.assign({ '@type': 'Alert', trigger: { '@type': 'OffsetTrigger', offset } }, extra);
 
@@ -935,7 +935,7 @@ describe('Calendars (CAL)', function () {
             const { user, client } = await setupUser();
             const db = await seed.db();
             const age = days =>
-                db.collection('jmapstate').updateOne({ _id: new seed.ObjectId(user.id) }, { $set: { 'seqTime.Calendar': new Date(Date.now() - days * DAY) } });
+                db.collection('jmap.state').updateOne({ _id: new seed.ObjectId(user.id) }, { $set: { 'seqTime.Calendar': new Date(Date.now() - days * DAY) } });
             // a state taken 29 days ago, then the destroy
             const [idA, idB] = await createCalendars(client, 'A', 'B');
             await age(29);

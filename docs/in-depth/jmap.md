@@ -377,7 +377,7 @@ Blob ids:
 
 Part paths are written with `-` instead of `.`. Every blob id is checked against the account; another account's blob answers exactly like an unknown one.
 
-Email, Thread and Mailbox share one state string, derived from the newest entry of the change journal for the user plus a keyed checksum of the account, so a state of another account is never accepted. The newest entry is kept in the user's `jmapstate` document and only moves forward. `EmailDelivery` has its own state, which changes whenever a new Email is added to the store (delivery, IMAP APPEND, REST upload, `Email/set` create, `Email/import`, IMAP COPY, restore), never on moves, flag changes or deletions. The other types number their changes with a per user sequence in `jmapstate` and keep tombstones of destroyed objects in `jmapchanges` for 30 days.
+Email, Thread and Mailbox share one state string, derived from the newest entry of the change journal for the user plus a keyed checksum of the account, so a state of another account is never accepted. The newest entry is kept in the user's `jmap.state` document and only moves forward. `EmailDelivery` has its own state, which changes whenever a new Email is added to the store (delivery, IMAP APPEND, REST upload, `Email/set` create, `Email/import`, IMAP COPY, restore), never on moves, flag changes or deletions. The other types number their changes with a per user sequence in `jmap.state` and keep tombstones of destroyed objects in `jmap.changes` for 30 days.
 
 A `/changes` call with a `sinceState` older than the journal retention answers `cannotCalculateChanges`, and the client resynchronises.
 
@@ -458,7 +458,7 @@ These apply with the release, whether or not JMAP is enabled:
 
 ### Root repair
 
-JMAP Email ids are message roots. Messages stored by old versions may lack a root, and IMAP copies made before this release share the root of their original. `ensureUserRoots` (`lib/message-roots.js`) fills missing roots and gives every legacy copy a root of its own (the oldest document keeps the shared root; a shared root must persist for a settle delay so a move in progress is not mistaken for a copy). It runs once per user and records `rootsChecked` in the user's `jmapstate` document.
+JMAP Email ids are message roots. Messages stored by old versions may lack a root, and IMAP copies made before this release share the root of their original. `ensureUserRoots` (`lib/message-roots.js`) fills missing roots and gives every legacy copy a root of its own (the oldest document keeps the shared root; a shared root must persist for a settle delay so a move in progress is not mistaken for a copy). It runs once per user and records `rootsChecked` in the user's `jmap.state` document.
 
 The JMAP service runs it for a user on first Email access. To do it for every user ahead of time, enable the migration in `config/migrations.toml`:
 
@@ -513,21 +513,21 @@ The other new indexes are on new collections, on `addressregister` (`user_modseq
 
 ### New collections
 
-All in the main database. Every one is removed for a user by the user delete task once the restore window has passed (`lib/jmap/account-data.js`), together with the user's temporary uploads.
+All in the main database, named with a prefix: `jmap.` for JMAP bookkeeping, `contacts.` and `calendars.` for contact and calendar data, which is not tied to JMAP. Every one is removed for a user by the user delete task once the restore window has passed (`lib/jmap/account-data.js`), together with the user's temporary uploads.
 
-| Collection         | Content                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------- |
-| `jmapstate`        | One document per user: journal and delivery anchors, owned type sequences, `rootsChecked`         |
-| `jmapchanges`      | Tombstones of the owned types, expire after 30 days (TTL index `entry_autoexpire`)                |
-| `jmapidentities`   | Identity fields not stored on addresses (name override, replyTo, bcc, signatures)                 |
-| `jmapsubmissions`  | EmailSubmission records, removed after `submission.retention` (TTL index `submission_autoexpire`) |
-| `jmappush`         | PushSubscription records (TTL index `push_autoexpire`)                                            |
-| `jmapparticipants` | ParticipantIdentity ids and change sequence, derived from the addresses                           |
-| `addressbooks`     | Address books                                                                                     |
-| `contacts`         | Contact cards, stored as JSON text plus the fields queries and limits need                        |
-| `contactmedia`     | Media of contact cards                                                                            |
-| `calendars`        | Calendars                                                                                         |
-| `calendarevents`   | Events, with instance bounds, search text and the next alert time (`alertAt`)                     |
+| Collection            | Content                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `jmap.state`          | One document per user: journal and delivery anchors, owned type sequences, `rootsChecked`         |
+| `jmap.changes`        | Tombstones of the owned types, expire after 30 days (TTL index `entry_autoexpire`)                |
+| `jmap.identities`     | Identity fields not stored on addresses (name override, replyTo, bcc, signatures)                 |
+| `jmap.submissions`    | EmailSubmission records, removed after `submission.retention` (TTL index `submission_autoexpire`) |
+| `jmap.push`           | PushSubscription records (TTL index `push_autoexpire`)                                            |
+| `jmap.participants`   | ParticipantIdentity ids and change sequence, derived from the addresses                           |
+| `contacts.books`      | Address books                                                                                     |
+| `contacts.cards`      | Contact cards, stored as JSON text plus the fields queries and limits need                        |
+| `contacts.media`      | Media of contact cards                                                                            |
+| `calendars.calendars` | Calendars                                                                                         |
+| `calendars.events`    | Events, with instance bounds, search text and the next alert time (`alertAt`)                     |
 
 ### Capacity
 

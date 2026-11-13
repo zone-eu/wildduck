@@ -128,7 +128,7 @@ describe('JMAP submission queue', function () {
     it('restarts the checks when the REST API sets a new delivery time', async () => {
         const doc = await pending({ checkDelay: 960 });
         // the user has used JMAP
-        await database.collection('jmapstate').insertOne({ _id: doc.user });
+        await database.collection('jmap.state').insertOne({ _id: doc.user });
         const sendTime = new Date(Date.now() + 120 * 1000);
         await queue.syncQueueChange(deps, doc.user, doc.queueId, { sendTime });
         const after = await read(doc);

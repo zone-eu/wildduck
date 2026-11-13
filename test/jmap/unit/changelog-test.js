@@ -234,7 +234,7 @@ describe('JMAP owned change log', function () {
         await create();
         const { seq } = await log.current(user, 'Identity');
         const old = Date.now() - 31 * 24 * 3600 * 1000;
-        await database.collection('jmapstate').updateOne({ _id: user }, { $set: { 'seqTime.Identity': new Date(old) } });
+        await database.collection('jmap.state').updateOne({ _id: user }, { $set: { 'seqTime.Identity': new Date(old) } });
         const quiet = log.formatState(`u${user}`, 'Identity', { seq, time: old });
         expect(await changes(quiet)).to.deep.include({ newState: quiet, hasMoreChanges: false, created: [] });
     });

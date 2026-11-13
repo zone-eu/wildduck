@@ -516,12 +516,12 @@ describe('ContactCard update, changes and groups (contacts.yaml)', function () {
             // a state older than the retention whose tombstones are purged
             const db = await seed.db();
             const userId = new seed.ObjectId(user.id);
-            const stateDoc = await db.collection('jmapstate').findOne({ _id: userId });
-            await db.collection('jmapstate').updateOne({ _id: userId }, { $set: { 'seqTime.ContactCard': new Date(Date.now() - 40 * 24 * 3600 * 1000) } });
+            const stateDoc = await db.collection('jmap.state').findOne({ _id: userId });
+            await db.collection('jmap.state').updateOne({ _id: userId }, { $set: { 'seqTime.ContactCard': new Date(Date.now() - 40 * 24 * 3600 * 1000) } });
             const old = await cardState(c);
-            await db.collection('jmapstate').updateOne({ _id: userId }, { $set: { 'seqTime.ContactCard': stateDoc.seqTime.ContactCard } });
+            await db.collection('jmap.state').updateOne({ _id: userId }, { $set: { 'seqTime.ContactCard': stateDoc.seqTime.ContactCard } });
             await setCards(c, { destroy: [card.id] });
-            await db.collection('jmapchanges').deleteMany({ user: userId, type: 'ContactCard' });
+            await db.collection('jmap.changes').deleteMany({ user: userId, type: 'ContactCard' });
             await failsWith(call(c, 'ContactCard/changes', { sinceState: old }), 'cannotCalculateChanges');
         });
 

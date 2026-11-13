@@ -147,7 +147,7 @@ const submissionState = async ctx => (await call(ctx, 'EmailSubmission/get', { i
 /** The stored record of a submission (database view) */
 async function recordOf(id) {
     const db = await seed.db();
-    return db.collection('jmapsubmissions').findOne({ _id: new seed.ObjectId(id.slice(1)) });
+    return db.collection('jmap.submissions').findOne({ _id: new seed.ObjectId(id.slice(1)) });
 }
 
 /** The queue id of a submission */

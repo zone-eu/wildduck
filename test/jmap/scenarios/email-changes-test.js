@@ -433,7 +433,7 @@ describe('Email/changes and state strings (email-changes.yaml)', function () {
             const user = new ObjectId(ctx.user.id);
             // as if the user existed before JMAP: no anchor document and no journal entries
             await db.collection('journal').deleteMany({ user });
-            await db.collection('jmapstate').deleteOne({ _id: user });
+            await db.collection('jmap.state').deleteOne({ _id: user });
             const client = jmap.forUser(ctx.user);
             const first = await state(client);
             const second = await state(client);

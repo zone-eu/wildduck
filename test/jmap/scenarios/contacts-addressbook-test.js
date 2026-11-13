@@ -58,7 +58,7 @@ describe('AddressBook (contacts.yaml)', function () {
             expect(responses).to.have.length(ALL_METHODS.length);
             responses.forEach((response, index) => expect(response).to.deep.equal(['error', { type: 'unknownMethod' }, `c${index}`]));
             const db = await seed.db();
-            expect(await db.collection('addressbooks').countDocuments({ user: new seed.ObjectId(user.id) })).to.equal(0);
+            expect(await db.collection('contacts.books').countDocuments({ user: new seed.ObjectId(user.id) })).to.equal(0);
         });
 
         scenario('ABK-004', async () => {
@@ -933,13 +933,13 @@ describe('AddressBook (contacts.yaml)', function () {
             const db = await seed.db();
             const userId = new seed.ObjectId(user.id);
             // a state from 40 days ago: back date the time of the current sequence
-            const stateDoc = await db.collection('jmapstate').findOne({ _id: userId });
-            await db.collection('jmapstate').updateOne({ _id: userId }, { $set: { 'seqTime.AddressBook': new Date(Date.now() - 40 * 24 * 3600 * 1000) } });
+            const stateDoc = await db.collection('jmap.state').findOne({ _id: userId });
+            await db.collection('jmap.state').updateOne({ _id: userId }, { $set: { 'seqTime.AddressBook': new Date(Date.now() - 40 * 24 * 3600 * 1000) } });
             const old = await bookState(user.client);
-            await db.collection('jmapstate').updateOne({ _id: userId }, { $set: { 'seqTime.AddressBook': stateDoc.seqTime.AddressBook } });
+            await db.collection('jmap.state').updateOne({ _id: userId }, { $set: { 'seqTime.AddressBook': stateDoc.seqTime.AddressBook } });
             await setBooks(user.client, { destroy: [id] });
             // the tombstone is purged
-            await db.collection('jmapchanges').deleteMany({ user: userId, type: 'AddressBook' });
+            await db.collection('jmap.changes').deleteMany({ user: userId, type: 'AddressBook' });
             const current = await bookState(user.client);
             await failsWith(call(user.client, 'AddressBook/changes', { sinceState: old }), 'cannotCalculateChanges');
             const after = await call(user.client, 'AddressBook/changes', { sinceState: current });

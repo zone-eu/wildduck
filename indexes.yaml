@@ -563,7 +563,7 @@ indexes:
               root:
                   $exists: true
 
-    - collection: jmapchanges
+    - collection: jmap.changes
       index:
           # JMAP /changes of the owned types (lib/jmap/changelog.js): tombstones after a sequence number
           name: user_type_seq
@@ -572,7 +572,7 @@ indexes:
               type: 1
               seq: 1
 
-    - collection: jmapidentities
+    - collection: jmap.identities
       index:
           # one derived identity per sending right (lib/jmap/types/identity.js), also under concurrent requests
           name: user_source
@@ -584,7 +584,7 @@ indexes:
               source:
                   $exists: true
 
-    - collection: jmapidentities
+    - collection: jmap.identities
       index:
           # Identity/changes, a range scan on the change sequence
           name: user_modseq
@@ -592,7 +592,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: jmapsubmissions
+    - collection: jmap.submissions
       index:
           # EmailSubmission/changes, a range scan on the change sequence; also the per user listing
           name: user_modseq
@@ -600,7 +600,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: jmapsubmissions
+    - collection: jmap.submissions
       index:
           # EmailSubmission/get without ids and EmailSubmission/query without sort: a user's records in id order
           name: user_id
@@ -608,7 +608,7 @@ indexes:
               user: 1
               _id: 1
 
-    - collection: jmapsubmissions
+    - collection: jmap.submissions
       index:
           # pending submissions of a user (checked against the queue) and the cleanup of old ones
           name: user_status_sendat
@@ -617,7 +617,7 @@ indexes:
               undoStatus: 1
               sendAt: 1
 
-    - collection: jmapsubmissions
+    - collection: jmap.submissions
       index:
           # the submission of a queued message, when the REST API deletes or reschedules it
           name: user_queueid
@@ -625,7 +625,7 @@ indexes:
               user: 1
               queueId: 1
 
-    - collection: jmapsubmissions
+    - collection: jmap.submissions
       index:
           # the poller: pending submissions of all users whose next check is due, earliest first
           name: pending_checkat
@@ -634,7 +634,7 @@ indexes:
           partialFilterExpression:
               undoStatus: pending
 
-    - collection: jmapsubmissions
+    - collection: jmap.submissions
       index:
           name: submission_autoexpire
           # a backstop for records of users who stopped using JMAP; normally the cleanup removes them
@@ -643,7 +643,7 @@ indexes:
           key:
               purgeAt: 1
 
-    - collection: jmappush
+    - collection: jmap.push
       index:
           # PushSubscription/get and set: the subscriptions of one set of credentials, and of a user
           name: user_cred
@@ -651,7 +651,7 @@ indexes:
               user: 1
               cred: 1
 
-    - collection: jmappush
+    - collection: jmap.push
       index:
           # the push dispatcher: users with a verified subscription
           name: verified_user
@@ -660,7 +660,7 @@ indexes:
           partialFilterExpression:
               verified: true
 
-    - collection: jmappush
+    - collection: jmap.push
       index:
           name: push_autoexpire
           # expired subscriptions, and unverified ones past their grace period
@@ -668,7 +668,7 @@ indexes:
           key:
               purgeAt: 1
 
-    - collection: jmapparticipants
+    - collection: jmap.participants
       index:
           # one calendar participant identity per address (lib/jmap/types/participant-identity.js)
           name: user_address
@@ -677,7 +677,7 @@ indexes:
               user: 1
               address: 1
 
-    - collection: jmapparticipants
+    - collection: jmap.participants
       index:
           # ParticipantIdentity/changes, a range scan on the change sequence
           name: user_modseq
@@ -685,7 +685,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: calendars
+    - collection: calendars.calendars
       index:
           # the calendars of a user in display order (lib/calendar-handler.js)
           name: user_sortorder
@@ -694,7 +694,7 @@ indexes:
               sortOrder: 1
               _id: 1
 
-    - collection: calendars
+    - collection: calendars.calendars
       index:
           # at most one default calendar per user, also under concurrent first access
           name: user_default
@@ -704,7 +704,7 @@ indexes:
           partialFilterExpression:
               isDefault: true
 
-    - collection: calendars
+    - collection: calendars.calendars
       index:
           # Calendar/changes, a range scan on the change sequence
           name: user_modseq
@@ -712,7 +712,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: calendarevents
+    - collection: calendars.events
       index:
           # the events of a calendar (calendarHasEvent, onDestroyRemoveEvents)
           name: user_calendar
@@ -720,7 +720,7 @@ indexes:
               user: 1
               calendarIds: 1
 
-    - collection: calendarevents
+    - collection: calendars.events
       index:
           # CalendarEvent/changes, a range scan on the change sequence
           name: user_modseq
@@ -728,7 +728,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: calendarevents
+    - collection: calendars.events
       index:
           # one event per uid, or standalone instances with distinct recurrence ids (lib/calendar/events.js)
           name: user_uid
@@ -738,7 +738,7 @@ indexes:
               uid: 1
               recurrenceId: 1
 
-    - collection: calendarevents
+    - collection: calendars.events
       index:
           # CalendarEvent/query: candidates by their first start
           name: user_first
@@ -746,7 +746,7 @@ indexes:
               user: 1
               first: 1
 
-    - collection: calendarevents
+    - collection: calendars.events
       index:
           # the alert scheduler reads due events in time order (lib/calendar/alerts.js)
           name: alert_due
@@ -756,7 +756,7 @@ indexes:
               alertAt:
                   $type: date
 
-    - collection: calendarevents
+    - collection: calendars.events
       index:
           # events naming an upload (Blob/lookup, keeping uploads alive)
           name: user_blobs
@@ -764,7 +764,7 @@ indexes:
               user: 1
               blobs: 1
 
-    - collection: jmapchanges
+    - collection: jmap.changes
       index:
           name: entry_autoexpire
           # tombstones are removed once no valid state can reach them
@@ -772,7 +772,7 @@ indexes:
           key:
               expires: 1
 
-    - collection: addressbooks
+    - collection: contacts.books
       index:
           # JMAP AddressBook (lib/contact-handler.js): the address books of a user
           name: user_id
@@ -780,7 +780,7 @@ indexes:
               user: 1
               _id: 1
 
-    - collection: addressbooks
+    - collection: contacts.books
       index:
           # at most one default address book per user (RFC 9610 2), also under concurrent first use
           name: user_default
@@ -791,7 +791,7 @@ indexes:
           partialFilterExpression:
               isDefault: true
 
-    - collection: addressbooks
+    - collection: contacts.books
       index:
           # AddressBook/changes (lib/jmap/changelog.js)
           name: user_modseq
@@ -799,7 +799,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: contacts
+    - collection: contacts.cards
       index:
           # one card per uid in an account (RFC 9610 3), ContactCard/query uid filter
           name: user_uid
@@ -808,7 +808,7 @@ indexes:
               user: 1
               uid: 1
 
-    - collection: contacts
+    - collection: contacts.cards
       index:
           # ContactCard/changes (lib/jmap/changelog.js)
           name: user_modseq
@@ -816,7 +816,7 @@ indexes:
               user: 1
               modSeq: 1
 
-    - collection: contacts
+    - collection: contacts.cards
       index:
           # the cards of an address book: ContactCard/query inAddressBook, AddressBook/set destroy
           name: user_books
@@ -824,7 +824,7 @@ indexes:
               user: 1
               addressBooks: 1
 
-    - collection: contacts
+    - collection: contacts.cards
       index:
           # ContactCard/query text filters: the search terms of a card (lib/jmap/contact-search.js)
           name: user_terms
@@ -832,7 +832,7 @@ indexes:
               user: 1
               terms: 1
 
-    - collection: contacts
+    - collection: contacts.cards
       index:
           # ContactCard/query hasMember
           name: user_members
@@ -840,7 +840,7 @@ indexes:
               user: 1
               members: 1
 
-    - collection: contacts
+    - collection: contacts.cards
       index:
           # the cards that reference a media file: Blob/lookup, and removal of unreferenced media
           name: user_blobs
@@ -848,7 +848,7 @@ indexes:
               user: 1
               blobs: 1
 
-    - collection: contactmedia
+    - collection: contacts.media
       index:
           # removal with the user
           name: user

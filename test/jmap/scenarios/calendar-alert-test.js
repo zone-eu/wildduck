@@ -733,7 +733,7 @@ describe('Calendar alerts (CALR)', function () {
     });
 
     describe('quota, concurrent changes and dense rules', () => {
-        const storedEvent = async ctx => (await schedulerDeps()).database.collection('calendarevents').findOne({ user: new seed.ObjectId(ctx.user.id) });
+        const storedEvent = async ctx => (await schedulerDeps()).database.collection('calendars.events').findOne({ user: new seed.ObjectId(ctx.user.id) });
 
         it('an email alert that does not fit in the storage quota is not delivered', async () => {
             const ctx = await h.setupUser();

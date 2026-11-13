@@ -70,7 +70,7 @@ describe('EmailSubmission safety', function () {
         const onSuccessUpdateEmail = { '#s1': { [`mailboxIds/${own.mb.Drafts}`]: null, [`mailboxIds/${own.mb.Sent}`]: true } };
         for (const hooks of [
             { senderDb: failing(config.sender.collection, ['insertMany', 'insertOne']) },
-            { database: failing('jmapsubmissions', ['insertOne']) }
+            { database: failing('jmap.submissions', ['insertOne']) }
         ]) {
             const before = await snapshot(own);
             const instance = await startInstance({}, hooks);

@@ -1012,10 +1012,10 @@ describe('ContactCard set and get (contacts.yaml)', function () {
             const max = session.capabilities[jmap.URN.core].maxSizeUpload;
             const content = Buffer.concat([PNG, Buffer.alloc(max + 10)]);
             const db = await seed.db();
-            const before = await db.collection('contactmedia').countDocuments({ user: new seed.ObjectId(other.id) });
+            const before = await db.collection('contacts.media').countDocuments({ user: new seed.ObjectId(other.id) });
             const res = await tryCreate(oc, { media: { p1: { kind: 'photo', uri: h.dataUri(content, 'image/png') } } });
             expect(res.notCreated.k.type).to.equal('tooLarge');
-            expect(await db.collection('contactmedia').countDocuments({ user: new seed.ObjectId(other.id) })).to.equal(before);
+            expect(await db.collection('contacts.media').countDocuments({ user: new seed.ObjectId(other.id) })).to.equal(before);
         });
     });
 });

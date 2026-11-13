@@ -297,7 +297,7 @@ describe('JMAP backend prerequisites (wildduck.yaml)', () => {
                 expect(await repairUserRoots(db, user, { settleMs: 0 })).to.deep.equal({ filled: 0, separated: 0 });
             } finally {
                 await db.collection('messages').deleteMany({ user });
-                await db.collection('jmapstate').deleteOne({ _id: user });
+                await db.collection('jmap.state').deleteOne({ _id: user });
             }
         });
 
@@ -545,7 +545,7 @@ describe('JMAP backend prerequisites (wildduck.yaml)', () => {
             const newest = (await journal(user)).pop();
             const anchors = await journalAnchors(db, id);
             expect(anchors.journal.toString()).to.equal(newest._id.toString());
-            const state = await db.collection('jmapstate').findOne({ _id: id });
+            const state = await db.collection('jmap.state').findOne({ _id: id });
             expect(state.journal.toString()).to.equal(newest._id.toString());
 
             // an entry committed late by another process with a smaller id does not move the anchor back

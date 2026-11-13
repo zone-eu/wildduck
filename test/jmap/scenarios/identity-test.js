@@ -768,7 +768,7 @@ describe('Identity', function () {
             await set(oc, { create: { x: { email: owner.address } } });
             const db = await seed.db();
             await db
-                .collection('jmapstate')
+                .collection('jmap.state')
                 .updateOne({ _id: new seed.ObjectId(owner.id) }, { $set: { 'seqTime.Identity': new Date(Date.now() - 31 * 24 * 3600 * 1000) } });
             const old = (await call(oc, 'Identity/get')).state;
             await set(oc, { create: { y: { email: owner.address } } });

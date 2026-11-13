@@ -704,7 +704,7 @@ describe('CalendarEvent properties, overrides and instances (CEV, part 2)', func
             const s1 = await h.evState(ctx);
             await h.evSet(ctx, { destroy: [id] });
             // the tombstone outlives a 29 day old state: it expires after the 30 day retention
-            const tombstone = await (await seed.db()).collection('jmapchanges').findOne({ user: new seed.ObjectId(ctx.user.id), type: 'CalendarEvent' });
+            const tombstone = await (await seed.db()).collection('jmap.changes').findOne({ user: new seed.ObjectId(ctx.user.id), type: 'CalendarEvent' });
             expect(tombstone.expires.getTime()).to.be.above(Date.now() + 30 * 24 * 3600 * 1000);
             expect((await h.evChanges(ctx, s1)).destroyed).to.deep.equal([id]);
         });
