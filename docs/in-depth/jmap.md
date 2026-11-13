@@ -325,7 +325,7 @@ A stream ends as soon as its credential is revoked: the password or 2FA setup ch
 
 ### Web Push
 
-`PushSubscription/set` creates a subscription bound to the credential that created it (the application password, the account password and its `authVersion`, or the access token). Deleting that application password, changing the password or revoking the token removes the subscription. `PushSubscription/get` never returns `url` or `keys`.
+`PushSubscription/set` creates a subscription bound to the credential that created it (the application password, the account password and its `authVersion`, or the access token). Deleting that application password, changing the password, revoking the token or changing `api.accessControl.secret` removes the subscription. `PushSubscription/get` never returns `url` or `keys`.
 
 - A subscription receives a `PushVerification` first and gets no state changes until the client sets the verification code.
 - Payloads are encrypted with RFC 8291 (`aes128gcm`) when the client gave keys, and every push request carries a VAPID (RFC 8292) `Authorization` header. The VAPID key pair (ES256) is created on first start and stored in the `settings` collection under the hidden key `jmap:vapid`. To rotate it, delete that setting (`db.settings.deleteOne({key: 'jmap:vapid'})`); the next worker that reads it creates a new pair and the session state changes, so clients see the new `applicationServerKey`. Subscriptions created under the old key are destroyed when their next push is due (RFC 9749 section 5, no transition period), and clients create new ones.

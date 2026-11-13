@@ -2294,3 +2294,16 @@ scenarios:
       - "james:WebPushVapidContract#stateChangeShouldBeAuthenticated"
       - "stalwart:core/push_subscription.rs"
     notes: "Decided 2026-11-11: VAPID is included in phase 4."
+  - id: PUSH-089
+    title: "A subscription created with a token ends when the access control secret changes"
+    method: "WebPush"
+    spec: "RFC 8620 7.2"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [api, db]
+    given: "A Bearer token created a verified subscription. Then the state after a rotation of api.accessControl.secret is set up: the token record and the subscription carry what the previous secret produced, the server runs with the current one."
+    when: "A mail change is made."
+    then: "The token is refused, no push is sent and the subscription is removed."
+    sources:
+      - "wildduck:security audit 2026-11 NV-10"

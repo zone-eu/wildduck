@@ -784,6 +784,37 @@ describe('JMAP PushSubscription', function () {
             await clock.waitFor(async () => !(await h.storedOf(user)).length, { message: 'the subscription is removed' });
         });
 
+        scenario('PUSH-089', async () => {
+            const user = await h.createUser();
+            const token = await h.tokenClient(user);
+            const box = push.endpoint();
+            const id = await h.verified(token, box);
+            // a rotated api.accessControl.secret: the token record was signed, and the subscription bound to
+            // it, under the previous secret (in the field order of UserHandler.setAuthToken)
+            const previous = `previous ${crypto.randomBytes(8).toString('hex')}`;
+            const hmac = data => crypto.createHmac('sha256', previous).update(data).digest('hex');
+            const record = await redis.hgetall(token.tokenKey);
+            const signature = hmac(
+                JSON.stringify({
+                    token: token.token,
+                    user: record.user,
+                    authVersion: Number(record.authVersion) || 0,
+                    role: record.role,
+                    mfaRequired: record.mfaRequired,
+                    mfaVerified: record.mfaVerified,
+                    passwordChangeRequired: record.passwordChangeRequired
+                })
+            );
+            await redis.hset(token.tokenKey, 's', signature);
+            await h.patchStored(id, { tokenProof: hmac(`${token.tokenKey.slice('tn:token:'.length)}\0${signature}`) });
+            expect((await token.request({ using: h.CORE, methodCalls: [['Core/echo', {}, 'e']] })).status).to.equal(401);
+
+            await h.append(user);
+            // the PushVerification only
+            await h.expectRequests(box, 1);
+            await clock.waitFor(async () => !(await h.storedOf(user)).length, { message: 'the subscription is removed' });
+        });
+
         scenario('PUSH-059', async () => {
             const changes = {
                 disabled: user => api('PUT', `/users/${user.id}`, { disabled: true }),
