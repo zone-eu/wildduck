@@ -1383,3 +1383,18 @@ scenarios:
     sources:
       - "wildduck:F.5 aerc interop run"
     notes: "RFC 8620 names no status code for a successful upload. aerc 0.22 (go-jmap 0.5.3) treats every status but 200 as an error, so with 201 it could not send or postpone a message. jmapio, the Fastmail suite, jmap-jam, meli and Bulwark accept any 2xx."
+
+  - id: BLOB-087
+    title: "A failed expiry round leaves no chunks behind for good"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [db]
+    given: "Two expired uploads, and a storage handler whose first deletion of storage.chunks fails."
+    when: "The expiry of temporary uploads runs, fails, and runs again."
+    then: "After the second run both uploads are gone, files documents and chunks alike; no chunk of them is left without its files document."
+    sources:
+      - "wildduck:security audit NV-11"
+    notes: "Nothing sweeps storage.chunks, so the chunks are deleted before the files documents: a files document left behind is found again by the next round."

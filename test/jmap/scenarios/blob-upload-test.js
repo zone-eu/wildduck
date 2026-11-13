@@ -265,6 +265,45 @@ describe('Upload', function () {
             expect(await temporaryFiles(fresh)).to.have.length(0);
             expect(await db.collection('storage.chunks').countDocuments({ files_id: file._id })).to.equal(0);
         });
+
+        scenario('BLOB-087', async () => {
+            const fresh = await accounts.createUser();
+            const c = await session(fresh);
+            for (let i = 0; i < 2; i++) {
+                const res = await upload(c, crypto.randomBytes(3000), { 'Content-Type': 'application/octet-stream' });
+                await expireIn(res.json.blobId, -1000);
+            }
+            const ids = (await temporaryFiles(fresh)).map(file => file._id);
+            expect(ids).to.have.length(2);
+
+            // a handler whose first deletion of chunks fails
+            const db = await connect();
+            const failing = new StorageHandler({ database: db.database, users: db.users, gridfs: db.gridfs });
+            let failures = 1;
+            failing.gridfs = {
+                collection: name => {
+                    const collection = db.gridfs.collection(name);
+                    if (name !== 'storage.chunks') {
+                        return collection;
+                    }
+                    return new Proxy(collection, {
+                        get: (target, key) =>
+                            key === 'deleteMany' && failures-- > 0
+                                ? () => Promise.reject(new Error('injected failure'))
+                                : typeof target[key] === 'function'
+                                  ? target[key].bind(target)
+                                  : target[key]
+                    });
+                }
+            };
+            const err = await failing.removeExpiredUploads().catch(error => error);
+            expect(err).to.be.an('error');
+            await failing.removeExpiredUploads();
+
+            const tdb = await seed.db();
+            expect(await tdb.collection('storage.files').countDocuments({ _id: { $in: ids } })).to.equal(0);
+            expect(await tdb.collection('storage.chunks').countDocuments({ files_id: { $in: ids } })).to.equal(0);
+        });
     });
 
     describe('limits', () => {
