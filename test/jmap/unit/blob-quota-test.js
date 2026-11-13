@@ -8,7 +8,7 @@ const { expect } = require('chai');
 const { ObjectId } = require('mongodb');
 const { Readable } = require('stream');
 const { checkSource, literalSize, readSlice, toBlob } = require('../../../lib/jmap/types/blob');
-const { filterOf } = require('../../../lib/jmap/types/quota');
+const { filterOf, defaultLimit } = require('../../../lib/jmap/types/quota');
 const { objectIds, searchCondition } = require('../../../lib/object-ids');
 const imapTools = require('../../../imap-core/lib/imap-tools');
 
@@ -143,6 +143,25 @@ describe('Quota/query filters', () => {
                 JSON.stringify(filter)
             ).to.equal('invalidArguments');
         }
+    });
+});
+
+describe('Quota default limit cache (H-1)', () => {
+    it('keeps the default limit per settings handler', async () => {
+        const handler = value => ({
+            reads: 0,
+            async get() {
+                this.reads++;
+                return value;
+            }
+        });
+        const first = handler(100);
+        const second = handler(200);
+        expect(await defaultLimit(first)).to.equal(100);
+        expect(await defaultLimit(second)).to.equal(200);
+        expect(await defaultLimit(first)).to.equal(100);
+        expect(first.reads).to.equal(1);
+        expect(second.reads).to.equal(1);
     });
 });
 
