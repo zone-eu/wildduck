@@ -1414,3 +1414,19 @@ scenarios:
       - "rfc:8620 6"
       - "wildduck:security audit NV-28"
     notes: "The byte quota alone let empty uploads pile up for a whole upload lifetime. The count comes from the aggregate that sums the bytes, so it costs no extra query."
+
+  - id: BLOB-089
+    title: "Parallel uploads do not go over the upload quota together"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A JMAP instance with an upload quota of 10,000 octets and maxConcurrentUpload 4."
+    when: "One user starts four uploads of 4,000 octets with a Content-Length each, holds their bodies until all four passed the quota check, then finishes them."
+    then: "All four answer 200. Afterwards the user's temporary uploads together are no larger than the quota: the uploads that came too late evicted the older ones."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:security audit NV-13"
+    notes: "The quota is checked before an upload is stored, when the parallel ones do not exist yet. It is checked again once the file is stored, also when the size was declared up front; the same applies to Blob/upload and the data: URIs of calendar events."

@@ -60,6 +60,28 @@ function heldUpload(url, user) {
     return { response, finish: () => req.end('last chunk') };
 }
 
+/** A request with a Content-Length of `size` whose body is held after its first octet until `finish` is called */
+function sizedUpload(url, user, size) {
+    const target = new URL(url);
+    const req = http.request({
+        host: target.hostname,
+        port: target.port,
+        path: target.pathname,
+        method: 'POST',
+        headers: { Authorization: jmap.basic(user.username, user.password), 'Content-Type': 'application/octet-stream', 'Content-Length': size }
+    });
+    const response = new Promise((resolve, reject) => {
+        req.on('response', res => {
+            const chunks = [];
+            res.on('data', chunk => chunks.push(chunk));
+            res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+        });
+        req.on('error', reject);
+    });
+    req.write(Buffer.alloc(1, 1));
+    return { response, finish: () => req.end(Buffer.alloc(size - 1, 1)) };
+}
+
 describe('Upload', function () {
     this.timeout(60000);
     let user;
@@ -447,6 +469,32 @@ describe('Upload', function () {
             expect(refused.status).to.equal(413);
             expect(refused.json).to.include({ type: 'urn:ietf:params:jmap:error:limit', limit: 'uploadQuota' });
             expect(await temporaryFiles(fresh)).to.have.length(COUNT);
+        });
+    });
+
+    describe('parallel uploads', () => {
+        let instance;
+        const QUOTA = 10000;
+        before(async () => {
+            instance = await startInstance({ limits: Object.assign({}, config.jmap.limits, { uploadQuota: QUOTA, maxConcurrentUpload: 4 }) });
+        });
+        after(() => stopInstance(instance.app));
+
+        scenario('BLOB-089', async () => {
+            const fresh = await accounts.createUser();
+            const c = await session(fresh);
+            const url = `${instance.url}/jmap/upload/${c.accountId}/`;
+            // each one fits alone, the four together do not
+            const held = Array.from({ length: 4 }, () => sizedUpload(url, fresh, 4000));
+            // let all of them pass the quota check before any is stored
+            await new Promise(resolve => setTimeout(resolve, 300));
+            held.forEach(upload => upload.finish());
+            const responses = await Promise.all(held.map(upload => upload.response));
+            expect(responses.map(res => res.status)).to.deep.equal([200, 200, 200, 200]);
+
+            const files = await temporaryFiles(fresh);
+            expect(files.reduce((sum, file) => sum + file.length, 0)).to.be.at.most(QUOTA);
+            expect(files.length).to.be.at.least(1);
         });
     });
 });
