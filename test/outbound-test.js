@@ -186,6 +186,8 @@ describe('outbound', () => {
             expect(err.message).to.equal('record not stored');
             expect(events).to.deep.equal(['reserve', 'prepare with id', 'release']);
             expect(drop.pushed).to.deep.equal([]);
+            // nothing was pushed, so there is no queue file to remove
+            expect(drop.removed).to.deep.equal([]);
             expect(drop.canceled).to.deep.equal([]);
             expect(counter.state.sent).to.equal(0);
         });

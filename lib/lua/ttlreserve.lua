@@ -4,8 +4,8 @@
 --
 -- amount > 0: adds the amount only when the counter stays within the limit, atomically, so parallel
 --             reservations can not pass the limit together. Returns {1, updated, ttl} or {0, current, ttl}.
--- amount < 0: releases an earlier reservation. Never goes below zero and never creates the key, so a
---             release after the window ran out does not carry into the next window. Returns {1, updated, ttl}.
+-- amount <= 0: releases an earlier reservation. Never goes below zero and never creates the key, so a
+--              release after the window ran out does not carry into the next window. Returns {1, updated, ttl}.
 
 local key = KEYS[1];
 local amount = tonumber(ARGV[1]) or 0;
@@ -13,7 +13,7 @@ local limit = tonumber(ARGV[2]) or 0;
 local windowSize = tonumber(ARGV[3]) or 0;
 local current = tonumber(redis.call("GET", key)) or 0;
 
-if amount < 0 then
+if amount <= 0 then
     if current <= 0 then
         return {1, 0, tonumber(redis.call("TTL", key)) or 0};
     end;
@@ -23,10 +23,6 @@ end;
 
 if current + amount > limit then
     return {0, current, tonumber(redis.call("TTL", key)) or 0};
-end;
-
-if amount == 0 then
-    return {1, current, tonumber(redis.call("TTL", key)) or windowSize};
 end;
 
 local updated = tonumber(redis.call("INCRBY", key, amount));
