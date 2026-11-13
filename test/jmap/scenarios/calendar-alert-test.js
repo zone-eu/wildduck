@@ -870,6 +870,24 @@ describe('Calendar alerts (CALR)', function () {
             expect((await stored(ctx)).alertAt.getTime()).to.equal(T - 30 * MINUTE);
         });
 
+        it('a change while the reschedule task runs queues one follow up task', async () => {
+            const ctx = await h.setupUser();
+            await h.createCalendar(ctx, { name: 'A', defaultAlertsWithTime: { dt: offsetAlert('-PT10M') } });
+            const deps = await schedulerDeps();
+            const user = new seed.ObjectId(ctx.user.id);
+            const calendar = (await deps.database.collection('calendars.calendars').findOne({ user, name: 'A' }))._id;
+            await alerts.queueReschedule(deps, user, calendar);
+            // the task runner took it
+            await deps.database
+                .collection('tasks')
+                .updateOne({ task: alerts.RESCHEDULE_TASK, 'data.user': user }, { $set: { locked: true, status: 'active' } });
+            await alerts.queueReschedule(deps, user, calendar);
+            await alerts.queueReschedule(deps, user, calendar);
+            const tasks = await queued(ctx);
+            expect(tasks.map(task => task.status).sort()).to.deep.equal(['active', 'waiting']);
+            await deps.database.collection('tasks').deleteMany({ task: alerts.RESCHEDULE_TASK, 'data.user': user });
+        });
+
         it('an update that leaves the default alerts as they are queues nothing', async () => {
             const ctx = await h.setupUser();
             const a = await h.createCalendar(ctx, { name: 'A', defaultAlertsWithTime: { dt: offsetAlert('-PT10M') } });
