@@ -464,6 +464,7 @@ These apply with the release, whether or not JMAP is enabled:
 - Autoreplies (also those sent by the Haraka plugin) answer only mail that names the user in a recipient header (To, Cc and the like, RFC 3834 2): mail that reaches the user only as a Bcc or through a list gets no autoreply. The user's addresses, their alias domains, wildcards and `fromWhitelist` count as the user.
 - Every change notification makes one extra Redis call to check whether the user has a verified Web Push subscription.
 - Temporary uploads live in the storage bucket with `metadata.expires`; the REST storage API does not list them, and the garbage collector removes expired ones.
+- Deleting a user through the REST API takes the user's mail out of the outbound queue: mail held for a later send time (REST `sendTime`, JMAP `FUTURERELEASE`) and mail sent during the last day that is still retried. Entries being delivered at that moment are left alone. A restored user does not get that mail back, the stored copy stays in the mailbox.
 - Address changes and autoreply changes through the REST API, and address register updates on the mail path, feed the JMAP change logs of identities, participant identities, the VacationResponse and the register address book. This happens only in processes where `[jmap] enabled` is true, and only for users that have used JMAP.
 
 ### Root repair

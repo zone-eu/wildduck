@@ -2306,3 +2306,18 @@ scenarios:
     sources:
       - "wildduck:security audit 2026-11 NV-07"
     notes: "Once the message is in the queue the MTA may deliver it at any moment, so a failure after the insert must not turn it into notCreated (the client would retry and send twice). The recipients are reserved and the record stored before the insert, both undone when the insert fails."
+
+  - id: SUB-147
+    title: "Deleting the account takes its scheduled mail out of the queue"
+    method: EmailSubmission/set
+    spec: "RFC 8621 7"
+    level: wd
+    phase: 3
+    applies: yes
+    seed: [jmap, api]
+    given: "A user with three messages held in the outbound queue for an hour: one REST submit with sendTime, one REST draft submit with sendTime and one EmailSubmission with HOLDFOR."
+    when: "The user is deleted through the REST API."
+    then: "No queue entry and no stored queue message is left for any of the three queue ids, and the EmailSubmission record is canceled."
+    sources:
+      - "wildduck:security audit 2026-11 NV-06"
+    notes: "Mail held for later (up to 30 days) was delivered after the account was deleted. It is now taken out of the queue at deletion, not at the final purge, so a restored account does not get the scheduled mail back (the stored copy stays in the mailbox)."

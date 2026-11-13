@@ -479,6 +479,42 @@ describe('EmailSubmission delayed send and undo', function () {
         expect(await h.call(own, 'EmailSubmission/changes', { sinceState: state })).to.deep.include({ created: [], updated: [], destroyed: [] });
     });
 
+    scenario('SUB-147', async () => {
+        const own = await h.sender();
+        const sendTime = new Date(Date.now() + 3600 * 1000).toISOString();
+        // REST submit with a send time
+        const submitted = await api('POST', `/users/${own.user.id}/submit`, {
+            to: [{ address: 'rest-later@example.net' }],
+            subject: 'REST later',
+            text: 'Hello',
+            sendTime
+        });
+        // REST draft submit with a send time
+        const draft = await h.createDraft(own, { to: 'draft-later@example.net' });
+        const stored = await (
+            await seed.db()
+        )
+            .collection('messages')
+            .findOne({ user: new seed.ObjectId(own.user.id), root: new seed.ObjectId(draft.id.slice(1)) });
+        const draftSubmitted = await api('POST', `/users/${own.user.id}/mailboxes/${stored.mailbox}/messages/${stored.uid}/submit`, { sendTime });
+        // JMAP submission held for an hour
+        const jmap = await delayed(own, { to: 'jmap-later@example.net' });
+
+        const queueIds = [submitted.message.queueId, draftSubmitted.queueId, jmap.queueId];
+        expect(queueIds.every(id => typeof id === 'string')).to.be.true;
+        for (const queueId of queueIds) {
+            expect(await outbound.entries(queueId)).to.have.length(1);
+        }
+
+        await api('DELETE', `/users/${own.user.id}`);
+        for (const queueId of queueIds) {
+            expect(await outbound.entries(queueId), queueId).to.deep.equal([]);
+            expect(await outbound.file(queueId), queueId).to.equal(null);
+        }
+        // the submission follows its queue entries as when the REST API deletes them
+        expect((await h.recordOf(jmap.id)).undoStatus).to.equal('canceled');
+    });
+
     scenario('ESET-087', async () => {
         const { draft, id, queueId } = await delayed(ctx);
         const res = await ctx.client.method('Email/set', { destroy: [draft.id] });

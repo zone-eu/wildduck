@@ -12,6 +12,7 @@ const log = require('npmlog');
 const UserHandler = require('./lib/user-handler');
 const MailboxHandler = require('./lib/mailbox-handler');
 const MessageHandler = require('./lib/message-handler');
+const Maildropper = require('./lib/maildropper');
 const StorageHandler = require('./lib/storage-handler');
 const AuditHandler = require('./lib/audit-handler');
 const AutoreplyHandler = require('./lib/autoreply-handler');
@@ -703,6 +704,15 @@ function createApp(options = {}) {
         users: db.users,
         redis: db.redis,
         messageHandler,
+        // a deleted user's queued mail is taken out of the outbound queue
+        maildropper: new Maildropper({
+            db,
+            zone: config.sender.zone,
+            collection: config.sender.collection,
+            gfs: config.sender.gfs,
+            maxQueueTime: config.sender.maxQueueTime,
+            loopSecret: config.sender.loopSecret
+        }),
         loggelf: message => loggelf(message)
     });
 
