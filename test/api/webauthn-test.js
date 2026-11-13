@@ -6,7 +6,6 @@
 const supertest = require('supertest');
 const chai = require('chai');
 const crypto = require('crypto');
-const cbor = require('cbor-x');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -14,121 +13,10 @@ chai.config.includeStack = true;
 const config = require('@zone-eu/wild-config');
 
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
-const cborEncoder = new cbor.Encoder();
+const { SoftwareWebAuthnAuthenticator } = require('./_webauthn');
 
 const ORIGIN = 'https://example.com';
 const RP_ID = 'example.com';
-
-class SoftwareWebAuthnAuthenticator {
-    constructor(rpId) {
-        this.rpId = rpId;
-        this.credentialId = crypto.randomBytes(32);
-        this.counter = 0;
-
-        const keyPair = crypto.generateKeyPairSync('ec', {
-            namedCurve: 'prime256v1'
-        });
-
-        this.publicKey = keyPair.publicKey;
-        this.privateKey = keyPair.privateKey;
-    }
-
-    createRegistrationResponse(challenge, origin) {
-        const clientDataJSON = this.getClientDataJSON('webauthn.create', challenge, origin);
-        const counter = Buffer.alloc(4);
-        const credentialIdLength = Buffer.alloc(2);
-        credentialIdLength.writeUInt16BE(this.credentialId.length);
-
-        const authData = Buffer.concat([
-            this.getRpIdHash(),
-            Buffer.from([0x41]), // UP + AT
-            counter,
-            Buffer.alloc(16),
-            credentialIdLength,
-            this.credentialId,
-            this.getCredentialPublicKeyCose()
-        ]);
-
-        const attestationObject = cborEncoder.encode({
-            fmt: 'none',
-            attStmt: {},
-            authData
-        });
-
-        return {
-            challenge,
-            rawId: this.credentialId.toString('hex'),
-            clientDataJSON: clientDataJSON.toString('hex'),
-            attestationObject: attestationObject.toString('hex')
-        };
-    }
-
-    createAssertionResponse(challenge, origin) {
-        const clientDataJSON = this.getClientDataJSON('webauthn.get', challenge, origin);
-        const counter = Buffer.alloc(4);
-        counter.writeUInt32BE(++this.counter);
-
-        const authenticatorData = Buffer.concat([
-            this.getRpIdHash(),
-            Buffer.from([0x01]), // UP
-            counter
-        ]);
-
-        const signature = crypto.sign(
-            'SHA256',
-            Buffer.concat([authenticatorData, crypto.createHash('sha256').update(clientDataJSON).digest()]),
-            this.privateKey
-        );
-
-        return {
-            challenge,
-            rawId: this.credentialId.toString('hex'),
-            clientDataJSON: clientDataJSON.toString('hex'),
-            authenticatorData: authenticatorData.toString('hex'),
-            signature: signature.toString('hex')
-        };
-    }
-
-    getClientDataJSON(type, challenge, origin) {
-        return Buffer.from(
-            JSON.stringify({
-                type,
-                challenge: base64UrlEncode(Buffer.from(challenge, 'hex')),
-                origin
-            })
-        );
-    }
-
-    getRpIdHash() {
-        return crypto.createHash('sha256').update(this.rpId).digest();
-    }
-
-    getCredentialPublicKeyCose() {
-        const jwk = this.publicKey.export({ format: 'jwk' });
-
-        return cborEncoder.encode(
-            new Map([
-                [1, 2],
-                [3, -7],
-                [-1, 1],
-                [-2, base64UrlDecode(jwk.x)],
-                [-3, base64UrlDecode(jwk.y)]
-            ])
-        );
-    }
-}
-
-function base64UrlEncode(value) {
-    return Buffer.from(value).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(new RegExp('=+$'), '');
-}
-
-function base64UrlDecode(value) {
-    let input = value.replace(/-/g, '+').replace(/_/g, '/');
-    while (input.length % 4 !== 0) {
-        input += '=';
-    }
-    return Buffer.from(input, 'base64');
-}
 
 describe('API WebAuthn', function () {
     this.timeout(10000); // eslint-disable-line no-invalid-this
@@ -144,6 +32,7 @@ describe('API WebAuthn', function () {
     let registrationResponse;
     let accessToken;
     let credentialId;
+    let passwordOnlyToken;
 
     after(async () => {
         if (!user) {
@@ -168,6 +57,13 @@ describe('API WebAuthn', function () {
         expect(response.body.success).to.be.true;
         expect(response.body.id).to.match(/^[0-9a-f]{24}$/);
         user = response.body.id;
+    });
+
+    it('should POST /authenticate expect success / token issued before any second factor', async () => {
+        const response = await server.post('/authenticate').send({ username, password, scope: 'master', token: true }).expect(200);
+        expect(response.body.token).to.be.a('string');
+        passwordOnlyToken = response.body.token;
+        await server.get(`/users/me?accessToken=${passwordOnlyToken}`).expect(200);
     });
 
     it('should POST /users/{user}/2fa/webauthn/registration-challenge expect success', async () => {
@@ -204,6 +100,11 @@ describe('API WebAuthn', function () {
         expect(attestationResponse.body.response.success).to.be.true;
         expect(attestationResponse.body.response.rawId).to.equal(registrationResponse.rawId);
         expect(attestationResponse.body.response.authenticatorAttachment).to.equal('cross-platform');
+    });
+
+    it('should GET /users/me expect failure / the first second factor ends password only sessions', async () => {
+        const response = await server.get(`/users/me?accessToken=${passwordOnlyToken}`);
+        expect(response.status).to.be.oneOf([401, 403]);
     });
 
     it('should GET /users/{user}/2fa/webauthn/credentials expect success / expect registered credential', async () => {

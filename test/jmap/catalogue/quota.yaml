@@ -1,0 +1,383 @@
+area: quota
+title: "Quota (RFC 9425)"
+description: "Quota/get, Quota/query, Quota/changes and Quota/queryChanges mapped onto WildDuck's single per user storage quota (users.quota and storageUsed), plus the overQuota SetError. Included in phase 4 (decided 2026-11-11). Worth knowing: one real client, Cypht, always sends urn:ietf:params:jmap:quota in using, so it would be refused with unknownCapability by a server that did not advertise the capability."
+scenarios:
+  - id: QUOTA-001
+    title: "Quota capability is advertised as an empty object and gates the Quota methods"
+    method: Session
+    spec: "RFC 9425 2.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A server with the quota feature enabled."
+    when: "GET the session resource; then call Quota/get in a request whose using has only core and mail, and again with the quota URN added."
+    then: "'urn:ietf:params:jmap:quota' is {} in capabilities and in the account's accountCapabilities. Without the URN in using the call answers unknownMethod; with it the call succeeds. A request that lists the URN and calls only mail methods (the Cypht pattern) is accepted."
+    sources:
+      - "rfc:9425 2.1"
+      - "james:QuotaGetMethodContract#quotaGetShouldFailWhenOmittingOneCapability"
+      - "james:QuotaGetMethodContract#quotaGetShouldFailWhenOmittingAllCapability"
+      - "stalwart:principal/get.rs"
+      - "wildduck:landscape 3b Cypht always sends core, mail and quota"
+
+  - id: QUOTA-002
+    title: "Quota/get with ids null returns the single storage quota"
+    method: Quota/get
+    spec: "RFC 9425 4.1, 4.2"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [api]
+    given: "A user with a storage quota of 1 GB set through the REST API."
+    when: "Quota/get with ids null and using core, mail and quota."
+    then: "list has exactly one Quota: id is a valid letter prefixed Id, resourceType octets, scope account, hardLimit 1073741824, used a non negative integer, name a non empty string, types [Email]. state is a string and notFound is []."
+    sources:
+      - "rfc:9425 4.1"
+      - "rfc:9425 5.1"
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnListWhenQuotasIsProvided"
+      - "cyrus:JMAPQuota/quota_get"
+      - "fastmail:t/Quota/get/basic.t"
+      - "stalwart:system/quota.rs"
+    notes: "Adapted: WildDuck has one octet quota per user and no count, domain or global quotas, so the suites' multi quota assertions collapse to one object. The quota id can be a constant because there is one per account."
+
+  - id: QUOTA-003
+    title: "used equals the user's storageUsed and follows deliveries and deletions"
+    method: Quota/get
+    spec: "RFC 9425 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api, lmtp, imap]
+    given: "An empty account."
+    when: "Quota/get; a message of known size is delivered over LMTP; Quota/get; the message is expunged over IMAP; Quota/get."
+    then: "used is 0, then equals storageUsed from the REST API (which grew by the stored size), then is 0 again. At each step used equals the REST API value exactly."
+    sources:
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnRightUsageQuota"
+      - "stalwart:system/quota.rs"
+      - "cyrus:JMAPEmail/email_set_getquota"
+    notes: "Archived messages (25 day retention) do not count in storageUsed today; if that changes this scenario changes with it."
+
+  - id: QUOTA-004
+    title: "hardLimit follows the effective quota, including the server default"
+    method: Quota/get
+    spec: "RFC 9425 4.1"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [api]
+    given: "User A with an explicit quota, user B with no quota of their own (quota 0, so the default from settings applies)."
+    when: "Each calls Quota/get; then A's quota is changed through the REST API and A calls Quota/get again."
+    then: "A's hardLimit is the explicit value and follows the change immediately. B's hardLimit is the configured default quota, the same limit that delivery enforces."
+    sources:
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnListWhenGlobalQuota"
+      - "james:QuotaGetMethodContract#quotaGetShouldFilterOutUnlimitedQuota"
+      - "wildduck:jmap-report appendix quotas"
+    notes: "Adapted: James reports a global quota as a separate object and hides unlimited quotas. WildDuck resolves the default into the one account scoped object, since hardLimit is not nullable in the RFC."
+
+  - id: QUOTA-005
+    title: "Quota/get by id, with unknown ids and with an empty id list"
+    method: Quota/get
+    spec: "RFC 9425 4.2, RFC 8620 5.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The quota id Q of the account."
+    when: "Quota/get with ids [Q]; with ids [Q, nonexistent-quota]; with ids []."
+    then: "First: list has the quota, notFound []. Second: list has the quota and notFound is [nonexistent-quota]. Third: list [] and notFound []."
+    sources:
+      - "fastmail:t/Quota/get/basic.t"
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnNotFoundWhenIdDoesNotExist"
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnNotFoundAndListWhenMixCases"
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnEmptyListWhenIdsAreEmpty"
+      - "cyrus:JMAPQuota/quota_get"
+
+  - id: QUOTA-006
+    title: "Quota/get honours properties and rejects unknown ones"
+    method: Quota/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The quota id Q."
+    when: "Quota/get with properties [used]; with properties []; with properties [nosuch]; with ids given as a string."
+    then: "First: the object has only id and used. Second: only id. Third and fourth: error invalidArguments."
+    sources:
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnOnlyRequestedProperties"
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnIdWhenNoPropertiesRequested"
+      - "james:QuotaGetMethodContract#quotaGetShouldFailWhenInvalidProperties"
+      - "james:QuotaGetMethodContract#quotaGetShouldFailWhenInvalidIds"
+
+  - id: QUOTA-007
+    title: "A quota whose types the client did not opt into is not returned"
+    method: Quota/get
+    spec: "RFC 9425 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Quota/get with ids null in a request whose using has core and quota but not mail; and Quota/query in the same request."
+    then: "Quota/get returns list [] and Quota/query returns ids []: the only quota applies to Email, a type the client did not request, so the object must not be returned."
+    sources:
+      - "rfc:9425 4.1"
+    notes: "If contacts and calendars later count against the same quota, types grows to the opted in subset of [Email, ContactCard, CalendarEvent] and the object is returned when at least one of them is in using."
+
+  - id: QUOTA-008
+    title: "Optional limit properties are null or absent"
+    method: Quota/get
+    spec: "RFC 9425 4.1"
+    level: may
+    phase: 4
+    applies: adapted
+    seed: [none]
+    given: "An authenticated user."
+    when: "Quota/get with ids null and with properties [warnLimit, softLimit, description]."
+    then: "warnLimit and softLimit are null (or absent when not requested explicitly); description is null or a UTF-8 string. No value is invented."
+    sources:
+      - "rfc:9425 4.1"
+      - "james:QuotaGetMethodContract#quotaGetShouldReturnListWhenQuotasIsProvided"
+    notes: "Adapted: WildDuck has no warn or soft limit. James reports a warnLimit from its threshold configuration."
+
+  - id: QUOTA-009
+    title: "Quota methods answer accountNotFound for foreign accounts"
+    method: Quota/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [api]
+    given: "Users A and B; authenticated as A."
+    when: "Quota/get, Quota/query, Quota/changes and Quota/queryChanges are called with B's account id, and with a random account id."
+    then: "Every call answers error accountNotFound; B's usage is never revealed."
+    sources:
+      - "fastmail:t/Quota/foreign-account.t"
+      - "james:QuotaGetMethodContract#quotaGetShouldFailWhenWrongAccountId"
+      - "james:QuotaGetMethodContract#quotaGetShouldNotReturnQuotaDataOfOtherAccount"
+      - "james:QuotaQueryMethodContract#quotaQueryShouldFailWhenWrongAccountId"
+      - "james:QuotaChangesMethodContract#quotaChangesShouldFailWhenWrongAccountId"
+    notes: "Adapted: the James delegated mailbox quota root cases have no counterpart."
+
+  - id: QUOTA-010
+    title: "Quota/changes with the current state reports nothing"
+    method: Quota/changes
+    spec: "RFC 9425 4.3, RFC 8620 5.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The state S from Quota/get."
+    when: "Quota/changes with sinceState S, twice in a row."
+    then: "Both responses are identical: oldState S, newState S, hasMoreChanges false, created, updated and destroyed all []. Quota/get still returns state S."
+    sources:
+      - "james:QuotaChangesMethodContract#hasMoreChangesShouldBeFalseWhenNoQuotaChanges"
+      - "james:QuotaChangesMethodContract#quotaChangeShouldReturnSameResponseWhenSameRequest"
+      - "cyrus:JMAPQuota/quota_changes"
+
+  - id: QUOTA-011
+    title: "A usage change is reported as updated with updatedProperties [used]"
+    method: Quota/changes
+    spec: "RFC 9425 4.3, 5.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [lmtp]
+    given: "The Quota state S and quota id Q."
+    when: "A message is delivered over LMTP; then one request with Quota/changes (sinceState S) and Quota/get whose '#ids' references /updated and whose '#properties' references /updatedProperties."
+    then: "Quota/changes: newState differs from S, updated is [Q], created and destroyed are [], updatedProperties is [used]. Quota/get returns one object with only id and used, and used grew by the stored size."
+    sources:
+      - "rfc:9425 5.2"
+      - "james:QuotaChangesMethodContract#quotaChangeShouldReturnCorrectResponse"
+      - "james:QuotaChangesMethodContract#stateShouldBeChangedWhenQuotaIsUpdated"
+    notes: "The Quota state can be derived from storageUsed and the effective limit; it must change when either changes and must not change otherwise."
+
+  - id: QUOTA-012
+    title: "A limit change is reported as updated with updatedProperties null"
+    method: Quota/changes
+    spec: "RFC 9425 4.3"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api]
+    given: "The Quota state S and quota id Q."
+    when: "The user's quota is changed through the REST API, then Quota/changes with sinceState S."
+    then: "updated is [Q] and updatedProperties is null (not [used]), because a property other than used changed."
+    sources:
+      - "rfc:9425 4.3"
+      - "cyrus:JMAPQuota/quota_changes"
+      - "james:QuotaChangesMethodContract#stateShouldBeChangedWhenQuotaIsUpdated"
+    notes: "If the server cannot tell which property changed between two states it must also answer null."
+
+  - id: QUOTA-013
+    title: "Quota/changes validates sinceState"
+    method: Quota/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Quota/changes without sinceState; with sinceState set to a number; with sinceState set to a string that was never issued."
+    then: "The first two answer invalidArguments. The third answers cannotCalculateChanges."
+    sources:
+      - "james:QuotaChangesMethodContract#quotaChangesShouldFailWhenMissSinceState"
+      - "james:QuotaChangesMethodContract#quotaChangesShouldFailWhenSinceStateIsInvalid"
+      - "wildduck:ionosphere apps/server/test/jmap-quota-vacation.test.ts"
+
+  - id: QUOTA-014
+    title: "Quota/query without a filter returns the single quota id"
+    method: Quota/query
+    spec: "RFC 9425 4.4, RFC 8620 5.5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The quota id Q."
+    when: "Quota/query with no arguments besides accountId; with filter null; with filter {} and calculateTotal true."
+    then: "Each returns ids [Q], position 0, a string queryState and a boolean canCalculateChanges; the third also returns total 1."
+    sources:
+      - "james:QuotaQueryMethodContract#queryShouldSucceedByDefault"
+      - "james:QuotaQueryMethodContract#queryShouldReturnAllWhenFilterIsEmpty"
+      - "fastmail:t/Quota/query/basic.t"
+      - "cyrus:JMAPQuota/quota_query"
+
+  - id: QUOTA-015
+    title: "Quota/query filter conditions match exactly and combine with AND"
+    method: Quota/query
+    spec: "RFC 9425 4.4"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The quota Q with resourceType octets, scope account, types [Email] and a known name."
+    when: "Quota/query with each filter: {resourceType: octets}; {resourceType: count}; {scope: account}; {scope: domain}; {type: Email}; {type: Calendar}; {name: <substring of the name>}; {name: zzz}; {scope: account, resourceType: count}."
+    then: "ids is [Q] for the octets, account, Email and name substring filters and [] for the others, including the combined filter where only one condition matches."
+    sources:
+      - "james:QuotaQueryMethodContract#filterResourceTypesShouldWork"
+      - "james:QuotaQueryMethodContract#filterScopeShouldWork"
+      - "james:QuotaQueryMethodContract#filterDataTypeShouldWork"
+      - "james:QuotaQueryMethodContract#filterQuotaNameShouldWork"
+      - "james:QuotaQueryMethodContract#filterQuotaNameShouldReturnEmptyResultWhenNameIsNotFound"
+      - "james:QuotaQueryMethodContract#filterShouldBeANDLogic"
+      - "fastmail:t/Quota/query/basic.t"
+      - "cyrus:JMAPQuota/quota_query"
+    notes: "James uses the plural filter names resourceTypes and dataTypes from an earlier draft; RFC 9425 defines name, scope, resourceType and type."
+
+  - id: QUOTA-016
+    title: "Quota/query rejects unknown filter properties and invalid enum values"
+    method: Quota/query
+    spec: "RFC 9425 4.4, RFC 8620 5.5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Quota/query with filter {nosuchproperty: 1}; with filter {scope: 42}; with filter {resourceType: [octets]}."
+    then: "Each answers error invalidArguments (unsupportedFilter is acceptable for the unknown property)."
+    sources:
+      - "james:QuotaQueryMethodContract#filterShouldFailWhenInvalidFilter"
+      - "james:QuotaQueryMethodContract#filterScopeShouldFailWhenInvalidScope"
+      - "james:QuotaQueryMethodContract#filterResourceTypesShoulFailWhenInvalidResourceTypes"
+      - "james:QuotaQueryMethodContract#filterDataTypeShouldFailWhenInvalidDataType"
+      - "cyrus:JMAPQuota/quota_querychanges"
+
+  - id: QUOTA-017
+    title: "Quota/query supports sorting by name and used"
+    method: Quota/query
+    spec: "RFC 9425 4.4"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The quota id Q."
+    when: "Quota/query with sort [{property: name}]; with sort [{property: used, isAscending: false}]; with sort [{property: hardLimit}]; with position 1; with limit 0."
+    then: "The name and used sorts return ids [Q]. The hardLimit sort answers unsupportedSort. position 1 returns ids [] with position 1; limit 0 returns ids []."
+    sources:
+      - "rfc:9425 4.4"
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPQuota/quota_query"
+
+  - id: QUOTA-018
+    title: "Quota/queryChanges is refused with cannotCalculateChanges"
+    method: Quota/queryChanges
+    spec: "RFC 9425 4.5, RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [none]
+    given: "The queryState from Quota/query, whose canCalculateChanges is false."
+    when: "Quota/queryChanges with that sinceQueryState; and Quota/queryChanges with filter {nosuchproperty: 1}."
+    then: "The first answers error cannotCalculateChanges, not unknownMethod. The second answers invalidArguments, because arguments are still validated."
+    sources:
+      - "cyrus:JMAPQuota/quota_querychanges"
+      - "rfc:8620 5.6"
+    notes: "Adapted: with a single, never created or destroyed quota object a real implementation would always answer empty added and removed lists; refusing is simpler and allowed. Either choice must be consistent with canCalculateChanges."
+
+  - id: QUOTA-019
+    title: "Quota state changes are pushed"
+    method: EventSource
+    spec: "RFC 9425 6, RFC 8620 7.3"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [lmtp]
+    given: "An event source connection with types set to Quota, and a second one with types set to an asterisk."
+    when: "A message is delivered over LMTP."
+    then: "Both connections receive a state event whose changed object for the account contains Quota with the new Quota state, equal to the state returned by Quota/get afterwards."
+    sources:
+      - "rfc:9425 6"
+      - "rfc:9425 7.2"
+    notes: "James documents quota push as not implemented. Usage changes on every delivery, so the push coalescing window applies."
+
+  - id: QUOTA-020
+    title: "Email/set create over the hard limit is rejected with overQuota"
+    method: Email/set
+    spec: "RFC 8620 5.3, RFC 9425 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api]
+    given: "A user whose quota is set so that used is within 1 KB of hardLimit."
+    when: "Email/set create of a draft with a 10 KB body; then Quota/get."
+    then: "The creation is in notCreated with a SetError of type overQuota; Email and Quota states are unchanged and used is unchanged. After the quota is raised through the REST API the same create succeeds and used grows."
+    sources:
+      - "stalwart:system/quota.rs"
+      - "cyrus:JMAPEmail/email_set_create_copy_overquota"
+      - "james:EmailSetMethodContract"
+      - "rfc:8620 5.3"
+    notes: "The overQuota SetError itself is plain RFC 8620 and belongs to phase 2 (see the Email/set catalogue); it is repeated here to tie the error to the values Quota/get reports."
+
+  - id: QUOTA-021
+    title: "Email/import over the hard limit is rejected with overQuota"
+    method: Email/import
+    spec: "RFC 8621 4.8, RFC 9425 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api]
+    given: "A user whose mail quota is nearly full, and an uploaded message blob larger than the remaining space (the upload itself succeeded)."
+    when: "Email/import of the blob into the Inbox; then an Email is destroyed to free enough space and the import is repeated."
+    then: "First import: notCreated with type overQuota, no Email appears and used is unchanged. After space is freed the import succeeds."
+    sources:
+      - "james:EmailImportContract"
+      - "stalwart:system/quota.rs"
+      - "cyrus:JMAPEmail/email_copy_quota_storage"
+    notes: "Whether freed space is available at once depends on when archived messages stop counting; see QUOTA-003."
+
+  - id: QUOTA-022
+    title: "The upload endpoint is not limited by the mail quota"
+    method: Upload
+    spec: "RFC 8620 6, RFC 9425 4.1"
+    level: should
+    phase: 4
+    applies: adapted
+    seed: [api]
+    given: "A user whose mail quota is completely used."
+    when: "A 1 MB file is uploaded; then Quota/get."
+    then: "The upload succeeds (it never answers an over quota error for the mail quota), used is unchanged, and no second Quota object for uploads appears in the list."
+    sources:
+      - "rfc:8620 6"
+      - "james:BlobCopyContract#copyBlobShouldSucceedWhenUploadQuotaExceeded"
+      - "stalwart:system/quota.rs"
+    notes: "Adapted: uploads use the separate upload quota with oldest first eviction (BLOB-041, BLOB-042). Open decision: whether to expose the upload quota as a second Quota object; this scenario assumes not."

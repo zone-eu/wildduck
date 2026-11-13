@@ -612,6 +612,7 @@
                                                 "imap",
                                                 "pop3",
                                                 "smtp",
+                                                "jmap",
                                                 "mcp"
                                             ]
                                         },
@@ -1242,6 +1243,7 @@
                                                 "imap",
                                                 "pop3",
                                                 "smtp",
+                                                "jmap",
                                                 "mcp"
                                             ]
                                         },
@@ -11617,6 +11619,7 @@
                                                 "imap",
                                                 "pop3",
                                                 "smtp",
+                                                "jmap",
                                                 "*"
                                             ]
                                         },
@@ -13327,7 +13330,7 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "default": "master",
-                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp"
+                                        "description": "Required scope. One of master, imap, smtp, pop3, jmap, mcp"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -13450,7 +13453,7 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "default": "master",
-                                        "description": "Required scope. One of master, imap, smtp, pop3, mcp"
+                                        "description": "Required scope. One of master, imap, smtp, pop3, jmap, mcp"
                                     },
                                     "appId": {
                                         "type": "string",
@@ -17460,6 +17463,7 @@
                         "schema": {
                             "type": "string",
                             "enum": [
+                                "const:journal:time",
                                 "const:archive:time",
                                 "const:max:storage",
                                 "const:max:recipients",

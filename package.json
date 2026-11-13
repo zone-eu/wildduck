@@ -11,13 +11,20 @@
         "test:indexer": "NODE_ENV=test mocha --exit --reporter dot imap-core/test/attachment-codec-test.js imap-core/test/parse-mime-tree-test.js imap-core/test/parse-mime-tree-v2-test.js imap-core/test/indexer-*-test.js imap-core/test/body-structure-test.js imap-core/test/create-envelope-test.js imap-core/test/get-contents-test.js imap-core/test/get-query-response-test.js imap-core/test/imap-indexer-test.js",
         "test:indexer-coverage": "NODE_ENV=test c8 --reporter=text --include 'imap-core/lib/indexer/**' --include 'lib/attachments/**' --include imap-core/lib/length-limiter.js mocha --exit --reporter dot imap-core/test/attachment-codec-test.js imap-core/test/parse-mime-tree-test.js imap-core/test/parse-mime-tree-v2-test.js imap-core/test/indexer-*-test.js imap-core/test/body-structure-test.js imap-core/test/create-envelope-test.js imap-core/test/get-contents-test.js imap-core/test/get-query-response-test.js imap-core/test/imap-indexer-test.js",
         "test:mutation": "node imap-core/test/mutation/run.js",
+        "test:mutation:jmap": "node imap-core/test/mutation/run.js --profile jmap",
+        "test:jmap": "redis-cli -n 13 flushdb && NODE_ENV=test grunt jmap",
+        "test:jmap:coverage": "rm -rf test/jmap/.results && redis-cli -n 13 flushdb && JMAP_RESULTS=1 NODE_ENV=test grunt jmap; node test/jmap/tools/check-coverage.js",
+        "test:jmap:sharded": "sh test/jmap/sharded/setup.sh && NODE_ENV=test mocha --exit test/jmap/sharded/*-test.js",
+        "test:jmap:catalogue": "node test/jmap/tools/check-catalogue.js && node test/jmap/tools/build-overview.js",
         "printconf": "NODE_CONFIG_ONLY=true npm start",
         "runtest": "NODE_ENV=test grunt",
         "runci": "npm run printconf && npm run runtest",
         "show": "NODE_CONFIG_ONLY=true node server.js",
         "start": "node server.js",
         "update": "rm -rf node_modules package-lock.json && ncu -u && npm install",
-        "generate-api-docs": "GENERATE_API_DOCS=true REGENERATE_API_DOCS=true node server.js"
+        "generate-api-docs": "GENERATE_API_DOCS=true REGENERATE_API_DOCS=true node server.js",
+        "test:jmap:jmapio": "node scripts/jmap/run-jmapio.js",
+        "test:jmap:fastmail": "node scripts/jmap/run-fastmail.js"
     },
     "keywords": [
         "imap",
@@ -42,6 +49,7 @@
         "grunt-eslint": "24.3.0",
         "grunt-shell-spawn": "0.5.0",
         "imapflow": "2.10.0",
+        "jmap-jam": "0.13.8",
         "mailparser": "3.14.1",
         "mocha": "12.0.3",
         "supertest": "7.3.1"
@@ -113,6 +121,7 @@
         "punycode.js": "2.3.1",
         "qrcode": "1.5.4",
         "qs": "6.17.1",
+        "rrule-temporal": "2.2.8",
         "sanitize-html": "2.18.1",
         "search-string": "4.1.0",
         "smtp-server": "3.21.3",

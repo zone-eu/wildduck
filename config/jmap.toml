@@ -1,0 +1,242 @@
+# JMAP service (RFC 8620, RFC 8621 and extensions), see docs/jmap/implementation-plan.md
+#
+# Disabled by default. The indexes JMAP uses are created at start up either way, like every other index in
+# indexes.yaml, so enabling the service later needs no index build.
+enabled = false
+port = 8081
+# by default bind to localhost only
+host = "127.0.0.1"
+# Use true to serve JMAP over HTTPS (TLS settings from [jmap.tls] or the global [tls])
+secure = false
+
+# Public base URL clients use to reach this service, used for the URLs in the session resource
+# (apiUrl, downloadUrl, uploadUrl, eventSourceUrl). Must be set when the service is behind a proxy.
+#baseUrl = "https://jmap.example.com"
+
+# take the client address from X-Forwarded-For (authentication log, failed login counters, message
+# metadata). Enable only when the listener is reachable solely through a proxy that sets the header
+trustProxy = false
+
+# Time limit in milliseconds for the database work of one Email/query call. A query that runs longer
+# answers serverUnavailable. Defaults to three times the message search limit of the REST API (9000)
+#queryTimeout = 9000
+
+[limits]
+# RFC 8620 2: core capability limits advertised in the session
+maxSizeUpload = 52428800
+maxConcurrentUpload = 4
+maxSizeRequest = 10485760
+maxConcurrentRequests = 8
+maxCallsInRequest = 32
+# equal to the mailbox limit, so Mailbox/get with ids null always fits
+maxObjectsInGet = 1500
+maxObjectsInSet = 500
+# octets of body values one Email/get call returns at most; values past it come back empty with
+# isTruncated true (RFC 8621 4.2 maxBodyValueBytes still applies per value)
+maxBodyValueBytesPerRequest = 33554432
+# octets the /get calls of one request return together. The responses of all method calls are held
+# until the request ends, so every /get draws from this one budget (estimated from stored sizes); a call
+# that does not fit in what is left answers requestTooLarge, Email/get body values are truncated
+# instead. Per call limits such as maxBodyValueBytesPerRequest apply within it
+maxResponseBytes = 67108864
+# temporary uploads per user, oldest are deleted first when a new upload does not fit
+uploadQuota = 209715200
+# most temporary uploads per user (pinned ones included), the oldest are deleted first when a new
+# upload would be one too many
+maxUploads = 1000
+# how long an unreferenced upload is kept, in seconds (RFC 8620 6.1: at least one hour)
+uploadTtl = 86400
+# largest message Email/import stores, in bytes (default: the message size limit of MessageHandler, 64 MB)
+#maxSizeMessage = 67108864
+# RFC 9404 Blob/upload: largest blob one creation may build (it is assembled in memory) and most data
+# sources per creation (at least 64)
+#maxSizeBlobSet = 10485760
+#maxDataSources = 64
+# most octets one Blob/get call returns (16 MB). A larger blob answers requestTooLarge unless the client
+# asks for a range (offset and length); octets before the offset are streamed past, not held
+#maxSizeBlobGet = 16777216
+
+[contacts]
+# JMAP for Contacts (RFC 9610): address books and cards (lib/contact-handler.js), advertised as
+# maxAddressBooksPerCard. The address register (addresses the user exchanged mail with) is shown as a
+# read only address book of its own
+maxAddressBooksPerCard = 1
+maxAddressBooks = 100
+maxCards = 10000
+# largest card in octets of JSON; photos are blobs and do not count
+maxCardSize = 262144
+# largest photo, logo or sound of a card, in octets (also limited by limits.maxSizeUpload)
+maxMediaSize = 4194304
+# octets of all photos, logos and sounds of an account; every card that uses an upload or a data: URI
+# stores its own copy
+maxMediaBytes = 104857600
+# most photos, logos and sounds (media entries) of one card
+maxMediaPerCard = 20
+# most register entries shown as cards of the register book, the most recently used first
+maxRegisterCards = 10000
+
+[auth]
+# Basic credentials that verified are remembered for this many seconds, so a client sending the
+# same application password with every request does not pay for a password hash every time.
+# The cache entry names the account's authVersion, so a password or 2FA change ends it at once.
+cacheTtl = 300
+
+[changes]
+# Journal ids are generated in different processes, so an entry with a smaller id can be committed
+# after a larger one was read. Changes are looked up this many milliseconds before the given state.
+# An id may then be reported twice, which RFC 8620 5.2 allows.
+safetyWindow = 2000
+# The types JMAP owns (Identity, EmailSubmission, AddressBook, ContactCard, Calendar and the like) number
+# their changes with a sequence that is taken before the change is written, so two concurrent writers can
+# commit out of order. /changes reads this many sequence numbers below the given state again; their ids
+# may be reported twice (as updated or destroyed). 0 turns the window off
+ownedSafetyWindow = 32
+# Most ids in one /changes response. A larger maxChanges from the client, or none, is capped to this
+# (equal to maxObjectsInGet, so the ids always fit a following /get)
+maxChanges = 1500
+# seconds the journal retention setting (const:journal:time) is kept in memory instead of read for
+# every state
+retentionCacheTime = 60
+# Most journal entries read for one /changes response. A long run of changes to a few ids is answered
+# with an intermediate state instead of a scan of the whole run
+scanLimit = 10000
+
+[query]
+# Most messages one Email/query examines in memory: the results of a from, to, subject or thread keyword
+# sort (a larger result answers unsupportedSort) and the candidates of thread keyword filters (see
+# docs/jmap/email-sorting.md)
+memoryLimit = 10000
+
+[queryCache]
+# Result ids of queries are kept under their query state for /queryChanges (RFC 8620 5.6), this many
+# seconds. A state whose ids are gone answers cannotCalculateChanges and the client queries again
+ttl = 600
+# Most ids kept per query state. A query window that ends past it, or starts more than 1000 entries in,
+# answers canCalculateChanges false. [jmap.query] memoryLimit must not be higher
+maxIds = 10000
+# All query states of a user share one Redis hash: at most this many bytes (12 per id, at least one full
+# list of maxIds) and this many states; storing more drops the states stored longest ago
+maxBytes = 1048576
+maxEntries = 200
+
+[eventSource]
+# ping interval bounds in seconds (RFC 8620 7.3: the minimum must not be above 30, the maximum not below 300)
+minPing = 5
+maxPing = 300
+# a stream is closed after this many seconds and the client reconnects with Last-Event-ID
+maxDuration = 1800
+# open streams per user across all workers (counted in Redis like the IMAP connection limit), a
+# request over the limit is refused with HTTP 429 and this Retry-After value in seconds
+maxStreams = 15
+retryAfter = 30
+
+[submission]
+# EmailSubmission (RFC 8621 7). Longest delay of a delayed send (FUTURERELEASE HOLDFOR and HOLDUNTIL)
+# in seconds, advertised as maxDelayedSend; 0 turns delayed send off. Defaults to sender.maxQueueTime
+#maxDelayedSend = 2592000
+# Sent and canceled submissions are removed this many seconds after their send time (the messages
+# themselves are not affected)
+retention = 604800
+# Largest message that can be submitted, in bytes (default: limits.maxSizeMessage, else 64 MB)
+#maxSize = 67108864
+# Seconds between two polls of the outbound queue for due, still pending submissions, so clients are
+# told when delivery started. A message that keeps waiting (deferred by the MTA) is checked less often,
+# the delay doubles from this value up to an hour. 0 turns the check off (submissions are then updated
+# when they are read)
+pollInterval = 15
+
+
+[calendars]
+# Calendars (draft-ietf-jmap-calendars), see lib/calendar-handler.js
+# calendars an account may have; Calendar/set create answers overQuota beyond it
+maxCalendars = 1000
+# calendars one event may be in (maxCalendarsPerEvent of the account capability)
+maxCalendarsPerEvent = 1
+# events an account may have
+maxEventsPerAccount = 50000
+maxParticipantsPerEvent = 500
+# the range of date-times an event may use, and how long a window CalendarEvent/query may expand
+minDateTime = "1900-01-01T00:00:00Z"
+maxDateTime = "2199-12-31T23:59:59Z"
+maxExpandedQueryDuration = "P366D"
+# name of the default calendar a user gets on first calendar access
+defaultName = "Calendar"
+# largest stored event, in octets of JSON
+maxEventSize = 262144
+# milliseconds the recurrence expansions of one CalendarEvent/query may take in all; past it the
+# query answers cannotCalculateOccurrences
+maxQueryExpansionTime = 1000
+# octets of stored events one CalendarEvent/query may read: every event when expanding recurrences,
+# recurring events under a time range. The events are evaluated in batches and only the ids of the
+# matches are kept, this bounds the reading and parsing. Past it the query answers
+# cannotCalculateOccurrences (64 MB is about 20,000 events of 3 KB)
+maxQueryEventBytes = 67108864
+
+[alerts]
+# Calendar alerts (lib/calendar/alerts.js): one JMAP worker at a time looks for due alerts every
+# interval seconds. A user's alerts fire up to jitter seconds early (never late), at most pushLimit
+# display alerts per pushWindow seconds and emailLimit email alerts per emailWindow seconds
+enabled = true
+interval = 10
+jitter = 30
+pushLimit = 120
+pushWindow = 3600
+emailLimit = 30
+emailWindow = 86400
+# events with a due alert read per scheduler run
+batch = 500
+# due events of one user handled per scheduler run, so one account can not hold up the others
+perUser = 50
+[push]
+# Web Push for PushSubscription (RFC 8620 7.2, RFC 8030, RFC 8291 encryption, RFC 8292 VAPID). Push
+# requests go out from the JMAP workers through the BullMQ queue jmap_push. The VAPID key pair is made
+# on first start and kept in the settings collection (key jmap:vapid); delete that setting to rotate it
+enabled = true
+# subscriptions per user (all credentials together), and new subscriptions per user and hour
+maxPerUser = 20
+createRate = 30
+# longest lifetime of a subscription in seconds; a later expires is shortened (at least 48 hours)
+maxLifetime = 604800
+# seconds an unverified subscription is kept, and wrong verification codes that destroy it
+verificationTimeout = 3600
+verifyAttempts = 5
+# a push answered with 5xx or not answered is tried this many times, with an exponential delay starting
+# at retryDelay seconds and growing up to maxRetryDelay; a 429 is retried at that pace (at least its
+# Retry-After) until it succeeds. Pushes that failed this many times in a row remove the subscription
+attempts = 5
+retryDelay = 10
+maxRetryDelay = 600
+failureLimit = 5
+# seconds to wait for a push service to answer, and separately for the DNS lookup of its host (a DNS
+# query without an answer after half of it is sent once more)
+timeout = 10
+# seconds changes are collected before they are pushed together
+coalesce = 1
+# TTL header of push requests, in seconds
+ttl = 86400
+# push requests one worker runs in parallel
+concurrency = 20
+# seconds between two reads of the VAPID key (a rotated key is noticed this late)
+vapidRefresh = 60
+# contact of the VAPID JWT (sub claim), mailto: or https:. Defaults to the origin of an https baseUrl,
+# else mailto:postmaster@<hostname>
+#vapidSubject = "mailto:postmaster@example.com"
+# Push URLs must be public: hosts that resolve to loopback, private, link local or reserved addresses
+# are refused. Host names listed here are exempt (tests only, keep empty in production)
+allowHosts = []
+# extra trusted certificate files for push services, on top of the default ones (tests only)
+#ca = ["/path/to/ca.pem"]
+
+# Browser origins (exact Origin values) that get CORS headers, for web clients served from another origin.
+# Other requests than GET and HEAD from an origin that is not listed here, not the baseUrl origin and not the
+# host the request was sent to are refused (cross site request protection)
+#[cors]
+#origins = ["https://webmail.example.com"]
+
+# HTTPS certificate when secure = true; without this section the global [tls] section is used. Certificates
+# managed by WildDuck (CertHandler, ACME) are selected by server name
+#[tls]
+#key = "/path/to/key.pem"
+#cert = "/path/to/cert.pem"
+#ca = ["/path/to/ca.pem"]
+#dhparam = "/path/to/dhparam.pem"

@@ -276,10 +276,33 @@ indexes:
 
     - collection: messages
       index:
+          # also used by JMAP Thread/get, which lists a thread across mailboxes: keep it
           name: user_messages_by_thread
           key:
               user: 1
               thread: 1
+
+    - collection: messages
+      index:
+          # JMAP Email/query without a mailbox filter, sorted by receivedAt (idate). Deleted (\Deleted) messages are
+          # rare, so they are filtered after the scan instead of in an index of their own
+          name: user_idate
+          key:
+              user: 1
+              idate: -1
+              _id: -1
+
+    - collection: messages
+      index:
+          # JMAP Email ids (lib/message-roots.js): root stays the same when a message moves, _id does not
+          # because the shard key changes. Roots are globally unique ObjectIds, so root alone is selective
+          # and the index stays half the size of a {user, root} one. Documents without root are left out.
+          name: by_root
+          key:
+              root: 1
+          partialFilterExpression:
+              root:
+                  $exists: true
 
     - collection: messages
       index:
@@ -333,6 +356,7 @@ indexes:
 
     - collection: messages
       index:
+          # JMAP Email/query in one mailbox sorted by receivedAt uses the by_idate indexes: keep one of them
           name: by_idate
           key:
               mailbox: 1
@@ -531,6 +555,322 @@ indexes:
 
     - collection: archived
       index:
+          # restore and lookups by JMAP Email id, see the by_root index of messages
+          name: by_root
+          key:
+              root: 1
+          partialFilterExpression:
+              root:
+                  $exists: true
+
+    - collection: jmap.changes
+      index:
+          # JMAP /changes of the owned types (lib/jmap/changelog.js): tombstones after a sequence number
+          name: user_type_seq
+          key:
+              user: 1
+              type: 1
+              seq: 1
+
+    - collection: jmap.identities
+      index:
+          # one derived identity per sending right (lib/jmap/types/identity.js), also under concurrent requests
+          name: user_source
+          unique: true
+          key:
+              user: 1
+              source: 1
+          partialFilterExpression:
+              source:
+                  $exists: true
+
+    - collection: jmap.identities
+      index:
+          # Identity/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: jmap.submissions
+      index:
+          # EmailSubmission/changes, a range scan on the change sequence; also the per user listing
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: jmap.submissions
+      index:
+          # EmailSubmission/get without ids and EmailSubmission/query without sort: a user's records in id order
+          name: user_id
+          key:
+              user: 1
+              _id: 1
+
+    - collection: jmap.submissions
+      index:
+          # pending submissions of a user (checked against the queue) and the cleanup of old ones
+          name: user_status_sendat
+          key:
+              user: 1
+              undoStatus: 1
+              sendAt: 1
+
+    - collection: jmap.submissions
+      index:
+          # the submission of a queued message, when the REST API deletes or reschedules it
+          name: user_queueid
+          key:
+              user: 1
+              queueId: 1
+
+    - collection: jmap.submissions
+      index:
+          # the poller: pending submissions of all users whose next check is due, earliest first
+          name: pending_checkat
+          key:
+              checkAt: 1
+          partialFilterExpression:
+              undoStatus: pending
+
+    - collection: jmap.submissions
+      index:
+          name: submission_autoexpire
+          # a backstop for records of users who stopped using JMAP; normally the cleanup removes them
+          # long before, with a tombstone
+          expireAfterSeconds: 0
+          key:
+              purgeAt: 1
+
+    - collection: jmap.push
+      index:
+          # PushSubscription/get and set: the subscriptions of one set of credentials, and of a user
+          name: user_cred
+          key:
+              user: 1
+              cred: 1
+
+    - collection: jmap.push
+      index:
+          # the push dispatcher: users with a verified subscription
+          name: verified_user
+          key:
+              user: 1
+          partialFilterExpression:
+              verified: true
+
+    - collection: jmap.push
+      index:
+          name: push_autoexpire
+          # expired subscriptions, and unverified ones past their grace period
+          expireAfterSeconds: 0
+          key:
+              purgeAt: 1
+
+    - collection: jmap.participants
+      index:
+          # one calendar participant identity per address (lib/jmap/types/participant-identity.js)
+          name: user_address
+          unique: true
+          key:
+              user: 1
+              address: 1
+
+    - collection: jmap.participants
+      index:
+          # ParticipantIdentity/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: calendars.calendars
+      index:
+          # the calendars of a user in display order (lib/calendar-handler.js)
+          name: user_sortorder
+          key:
+              user: 1
+              sortOrder: 1
+              _id: 1
+
+    - collection: calendars.calendars
+      index:
+          # at most one default calendar per user, also under concurrent first access
+          name: user_default
+          unique: true
+          key:
+              user: 1
+          partialFilterExpression:
+              isDefault: true
+
+    - collection: calendars.calendars
+      index:
+          # Calendar/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: calendars.events
+      index:
+          # the events of a calendar (calendarHasEvent, onDestroyRemoveEvents)
+          name: user_calendar
+          key:
+              user: 1
+              calendarIds: 1
+
+    - collection: calendars.events
+      index:
+          # CalendarEvent/changes, a range scan on the change sequence
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: calendars.events
+      index:
+          # one event per uid, or standalone instances with distinct recurrence ids (lib/calendar/events.js)
+          name: user_uid
+          unique: true
+          key:
+              user: 1
+              uid: 1
+              recurrenceId: 1
+
+    - collection: calendars.events
+      index:
+          # CalendarEvent/query: candidates by their first start
+          name: user_first
+          key:
+              user: 1
+              first: 1
+
+    - collection: calendars.events
+      index:
+          # the alert scheduler reads due events in time order (lib/calendar/alerts.js); users at their
+          # cap for a run are skipped on the index keys
+          name: alert_due_user
+          key:
+              alertAt: 1
+              user: 1
+          partialFilterExpression:
+              alertAt:
+                  $type: date
+
+    - collection: calendars.events
+      index:
+          # events naming an upload (Blob/lookup, keeping uploads alive)
+          name: user_blobs
+          key:
+              user: 1
+              blobs: 1
+
+    - collection: jmap.changes
+      index:
+          name: entry_autoexpire
+          # tombstones are removed once no valid state can reach them
+          expireAfterSeconds: 0
+          key:
+              expires: 1
+
+    - collection: contacts.books
+      index:
+          # JMAP AddressBook (lib/contact-handler.js): the address books of a user
+          name: user_id
+          key:
+              user: 1
+              _id: 1
+
+    - collection: contacts.books
+      index:
+          # at most one default address book per user (RFC 9610 2), also under concurrent first use
+          name: user_default
+          unique: true
+          key:
+              user: 1
+              isDefault: 1
+          partialFilterExpression:
+              isDefault: true
+
+    - collection: contacts.books
+      index:
+          # AddressBook/changes (lib/jmap/changelog.js)
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: contacts.cards
+      index:
+          # one card per uid in an account (RFC 9610 3), ContactCard/query uid filter
+          name: user_uid
+          unique: true
+          key:
+              user: 1
+              uid: 1
+
+    - collection: contacts.cards
+      index:
+          # ContactCard/changes (lib/jmap/changelog.js)
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+
+    - collection: contacts.cards
+      index:
+          # the cards of an address book: ContactCard/query inAddressBook, AddressBook/set destroy
+          name: user_books
+          key:
+              user: 1
+              addressBooks: 1
+
+    - collection: contacts.cards
+      index:
+          # ContactCard/query text filters: the search terms of a card (lib/jmap/contact-search.js)
+          name: user_terms
+          key:
+              user: 1
+              terms: 1
+
+    - collection: contacts.cards
+      index:
+          # ContactCard/query hasMember
+          name: user_members
+          key:
+              user: 1
+              members: 1
+
+    - collection: contacts.cards
+      index:
+          # the cards that reference a media file: Blob/lookup, and removal of unreferenced media
+          name: user_blobs
+          key:
+              user: 1
+              blobs: 1
+
+    - collection: contacts.media
+      index:
+          # removal with the user, and the media quota (ContactHandler.mediaUsage sums size from the index)
+          name: user_size
+          key:
+              user: 1
+              size: 1
+
+    - collection: addressregister
+      index:
+          # ContactCard/changes of the cards of the address register book (lib/jmap/contacts-sync.js)
+          name: user_modseq
+          key:
+              user: 1
+              modSeq: 1
+          partialFilterExpression:
+              modSeq:
+                  $exists: true
+
+    - collection: archived
+      index:
           name: user_messages_archived
           key:
               user: 1
@@ -571,6 +911,31 @@ indexes:
           key:
               metadata.user: 1
               filename: 1
+
+    - collection: storage.files
+      type: gridfs # index applies to gridfs database
+      index:
+          # temporary uploads (JMAP): the upload quota of a user, see StorageHandler.makeRoom (length
+          # makes the usage aggregate a covered query)
+          name: user_temporary_usage
+          key:
+              metadata.user: 1
+              metadata.expires: 1
+              length: 1
+          partialFilterExpression:
+              metadata.expires:
+                  $exists: true
+
+    - collection: storage.files
+      type: gridfs # index applies to gridfs database
+      index:
+          # temporary uploads (JMAP): removal once expired, see lib/tasks/upload-cleanup.js
+          name: temporary_files_expiry
+          key:
+              metadata.expires: 1
+          partialFilterExpression:
+              metadata.expires:
+                  $exists: true
 
     # Indexes for the attachments collection
     # attachments.files collection should be sharded by _id (hash)
@@ -652,7 +1017,9 @@ indexes:
               _id: -1
 
     - collection: journal
-      # delete journal entries after 3 hours
+      # delete journal entries after const:journal:time (3 hours unless changed). The JMAP change
+      # history (Email/changes and friends) reaches back as far as the journal does
+      ttlSetting: const:journal:time
       index:
           name: journal_autoexpire
           expireAfterSeconds: 10800
@@ -883,6 +1250,10 @@ indexes:
               address: 1
 
 deleteindexes:
+    # replaced by alert_due_user
+    - collection: calendars.events
+      index: alert_due
+
     - collection: settings
       index: key_enumerable
 
@@ -900,3 +1271,12 @@ deleteindexes:
 
     - collection: addressregister
       index: by_name
+
+    # replaced by user_size, which also sums the media quota
+    - collection: contacts.media
+      index: user
+
+    # replaced by user_temporary_usage, which also covers the length of the uploads
+    - collection: storage.files
+      type: gridfs
+      index: user_temporary_files

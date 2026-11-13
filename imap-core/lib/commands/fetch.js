@@ -54,6 +54,7 @@ module.exports = {
         let rfc822sizeExist = false;
         let idateExist = false;
         let envelopeExist = false;
+        let emailIdExist = false;
         let markAsSeen = false;
         let metadataOnly = true;
         let changedSince = 0;
@@ -138,6 +139,14 @@ module.exports = {
 
             if (param.value.toUpperCase() === 'INTERNALDATE') {
                 idateExist = true;
+            }
+
+            if (['EMAILID', 'THREADID'].includes(param.value.toUpperCase())) {
+                // RFC 8474 items exist only where the server can name its objects
+                if (!this._server.options.objectIds) {
+                    return callback(new Error('Invalid message data item name for ' + command.command));
+                }
+                emailIdExist = emailIdExist || param.value.toUpperCase() === 'EMAILID';
             }
 
             if (!this.selected.readOnly) {
@@ -300,6 +309,7 @@ module.exports = {
                 bodystructureExist,
                 rfc822sizeExist,
                 envelopeExist,
+                emailIdExist,
                 flagsExist,
                 idateExist,
                 metadataOnly: !!metadataOnly,

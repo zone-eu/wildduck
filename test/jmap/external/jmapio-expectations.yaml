@@ -1,0 +1,1829 @@
+# Expected results of jmapio/jmap-test-suite against WildDuck, per test.
+# Read README.md in this directory first. This file is data for a CI gate, it contains no code.
+#
+# Suite:    https://github.com/jmapio/jmap-test-suite
+# Commit:   0f2c117dc5f3621bfa50cb0b8b4d4ac87a4154be (pinned; re-derive this file when the pin moves)
+# Licence:  none (the repository has no LICENSE file). Run it as an external tool at the pinned commit, never vendor or copy it.
+# Run:      npm install && npm run build && node dist/cli.js -c <config.json> -f -o report.json  (see README.md)
+#
+# Fields
+#   id             test id exactly as the JSON report gives it in results[].testId
+#   required       the suite's own flag (false means the suite calls the test recommended)
+#   spec           RFC and section the suite cites for the test
+#   phase          WildDuck plan phase (0 to 7) from which the test must pass. Omitted when the test is not expected to pass.
+#                  The suite seeds its fixtures with Mailbox/set, the upload endpoint and Email/import and aborts when
+#                  seeding fails, so no test can pass before phase 2: phase is never lower than 2 in this file.
+#   feature_phase  only present when lower than phase: the phase in which the behaviour itself is implemented
+#                  (the test would pass in phase 1 if the suite could seed).
+#   expect         pass     must pass from phase on
+#                  never    fails or is skipped by design; reason names the WildDuck constraint
+#                  opinion  the suite is stricter than the RFC; reason says what WildDuck does. With a phase WildDuck
+#                           complies and the test is gated like pass. Without a phase the test is reported, never gated.
+#   reason         one sentence, only for never and opinion
+#   note           optional, a condition the pass depends on
+#   skip_when      optional, the precondition under which the suite itself reports skip instead of running the test
+suite: jmapio/jmap-test-suite
+url: "https://github.com/jmapio/jmap-test-suite"
+commit: "0f2c117dc5f3621bfa50cb0b8b4d4ac87a4154be"
+licence: "none (no LICENSE file in the repository)"
+run: "node dist/cli.js -c <config.json> -f -o report.json"
+tests:
+  - id: "core/session-has-capabilities"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-has-core-capability"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-has-mail-capability"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-core-capability-properties"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-accounts-present"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-account-properties"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-primary-accounts"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-username"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-api-url"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-download-url-template"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-upload-url"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-event-source-url"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-state"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-account-capabilities-mail"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/session-mail-capability-properties"
+    required: true
+    spec: "RFC 8620 2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/echo-basic"
+    required: true
+    spec: "RFC 8620 4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/echo-empty"
+    required: true
+    spec: "RFC 8620 4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/echo-nested"
+    required: true
+    spec: "RFC 8620 4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-not-json"
+    required: true
+    spec: "RFC 8620 3.6.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-not-request"
+    required: true
+    spec: "RFC 8620 3.6.1"
+    phase: 2
+    feature_phase: 1
+    expect: opinion
+    reason: "RFC 8620 3.6.1 makes the notRequest problem response a SHOULD and the suite requires a 4xx. WildDuck answers HTTP 400 with urn:ietf:params:jmap:error:notRequest, simply comply."
+  - id: "core/error-unknown-capability"
+    required: true
+    spec: "RFC 8620 3.6.1"
+    phase: 2
+    feature_phase: 1
+    expect: opinion
+    reason: "RFC 8620 3.6.1 makes the unknownCapability problem response a SHOULD and the suite requires an HTTP level 4xx. WildDuck answers HTTP 400 with urn:ietf:params:jmap:error:unknownCapability, simply comply."
+  - id: "core/error-empty-using"
+    required: true
+    spec: "RFC 8620 3.6.1"
+    phase: 2
+    feature_phase: 1
+    expect: opinion
+    reason: "The RFC does not say what an empty using array yields; the suite wants the request processed and every call, Core/echo included, answered with unknownMethod. WildDuck gates every method on using, simply comply."
+  - id: "core/error-wrong-content-type"
+    required: true
+    spec: "RFC 8620 3.6.1"
+    phase: 2
+    feature_phase: 1
+    expect: opinion
+    reason: "The RFC only obliges clients to send application/json; the suite requires a 4xx for text/plain. WildDuck answers 415 (or 400 notJSON), simply comply."
+  - id: "core/error-method-calls-not-array"
+    required: true
+    spec: "RFC 8620 3.6.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-unknown-method"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-invalid-arguments-missing-account"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-account-not-found"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-invalid-arguments-bad-type"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-method-level-has-type"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-state-mismatch"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    expect: pass
+    note: "Needs Mailbox/set, hence phase 2."
+  - id: "core/error-multiple-method-responses"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/error-response-has-session-state"
+    required: true
+    spec: "RFC 8620 3.6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/result-ref-simple"
+    required: true
+    spec: "RFC 8620 3.7"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/result-ref-chained"
+    required: true
+    spec: "RFC 8620 3.7"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/result-ref-invalid-result-of"
+    required: true
+    spec: "RFC 8620 3.7"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/result-ref-wrong-method-name"
+    required: true
+    spec: "RFC 8620 3.7"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/result-ref-path-single-value"
+    required: true
+    spec: "RFC 8620 3.7"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "core/result-ref-call-id-preserved"
+    required: true
+    spec: "RFC 8620 3.7"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "binary/upload-basic"
+    required: true
+    spec: "RFC 8620 6.1"
+    phase: 2
+    expect: pass
+  - id: "binary/upload-binary-content"
+    required: true
+    spec: "RFC 8620 6.1"
+    phase: 2
+    expect: pass
+  - id: "binary/upload-returns-valid-blob-id"
+    required: true
+    spec: "RFC 8620 6.1"
+    phase: 2
+    expect: pass
+  - id: "binary/upload-large-data"
+    required: true
+    spec: "RFC 8620 6.1"
+    phase: 2
+    expect: pass
+  - id: "binary/upload-preserves-content-type"
+    required: true
+    spec: "RFC 8620 6.1"
+    phase: 2
+    expect: pass
+  - id: "binary/download-uploaded-blob"
+    required: true
+    spec: "RFC 8620 6.2"
+    phase: 2
+    expect: pass
+  - id: "binary/download-email-blob"
+    required: true
+    spec: "RFC 8620 6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "binary/download-nonexistent-blob"
+    required: true
+    spec: "RFC 8620 6.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "binary/download-respects-type-param"
+    required: true
+    spec: "RFC 8620 6.2"
+    phase: 2
+    expect: pass
+    note: "The Content-Type of the download must be the type given in the URL."
+  - id: "binary/blob-copy-same-account-error"
+    required: true
+    spec: "RFC 8620 6.3"
+    phase: 2
+    expect: opinion
+    reason: "RFC 8620 6.3 does not forbid fromAccountId equal to accountId; the suite requires invalidArguments. WildDuck must ship a Blob/copy that answers accountNotFound for an unknown accountId, then invalidArguments when both ids are equal, then fromAccountNotFound; an unknownMethod answer fails this test. Simply comply."
+  - id: "binary/blob-copy-cross-account"
+    required: true
+    spec: "RFC 8620 6.3"
+    expect: never
+    reason: "One JMAP account per user and no sharing, so the session has no second mail account and the suite skips this test."
+  - id: "binary/blob-copy-not-found"
+    required: true
+    spec: "RFC 8620 6.3"
+    expect: never
+    reason: "One JMAP account per user and no sharing, so the session has no second mail account and the suite skips this test."
+  - id: "binary/blob-copy-response-structure"
+    required: true
+    spec: "RFC 8620 6.3"
+    expect: never
+    reason: "One JMAP account per user and no sharing, so the session has no second mail account and the suite skips this test."
+  - id: "mailbox/get-all"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-by-ids"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-not-found"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-properties-filter"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-inbox-exists"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-mailbox-properties"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-parent-id-correct"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-total-emails-accurate"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-state-returned"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/get-account-id-returned"
+    required: true
+    spec: "RFC 8621 2.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/changes-no-changes"
+    required: true
+    spec: "RFC 8621 2.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/changes-after-create"
+    required: true
+    spec: "RFC 8621 2.2"
+    phase: 2
+    expect: pass
+  - id: "mailbox/changes-after-rename"
+    required: true
+    spec: "RFC 8621 2.2"
+    phase: 2
+    expect: pass
+  - id: "mailbox/changes-has-more-changes"
+    required: true
+    spec: "RFC 8621 2.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/changes-response-structure"
+    required: true
+    spec: "RFC 8621 2.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-all"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-by-parent-id-null"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-by-parent-id"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-by-name"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-by-role"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-has-any-role"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-has-any-role-false"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-sort-by-name"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+    note: "Checked with localeCompare over all mailboxes including the role ones; see the Fastmail file Mailbox/query/filtering-with-filter-operators.t for the ordering that satisfies both suites."
+  - id: "mailbox/query-sort-by-sort-order"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-response-structure"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-limit"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-position"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-filter-null-accepted"
+    required: true
+    spec: "RFC 8621 2.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "mailbox/query-changes-no-changes"
+    required: true
+    spec: "RFC 8621 2.4"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "mailbox/query-changes-after-create"
+    required: true
+    spec: "RFC 8621 2.4"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "mailbox/query-changes-response-structure"
+    required: true
+    spec: "RFC 8621 2.4"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "mailbox/query-changes-filter-null-accepted"
+    required: true
+    spec: "RFC 8621 2.4"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "mailbox/set-create-top-level"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-create-child"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-rename"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-move-parent"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-destroy-empty"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-destroy-not-found"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-create-returns-server-set-props"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-state-changes"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-on-destroy-remove-emails"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-on-destroy-remove-emails-with-children"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-duplicate-name-same-parent"
+    required: true
+    spec: "RFC 8621 2.5"
+    expect: opinion
+    reason: "RFC 8621 2 forbids sibling Mailboxes with the same name but names no SetError type, and RFC 8620 defines alreadyExists only for /copy and /import; the suite requires alreadyExists, WildDuck answers invalidProperties on name like James and Cyrus (MBX-151)."
+  - id: "mailbox/set-change-sort-order"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "mailbox/set-cannot-destroy-with-children"
+    required: true
+    spec: "RFC 8621 2.5"
+    phase: 2
+    expect: pass
+  - id: "thread/get-thread-by-id"
+    required: true
+    spec: "RFC 8621 3.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "thread/get-thread-email-ids-order"
+    required: true
+    spec: "RFC 8621 3.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "thread/get-thread-not-found"
+    required: true
+    spec: "RFC 8621 3.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "thread/get-single-email-thread"
+    required: true
+    spec: "RFC 8621 3.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "thread/get-thread-response-structure"
+    required: true
+    spec: "RFC 8621 3.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "thread/changes-no-changes"
+    required: true
+    spec: "RFC 8621 3.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "thread/changes-after-new-email"
+    required: true
+    spec: "RFC 8621 3.2"
+    phase: 2
+    expect: pass
+  - id: "thread/changes-after-email-destroy"
+    required: true
+    spec: "RFC 8621 3.2"
+    phase: 2
+    expect: pass
+  - id: "thread/changes-response-structure"
+    required: true
+    spec: "RFC 8621 3.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-by-id"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-metadata-properties"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-mailbox-ids"
+    required: true
+    spec: "RFC 8621 4.1"
+    expect: never
+    reason: "An Email is in exactly one mailbox (maxMailboxesPerEmail is 1): the seed import of the two mailbox message is rejected, so there is no Email to read."
+  - id: "email/get-keywords"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-has-attachment-true"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-has-attachment-false"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-thread-id-consistent"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+    note: "Depends on the seeded Re: replies joining the thread of the original (shared reference and same normalised subject)."
+  - id: "email/get-not-found"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-properties-filter"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-preview-is-text"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-received-at-is-utc-date"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-multiple-emails"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/get-state-returned"
+    required: true
+    spec: "RFC 8621 4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-from"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-to"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-cc"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-subject"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-subject-empty"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-sent-at"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-message-id"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-in-reply-to"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-references"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-raw-access"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-as-addresses"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-as-message-ids"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-as-date"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-as-urls"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-custom-header"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-intl-from-decoded"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-as-grouped-addresses"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-raw-form"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-case-insensitive"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/header-bcc"
+    required: true
+    spec: "RFC 8621 4.1.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-structure"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-text-body"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-html-body"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-attachments"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-values-text"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-values-html"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-values-all"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-max-body-value-bytes"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-properties-filter"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-multipart-alternative-text-and-html"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-inline-attachment-cid"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-attachment-blob-id"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-non-utf8-charset"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/body-invalid-ascii-handling"
+    required: true
+    spec: "RFC 8621 4.1.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/changes-no-changes"
+    required: true
+    spec: "RFC 8621 4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/changes-after-keyword-change"
+    required: true
+    spec: "RFC 8621 4.3"
+    phase: 2
+    expect: pass
+  - id: "email/changes-response-structure"
+    required: true
+    spec: "RFC 8621 4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/changes-after-create-and-destroy"
+    required: true
+    spec: "RFC 8621 4.3"
+    phase: 2
+    expect: pass
+  - id: "email/filter-in-mailbox"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-in-mailbox-other-than"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-before"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-after"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-min-size"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-max-size"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-has-keyword"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-not-keyword"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-has-attachment-true"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-has-attachment-false"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-text-search-headers"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-text-search-body"
+    required: false
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+    note: "Recommended test. The word searched for sits in a short plain text body, inside the first 1 KB that is indexed before phase 4."
+  - id: "email/filter-from"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-to"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-cc"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-subject"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-body"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+    note: "The phrase searched for sits in a short plain text body, inside the first 1 KB that is indexed before phase 4."
+  - id: "email/filter-header-name-only"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-header-name-value"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-some-in-thread-have-keyword"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 4
+    expect: pass
+  - id: "email/filter-none-in-thread-have-keyword"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 4
+    expect: pass
+  - id: "email/filter-operator-and"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-operator-or"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-operator-not"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-nested-operators"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-empty-matches-all"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-multiple-conditions-on-one-filter"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-custom-keyword"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-in-child-mailbox"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-before-and-after"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-null-accepted"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/filter-from-display-name"
+    required: true
+    spec: "RFC 8621 4.4.1"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/sort-received-at-desc"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/sort-received-at-asc"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/sort-size"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/sort-from"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8621 4.4.2 makes only receivedAt mandatory and the suite marks this sort required. WildDuck complies: the from, to and subject sorts ship in phase 4."
+  - id: "email/sort-to"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8621 4.4.2 makes only receivedAt mandatory and the suite marks this sort required. WildDuck complies: the from, to and subject sorts ship in phase 4."
+  - id: "email/sort-subject"
+    required: false
+    spec: "RFC 8621 4.4.2"
+    phase: 4
+    expect: pass
+  - id: "email/sort-sent-at"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/sort-has-keyword"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/sort-multi-property"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8621 4.4.2 makes only receivedAt mandatory and the suite marks this sort required. WildDuck complies: the from, to and subject sorts ship in phase 4."
+  - id: "email/sort-default-no-sort"
+    required: true
+    spec: "RFC 8621 4.4.2"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-position-zero"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-positive-position"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-negative-position"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-limit"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-anchor"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-anchor-offset"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-calculate-total"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-anchor-not-found"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-position-beyond-total"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/paging-response-position"
+    required: true
+    spec: "RFC 8621 4.4"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/collapse-threads-basic"
+    required: true
+    spec: "RFC 8621 4.4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+    note: "Depends on the seeded Re: replies joining the thread of the original (shared reference and same normalised subject)."
+  - id: "email/collapse-threads-one-per-thread"
+    required: true
+    spec: "RFC 8621 4.4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/collapse-threads-with-filter"
+    required: true
+    spec: "RFC 8621 4.4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/collapse-threads-sort-determines-representative"
+    required: true
+    spec: "RFC 8621 4.4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/collapse-threads-calculate-total"
+    required: true
+    spec: "RFC 8621 4.4.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "email/query-changes-no-changes"
+    required: true
+    spec: "RFC 8621 4.5"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "email/query-changes-after-add"
+    required: true
+    spec: "RFC 8621 4.5"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "email/query-changes-after-remove"
+    required: true
+    spec: "RFC 8621 4.5"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "email/query-changes-filter-null-accepted"
+    required: true
+    spec: "RFC 8621 4.5"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "email/query-changes-response-structure"
+    required: true
+    spec: "RFC 8621 4.5"
+    phase: 4
+    expect: opinion
+    reason: "RFC 8620 5.6 lets a server answer cannotCalculateChanges and the suite requires real results. WildDuck complies: queryChanges is general, backed by cached query results (decided 2026-11-11)."
+  - id: "email/set-create-plain-text"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-html"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-multipart-alternative"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-with-keywords"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-server-set-properties"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-with-attachment"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-state-changes"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-create-creation-id-reference"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-update-add-keyword"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-update-remove-keyword"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-update-replace-keywords"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-update-move-mailbox"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+    note: "Depends on the phase 0 stable id: the Email id must survive the move."
+  - id: "email/set-update-add-mailbox"
+    required: true
+    spec: "RFC 8621 4.6"
+    expect: never
+    reason: "An Email is in exactly one mailbox (maxMailboxesPerEmail is 1): adding a second mailboxId is rejected with tooManyMailboxes."
+  - id: "email/set-update-remove-mailbox"
+    required: true
+    spec: "RFC 8621 4.6"
+    expect: never
+    reason: "An Email is in exactly one mailbox (maxMailboxesPerEmail is 1): the test first creates an Email in two mailboxes, which is rejected with tooManyMailboxes."
+  - id: "email/set-update-if-in-state"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-update-not-found"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-destroy-single"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-destroy-multiple"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-destroy-not-found"
+    required: true
+    spec: "RFC 8621 4.6"
+    phase: 2
+    expect: pass
+  - id: "email/set-destroy-removes-from-all-mailboxes"
+    required: true
+    spec: "RFC 8621 4.6"
+    expect: never
+    reason: "An Email is in exactly one mailbox (maxMailboxesPerEmail is 1): the test first creates an Email in two mailboxes, which is rejected with tooManyMailboxes."
+  - id: "email/copy-same-account-error"
+    required: true
+    spec: "RFC 8621 4.7"
+    phase: 2
+    expect: opinion
+    reason: "RFC 8620 5.4 does not forbid fromAccountId equal to accountId; the suite requires invalidArguments. WildDuck must not answer fromAccountNotFound here (the id is the caller, a valid account): check accountId first, then equality (invalidArguments), then fromAccountNotFound. Simply comply."
+  - id: "email/copy-cross-account"
+    required: true
+    spec: "RFC 8621 4.7"
+    expect: never
+    reason: "One JMAP account per user and no sharing, so the session has no second mail account and the suite skips this test."
+  - id: "email/copy-not-found"
+    required: true
+    spec: "RFC 8621 4.7"
+    expect: never
+    reason: "One JMAP account per user and no sharing, so the session has no second mail account and the suite skips this test."
+  - id: "email/import-valid-message"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/import-sets-mailbox"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/import-sets-keywords"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/import-sets-received-at"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/import-invalid-blob"
+    required: false
+    spec: "RFC 8621 4.8"
+    expect: opinion
+    reason: "RFC 8621 4.8 says the server MAY reject a blob that is not a valid message; the suite (recommended test) wants a rejection of a headerless text blob. WildDuck stores it leniently like IMAP APPEND, so the test fails; rejecting blobs without any header line with invalidEmail would satisfy it but is not required."
+  - id: "email/import-not-found-blob"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/import-multiple"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/import-state-changes"
+    required: true
+    spec: "RFC 8621 4.8"
+    phase: 2
+    expect: pass
+  - id: "email/parse-valid-message"
+    required: true
+    spec: "RFC 8621 4.9"
+    phase: 2
+    expect: pass
+  - id: "email/parse-null-metadata"
+    required: true
+    spec: "RFC 8621 4.9"
+    phase: 2
+    expect: pass
+  - id: "email/parse-not-found"
+    required: true
+    spec: "RFC 8621 4.9"
+    phase: 2
+    expect: pass
+  - id: "email/parse-not-parsable"
+    required: false
+    spec: "RFC 8621 4.9"
+    expect: opinion
+    reason: "RFC 8621 4.9 leaves it to the server what counts as not parsable; the suite (recommended test) wants a headerless text blob in notParsable. WildDuck parses it as a message with an empty header, so the test fails; listing blobs without any header line in notParsable would satisfy it but is not required."
+  - id: "email/parse-body-values"
+    required: true
+    spec: "RFC 8621 4.9"
+    phase: 2
+    expect: pass
+  - id: "email/parse-response-structure"
+    required: true
+    spec: "RFC 8621 4.9"
+    phase: 2
+    expect: pass
+  - id: "search-snippet/snippet-body-match"
+    required: true
+    spec: "RFC 8621 5"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+    note: "The word searched for sits inside the first 1 KB of plain text."
+  - id: "search-snippet/snippet-subject-match"
+    required: true
+    spec: "RFC 8621 5"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "search-snippet/snippet-null-when-no-match"
+    required: true
+    spec: "RFC 8621 5"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "search-snippet/snippet-response-structure"
+    required: true
+    spec: "RFC 8621 5"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "search-snippet/snippet-not-found"
+    required: true
+    spec: "RFC 8621 5"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "search-snippet/snippet-mark-tags"
+    required: false
+    spec: "RFC 8621 5"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "identity/get-all-identities"
+    required: true
+    spec: "RFC 8621 6.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/get-identity-properties"
+    required: true
+    spec: "RFC 8621 6.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/get-identity-by-id"
+    required: true
+    spec: "RFC 8621 6.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/get-identity-not-found"
+    required: true
+    spec: "RFC 8621 6.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/get-identity-email-matches"
+    required: true
+    spec: "RFC 8621 6.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/changes-no-changes"
+    required: true
+    spec: "RFC 8621 6.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/changes-after-update"
+    required: true
+    spec: "RFC 8621 6.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/changes-response-structure"
+    required: true
+    spec: "RFC 8621 6.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/set-update-name"
+    required: true
+    spec: "RFC 8621 6.3"
+    phase: 2
+    expect: pass
+    note: "Updates the first identity returned by Identity/get, so the main address identity should be listed first and be updatable."
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/set-update-text-signature"
+    required: true
+    spec: "RFC 8621 6.3"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/set-update-html-signature"
+    required: true
+    spec: "RFC 8621 6.3"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/set-update-reply-to"
+    required: true
+    spec: "RFC 8621 6.3"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "identity/set-not-found"
+    required: true
+    spec: "RFC 8621 6.3"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:submission is not advertised in the session"
+  - id: "submission/get-empty"
+    required: true
+    spec: "RFC 8621 7.1"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/get-not-found"
+    required: true
+    spec: "RFC 8621 7.1"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/get-response-structure"
+    required: true
+    spec: "RFC 8621 7.1"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/changes-no-changes"
+    required: true
+    spec: "RFC 8621 7.2"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/changes-response-structure"
+    required: true
+    spec: "RFC 8621 7.2"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/query-all"
+    required: true
+    spec: "RFC 8621 7.3"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/query-filter-undo-status"
+    required: true
+    spec: "RFC 8621 7.3"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/query-response-structure"
+    required: true
+    spec: "RFC 8621 7.3"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/query-filter-null-accepted"
+    required: true
+    spec: "RFC 8621 7.3"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/set-create-submission"
+    required: true
+    spec: "RFC 8621 7.5"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/set-create-with-envelope"
+    required: true
+    spec: "RFC 8621 7.5"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/set-on-success-update-email"
+    required: true
+    spec: "RFC 8621 7.5"
+    phase: 3
+    expect: pass
+    note: "The onSuccessUpdateEmail patch adds the Sent mailboxId and removes the Drafts one; the patch must be evaluated as a whole (net one mailbox, a move), not rejected with tooManyMailboxes midway."
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/set-submission-properties"
+    required: true
+    spec: "RFC 8621 7.5"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "submission/set-no-recipients-error"
+    required: true
+    spec: "RFC 8621 7.5"
+    phase: 3
+    expect: pass
+    skip_when: "no users.secondary in the config (the whole category is skipped)"
+  - id: "vacation/get-singleton"
+    required: true
+    spec: "RFC 8621 8.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/get-singleton-null-ids"
+    required: true
+    spec: "RFC 8621 8.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/get-singleton-properties"
+    required: true
+    spec: "RFC 8621 8.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/get-not-found-invalid-id"
+    required: true
+    spec: "RFC 8621 8.1"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/set-enable-vacation"
+    required: true
+    spec: "RFC 8621 8.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/set-disable-vacation"
+    required: true
+    spec: "RFC 8621 8.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/set-dates"
+    required: true
+    spec: "RFC 8621 8.2"
+    phase: 2
+    expect: pass
+    note: "fromDate and toDate are compared as strings: return UTCDate without fractional seconds."
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/set-html-body"
+    required: true
+    spec: "RFC 8621 8.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/set-cannot-create"
+    required: true
+    spec: "RFC 8621 8.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "vacation/set-cannot-destroy"
+    required: true
+    spec: "RFC 8621 8.2"
+    phase: 2
+    expect: pass
+    skip_when: "urn:ietf:params:jmap:vacationresponse is not advertised in the session"
+  - id: "push-subscription/push-subscription-reject-non-https"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+  - id: "push-subscription/push-subscription-receives-notification"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+    note: "WildDuck itself must be able to POST to the public relay URL; the PushVerification and StateChange bodies travel through smee.io."
+    skip_when: "smee.io is unreachable"
+  - id: "push-subscription/push-subscription-create"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+    skip_when: "smee.io is unreachable"
+  - id: "push-subscription/push-subscription-get"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+    skip_when: "smee.io is unreachable"
+  - id: "push-subscription/push-subscription-destroy"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+    skip_when: "smee.io is unreachable"
+  - id: "push-subscription/push-subscription-types-filter"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+    skip_when: "smee.io is unreachable"
+  - id: "push-subscription/push-subscription-verification"
+    required: true
+    spec: "RFC 8620 7.2"
+    phase: 4
+    expect: pass
+    skip_when: "smee.io is unreachable"
+  - id: "push-eventsource/eventsource-connect"
+    required: true
+    spec: "RFC 8620 7.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "push-eventsource/eventsource-receives-state-change"
+    required: true
+    spec: "RFC 8620 7.3"
+    phase: 2
+    expect: pass
+  - id: "push-eventsource/eventsource-types-filter"
+    required: true
+    spec: "RFC 8620 7.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass
+  - id: "push-eventsource/eventsource-closeafter"
+    required: true
+    spec: "RFC 8620 7.3"
+    phase: 2
+    feature_phase: 1
+    expect: pass

@@ -1,3 +1,4 @@
+# npm reads .npmignore instead of this file: add new exclusions to .npmignore as well
 node_modules
 .DS_Store
 npm-debug.log
@@ -10,3 +11,5 @@ zmta-milter.toml
 api-tests-overview.md
 docker-mcp-demo
 coverage
+test/jmap/overview.html
+test/jmap/.results/

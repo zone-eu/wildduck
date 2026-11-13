@@ -93,6 +93,9 @@ connection = "lan"
 [mcp]
 # @include "mcp.toml"
 
+[jmap]
+# @include "jmap.toml"
+
 [sender]
 # @include "sender.toml"
 

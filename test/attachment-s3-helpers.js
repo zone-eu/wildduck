@@ -192,6 +192,7 @@ class TestServer {
                 lmtp: { enabled: false },
                 metrics: { enabled: false },
                 mcp: { enabled: false },
+                jmap: { enabled: false },
                 acme: { enabled: false },
                 tasks: { enabled: false },
                 webhooks: { enabled: false },

@@ -388,6 +388,45 @@ describe('API Submit', function () {
         }
     });
 
+    // security audit NV-08: the daily limit was checked first and counted after queueing, so parallel
+    // submissions all passed the check
+    it('should POST /users/{user}/submit expect failure / parallel submissions do not pass the daily recipient limit together', async function () {
+        this.timeout(60000); // eslint-disable-line no-invalid-this
+        const recipients = prefix => Array.from({ length: 400 }, (value, i) => ({ address: `${prefix}${i}@example.com` }));
+        const send = prefix =>
+            server.post(`/users/${user}/submit`).send({
+                from: { address: testAddress },
+                to: recipients(prefix),
+                subject: 'Parallel recipient limit',
+                text: 'Parallel recipient limit'
+            });
+
+        // the earlier tests sent some; the limit is set so that after the first message exactly 400 are left
+        const used = (await server.get(`/users/${user}`).expect(200)).body.limits.recipients.used;
+        await server
+            .put(`/users/${user}`)
+            .send({ recipients: used + 800 })
+            .expect(200);
+        try {
+            const first = await send('first').expect(200);
+            queuedMessages.push(first.body.message.queueId);
+
+            const responses = await Promise.all(Array.from({ length: 8 }, (value, i) => send(`p${i}x`)));
+            const accepted = responses.filter(response => response.status === 200);
+            const refused = responses.filter(response => response.status === 403);
+            accepted.forEach(response => queuedMessages.push(response.body.message.queueId));
+
+            expect(accepted.length, responses.map(response => response.status).join(',')).to.equal(1);
+            expect(refused.length).to.equal(7);
+            refused.forEach(response => expect(response.body.code).to.equal('RateLimitedError'));
+
+            const userData = await server.get(`/users/${user}`).expect(200);
+            expect(userData.body.limits.recipients.used).to.equal(used + 800);
+        } finally {
+            await server.put(`/users/${user}`).send({ recipients: 100 }).expect(200);
+        }
+    });
+
     it('should POST /users/{user}/submit expect failure / malformed reference', async () => {
         const response = await server
             .post(`/users/${user}/submit`)

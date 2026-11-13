@@ -24,6 +24,10 @@ module.exports = {
         let query = command.attributes[1] && command.attributes[1];
 
         let statusElements = ['MESSAGES', 'RECENT', 'UIDNEXT', 'UIDVALIDITY', 'UNSEEN', 'HIGHESTMODSEQ'];
+        if (this._server.options.objectIds) {
+            // RFC 8474 4.3
+            statusElements.push('MAILBOXID');
+        }
         let statusItem;
         let statusQuery = [];
 
@@ -132,6 +136,11 @@ module.exports = {
                         type: 'atom',
                         value: key.toUpperCase()
                     });
+                    if (key === 'MAILBOXID') {
+                        // a parenthesized object id: MAILBOXID (F123)
+                        response.attributes[1].push([{ type: 'atom', value: this._server.options.objectIds.mailbox(data.mailbox) }]);
+                        return;
+                    }
                     response.attributes[1].push({
                         type: 'atom',
                         value: (values[key] || '0').toString()

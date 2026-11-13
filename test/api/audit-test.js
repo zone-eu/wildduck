@@ -126,14 +126,30 @@ describe('Audit API tests', function () {
         return response.body.id;
     };
 
+    // Runs the import task of an audit. The task runner of the test server may take the same task at any
+    // time, so the task is taken out of the queue atomically first; when the runner already holds it, the
+    // test waits for the runner to finish instead of running the import a second time.
     const runQueuedAuditTask = async audit => {
         const auditObjectId = new ObjectId(audit);
-        const taskData = await db.database.collection('tasks').findOne({
+        const taskData = await db.database.collection('tasks').findOneAndDelete({
             task: 'audit',
-            'data.audit': auditObjectId
+            'data.audit': auditObjectId,
+            locked: false
         });
 
-        expect(taskData).to.exist;
+        if (!taskData) {
+            const claimed = await db.database.collection('tasks').findOne({ task: 'audit', 'data.audit': auditObjectId });
+            const auditData = await db.database.collection('audits').findOne({ _id: auditObjectId });
+            expect(claimed || (auditData && auditData.import && auditData.import.status !== 'queued'), 'audit task').to.be.ok;
+            for (let i = 0; i < 300; i++) {
+                const current = await db.database.collection('audits').findOne({ _id: auditObjectId });
+                if (current && current.import && ['imported', 'failed'].includes(current.import.status)) {
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            throw new Error('the task runner did not finish the audit import');
+        }
 
         const result = await auditTask(
             {
@@ -147,10 +163,6 @@ describe('Audit API tests', function () {
         );
 
         expect(result).to.be.true;
-
-        await db.database.collection('tasks').deleteOne({
-            _id: taskData._id
-        });
     };
 
     const getAuditFiles = async audit =>

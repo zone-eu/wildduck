@@ -48,6 +48,7 @@ module.exports = function (grunt) {
     ];
     const unitTests = [
         'test/apn-client-test.js',
+        'test/autoreply-recipient-test.js',
         'test/imap-notifier-apn-test.js',
         'test/xapplepushservice-validation-test.js',
         'test/certs-test.js',
@@ -55,6 +56,7 @@ module.exports = function (grunt) {
         'test/create-decipher-test.js',
         'test/filtering-tools-test.js',
         'test/hibp-tools-test.js',
+        'test/jmap/unit/*-test.js',
         'test/label-delete-task-test.js',
         'test/list-headers-test.js',
         'test/maildropper-test.js',
@@ -71,7 +73,8 @@ module.exports = function (grunt) {
         'test/prometheus-test.js',
         'test/roles-test.js',
         'test/tools-test.js',
-        'test/user-handler-auth-test.js'
+        'test/user-handler-auth-test.js',
+        'test/user-outbound-test.js'
     ];
 
     // Project configuration.
@@ -104,8 +107,13 @@ module.exports = function (grunt) {
                 options: mochaOutput
             },
             'mocha-api': {
-                // the POP3 and unit files match the glob too, they already ran in their own targets
-                command: `${mocha} ${['test/pop3-*-test.js', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
+                // the POP3, unit and JMAP files match the glob too, they run in their own targets
+                command: `${mocha} ${['test/pop3-*-test.js', 'test/jmap/**', ...unitTests].map(file => `--ignore "${file}"`).join(' ')} "test/**/*-test.js"`,
+                options: mochaOutput
+            },
+            'mocha-jmap': {
+                // JMAP catalogue scenarios and client interop tests; JMAP_RESULTS=1 records results for tools/check-coverage.js
+                command: 'npx mocha --config test/jmap/.mocharc.js',
                 options: mochaOutput
             },
             options: {
@@ -164,9 +172,11 @@ module.exports = function (grunt) {
 
     // Tasks
     // mocha-imap globs every imap-core test, so the in-process ones must not be listed again here
-    const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api'];
+    const mochaTests = ['shell:mocha-imap', 'shell:mocha-pop3', 'shell:mocha-unit', 'shell:mocha-api', 'shell:mocha-jmap'];
     grunt.registerTask('default', ['eslint', 'shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
     grunt.registerTask('testonly', ['shell:server', 'wait:server', ...mochaTests, 'shell:server:kill']);
+    // jmap: only the JMAP scenario target against a fresh test server
+    grunt.registerTask('jmap', ['shell:server', 'wait:server', 'shell:mocha-jmap', 'shell:server:kill']);
     // proto: run all protocol-level tests (IMAP unit + POP3 + unit) without requiring MongoDB/Redis
     grunt.registerTask('proto', ['shell:mocha-imap-unit', 'shell:mocha-pop3', 'shell:mocha-unit']);
 };

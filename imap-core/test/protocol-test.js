@@ -729,7 +729,8 @@ describe('IMAP Protocol integration tests', function () {
                 },
                 function (resp) {
                     resp = resp.toString();
-                    expect(/^T2 OK CREATE completed$/m.test(resp)).to.be.true;
+                    // RFC 8474 4.1: the tagged OK names the id of the new mailbox
+                    expect(/^T2 OK \[MAILBOXID \(F[0-9a-f]{24}\)\] CREATE completed$/m.test(resp)).to.be.true;
                     expect(/^T3 OK \[READ-WRITE\]/m.test(resp)).to.be.true;
                     expect(resp.indexOf('\r\n* LIST (\\HasNoChildren) "/" "Foo"\r\n') >= 0).to.be.true;
                     done();
