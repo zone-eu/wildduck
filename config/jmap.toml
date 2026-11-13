@@ -185,6 +185,8 @@ emailLimit = 30
 emailWindow = 86400
 # events with a due alert read per scheduler run
 batch = 500
+# due events of one user handled per scheduler run, so one account can not hold up the others
+perUser = 50
 [push]
 # Web Push for PushSubscription (RFC 8620 7.2, RFC 8030, RFC 8291 encryption, RFC 8292 VAPID). Push
 # requests go out from the JMAP workers through the BullMQ queue jmap_push. The VAPID key pair is made

@@ -186,6 +186,7 @@ Calendar alerts (`lib/calendar/alerts.js`).
 | `pushWindow`  | `3600`  | Seconds                                                                            |
 | `emailLimit`  | `30`    | Email alerts per user per `emailWindow`                                            |
 | `emailWindow` | `86400` | Seconds                                                                            |
+| `perUser`     | `50`    | Due events of one user handled per scheduler run; the rest wait for the next runs  |
 
 `batch` (default `500`, due events read per scheduler run) is read by the code but not listed in `config/jmap.toml`.
 
@@ -560,7 +561,7 @@ All in the main database, named with a prefix: `jmap.` for JMAP bookkeeping, `co
 **Background work** in the JMAP workers:
 
 - **Submission poller**: one worker at a time (Redis lock) checks due pending EmailSubmissions against the outbound queue every `submission.pollInterval` seconds, at most 500 per run, with a growing delay per submission.
-- **Alert scheduler**: one worker at a time reads due events on the `alert_due` index every `alerts.interval` seconds, in batches of 500, and claims each event with a conditional update.
+- **Alert scheduler**: one worker at a time reads due events on the `alert_due_user` index every `alerts.interval` seconds, in batches of 500, and claims each event with a conditional update. A run stops after the chunk of 50 events in which its time budget (`alerts.interval`) ran out, and handles at most `alerts.perUser` events of one user, so an account with many due events can not delay the alerts of others.
 - **Push delivery**: every JMAP worker claims due users and processes the `jmap_push` queue with `push.concurrency` parallel requests. A worker at a time re-adds every user with a verified subscription to `jmap:push:users` once an hour, as a safety net after Redis data loss.
 - **Event streams**: one notifier listener per open stream; states are read only when a change for the user arrives. `eventSource.maxStreams` bounds the streams per user.
 - **Garbage collection** (task runner): expired temporary uploads are removed with the other expired data.

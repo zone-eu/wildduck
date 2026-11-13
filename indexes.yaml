@@ -748,10 +748,12 @@ indexes:
 
     - collection: calendars.events
       index:
-          # the alert scheduler reads due events in time order (lib/calendar/alerts.js)
-          name: alert_due
+          # the alert scheduler reads due events in time order (lib/calendar/alerts.js); users at their
+          # cap for a run are skipped on the index keys
+          name: alert_due_user
           key:
               alertAt: 1
+              user: 1
           partialFilterExpression:
               alertAt:
                   $type: date
@@ -1248,6 +1250,10 @@ indexes:
               address: 1
 
 deleteindexes:
+    # replaced by alert_due_user
+    - collection: calendars.events
+      index: alert_due
+
     - collection: settings
       index: key_enumerable
 

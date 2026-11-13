@@ -812,4 +812,49 @@ describe('Calendar alerts (CALR)', function () {
             expect(box.requests.slice(before).map(entry => box.json(entry)['@type'])).to.not.include('CalendarAlert');
         });
     });
+
+    describe('scheduler budget and fairness (NV-23)', () => {
+        const events = async () => (await schedulerDeps()).database.collection('calendars.events');
+
+        /** Copies the user's only event `count` times in the database, each with its own uid */
+        const cloneEvent = async (ctx, count) => {
+            const collection = await events();
+            const doc = await collection.findOne({ user: new seed.ObjectId(ctx.user.id) });
+            const copies = [];
+            for (let i = 0; i < count; i++) {
+                copies.push(Object.assign({}, doc, { _id: new seed.ObjectId(), uid: `${doc.uid}-${i}` }));
+            }
+            await collection.insertMany(copies);
+        };
+        const run = async (contexts, at, settings, budget) =>
+            alerts.processDue(await schedulerDeps(), {
+                now: at,
+                user: contexts.map(ctx => new seed.ObjectId(ctx.user.id)),
+                settings: Object.assign({}, alerts.DEFAULTS, { jitter: 0 }, settings),
+                budget
+            });
+
+        it('a run without budget left stops after one chunk of due events', async () => {
+            const ctx = await h.setupUser();
+            await h.createEvent(ctx, atT({ alerts: { a1: offsetAlert('PT0S') } }));
+            await cloneEvent(ctx, 499);
+            const fired = await run([ctx], T, { perUser: 1000 }, 0);
+            expect(fired).to.have.length(50);
+            const due = await (await events()).countDocuments({ user: new seed.ObjectId(ctx.user.id), alertAt: { $lte: new Date(T) } });
+            expect(due).to.equal(450);
+        });
+
+        it('one user with many due events does not hold up the alert of another user', async () => {
+            const busy = await h.setupUser();
+            const other = await h.setupUser();
+            await h.createEvent(busy, atT({ alerts: { a1: offsetAlert('PT0S') } }));
+            await cloneEvent(busy, 119);
+            await h.createEvent(other, atT({ alerts: { b1: offsetAlert('PT1M') } }));
+            const fired = await run([busy, other], T + MINUTE, { batch: 60, perUser: 10 });
+            expect(fired.filter(entry => entry.alertId === 'b1')).to.have.length(1);
+            expect(fired.filter(entry => entry.alertId === 'a1')).to.have.length(10);
+            // the rest of the busy user's events come in later runs
+            expect(await run([busy, other], T + MINUTE, { batch: 60, perUser: 10 })).to.have.length(10);
+        });
+    });
 });
