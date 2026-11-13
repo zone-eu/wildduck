@@ -12,6 +12,7 @@ const log = require('npmlog');
 const mcp = require('../mcp');
 const certs = require('../lib/certs');
 const metrics = require('../lib/metrics');
+const { TOOL_LEVELS, TOOL_NAMES } = require('../lib/mcp-tools');
 
 const expect = chai.expect;
 const TOKEN = `wdmcp_${'a'.repeat(64)}`;
@@ -250,17 +251,7 @@ describe('Read-only MCP service', function () {
             expect(client.getInstructions()).to.include('untrusted data');
 
             let result = await client.listTools();
-            expect(result.tools.map(tool => tool.name)).to.deep.equal([
-                'get_account',
-                'list_mailboxes',
-                'list_labels',
-                'list_messages',
-                'search_messages',
-                'get_message',
-                'get_message_text',
-                'list_filters',
-                'get_autoreply'
-            ]);
+            expect(result.tools.map(tool => tool.name)).to.have.members(TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:read')));
             for (let tool of result.tools) {
                 expect(tool.inputSchema.type).to.equal('object');
                 expect(tool.outputSchema.type).to.equal('object');
@@ -348,7 +339,25 @@ describe('Read-only MCP service', function () {
             return schema;
         };
         for (let [tool, paths] of Object.entries({
-            create_filter: [['name'], ['query'], ['query', 'from'], ['query', 'to'], ['query', 'subject'], ['query', 'listId'], ['query', 'text'], ['query', 'ha'], ['query', 'size'], ['action'], ['action', 'seen'], ['action', 'flag'], ['action', 'delete'], ['action', 'spam'], ['action', 'mailbox'], ['action', 'targets'], ['action', 'labels'], ['disabled']],
+            create_filter: [
+                ['name'],
+                ['query'],
+                ['query', 'from'],
+                ['query', 'to'],
+                ['query', 'subject'],
+                ['query', 'listId'],
+                ['query', 'text'],
+                ['query', 'ha'],
+                ['query', 'size'],
+                ['action'],
+                ['action', 'seen'],
+                ['action', 'flag'],
+                ['action', 'delete'],
+                ['action', 'spam'],
+                ['action', 'mailbox'],
+                ['action', 'labels'],
+                ['disabled']
+            ],
             create_mailbox: [['path'], ['hidden'], ['retention'], ['encryptMessages']],
             set_autoreply: [['status'], ['name'], ['subject'], ['text'], ['html'], ['start'], ['end']]
         })) {

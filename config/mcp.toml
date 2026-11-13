@@ -2,8 +2,8 @@
 #
 # Exposes mailbox and message data to MCP clients over Streamable HTTP. The service accesses
 # WildDuck through the REST API, so every tool call is an ordinary API request subject to the
-# same validation, roles and audit trail. Tokens default to read-only access. The opt-in
-# mcp:write_partial role can create filters, mailboxes and autoreply settings. Disabled by default.
+# same validation, roles and audit trail. Tokens default to read-only access. Opt-in
+# mcp:write_partial, mcp:write and mcp:send roles add bounded own-user operations. Disabled by default.
 enabled = false
 port = 8082
 # by default bind to localhost only

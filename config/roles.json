@@ -602,6 +602,10 @@
     },
 
     "mcp:read": {
+        "attachments": {
+            "read:own": ["*"]
+        },
+
         "filters": {
             "read:own": ["id", "name", "query", "action", "originalQuery", "originalAction", "disabled", "created"]
         },
@@ -615,7 +619,7 @@
         },
 
         "addresses": {
-            "read:own": ["id", "name", "address"]
+            "read:own": ["id", "name", "address", "disabled", "tags", "metaData", "created", "main"]
         },
 
         "mailboxes": {
@@ -623,7 +627,7 @@
         },
 
         "labels": {
-            "read:own": ["id", "name", "total", "unseen"]
+            "read:own": ["id", "name", "total", "unseen", "label"]
         },
 
         "messages": {
@@ -654,7 +658,10 @@
                 "html",
                 "attachments",
                 "attachmentsList",
-                "encrypted"
+                "encrypted",
+                "flag",
+                "total",
+                "unseen"
             ]
         }
     },
@@ -669,5 +676,54 @@
         "autoreplies": {
             "update:own": ["*"]
         }
+    },
+
+    "mcp:write": {
+        "$extend": ["mcp:write_partial"],
+        "addresses": {
+            "create:own": ["*", "!internalData"],
+            "read:own": ["*", "!internalData"],
+            "update:own": ["*", "!internalData"],
+            "delete:own": ["*"]
+        },
+
+        "labels": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "messages": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "mailboxes": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "filters": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
+
+        "autoreplies": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        }
+    },
+
+    "mcp:send": {
+        "$extend": ["mcp:write"]
     }
 }

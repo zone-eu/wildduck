@@ -259,6 +259,17 @@ describe('Scoped MCP token exchange', function () {
         expect(await db.redis.ttl(sessionKey)).to.be.at.most(0);
     });
 
+    it('should reject self-revocation with an MCP session and leave it usable', async () => {
+        const master = await loginMaster(account);
+        const session = await mintMcpSession(master.token);
+
+        const response = await server.delete('/authenticate').set('Authorization', `Bearer ${session.token}`);
+
+        expect(response.status).to.equal(403);
+        expect(response.body.code).to.equal('InvalidToken');
+        expect((await mcpCall(session.token, 'initialize')).status).to.equal(200);
+    });
+
     it('should DELETE /authenticate/mcp/:token expect success with any current master token of the same user', async () => {
         const first = await loginMaster(account);
         const session = await mintMcpSession(first.token);

@@ -121,7 +121,7 @@ Follow `lib/api/messages.js` and `docs/in-depth/api-validation.md`:
 
 ### MCP and Metrics
 
-- MCP is an independent, disabled-by-default Streamable HTTP service. Tokens default to read-only `mcp:read`, including filter and autoreply reads. Opt-in `mcp:write_partial` adds only filter creation, mailbox creation and autoreply upsert tools. Tools access the REST API through `lib/mcp-api-client.js`. Preserve its validation, permission, audit, and scope checks instead of introducing direct MongoDB reads. See `docs/in-depth/mcp.md`.
+- MCP is an independent, disabled-by-default Streamable HTTP service. Tokens default to read-only `mcp:read`; opt-in `mcp:write_partial` preserves its limited create-filter/mailbox/autoreply grants, `mcp:write` adds supported own-user mail/address operations, and `mcp:send` adds stored-message send operations to `mcp:write`. Tools access the REST API through `lib/mcp-api-client.js`. Preserve validation, ownership, permission, audit, and scope checks instead of introducing direct MongoDB reads. Filter forwarding targets and self-revocation through `DELETE /authenticate` are prohibited for MCP credentials. See `docs/in-depth/mcp.md`.
 - MCP credentials use the `wdmcp_` prefix, `lib/mcp-token-handler.js`, the `mcptokens` users-database collection, and dedicated Redis sessions. Preserve bearer-only transport, user binding, expiry, revocation, 2FA, and MCP-only authentication behavior.
 - Metrics run on their own listener through `prometheus.js` and top-level `[metrics]`. Preserve startup/service status instrumentation and bounded metric label cardinality; avoid user IDs, addresses, or message IDs as metric labels.
 

@@ -77,7 +77,7 @@ function buildParser(args, dependencies) {
                     })
                     .option('role', {
                         describe: 'MCP access level',
-                        choices: ['mcp:read', 'mcp:write_partial'],
+                        choices: [...McpTokenHandler.MCP_TOKEN_ROLES],
                         default: 'mcp:read'
                     }),
             async argv => {

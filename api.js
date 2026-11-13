@@ -77,25 +77,7 @@ const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
 
-// The only routes an MCP credential may reach, by route name and method. Read routes map to
-// the resource whose field allowlist shapes the response. Writes require their own grant.
-// Self-revocation applies only to the credential that authenticated the request.
-const MCP_ROUTES = new Map([
-    ['getuser', { method: 'GET', resource: 'users' }],
-    ['getuseraddresses', { method: 'GET', resource: 'addresses' }],
-    ['getmailboxes', { method: 'GET', resource: 'mailboxes' }],
-    ['getmailbox', { method: 'GET', resource: 'mailboxes' }],
-    ['getfilters', { method: 'GET', resource: 'filters' }],
-    ['getautoreply', { method: 'GET', resource: 'autoreplies' }],
-    ['getuserlabels', { method: 'GET', resource: 'labels', listKey: 'labels' }],
-    ['getmessages', { method: 'GET', resource: 'messages' }],
-    ['getmessage', { method: 'GET', resource: 'messages' }],
-    ['searchmessages', { method: 'GET', resource: 'messages' }],
-    ['createfilter', { method: 'POST', resource: 'filters', action: 'createOwn' }],
-    ['createmailbox', { method: 'POST', resource: 'mailboxes', action: 'createOwn' }],
-    ['updateautoreply', { method: 'PUT', resource: 'autoreplies', action: 'updateOwn' }],
-    ['invalidateaccesstoken', { method: 'DELETE', revoke: true }]
-]);
+const MCP_ROUTES = require('./lib/mcp-access');
 
 // logged param values are truncated to 128 chars, so there is no point in
 // rendering more than that per nested value
@@ -354,6 +336,21 @@ function createApp(options = {}) {
     // resource fields (an error body does not) is decided by roles.filterResponseBody. Registered
     // ahead of the payload stash so the Gelf line logs what was actually sent.
     app.decorateRequest('wdResponseFieldFilter', null);
+    app.decorateRequest('wdMcpToken', false);
+
+    app.addHook('preValidation', async (request, reply) => {
+        if (!request.wdMcpToken) {
+            return;
+        }
+
+        const name = String(request.routeOptions.config.name || '').toLowerCase();
+        // Reject targets before defaults/empty-value conversion, in every input carrier.
+        const hasTargets = [request.params, request.query, request.body].some(values => values && values.action && Object.hasOwn(values.action, 'targets'));
+        if (['createfilter', 'updatefilter'].includes(name) && hasTargets) {
+            return reply.code(403).send({ error: 'MCP cannot set filter forwarding targets', code: 'MissingPrivileges' });
+        }
+    });
+
     app.addHook('preSerialization', async (request, reply, payload) => {
         let filter = request.wdResponseFieldFilter;
         return filter ? roles.filterResponseBody(filter.permission, payload, filter.listKey) : payload;
@@ -459,10 +456,9 @@ function createApp(options = {}) {
             tokenRequired = true;
 
             // A role alone is too coarse to describe what an agent may reach. `read:own` on
-            // messages and users also covers the raw RFC822 source, the archive, the address
-            // register, the journal stream and PUT /users/:user/logout, which is a state change
-            // guarded by readOwn('users'). So the credential is additionally pinned to the exact
-            // routes the MCP tools dispatch to, plus self-revocation: adding a route under an
+            // messages and users also covers the archive, journal stream and account operations.
+            // The credential is additionally pinned to the exact
+            // routes the MCP tools dispatch to: adding a route under an
             // existing grant cannot widen what an agent token reaches.
             let mcpRoute = MCP_ROUTES.get(String(routeConfig.name || '').toLowerCase());
             if (!mcpRoute || request.method !== mcpRoute.method) {
@@ -482,6 +478,11 @@ function createApp(options = {}) {
                 return fail();
             }
 
+            if (mcpRoute.levels && !mcpRoute.levels.includes(authenticated.role)) {
+                return fail();
+            }
+
+            request.wdMcpToken = true;
             request.role = authenticated.role;
             request.user = authenticated.user._id.toString();
 
@@ -492,13 +493,10 @@ function createApp(options = {}) {
                 if (!permission.granted) {
                     return fail();
                 }
+
                 if (!mcpRoute.action) {
                     request.wdResponseFieldFilter = { permission, listKey: mcpRoute.listKey };
                 }
-            } else if (mcpRoute.revoke) {
-                request.accessToken = {
-                    revoke: () => mcpTokenHandler.revokeCurrent(bearerToken)
-                };
             }
 
             return;

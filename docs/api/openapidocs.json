@@ -13456,7 +13456,9 @@
                                         "type": "string",
                                         "enum": [
                                             "mcp:read",
-                                            "mcp:write_partial"
+                                            "mcp:write_partial",
+                                            "mcp:write",
+                                            "mcp:send"
                                         ],
                                         "description": "MCP access level (mcp scope only). Defaults to mcp:read."
                                     },
@@ -13576,7 +13578,7 @@
                 "tags": [
                     "Authentication"
                 ],
-                "description": "Invalidates the API or MCP access token used for this request. Without a token, nothing happens.",
+                "description": "Invalidates the API access token used for this request. MCP credentials cannot use this endpoint. Without a token, nothing happens.",
                 "responses": {
                     "200": {
                         "description": "Success",
@@ -13619,7 +13621,9 @@
                                         "type": "string",
                                         "enum": [
                                             "mcp:read",
-                                            "mcp:write_partial"
+                                            "mcp:write_partial",
+                                            "mcp:write",
+                                            "mcp:send"
                                         ],
                                         "description": "MCP access level (mcp scope only). Defaults to mcp:read."
                                     },
@@ -17672,7 +17676,7 @@
                 "tags": [
                     "MCPAccessTokens"
                 ],
-                "description": "Creates a read-only MCP personal access token. The plaintext token is returned only by this response.",
+                "description": "Creates an MCP personal access token with an explicit access level (read-only by default). The plaintext token is returned only by this response.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -17695,10 +17699,12 @@
                                         "type": "string",
                                         "enum": [
                                             "mcp:read",
-                                            "mcp:write_partial"
+                                            "mcp:write_partial",
+                                            "mcp:write",
+                                            "mcp:send"
                                         ],
                                         "default": "mcp:read",
-                                        "description": "Access level to grant. Defaults to read-only. mcp:write_partial also permits filter/mailbox creation and autoreply updates."
+                                        "description": "Access level: mcp:read (default), mcp:write_partial, mcp:write (mail and address changes), or mcp:send (writes plus draft submission and forwarding)."
                                     }
                                 },
                                 "required": [
@@ -17764,7 +17770,9 @@
                                             "type": "string",
                                             "enum": [
                                                 "mcp:read",
-                                                "mcp:write_partial"
+                                                "mcp:write_partial",
+                                                "mcp:write",
+                                                "mcp:send"
                                             ],
                                             "description": "Access level of the token. Defaults to read-only. Existing credentials retain their stored level."
                                         },
@@ -17882,7 +17890,9 @@
                                                         "type": "string",
                                                         "enum": [
                                                             "mcp:read",
-                                                            "mcp:write_partial"
+                                                            "mcp:write_partial",
+                                                            "mcp:write",
+                                                            "mcp:send"
                                                         ],
                                                         "description": "Access level of the token. Defaults to read-only. Existing credentials retain their stored level."
                                                     },
@@ -18067,7 +18077,7 @@
         },
         {
             "name": "MCPAccessTokens",
-            "description": "Read-only personal access tokens for the MCP (Model Context Protocol) server."
+            "description": "Personal access tokens with explicit read, partial-write, write, or send access for the MCP (Model Context Protocol) server."
         },
         {
             "name": "PushSubscriptions",

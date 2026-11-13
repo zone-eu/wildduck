@@ -102,13 +102,16 @@ describe('MCP tools', () => {
             async createMailbox(value) { calls.push(['mailbox', value]); return { success: true, id: 'm1' }; },
             async setAutoreply(value) { calls.push(['autoreply', value]); return { success: true, id: 'a1' }; }
         }));
-        expect(registered).to.include.members(TOOL_NAMES);
+        expect(registered).to.have.members(TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:write_partial')));
         let filter = tools.get('create_filter');
-        expect(filter.config.annotations).to.include({ readOnlyHint: false, destructiveHint: true, openWorldHint: true, idempotentHint: false });
+        expect(filter.config.annotations).to.include({ readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: false });
         let filterSchema = filter.config.inputSchema;
         expect(filterSchema.safeParse({ query: {}, action: {}, metaData: {} }).success).to.equal(false);
         expect(filterSchema.safeParse({ query: {}, action: {} }).success).to.equal(true);
-        let filterArgs = { name: 'n', query: { from: 'example' }, action: { targets: ['https://example.test/hook'] } };
+        for (const targets of [[], ['a@example.com'], null]) {
+            expect(filterSchema.safeParse({ query: {}, action: { targets } }).success).to.equal(false);
+        }
+        let filterArgs = { name: 'n', query: { from: 'example' }, action: { seen: true } };
         expect(filterSchema.safeParse(filterArgs).success).to.equal(true);
         expect(filterSchema.safeParse({ ...filterArgs, user: 'other' }).success).to.equal(false);
         expect((await filter.handler(filterSchema.parse(filterArgs))).structuredContent).to.deep.equal({ success: true, id: 'f1' });
@@ -122,7 +125,7 @@ describe('MCP tools', () => {
         expect(autoreply.config.inputSchema.safeParse({ status: true, extra: 1 }).success).to.equal(false);
         await autoreply.handler(autoreply.config.inputSchema.parse({ status: true }));
         expect(calls).to.deep.equal([
-            ['filter', { name: 'n', query: { from: 'example' }, action: { targets: ['https://example.test/hook'] }, disabled: false }],
+            ['filter', { name: 'n', query: { from: 'example' }, action: { seen: true }, disabled: false }],
             ['mailbox', { path: 'Projects', hidden: false, retention: undefined, encryptMessages: false }],
             ['autoreply', { status: true }]
         ]);

@@ -18,6 +18,7 @@ const { Client, StreamableHTTPClientTransport } = require('@modelcontextprotocol
 const db = require('../lib/db');
 const mcp = require('../mcp');
 const userDeleteTask = require('../lib/tasks/user-delete');
+const { TOOL_NAMES, TOOL_LEVELS } = require('../lib/mcp-tools');
 
 const expect = chai.expect;
 
@@ -55,6 +56,8 @@ describe('MCP service integration', function () {
     let inbox;
     let token;
     let writeToken;
+    let fullWriteToken;
+    let sendToken;
     let uid;
 
     // Every request that presents the MCP credential goes through here, so the account it is
@@ -96,11 +99,27 @@ describe('MCP service integration', function () {
             subject: 'Quarterly invoice',
             text: 'Please review the attached invoice. '.repeat(20),
             html: '<p>Please review</p><script>steal()</script><img src="https://tracker.example/pixel.gif">',
+        attachments: [
+            {
+                filename: 'invoice.bin',
+                contentType: 'application/octet-stream',
+                content: 'AAECAwQ=',
+                encoding: 'base64'
+            }
+        ],
             unseen: true
         });
 
         token = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'integration' });
         writeToken = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'write integration', role: 'mcp:write_partial' });
+        fullWriteToken = await api('POST', `/users/${user.id}/mcp-tokens`, {
+            description: 'full write integration',
+            role: 'mcp:write'
+        });
+        sendToken = await api('POST', `/users/${user.id}/mcp-tokens`, {
+            description: 'send integration',
+            role: 'mcp:send'
+        });
 
         server = await new Promise((resolve, reject) =>
             mcp.start(
@@ -147,7 +166,7 @@ describe('MCP service integration', function () {
         expect(token.role).to.equal('mcp:read');
 
         let listed = await api('GET', `/users/${user.id}/mcp-tokens?sess=integration&ip=127.0.0.1`);
-        expect(listed.results).to.have.length(2);
+        expect(listed.results).to.have.length(4);
         expect(listed.results[0]).to.not.have.property('hash');
         expect(listed.results[0]).to.not.have.property('token');
     });
@@ -168,17 +187,9 @@ describe('MCP service integration', function () {
     it('advertises exactly the read tools the access level allows', async () => {
         let tools = await client.listTools();
 
-        expect(tools.tools.map(tool => tool.name).sort()).to.deep.equal([
-            'get_account',
-            'get_autoreply',
-            'get_message',
-            'get_message_text',
-            'list_filters',
-            'list_labels',
-            'list_mailboxes',
-            'list_messages',
-            'search_messages'
-        ]);
+        expect(tools.tools.map(tool => tool.name).sort()).to.deep.equal(
+            TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:read')).sort()
+        );
         for (let tool of tools.tools) {
             expect(tool.annotations.readOnlyHint, tool.name).to.equal(true);
         }
@@ -253,8 +264,7 @@ describe('MCP service integration', function () {
                         delete: true,
                         spam: false,
                         mailbox: mailbox.structuredContent.id,
-                        labels: [label.id],
-                        targets: ['forward@example.com', 'smtp://mx.example.com:25', 'https://example.com/incoming']
+                        labels: [label.id]
                     }
                 }
             });
@@ -282,7 +292,7 @@ describe('MCP service integration', function () {
                 expect(filterResult.isError).to.not.equal(true);
                 let entry = filterResult.structuredContent.filters.find(item => item.id === filter.structuredContent.id);
                 expect(entry.originalQuery.subject).to.equal('invoice');
-                expect(entry.originalAction.targets).to.include('forward@example.com');
+                expect(entry.originalAction.targets).to.equal(undefined);
                 expect(entry.originalAction.labels).to.deep.equal([label.id]);
                 expect(entry.originalAction.delete).to.equal(true);
                 expect(entry).to.not.have.any.keys('user', 'metaData', 'internalData');
@@ -532,16 +542,13 @@ describe('MCP service integration', function () {
     });
 
     it('confines the credential to the routes the tools use', async () => {
-        // The role alone would admit these: read:own on messages and users also covers the raw
-        // RFC822 source, the archive, the address register and PUT /logout, which is a state
-        // change. The credential is pinned to the tool routes so none of them is reachable.
+        // Resource grants alone also cover excluded account, storage and archive routes.
+        // The MCP credential remains pinned to its tool routes and access level.
         for (let [method, path] of [
-            ['GET', `/mailboxes/${inbox.id}/messages/${uid}/message.eml`],
             ['GET', '/archived/messages'],
-            ['GET', '/addressregister?query=a'],
+            ['GET', '/storage'],
             ['GET', '/updates'],
             ['GET', '/mcp-tokens'],
-            ['GET', '/labels/507f191e810c19729de860ea'],
             ['POST', '/labels'],
             ['PUT', '/labels/507f191e810c19729de860ea'],
             ['DELETE', '/labels/507f191e810c19729de860ea'],
@@ -639,6 +646,237 @@ describe('MCP service integration', function () {
 
         let listed = await api('GET', `/users/${user.id}/mailboxes/${inbox.id}/messages`);
         expect(listed.results[0].seen).to.equal(false);
+    });
+
+    it('separates full writes from sending in the advertised tools', async () => {
+        for (let credential of [fullWriteToken, sendToken]) {
+            let connected = await connectClient(credential.token);
+            try {
+                let catalog = await connected.listTools();
+                let names = catalog.tools.map(entry => entry.name);
+                expect(names.sort()).to.deep.equal(
+                    TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes(credential.role)).sort()
+                );
+                for (let name of [
+                    'update_message',
+                    'delete_message',
+                    'create_label',
+                    'update_filter',
+                    'update_mailbox',
+                    'create_address'
+                ]) {
+                    expect(names, credential.role).to.include(name);
+                }
+                for (let name of ['send_draft', 'forward_message', 'update_outbound_message']) {
+                    expect(names.includes(name), `${credential.role} ${name}`).to.equal(credential.role === 'mcp:send');
+                }
+                for (let name of [
+                    'send_message',
+                    'restore_message',
+                    'upload_file',
+                    'update_account_settings',
+                    'create_mcp_token'
+                ]) {
+                    expect(names, credential.role).to.not.include(name);
+                }
+            } finally {
+                await connected.close();
+            }
+        }
+    });
+
+    it('enforces send separation and excluded paths for MCP tokens used directly against REST', async () => {
+        let sendPaths = [
+            `/mailboxes/${inbox.id}/messages/2147483647/submit`,
+            `/mailboxes/${inbox.id}/messages/2147483647/forward`,
+            '/outbound/1234567890abcdef12'
+        ];
+        for (let credential of [token, writeToken, fullWriteToken]) {
+            for (let path of sendPaths) {
+                let response = await authedWith(credential.token, path, {
+                    method: path.includes('/outbound/') ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sendTime: '2027-01-01T00:00:00Z' })
+                });
+                expect(response.status, `${credential.role} ${path}`).to.equal(403);
+            }
+        }
+        for (let credential of [token, writeToken, fullWriteToken, sendToken]) {
+            for (let [method, path] of [
+                ['POST', '/submit'],
+                ['GET', '/archived/messages'],
+                ['POST', '/archived/restore'],
+                ['POST', '/archived/messages/507f191e810c19729de860ea/restore'],
+                ['GET', '/storage'],
+                ['POST', '/storage'],
+                ['PUT', ''],
+                ['POST', '/mcp-tokens'],
+                ['GET', '/asps'],
+                ['PUT', '/logout']
+            ]) {
+                let response = await authedWith(credential.token, path, { method });
+                expect(response.status, `${credential.role} ${method} ${path}`).to.equal(403);
+            }
+        }
+        // Nonexistent stored messages reach the route under the send role without sending mail.
+        for (let operation of ['submit', 'forward']) {
+            let response = await authedWith(sendToken.token, `/mailboxes/${inbox.id}/messages/2147483647/${operation}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}'
+            });
+            expect([400, 404], operation).to.include(response.status);
+        }
+    });
+
+    it('refuses personal-token self-revocation for every MCP role', async () => {
+        for (const credential of [token, writeToken, fullWriteToken, sendToken]) {
+            const response = await fetch(`${API}/authenticate`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${credential.token}` }
+            });
+
+            expect(response.status, credential.role).to.equal(403);
+            expect((await response.json()).code).to.equal('InvalidToken');
+
+            // A rejected request must leave the credential usable.
+            expect((await rpc(credential.token)).status).to.equal(200);
+        }
+    });
+
+    it('rejects filter forwarding targets for every MCP role through tools and direct REST', async () => {
+        let filter = await api('POST', `/users/${user.id}/filters`, { name: 'No forwarding from MCP', query: {}, action: {} });
+        for (let credential of [token, writeToken, fullWriteToken, sendToken]) {
+            for (let targets of [['forward@example.com'], [], null]) {
+                for (let [method, path] of [['POST', '/filters'], ['PUT', `/filters/${filter.id}`]]) {
+                    let result = await authedWith(credential.token, path, {
+                        method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: {}, action: { targets } })
+                    });
+                    expect(result.status, `${credential.role} ${method} targets=${JSON.stringify(targets)}`).to.equal(403);
+                }
+            }
+        }
+        for (let credential of [writeToken, fullWriteToken, sendToken]) {
+            let connected = await connectClient(credential.token);
+            try {
+                for (let targets of [['forward@example.com'], [], null]) {
+                    let result = await connected.callTool({
+                        name: 'create_filter',
+                        arguments: { query: {}, action: { targets } }
+                    });
+                    expect(result.isError, `${credential.role} targets=${JSON.stringify(targets)}`).to.equal(true);
+                }
+            } finally {
+                await connected.close();
+            }
+        }
+        await api('DELETE', `/users/${user.id}/filters/${filter.id}`);
+    });
+
+    it('performs full own-account mail and address CRUD through the real API', async () => {
+        let connected = await connectClient(fullWriteToken.token);
+        let call = async (name, args) => {
+            let result = await connected.callTool({ name, arguments: args });
+            expect(result.isError, `${name}: ${JSON.stringify(result.content)}`).to.not.equal(true);
+            return result.structuredContent;
+        };
+        try {
+            let label = await call('create_label', { name: 'MCP CRUD label' });
+
+            await call('rename_label', { label: label.id, name: 'MCP renamed label' });
+            expect((await call('get_label', { label: label.id })).name).to.equal('MCP renamed label');
+
+            let mailbox = await call('create_mailbox', { path: 'MCP CRUD' });
+
+            await call('update_mailbox', { mailbox: mailbox.id, path: 'MCP renamed mailbox', subscribed: false });
+            let mailboxDetails = await call('get_mailbox', { mailbox: mailbox.id });
+            expect(mailboxDetails.path).to.equal('MCP renamed mailbox');
+
+            let filter = await call('create_filter', {
+                name: 'MCP CRUD filter',
+                query: { subject: 'MCP only' },
+                action: { labels: [label.id] }
+            });
+
+            await call('update_filter', { filter: filter.id, disabled: true, name: 'MCP renamed filter' });
+            expect((await call('get_filter', { filter: filter.id })).name).to.equal('MCP renamed filter');
+
+            let uploaded = await call('create_draft', {
+                mailbox: mailbox.id,
+                subject: 'MCP draft',
+                text: 'Not sent',
+                to: [{ address: 'recipient@example.com' }]
+            });
+            let message = uploaded.message.id;
+
+            await call('update_message', { mailbox: mailbox.id, message, flagged: true, addLabels: ['MCP renamed label'] });
+            let stored = await api('GET', `/users/${user.id}/mailboxes/${mailbox.id}/messages/${message}`);
+            expect(stored.flagged).to.equal(true);
+            expect(stored.labels).to.include('MCP renamed label');
+            await call('update_messages', { mailbox: mailbox.id, message: String(message), seen: false });
+            await call('delete_message', { mailbox: mailbox.id, message });
+            expect((await api('GET', `/users/${user.id}/mailboxes/${mailbox.id}/messages`)).total).to.equal(0);
+
+            let address = await call('create_address', {
+                address: `mcpalias${Date.now()}@example.com`,
+                name: 'MCP alias'
+            });
+
+            await call('update_address', { id: address.id, name: 'Renamed MCP alias' });
+            expect((await call('get_address', { address: address.id })).name).to.equal('Renamed MCP alias');
+            await call('delete_address', { address: address.id });
+
+            await call('delete_filter', { filter: filter.id });
+            await call('delete_mailbox', { mailbox: mailbox.id });
+            await call('delete_label', { label: label.id });
+        } finally {
+            await connected.close();
+        }
+    });
+
+    it('downloads exact attachment bytes and RFC822 source without marking the message as seen', async () => {
+        let detail = await api('GET', `/users/${user.id}/mailboxes/${inbox.id}/messages/${uid}`);
+        let attachment = detail.attachments.find(entry => entry.filename === 'invoice.bin');
+        expect(attachment).to.be.an('object');
+        let result = await client.callTool({
+            name: 'download_attachment',
+            arguments: { mailbox: 'INBOX', message: uid, attachment: attachment.id, offset: 1, maxBytes: 3 }
+        });
+        expect(result.isError, JSON.stringify(result.content)).to.not.equal(true);
+        expect(Buffer.from(result.structuredContent.data, 'base64')).to.deep.equal(Buffer.from([1, 2, 3]));
+        expect(result.structuredContent).to.include({ encoding: 'base64', offset: 1, returnedBytes: 3, hasMore: true });
+        let source = await client.callTool({
+            name: 'get_message_source',
+            arguments: { mailbox: 'INBOX', message: uid, maxBytes: 64 }
+        });
+        expect(source.isError, JSON.stringify(source.content)).to.not.equal(true);
+        let raw = await authed(`/mailboxes/${inbox.id}/messages/${uid}/message.eml`);
+        expect(raw.status).to.equal(200);
+        expect(Buffer.from(source.structuredContent.data, 'base64')).to.deep.equal(
+            Buffer.from(await raw.arrayBuffer()).subarray(0, 64)
+        );
+        expect((await api('GET', `/users/${user.id}/mailboxes/${inbox.id}/messages/${uid}`)).seen).to.equal(false);
+    });
+
+    it('confines full writes and sends to their token owner', async () => {
+        for (let credential of [fullWriteToken, sendToken]) {
+            for (let [method, path, body] of [
+                ['GET', '/mailboxes'],
+                ['POST', '/labels', { name: 'Foreign account' }],
+                ['PUT', `/mailboxes/${inbox.id}`, { subscribed: false }],
+                ['DELETE', `/mailboxes/${inbox.id}/messages/${uid}`],
+                ['POST', `/mailboxes/${inbox.id}/messages/${uid}/submit`, {}]
+            ]) {
+                let response = await fetch(`${API}/users/507f191e810c19729de860ea${path}`, {
+                    method,
+                    headers: { Authorization: `Bearer ${credential.token}`, 'Content-Type': 'application/json' },
+                    body: body ? JSON.stringify(body) : undefined
+                });
+                expect(response.status, `${credential.role} ${method} ${path}`).to.equal(403);
+            }
+        }
     });
 
     it('deletes MCP tokens along with the account', async () => {
