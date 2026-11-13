@@ -201,7 +201,7 @@
         },
         {
             "package": "2.1",
-            "ids": ["BLOB-024..BLOB-032", "BLOB-035..BLOB-038", "BLOB-041..BLOB-044", "BLOB-087"]
+            "ids": ["BLOB-024..BLOB-032", "BLOB-035..BLOB-038", "BLOB-041..BLOB-044", "BLOB-087", "BLOB-088"]
         },
         {
             "package": "2.11",

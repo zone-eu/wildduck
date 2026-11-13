@@ -1398,3 +1398,19 @@ scenarios:
     sources:
       - "wildduck:security audit NV-11"
     notes: "Nothing sweeps storage.chunks, so the chunks are deleted before the files documents: a files document left behind is found again by the next round."
+
+  - id: BLOB-088
+    title: "The number of temporary uploads of a user is limited"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [db]
+    given: "A JMAP instance with maxUploads 3 and a user with no uploads."
+    when: "Three empty files are uploaded, then Blob/upload creates a blob without data sources. Afterwards every upload of the user is pinned in the database and one more file is uploaded."
+    then: "The user keeps three temporary uploads: the oldest empty upload answers 404, the second one still downloads. With only pinned uploads left the last upload answers HTTP 413 with limit uploadQuota and nothing is stored."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:security audit NV-28"
+    notes: "The byte quota alone let empty uploads pile up for a whole upload lifetime. The count comes from the aggregate that sums the bytes, so it costs no extra query."

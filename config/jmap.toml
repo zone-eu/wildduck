@@ -36,6 +36,9 @@ maxObjectsInSet = 500
 maxBodyValueBytesPerRequest = 33554432
 # temporary uploads per user, oldest are deleted first when a new upload does not fit
 uploadQuota = 209715200
+# most temporary uploads per user (pinned ones included), the oldest are deleted first when a new
+# upload would be one too many
+maxUploads = 1000
 # how long an unreferenced upload is kept, in seconds (RFC 8620 6.1: at least one hour)
 uploadTtl = 86400
 # largest message Email/import stores, in bytes (default: the message size limit of MessageHandler, 64 MB)

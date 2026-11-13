@@ -403,4 +403,50 @@ describe('Upload', function () {
             expect((await held[1].response).status).to.equal(200);
         });
     });
+
+    describe('upload count', () => {
+        let instance;
+        const COUNT = 3;
+        before(async () => {
+            instance = await startInstance({ limits: Object.assign({}, config.jmap.limits, { maxUploads: COUNT }) });
+        });
+        after(() => stopInstance(instance.app));
+
+        scenario('BLOB-088', async () => {
+            const fresh = await accounts.createUser();
+            const c = await session(fresh);
+            const sent = [];
+            for (let i = 0; i < COUNT; i++) {
+                const res = await upload(c, '', { 'Content-Type': 'text/plain' }, c.accountId, instance.url);
+                expect(res.status).to.equal(200);
+                sent.push(res.json.blobId);
+            }
+            // Blob/upload without data sources makes an empty upload as well
+            const blobs = new jmap.JmapClient(jmap.basic(fresh.username, fresh.password));
+            blobs.raw = (
+                raw => (path, init) =>
+                    raw.call(blobs, path.startsWith('http') ? path : instance.url + path, init)
+            )(blobs.raw);
+            await blobs.session();
+            const created = await blobs.method('Blob/upload', { create: { e: { data: [] } } }, [jmap.URN.core, jmap.URN.blob]);
+            expect(created.created, JSON.stringify(created.notCreated)).to.have.property('e');
+
+            expect(await temporaryFiles(fresh)).to.have.length(COUNT);
+            expect((await download(c, sent[0], instance.url)).status).to.equal(404);
+            expect((await download(c, sent[1], instance.url)).status).to.equal(200);
+
+            // pinned uploads are never deleted: with only those left, the next upload is refused
+            const db = await seed.db();
+            await db
+                .collection('storage.files')
+                .updateMany(
+                    { 'metadata.user': new seed.ObjectId(fresh.id), 'metadata.expires': { $exists: true } },
+                    { $set: { 'metadata.expires': new Date('9999-01-01T00:00:00Z') } }
+                );
+            const refused = await upload(c, 'one too many', { 'Content-Type': 'text/plain' }, c.accountId, instance.url);
+            expect(refused.status).to.equal(413);
+            expect(refused.json).to.include({ type: 'urn:ietf:params:jmap:error:limit', limit: 'uploadQuota' });
+            expect(await temporaryFiles(fresh)).to.have.length(COUNT);
+        });
+    });
 });
