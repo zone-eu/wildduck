@@ -57,7 +57,7 @@ Every key below is a key of `config/jmap.toml`, written relative to `[jmap]`: `l
 
 | Key            | Default       | Meaning                                                                                                                                                                               |
 | -------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`      | `false`       | Starts the service. Also controls whether the indexes marked `feature: jmap` in `indexes.yaml` are created at start up                                                                |
+| `enabled`      | `false`       | Starts the service. The indexes JMAP uses are created at start up whether or not it is enabled                                                                                        |
 | `port`         | `8081`        | Listening port                                                                                                                                                                        |
 | `host`         | `"127.0.0.1"` | Listening address                                                                                                                                                                     |
 | `secure`       | `false`       | Serve HTTPS (certificates from `[jmap.tls]` or `[tls]`)                                                                                                                               |
@@ -433,10 +433,10 @@ jmapio requires some behaviour the RFCs leave open, and WildDuck complies: an HT
 
 ### Rollout
 
-1. **Deploy the release with JMAP disabled.** Nothing changes for IMAP, POP3 and the REST API except what is listed under [Changes for existing deployments](#changes-for-existing-deployments). The indexes that only JMAP uses are not created while the service is disabled. On a large cluster, build `by_root` and `user_idate` ahead of time, see [Indexes](#indexes).
+1. **Deploy the release with JMAP disabled.** Nothing changes for IMAP, POP3 and the REST API except what is listed under [Changes for existing deployments](#changes-for-existing-deployments). The indexes JMAP uses are created at the first start, also while the service is disabled. On a large cluster, build `by_root` and `user_idate` before deploying, see [Indexes](#indexes).
 2. **Optionally repair message roots ahead of time** with the `messages_root_repair` migration, see [Root repair](#root-repair). Without it, the service repairs each user on first use.
 3. **Set the journal retention** (`const:journal:time`), see [Journal retention](#journal-retention).
-4. **Enable the service** in `config/jmap.toml` (`enabled`, `baseUrl`, listener settings), configure the reverse proxy, publish `/.well-known/jmap` and the SRV record. Index setup runs at the next start.
+4. **Enable the service** in `config/jmap.toml` (`enabled`, `baseUrl`, listener settings), configure the reverse proxy, publish `/.well-known/jmap` and the SRV record.
 5. **Watch** the metrics and logs listed under [Monitoring](#monitoring).
 
 Rollback: disabling the service is enough. New fields, collections and indexes are ignored by older code. The one behaviour that stays is that an IMAP COPY gives the copy its own root.
@@ -447,6 +447,7 @@ These apply with the release, whether or not JMAP is enabled:
 
 - An IMAP COPY gives the copy a fresh `root`; the copy's journal entry records the source root (`sourceRoot`). MOVE and archive restore fill a missing root from `_id`.
 - Journal entries of messages carry `root`, EXISTS entries carry `origin`. Mailbox setting changes and IMAP SUBSCRIBE and UNSUBSCRIBE write journal entries. IMAP sessions ignore the new entry kinds.
+- The new indexes, among them `by_root` on `messages` and `archived` and `user_idate` on `messages`, are created at start up. Build the large ones ahead of time on a big cluster, see [Indexes](#indexes).
 - The journal TTL comes from the `const:journal:time` setting (default unchanged at 3 hours).
 - `jmap` is a new application password scope and can be listed in `disabledScopes`.
 - IMAP advertises `OBJECTID`.
@@ -488,9 +489,9 @@ The JMAP service reads the new value within `changes.retentionCacheTime` seconds
 
 ### Indexes
 
-Indexes in `indexes.yaml` marked `feature: jmap` are created at start up only when `[jmap] enabled` is true. Index setup runs in the task runner of whichever process first takes the setup lock, with that process's configuration. Set `enabled` the same way in every WildDuck process: besides the indexes, it decides whether REST API address and autoreply changes are recorded in the JMAP change logs.
+The JMAP indexes are part of `indexes.yaml` and are created at start up like every other index, whether or not `[jmap] enabled` is true, so the service can be enabled later without an index build. Set `enabled` the same way in every WildDuck process: it decides whether REST API address and autoreply changes are recorded in the JMAP change logs.
 
-On existing collections, these three can take a long time on a large cluster:
+On existing collections, these three can take a long time on a large cluster, and the start up index setup waits for each build to finish:
 
 | Collection | Index        | Key                             | Options                                            |
 | ---------- | ------------ | ------------------------------- | -------------------------------------------------- |
@@ -498,7 +499,7 @@ On existing collections, these three can take a long time on a large cluster:
 | `archived` | `by_root`    | `{root: 1}`                     | `partialFilterExpression: {root: {$exists: true}}` |
 | `messages` | `user_idate` | `{user: 1, idate: -1, _id: -1}` |                                                    |
 
-Build them ahead of time, through mongos on a sharded cluster or as a rolling index build per replica set, with exactly these names, keys and options, so the start up check finds them and does nothing:
+Build them before deploying the release, through mongos on a sharded cluster or as a rolling index build per replica set, with exactly these names, keys and options, so the start up check finds them and does nothing:
 
 ```js
 db.messages.createIndex({ root: 1 }, { name: 'by_root', partialFilterExpression: { root: { $exists: true } } });
@@ -508,7 +509,7 @@ db.messages.createIndex({ user: 1, idate: -1, _id: -1 }, { name: 'user_idate' })
 
 `by_root` is a single field index because roots are globally unique; queries always add the user condition. JMAP also reads `user_messages_by_thread` and the `by_idate` indexes, so these must not be dropped.
 
-The other feature gated indexes are on new collections and on `addressregister` (`user_modseq`) and are cheap to build at start up. Two indexes on `storage.files` for temporary uploads (`user_temporary_files`, `temporary_files_expiry`) are created unconditionally.
+The other new indexes are on new collections, on `addressregister` (`user_modseq`, partial, empty until JMAP writes it) and on `storage.files` for temporary uploads (`user_temporary_files`, `temporary_files_expiry`, partial), and are cheap to build at start up.
 
 ### New collections
 

@@ -1,7 +1,7 @@
 # JMAP service (RFC 8620, RFC 8621 and extensions), see docs/jmap/implementation-plan.md
 #
-# Disabled by default. Indexes used only by JMAP (indexes.yaml entries with `feature: jmap`) are created
-# at start up once this is enabled.
+# Disabled by default. The indexes JMAP uses are created at start up either way, like every other index in
+# indexes.yaml, so enabling the service later needs no index build.
 enabled = false
 port = 8081
 # by default bind to localhost only

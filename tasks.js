@@ -194,10 +194,6 @@ module.exports.start = callback => {
         let indexes = setupIndexes.indexes;
         const settingsHandler = new SettingsHandler({ db: db.database });
         for (let [pos, index] of indexes.entries()) {
-            if (index.feature && !(config[index.feature] && config[index.feature].enabled)) {
-                // an index only that service uses, not built while the service is off
-                continue;
-            }
             try {
                 let r = await ensureIndex(db[index.type || 'database'], index, settingsHandler);
                 if (r.created) {

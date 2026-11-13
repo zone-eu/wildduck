@@ -287,7 +287,7 @@ Redis-based queues for ElasticSearch synchronization:
 
 **Outgoing Mail**: `zone-queue` (ZoneMTA queue for outbound messages, forwards, autoreplies)
 
-**JMAP** (indexes gated by `feature: jmap` in `indexes.yaml`): `jmapstate`, `jmapchanges`, `jmapidentities`, `jmapsubmissions`, `jmappush`, `jmapparticipants`, `addressbooks`, `contacts`, `contactmedia`, `calendars`, `calendarevents`
+**JMAP**: `jmapstate`, `jmapchanges`, `jmapidentities`, `jmapsubmissions`, `jmappush`, `jmapparticipants`, `addressbooks`, `contacts`, `contactmedia`, `calendars`, `calendarevents`
 
 **GridFS Buckets**: `audit.files`, `storage.files` (also JMAP temporary uploads, `metadata.expires`), `attachments.files`
 
