@@ -244,7 +244,7 @@ WildDuck uses **three distinct job systems** (plus the JMAP `jmap_push` BullMQ q
 
 Custom task queue using MongoDB for persistence and Redis (`ioredfour`) for distributed locking. Handles long-running, critical operations that must survive restarts.
 
-**Task Types**: `user-delete`, `restore`, `quota`, `audit`, `acme`, `acme-update`, `clear-folder`, `search-apply`, `user-indexing`, `run-migrations`
+**Task Types**: `user-delete`, `restore`, `quota`, `audit`, `acme`, `acme-update`, `clear-folder`, `search-apply`, `user-indexing`, `run-migrations`, `calendar-alerts`
 
 **Key Methods**:
 ```javascript

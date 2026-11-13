@@ -50,6 +50,28 @@ async function tick(contexts, at, settings = {}) {
     return alerts.processDue(await schedulerDeps(), { now: at, user: users, settings: Object.assign({}, alerts.DEFAULTS, { jitter: 0 }, settings) });
 }
 
+/**
+ * Runs the calendar-alerts tasks queued for the user in this process, as the task runner of the server
+ * would (it starts a minute after start up and may take one first: then this waits for it)
+ */
+async function runRescheduleTasks(ctx) {
+    const tasks = (await schedulerDeps()).database.collection('tasks');
+    const query = { task: alerts.RESCHEDULE_TASK, 'data.user': new seed.ObjectId(ctx.user.id) };
+    let runs = 0;
+    for (let i = 0; i < 300; i++) {
+        const task = await tasks.findOneAndDelete(Object.assign({ locked: false }, query));
+        if (task) {
+            await alerts.runReschedule(await schedulerDeps(), task.data.user, task.data.calendar);
+            runs++;
+        } else if (!(await tasks.countDocuments(query))) {
+            return runs;
+        } else {
+            await clock.delay(100);
+        }
+    }
+    throw new Error('calendar-alerts task not finished');
+}
+
 /** An event stream of the user that collects calendarAlert events */
 async function stream(ctx, types = 'CalendarAlert') {
     const es = await sse.open(`/jmap/eventsource/?types=${types}&closeafter=no&ping=0`, { authorization: jmap.basic(ctx.user.username, ctx.user.password) });
@@ -414,6 +436,8 @@ describe('Calendar alerts (CALR)', function () {
             const event = await h.createEvent(ctx, atT({ calendarIds: { [a]: true }, useDefaultAlerts: true }));
             const s1 = await h.evState(ctx);
             await h.method(ctx, 'Calendar/set', { update: { [a]: { defaultAlertsWithTime: { dt2: offsetAlert('-PT30M') } } } });
+            // the events are rescheduled by a background task
+            await runRescheduleTasks(ctx);
             const fired = [];
             for (let at = T - 40 * MINUTE; at <= T; at += 5 * MINUTE) {
                 fired.push(...(await tick(ctx, at)));
@@ -810,6 +834,48 @@ describe('Calendar alerts (CALR)', function () {
             expect(fired.map(entry => [entry.alertId, entry.delivered])).to.deep.equal([['a1', true]]);
             await clock.delay(3 * QUIET);
             expect(box.requests.slice(before).map(entry => box.json(entry)['@type'])).to.not.include('CalendarAlert');
+        });
+    });
+
+    describe('default alert reschedule in the background (NV-24)', () => {
+        const stored = async ctx => (await schedulerDeps()).database.collection('calendars.events').findOne({ user: new seed.ObjectId(ctx.user.id) });
+        const queued = async ctx =>
+            (await schedulerDeps()).database
+                .collection('tasks')
+                .find({ task: alerts.RESCHEDULE_TASK, 'data.user': new seed.ObjectId(ctx.user.id) })
+                .toArray();
+
+        it('32 changes of the default alerts in one request queue one reschedule, which the task does', async () => {
+            const ctx = await h.setupUser();
+            const a = await h.createCalendar(ctx, { name: 'A', defaultAlertsWithTime: { dt: offsetAlert('-PT10M') } });
+            await h.createEvent(ctx, atT({ calendarIds: { [a]: true }, useDefaultAlerts: true }));
+            expect((await stored(ctx)).alertAt.getTime()).to.equal(T - 10 * MINUTE);
+            const calls = [];
+            for (let i = 0; i < 32; i++) {
+                const offset = i % 2 ? '-PT30M' : '-PT20M';
+                calls.push([
+                    'Calendar/set',
+                    { accountId: ctx.client.accountId, update: { [a]: { defaultAlertsWithTime: { dt: offsetAlert(offset) } } } },
+                    `c${i}`
+                ]);
+            }
+            const res = await h.call(ctx, calls);
+            expect(res.filter(([name, args]) => name === 'Calendar/set' && Object.keys(args.updated || {}).length)).to.have.length(32);
+            const tasks = await queued(ctx);
+            expect(tasks).to.have.length(1);
+            expect(tasks[0].data.calendar.toString()).to.equal((await stored(ctx)).calendarIds[0].toString());
+            // the request did not reschedule: the event keeps its old alert time until the task ran
+            expect((await stored(ctx)).alertAt.getTime()).to.equal(T - 10 * MINUTE);
+            expect(await runRescheduleTasks(ctx)).to.be.at.most(1);
+            expect((await stored(ctx)).alertAt.getTime()).to.equal(T - 30 * MINUTE);
+        });
+
+        it('an update that leaves the default alerts as they are queues nothing', async () => {
+            const ctx = await h.setupUser();
+            const a = await h.createCalendar(ctx, { name: 'A', defaultAlertsWithTime: { dt: offsetAlert('-PT10M') } });
+            await h.createEvent(ctx, atT({ calendarIds: { [a]: true }, useDefaultAlerts: true }));
+            await h.method(ctx, 'Calendar/set', { update: { [a]: { name: 'Renamed', defaultAlertsWithTime: { dt: offsetAlert('-PT10M') } } } });
+            expect(await queued(ctx)).to.deep.equal([]);
         });
     });
 

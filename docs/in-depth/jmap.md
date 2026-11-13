@@ -435,6 +435,7 @@ Behaviour where WildDuck differs from the RFCs, or from what clients and the two
 - Only the gregorian calendar system is accepted in recurrence rules. `iCalendar` can not be requested from `CalendarEvent/get`.
 - Recurrence expansion uses `rrule-temporal` behind `lib/calendar/recurrence.js`. Four combinations are known to be expanded wrongly by the library and are pinned by unit tests: `byYearDay` with `byDay` or `byMonthDay`, `byWeekNo` with `byMonthDay`, `skip` with several `byMonthDay` values, and a monthly `byMonthDay` rule with an interval above 1 or `bySetPosition` together with `skip`. See [Recurrence options](../jmap/recurrence-options.md).
 - Display alerts go to event streams and to Web Push subscriptions that ask for `CalendarAlert`. Email alerts are delivered into the user's own INBOX. Drafts, events in unsubscribed calendars and disabled or suspended users fire no alerts.
+- A change of a calendar's default alerts (`defaultAlertsWithTime`, `defaultAlertsWithoutTime`) is applied to the events that use them by the `calendar-alerts` task of the MongoDB task queue (`tasks.js`), queued once per calendar and request, so `Calendar/set` does not recompute up to 50,000 events in the request. Until the task ran (the task runner polls every few seconds), those events keep their old alert times.
 
 ### Test suite opinions WildDuck follows
 

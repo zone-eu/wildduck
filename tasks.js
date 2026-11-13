@@ -33,6 +33,7 @@ const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
 const taskLabelDelete = require('./lib/tasks/label-delete');
+const taskCalendarAlerts = require('./lib/tasks/calendar-alerts');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const { SettingsHandler } = require('./lib/settings-handler');
 const { ensureIndex } = require('./lib/index-ttl');
@@ -541,6 +542,8 @@ function processTask(task, data, callback) {
     }
 
     switch (task.type) {
+        case 'calendar-alerts':
+            return taskCalendarAlerts(task, data, {}, err => callback(err, !err));
         case 'label-delete':
             return taskLabelDelete(task, data, { messageHandler, loggelf }, err => callback(err, !err));
         case 'restore':
