@@ -2,6 +2,7 @@
 
 const chai = require('chai');
 const roles = require('../lib/roles');
+const { ObjectId } = require('mongodb');
 
 const expect = chai.expect;
 
@@ -71,6 +72,17 @@ describe('Roles', () => {
             expect(roles.filterFields(wildcard, value)).to.deep.equal(wildcard.filter(value));
             expect(roles.filterFields(negated, value)).to.deep.equal(negated.filter(value));
             expect(roles.filterFields(negated, value)).to.not.have.property('internalData');
+        });
+
+        it('should keep ObjectId values under an unrestricted grant', () => {
+            let permission = roles.can('mcp:write').readOwn('messages');
+            expect(permission.attributes).to.deep.equal(['*']);
+
+            let thread = new ObjectId();
+            let filtered = roles.filterResponseBody(permission, { id: 1, thread });
+
+            expect(filtered.thread).to.equal(thread);
+            expect(String(filtered.thread)).to.equal(thread.toString());
         });
 
         it('should read own properties only, as accesscontrol does', () => {
