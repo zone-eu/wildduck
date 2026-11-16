@@ -8,6 +8,7 @@ const { once } = require('events');
 const BSON = require('bson');
 const { ExportStream } = require('../../lib/export');
 const db = require('../../lib/db');
+const roles = require('../../lib/roles');
 const { createRoleToken } = require('./_helpers');
 
 const expect = chai.expect;
@@ -110,6 +111,7 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body).to.deep.equal({
             success: true,
+            effectivePermissions: roles.getEffectivePermissions('user'),
             address: `john${RUN}@example.com`,
             id: user,
             passwordPwned: true,
@@ -194,6 +196,7 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body).to.deep.equal({
             success: true,
+            effectivePermissions: roles.getEffectivePermissions('user'),
             address: `myuser2hash${RUN}@${os.hostname().toLowerCase()}`,
             id: user2,
             passwordPwned: true,
@@ -412,6 +415,7 @@ describe('API Users', function () {
         expect(authResponse.body.success).to.be.true;
         expect(authResponse.body).to.deep.equal({
             success: true,
+            effectivePermissions: roles.getEffectivePermissions('user'),
             address: `john${RUN}@example.com`,
             id: user,
             username: `myuser2${RUN}`,
