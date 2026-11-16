@@ -19,6 +19,7 @@ const db = require('../lib/db');
 const mcp = require('../mcp');
 const userDeleteTask = require('../lib/tasks/user-delete');
 const { TOOL_NAMES, TOOL_LEVELS } = require('../lib/mcp-tools');
+const { createRoleToken, deleteRoleToken } = require('./api/_helpers');
 
 const expect = chai.expect;
 
@@ -26,10 +27,10 @@ const API = `http://127.0.0.1:${config.api.port}`;
 const MCP_PORT = 8099;
 const MCP_URL = `http://127.0.0.1:${MCP_PORT}/mcp`;
 
-async function api(method, path, body) {
+async function api(method, path, body, accessToken) {
     let res = await fetch(API + path, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
         body: body ? JSON.stringify(body) : undefined
     });
     let json = await res.json();
@@ -110,16 +111,16 @@ describe('MCP service integration', function () {
             unseen: true
         });
 
+        const login = await api('POST', '/authenticate', { username, password: 'Secret123Secret', token: true });
         token = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'integration' });
-        writeToken = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'write integration', role: 'mcp:write_partial' });
-        fullWriteToken = await api('POST', `/users/${user.id}/mcp-tokens`, {
-            description: 'full write integration',
-            role: 'mcp:write'
-        });
-        sendToken = await api('POST', `/users/${user.id}/mcp-tokens`, {
-            description: 'send integration',
-            role: 'mcp:send'
-        });
+        writeToken = await api(
+            'POST',
+            `/users/${user.id}/mcp-tokens`,
+            { description: 'write integration', role: 'mcp:write_partial' },
+            login.token
+        );
+        fullWriteToken = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'full write integration', role: 'mcp:write' }, login.token);
+        sendToken = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'send integration', role: 'mcp:send' }, login.token);
 
         server = await new Promise((resolve, reject) =>
             mcp.start(
@@ -169,6 +170,35 @@ describe('MCP service integration', function () {
         expect(listed.results).to.have.length(4);
         expect(listed.results[0]).to.not.have.property('hash');
         expect(listed.results[0]).to.not.have.property('token');
+    });
+
+    it('blocks cross-user write-token creation by managers without creating credentials', async () => {
+        const manager = await createRoleToken('manager');
+        const query = { user: new ObjectId(user.id) };
+        const count = await db.users.collection('mcptokens').countDocuments(query);
+        let created;
+
+        try {
+            for (const role of ['mcp:write_partial', 'mcp:write', 'mcp:send']) {
+                const response = await fetch(`${API}/users/${user.id}/mcp-tokens`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${manager.accessToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description: 'Forbidden cross-user write', role })
+                });
+
+                expect(response.status, role).to.equal(403);
+                expect((await response.json()).code).to.equal('MissingPrivileges');
+                expect(await db.users.collection('mcptokens').countDocuments(query)).to.equal(count);
+            }
+
+            created = await api('POST', `/users/${user.id}/mcp-tokens`, { description: 'Cross-user read' }, manager.accessToken);
+            expect(created.role).to.equal('mcp:read');
+        } finally {
+            if (created) {
+                await api('DELETE', `/users/${user.id}/mcp-tokens/${created.id}`);
+            }
+            await deleteRoleToken(manager.tokenHash);
+        }
     });
 
     it('records minting and revoking in the user auth log', async () => {
