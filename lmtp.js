@@ -85,6 +85,7 @@ const serverOptions = {
                 targets: true,
                 autoreply: true,
                 autoreplyInterval: true,
+                maxAutoreplies: true,
                 encryptMessages: true,
                 encryptForwarded: true,
                 pubKey: true,
