@@ -10,7 +10,8 @@
 
 const expect = require('chai').expect;
 const fastJson = require('fast-json-stringify');
-const { stripResponseRequired } = require('../../lib/fastify/routes');
+const log = require('npmlog');
+const { stripResponseRequired, compileResponseSerializer } = require('../../lib/fastify/routes');
 
 describe('Response schema required strip', () => {
     it('should drop required from the top level of a model', () => {
@@ -81,5 +82,47 @@ describe('Response schema required strip', () => {
 
         const serialize = fastJson(stripResponseRequired(model));
         expect(JSON.parse(serialize({ success: true }))).to.deep.equal({ success: true });
+    });
+
+    describe('compileResponseSerializer', () => {
+        const route = {
+            method: 'GET',
+            url: '/example',
+            httpStatus: '200',
+            schema: {
+                type: 'object',
+                properties: { success: { type: 'boolean' }, count: { type: 'integer' } },
+                required: ['success']
+            }
+        };
+        let originalWarn;
+        let warnings;
+
+        beforeEach(() => {
+            originalWarn = log.warn;
+            warnings = [];
+            log.warn = (...args) => warnings.push(args);
+        });
+
+        afterEach(() => {
+            log.warn = originalWarn;
+        });
+
+        it('should serialize through the model when the payload fits', () => {
+            const serialize = compileResponseSerializer(route, {});
+
+            expect(JSON.parse(serialize({ success: true, count: 3, extra: 'x' }))).to.deep.equal({ success: true, count: 3 });
+            expect(warnings).to.be.empty;
+        });
+
+        it('should fall back to plain JSON and log when a value does not fit the model', () => {
+            const serialize = compileResponseSerializer(route, {});
+            const payload = { success: true, count: 'abc' };
+
+            expect(() => fastJson(stripResponseRequired(route.schema))(payload)).to.throw(/integer/);
+            expect(JSON.parse(serialize(payload))).to.deep.equal(payload);
+            expect(warnings).to.have.lengthOf(1);
+            expect(warnings[0].slice(2, 5)).to.deep.equal(['GET', '/example', '200']);
+        });
     });
 });
