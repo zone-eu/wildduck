@@ -596,7 +596,7 @@ describe('MCP service integration', function () {
         let before = await mcpEvents();
 
         // one tool call is one MCP authentication plus the API requests it makes on the
-        // caller's behalf. Only the listener that saw the client records a success; the API
+        // caller's behalf. Only the listener that saw the client records a success. The API
         // re-check would otherwise add an entry naming the internal address, and two awaited
         // round trips to every one of those requests.
         await client.callTool({ name: 'get_account', arguments: {} });
@@ -757,6 +757,17 @@ describe('MCP service integration', function () {
                     expect(result.status, `${credential.role} ${method} targets=${JSON.stringify(targets)}`).to.equal(403);
                 }
             }
+            // Preserve __proto__ as an own JSON key until REST normalization. Object
+            // literals would change the test object's prototype before it is serialized.
+            for (let [method, path] of [['POST', '/filters'], ['PUT', `/filters/${filter.id}`]]) {
+                let result = await authedWith(credential.token, path, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{"query":{},"action":{"__proto__":{"targets":["forward@example.com"]}}}'
+                });
+                expect(result.status, `${credential.role} ${method} inherited targets`).to.equal(403);
+                expect((await result.json()).code).to.be.oneOf(['InvalidToken', 'MissingPrivileges']);
+            }
         }
         for (let credential of [writeToken, fullWriteToken, sendToken]) {
             let connected = await connectClient(credential.token);
@@ -772,7 +783,54 @@ describe('MCP service integration', function () {
                 await connected.close();
             }
         }
+        let stored = await api('GET', `/users/${user.id}/filters/${filter.id}`);
+        expect(stored.action.targets || []).to.deep.equal([]);
+        expect(await db.database.collection('filters').countDocuments({ user: new ObjectId(user.id), 'action.targets.0': { $exists: true } })).to.equal(0);
         await api('DELETE', `/users/${user.id}/filters/${filter.id}`);
+    });
+
+    it('rejects excluded address write attributes from direct MCP bearers without persisting them', async () => {
+        for (const credential of [fullWriteToken, sendToken]) {
+            const address = `mcpboundary${Date.now()}${credential.role.replace(':', '')}@example.com`;
+            const created = await api('POST', `/users/${user.id}/addresses`, { address, name: 'Original', internalData: { protected: true } });
+
+            try {
+                const original = await db.users.collection('addresses').findOne({ _id: new ObjectId(created.id) });
+
+                for (const internalData of [{ protected: false }, JSON.stringify({ protected: false })]) {
+                    for (const [method, path, body] of [
+                        ['POST', '/addresses', { address: `blocked${address}`, internalData }],
+                        ['PUT', `/addresses/${created.id}`, { name: 'Forbidden', internalData }]
+                    ]) {
+                        const result = await authedWith(credential.token, path, {
+                            method,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                        });
+
+                        expect(result.status, `${credential.role} ${method}`).to.equal(403);
+                        expect((await result.json()).code).to.equal('MissingPrivileges');
+                    }
+                }
+
+                expect(await db.users.collection('addresses').countDocuments({ user: new ObjectId(user.id), address: `blocked${address}` })).to.equal(0);
+                const stored = await db.users.collection('addresses').findOne({ _id: original._id });
+                expect(stored.name).to.equal(original.name);
+                expect(stored.internalData).to.deep.equal(original.internalData);
+
+                const allowed = await authedWith(credential.token, `/addresses/${created.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'Allowed', metaData: { visible: true } })
+                });
+                expect(allowed.status).to.equal(200);
+                const updated = await db.users.collection('addresses').findOne({ _id: original._id });
+                expect(updated.name).to.equal('Allowed');
+                expect(updated.internalData).to.deep.equal(original.internalData);
+            } finally {
+                await api('DELETE', `/users/${user.id}/addresses/${created.id}`);
+            }
+        }
     });
 
     it('preserves mailbox IDs when reading by ID or path with every MCP role', async () => {
@@ -790,6 +848,32 @@ describe('MCP service integration', function () {
             } finally {
                 await connected.close();
             }
+        }
+    });
+
+    it('rejects bulk-search selectors that would be ignored without scheduling a task', async () => {
+        const connected = await connectClient(fullWriteToken.token);
+        const taskQuery = { task: 'search-apply', 'data.user': { $in: [user.id, new ObjectId(user.id)] } };
+
+        try {
+            expect(await db.database.collection('tasks').countDocuments(taskQuery)).to.equal(0);
+
+            for (const search of [
+                { id: '12' },
+                { q: 'subject:invoice', mailbox: inbox.id },
+                { q: 'subject:invoice', seen: true },
+                { maxSize: 0 },
+                { searchable: false },
+                { seen: true, unseen: true },
+                { query: 'invoice', or: { query: 'quarterly' } }
+            ]) {
+                const result = await connected.callTool({ name: 'apply_message_search', arguments: { search, action: { delete: true } } });
+                expect(result.isError, JSON.stringify(search)).to.equal(true);
+            }
+
+            expect(await db.database.collection('tasks').countDocuments(taskQuery)).to.equal(0);
+        } finally {
+            await connected.close();
         }
     });
 

@@ -83,7 +83,7 @@ const MCP_ROUTES = require('./lib/mcp-access');
 // rendering more than that per nested value
 const INSPECT_OPTIONS = { depth: 3, maxStringLength: 160, maxArrayLength: 20, breakLength: Infinity };
 
-// assigned by createApp(); module level because the TLS SNI callback built in
+// assigned by createApp(), module level because the TLS SNI callback built in
 // buildServer() logs through it
 let loggelf;
 
@@ -185,7 +185,7 @@ function buildServer() {
 
     app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonParser);
     // fastify matches the regex against the full header value including
-    // parameters, so 'application/report+json; charset=utf-8' must match too;
+    // parameters, so 'application/report+json; charset=utf-8' must match too.
     // the ^ anchor also keeps fastify from printing the FSTSEC001 warning
     app.addContentTypeParser(/^application\/[a-z0-9._-]+\+json\b/i, { parseAs: 'buffer' }, jsonParser);
 
@@ -205,7 +205,7 @@ function buildServer() {
 
     // restify's bodyParser handed multipart/form-data to formidable and mapped
     // form fields and uploaded file contents into req.params (mapParams +
-    // mapFiles); keyValues mode replicates that: fields arrive as strings and
+    // mapFiles). keyValues mode replicates that: fields arrive as strings and
     // files as Buffers under their field names (POST /users/:user/storage).
     // Parts buffer in memory, so cap them at the largest payload any consumer
     // accepts (storage uploads, wdMaxBytes MAX_ALLOWED_MESSAGE_SIZE)
@@ -241,7 +241,7 @@ function buildServer() {
  * Tests build one in-process and drive it with app.inject().
  *
  * @param {Object} [options]
- * @param {Object} [options.contractViolations] Violation log (createViolationLog()); when set, every reply of a documented
+ * @param {Object} [options.contractViolations] Violation log (createViolationLog()). When set, every reply of a documented
  *     route is checked against its response model and each difference is recorded (see lib/fastify/response-contract.js)
  * @returns {Object} Fastify instance
  */
@@ -307,7 +307,7 @@ function createApp(options = {}) {
         methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         // restify-cors-middleware2 always merged its own defaults into the
         // configured lists (src/constants.js), so the full set has to be
-        // spelled out here; without content-type every cross-origin JSON
+        // spelled out here. Without content-type every cross-origin JSON
         // request fails preflight
         allowedHeaders: [
             'X-Access-Token',
@@ -336,6 +336,7 @@ function createApp(options = {}) {
     // resource fields (an error body does not) is decided by roles.filterResponseBody. Registered
     // ahead of the payload stash so the Gelf line logs what was actually sent.
     app.decorateRequest('wdResponseFieldFilter', null);
+    app.decorateRequest('wdRequestFieldPermission', null);
     app.decorateRequest('wdMcpToken', false);
 
     app.addHook('preValidation', async (request, reply) => {
@@ -348,6 +349,24 @@ function createApp(options = {}) {
         const hasTargets = [request.params, request.query, request.body].some(values => values && values.action && Object.hasOwn(values.action, 'targets'));
         if (['createfilter', 'updatefilter'].includes(name) && hasTargets) {
             return reply.code(403).send({ error: 'MCP cannot set filter forwarding targets', code: 'MissingPrivileges' });
+        }
+    });
+
+    app.addHook('preHandler', async (request, reply) => {
+        if (!request.wdMcpToken) {
+            return;
+        }
+
+        const name = String(request.routeOptions.config.name || '').toLowerCase();
+        // Validation can promote inherited action fields into the normalized params.
+        // Check again after conversion, before any handler can persist a forwarding rule.
+        if (['createfilter', 'updatefilter'].includes(name) && request.params.action && 'targets' in request.params.action) {
+            return reply.code(403).send({ error: 'MCP cannot set filter forwarding targets', code: 'MissingPrivileges' });
+        }
+
+        const permission = request.wdRequestFieldPermission;
+        if (permission && !util.isDeepStrictEqual(request.params, roles.filterFields(permission, request.params))) {
+            return reply.code(403).send({ error: 'MCP cannot write excluded attributes', code: 'MissingPrivileges' });
         }
     });
 
@@ -381,7 +400,7 @@ function createApp(options = {}) {
 
         const routeConfig = (request.routeOptions && request.routeOptions.config) || {};
 
-        // routes opt out of the token check with config.public; the static
+        // routes opt out of the token check with config.public. The static
         // files under /public/ are matched by URL prefix instead
         if (routeConfig.public || request.url.startsWith('/public/')) {
             request.wdIsPublic = true;
@@ -446,7 +465,7 @@ function createApp(options = {}) {
 
         // Dedicated MCP tokens resolve to the access level stored on the token record, so what an
         // agent may do is decided by config/roles.json like every other role. These are only ever
-        // presented by the MCP service over the private network; they are not API access tokens
+        // presented by the MCP service over the private network. They are not API access tokens
         // and carry none of their privileges.
         //
         // The bearer value has to be the one the merge selected as well, so that a token presented
@@ -468,7 +487,7 @@ function createApp(options = {}) {
             let authenticated;
             try {
                 // No address is passed, so no failure is counted here. The failure budget belongs
-                // to the MCP listener, which is the surface a guess can actually be aimed at; this
+                // to the MCP listener, which is the surface a guess can actually be aimed at. This
                 // caller has already authenticated there, and the `ip` param is supplied by the
                 // caller, so keying a limiter on it would let one dodge or poison another's budget.
                 // Every MCP token holder reaches this listener from the same socket, so a budget
@@ -487,14 +506,19 @@ function createApp(options = {}) {
             request.user = authenticated.user._id.toString();
 
             if (mcpRoute.resource) {
-                // Enforce the route grant before dispatch. Read field allowlists also apply at
-                // the API exit, so presenting this credential directly preserves the same bounds.
+                // Enforce the route grant before dispatch. Attribute allowlists apply to
+                // normalized writes and at the API exit for reads, including direct bearers.
                 let permission = roles.can(request.role)[mcpRoute.action || 'readOwn'](mcpRoute.resource);
                 if (!permission.granted) {
                     return fail();
                 }
 
-                if (!mcpRoute.action) {
+                if (mcpRoute.action) {
+                    // Unrestricted grants need no copy/comparison of large message payloads.
+                    if (permission.attributes.length !== 1 || permission.attributes[0] !== '*') {
+                        request.wdRequestFieldPermission = permission;
+                    }
+                } else {
                     request.wdResponseFieldFilter = { permission, listKey: mcpRoute.listKey };
                 }
             }
@@ -599,7 +623,7 @@ function createApp(options = {}) {
                                 mfaVerified,
                                 passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
                                 // keeps the session valid after its own account changed the password or 2FA
-                                // setup (which bumps authVersion); a change of another account leaves it alone
+                                // setup (which bumps authVersion). A change of another account leaves it alone
                                 update: async changedUser =>
                                     String(changedUser) === tokenData.user &&
                                     setAuthToken(tokenData.user, accessToken, {
@@ -684,7 +708,7 @@ function createApp(options = {}) {
             return;
         }
 
-        // only documented API routes produce a gelf line; infra routes
+        // only documented API routes produce a gelf line. Infra routes
         // (metrics, the OpenAPI document, /api-methods) declare no
         // validationObjs and are not API responses
         const routeConfig = (request.routeOptions && request.routeOptions.config) || {};

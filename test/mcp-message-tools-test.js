@@ -104,6 +104,48 @@ describe('MCP message operations', () => {
         expect(schema.safeParse({ search: {}, action: { delete: true } }).success).to.equal(true);
     });
 
+    it('rejects search selectors the background task would ignore before scheduling', () => {
+        const { invoke, calls } = setup();
+
+        for (const search of [
+            { id: '12' },
+            { id: '12:20', subject: 'Invoices' },
+            { id: '12', searchable: true },
+            { q: 'subject:Invoices', mailbox: MAILBOX },
+            { q: 'subject:Invoices', mailbox: MAILBOX, id: '12' },
+            { q: 'subject:Invoices', thread: LABEL },
+            { q: 'subject:Invoices', subject: 'Narrower subject' },
+            { q: 'subject:Invoices', or: { from: 'sender@example.com' } },
+            { q: 'subject:Invoices', seen: true },
+            { q: 'subject:Invoices', minSize: 100 },
+            { maxSize: 0 },
+            { searchable: false },
+            { seen: true, unseen: true },
+            { query: 'Invoices', or: { query: 'Narrower' } }
+        ]) {
+            expect(() => invoke('apply_message_search', { search, action: { delete: true } }), JSON.stringify(search)).to.throw();
+        }
+
+        expect(calls).to.deep.equal([]);
+    });
+
+    it('preserves scoped IDs, structured filters and supported query options when scheduling', async () => {
+        const { invoke, calls } = setup();
+
+        for (const search of [
+            { mailbox: MAILBOX, id: '12' },
+            { mailbox: MAILBOX, id: '12:20', subject: 'Invoices' },
+            { subject: 'Invoices', maxSize: 100, searchable: true },
+            { query: 'Invoices', or: { from: 'sender@example.com' } },
+            { or: { query: 'Invoices' } },
+            { q: 'subject:Invoices' },
+            { q: 'subject:Invoices', useAndSearch: true, searchable: false }
+        ]) {
+            await invoke('apply_message_search', { search, action: { delete: true } });
+            expect(calls[calls.length - 1]).to.deep.equal(['post', '/search', { ...search, action: { delete: true } }]);
+        }
+    });
+
     it('uses query parameters for deletion and marks destructive operations', async () => {
         const { invoke, tools, calls } = setup();
 
