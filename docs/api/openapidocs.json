@@ -279,9 +279,63 @@
                                                         "description": "Stored role name or null.",
                                                         "nullable": true
                                                     },
+                                                    "effectivePermissions": {
+                                                        "type": "object",
+                                                        "description": "Resolved capability booleans. Missing resources or capabilities are denied; resource attribute restrictions still apply.",
+                                                        "properties": {
+                                                            "resources": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "create:own": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "create:any": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "read:own": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "read:any": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "update:own": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "update:any": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "delete:own": {
+                                                                            "type": "boolean"
+                                                                        },
+                                                                        "delete:any": {
+                                                                            "type": "boolean"
+                                                                        }
+                                                                    },
+                                                                    "additionalProperties": false
+                                                                }
+                                                            },
+                                                            "custom": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "boolean"
+                                                                }
+                                                            }
+                                                        },
+                                                        "additionalProperties": false
+                                                    },
                                                     "permissions": {
                                                         "type": "object",
                                                         "description": "Stored resource restrictions or null.",
+                                                        "properties": {
+                                                            "custom": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "boolean"
+                                                                }
+                                                            }
+                                                        },
                                                         "additionalProperties": {
                                                             "type": "object",
                                                             "properties": {
@@ -425,7 +479,15 @@
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "description": "Resource CRUD restrictions and custom capability booleans. False denies; true inherits. Replaces the previous map; null or {} clears it.",
+                                        "properties": {
+                                            "custom": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        },
                                         "additionalProperties": {
                                             "type": "object",
                                             "properties": {
@@ -921,9 +983,63 @@
                                             "description": "Stored role name or null.",
                                             "nullable": true
                                         },
+                                        "effectivePermissions": {
+                                            "type": "object",
+                                            "description": "Resolved capability booleans. Missing resources or capabilities are denied; resource attribute restrictions still apply.",
+                                            "properties": {
+                                                "resources": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "create:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "create:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "read:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "read:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "update:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "update:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "delete:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "delete:any": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "additionalProperties": false
+                                                    }
+                                                },
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
                                         "permissions": {
                                             "type": "object",
                                             "description": "Stored resource restrictions or null.",
+                                            "properties": {
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "properties": {
@@ -1139,7 +1255,15 @@
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Resource maps of boolean create, read, update and delete restrictions. Replaces the previous map; null or {} clears it.",
+                                        "description": "Resource CRUD restrictions and custom capability booleans. False denies; true inherits. Replaces the previous map; null or {} clears it.",
+                                        "properties": {
+                                            "custom": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        },
                                         "additionalProperties": {
                                             "type": "object",
                                             "properties": {
@@ -13484,9 +13608,63 @@
                                             "description": "Stored role name or null.",
                                             "nullable": true
                                         },
+                                        "effectivePermissions": {
+                                            "type": "object",
+                                            "description": "Resolved capability booleans. Missing resources or capabilities are denied; resource attribute restrictions still apply.",
+                                            "properties": {
+                                                "resources": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "create:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "create:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "read:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "read:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "update:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "update:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "delete:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "delete:any": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "additionalProperties": false
+                                                    }
+                                                },
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
                                         "permissions": {
                                             "type": "object",
                                             "description": "Stored resource restrictions or null.",
+                                            "properties": {
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "properties": {
@@ -13648,9 +13826,63 @@
                                             "description": "Stored role name or null.",
                                             "nullable": true
                                         },
+                                        "effectivePermissions": {
+                                            "type": "object",
+                                            "description": "Resolved capability booleans. Missing resources or capabilities are denied; resource attribute restrictions still apply.",
+                                            "properties": {
+                                                "resources": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "create:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "create:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "read:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "read:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "update:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "update:any": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "delete:own": {
+                                                                "type": "boolean"
+                                                            },
+                                                            "delete:any": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "additionalProperties": false
+                                                    }
+                                                },
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
                                         "permissions": {
                                             "type": "object",
                                             "description": "Stored resource restrictions or null.",
+                                            "properties": {
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "properties": {
@@ -18268,7 +18500,15 @@
                                                     },
                                                     "permissions": {
                                                         "type": "object",
-                                                        "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                                        "description": "Resource CRUD own/any grants and attribute allowlists, plus a custom boolean capability map",
+                                                        "properties": {
+                                                            "custom": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "boolean"
+                                                                }
+                                                            }
+                                                        },
                                                         "additionalProperties": {
                                                             "type": "object",
                                                             "additionalProperties": {
@@ -18345,7 +18585,15 @@
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                        "description": "Resource CRUD own/any grants and attribute allowlists, plus a custom boolean capability map",
+                                        "properties": {
+                                            "custom": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        },
                                         "additionalProperties": {
                                             "type": "object",
                                             "additionalProperties": {
@@ -18402,7 +18650,15 @@
                                         },
                                         "permissions": {
                                             "type": "object",
-                                            "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                            "description": "Resource CRUD own/any grants and attribute allowlists, plus a custom boolean capability map",
+                                            "properties": {
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "additionalProperties": {
@@ -18510,7 +18766,15 @@
                                         },
                                         "permissions": {
                                             "type": "object",
-                                            "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                            "description": "Resource CRUD own/any grants and attribute allowlists, plus a custom boolean capability map",
+                                            "properties": {
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "additionalProperties": {
@@ -18571,7 +18835,15 @@
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                        "description": "Resource CRUD own/any grants and attribute allowlists, plus a custom boolean capability map",
+                                        "properties": {
+                                            "custom": {
+                                                "type": "object",
+                                                "additionalProperties": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        },
                                         "additionalProperties": {
                                             "type": "object",
                                             "additionalProperties": {
@@ -18637,7 +18909,15 @@
                                         },
                                         "permissions": {
                                             "type": "object",
-                                            "description": "Resource maps of CRUD own/any grants and attribute allowlists",
+                                            "description": "Resource CRUD own/any grants and attribute allowlists, plus a custom boolean capability map",
+                                            "properties": {
+                                                "custom": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "boolean"
+                                                    }
+                                                }
+                                            },
                                             "additionalProperties": {
                                                 "type": "object",
                                                 "additionalProperties": {

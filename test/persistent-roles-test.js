@@ -78,7 +78,7 @@ describe('persistent roles', function () {
 
     it('loads source roles added through the effective configuration', async function () {
         const roleName = uniqueName('configured');
-        config.api.roles[roleName] = { customResource: { 'read:any': ['*'] } };
+        config.api.roles[roleName] = { customResource: { 'read:any': ['*'] }, custom: { contacts: true, signatures: false } };
 
         try {
             const defaultHandler = new RoleHandler({ users: usersDb, database });

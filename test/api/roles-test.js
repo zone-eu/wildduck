@@ -64,6 +64,54 @@ describe('Roles API', function () {
         }
     });
 
+    it('round trips custom capabilities and resolves own-account grants and denies', async () => {
+        const permissions = {
+            users: { 'read:own': ['*'] },
+            messages: { 'read:any': ['*'], 'update:own': ['*'] },
+            custom: { contacts: true, signatures: false, 'folders.manage': true }
+        };
+        const role = await createRole(`capabilities-${new ObjectId()}`, permissions);
+        expect(role.permissions).to.deep.equal(permissions);
+        const details = await request('GET', `/roles/${role.id}`);
+        expect(details.json().permissions.custom).to.deep.equal(permissions.custom);
+        const listing = await request('GET', '/roles?limit=250');
+        expect(listing.json().results.find(entry => entry.id === role.id).permissions.custom).to.deep.equal(permissions.custom);
+
+        const username = `capabilities-${crypto.randomBytes(6).toString('hex')}`;
+        const password = 'Capabilities-test-password-123';
+        const created = await request('POST', '/users', rootToken.accessToken, {
+            username,
+            password,
+            allowUnsafe: true,
+            role: role.id,
+            permissions: { messages: { update: false }, custom: { contacts: false, signatures: true } }
+        });
+        expect(created.statusCode).to.equal(200, created.body);
+        const user = created.json().id;
+        users.push(user);
+        const token = await createToken('user', user);
+        let response = await request('GET', `/users/${user}`, token.accessToken);
+        expect(response.statusCode).to.equal(200, response.body);
+        let effective = response.json().effectivePermissions;
+        expect(effective.custom).to.deep.equal({ contacts: false, signatures: false, 'folders.manage': true });
+        expect(effective.resources.messages).to.include({ 'read:own': true, 'read:any': true, 'update:own': false });
+        expect((await request('GET', `/users/${user}`)).json()).not.to.have.property('effectivePermissions');
+        for (const path of ['/preauth', '/authenticate']) {
+            response = await request('POST', path, rootToken.accessToken, { username, ...(path === '/authenticate' ? { password } : {}) });
+            expect(response.statusCode).to.equal(200, response.body);
+            expect(response.json().effectivePermissions).to.deep.equal(effective);
+        }
+        response = await request('PUT', `/roles/${role.id}`, rootToken.accessToken, {
+            permissions: { ...permissions, custom: { contacts: true, signatures: true } }
+        });
+        expect(response.statusCode).to.equal(200, response.body);
+        response = await request('PUT', `/users/${user}`, rootToken.accessToken, { permissions: { custom: { signatures: false } } });
+        expect(response.statusCode).to.equal(200, response.body);
+        effective = (await request('GET', `/users/${user}`, token.accessToken)).json().effectivePermissions;
+        expect(effective.custom).to.deep.equal({ contacts: true, signatures: false });
+        expect(effective.resources.messages['update:own']).to.equal(true);
+    });
+
     it('lists active system roles and prevents changing or deleting them', async () => {
         const listing = await request('GET', '/roles?limit=250');
         expect(listing.statusCode).to.equal(200);

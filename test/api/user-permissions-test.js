@@ -223,7 +223,7 @@ describe('API user role and permission policies', function () {
                 const response = await request('POST', path, token.accessToken, requestBody);
                 expect(response.statusCode).to.equal(200);
                 if (token === authOnlyToken) {
-                    expect(response.json()).not.to.have.any.keys('role', 'permissions');
+                    expect(response.json()).not.to.have.any.keys('role', 'permissions', 'effectivePermissions');
                 } else {
                     expect(response.json()).to.deep.include(policy);
                 }
@@ -237,7 +237,7 @@ describe('API user role and permission policies', function () {
             });
             expect(response.statusCode).to.equal(200);
             if (token === authOnlyToken) {
-                expect(response.json()).not.to.have.any.keys('role', 'permissions');
+                expect(response.json()).not.to.have.any.keys('role', 'permissions', 'effectivePermissions');
             } else {
                 expect(response.json()).to.deep.include(policy);
             }
@@ -294,7 +294,9 @@ describe('API user role and permission policies', function () {
         for (const payload of [
             { role: 'unknown-role' },
             { permissions: { labels: { publish: false } } },
-            { permissions: { labels: { create: 'false' } } }
+            { permissions: { labels: { create: 'false' } } },
+            { permissions: { custom: { contacts: 'false' } } },
+            { permissions: { custom: null } }
         ]) {
             const response = await request('PUT', `/users/${user}`, rootToken.accessToken, payload);
             expect(response.statusCode).to.equal(400);
