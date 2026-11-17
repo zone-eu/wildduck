@@ -78,6 +78,14 @@
             "description": "Domain aliases, so that mail for username@alias is delivered to username@domain."
         },
         {
+            "name": "DomainGroups",
+            "description": "Groups of domains that form one tenant. Users of domains in the same group may share mailboxes with each other."
+        },
+        {
+            "name": "ACL",
+            "description": "RFC 4314 access control lists: mailbox and account wide grants that share mailboxes with other users."
+        },
+        {
             "name": "DKIM",
             "description": "Whenever an email is sent, WildDuck checks if there is a DKIM key registered for the domain of the sender address and uses it to sign the message."
         },

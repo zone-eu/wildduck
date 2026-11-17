@@ -17,6 +17,7 @@ USERRESPONSE=`curl --silent -XPOST $APIURL/users \
 -d '{
   "username": "testuser",
   "password": "pass",
+  "address": "testuser@example.com",
   "name": "Test User"
 }'`
 echo "UR: $USERRESPONSE"

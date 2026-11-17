@@ -86,6 +86,9 @@ describe('MessageHandler message updates', function () {
             async addEntriesAsync(mailboxData, entries) {
                 notified.push(...entries);
             },
+            fireForMailbox() {
+                fires++;
+            },
             fire() {
                 fires++;
             }

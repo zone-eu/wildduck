@@ -25,6 +25,9 @@ dbname = "wildduck-test"
 port = 9993
 host = "127.0.0.1"
 
+[imap.acl]
+enabled = true
+
 [lmtp]
 enabled = true
 port = 2424

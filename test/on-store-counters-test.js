@@ -84,7 +84,8 @@ describe('on-store counter notifications', () => {
                 async addEntriesAsync(mailboxData, entries) {
                     notification = entries[0];
                 },
-                fire() {}
+                fire() {},
+                fireForMailbox() {}
             }
         };
         const session = {
@@ -186,7 +187,8 @@ describe('on-store counter notifications', () => {
                 async addEntriesAsync(mailboxData, entries) {
                     notification = entries[0];
                 },
-                fire() {}
+                fire() {},
+                fireForMailbox() {}
             }
         };
         const session = {
