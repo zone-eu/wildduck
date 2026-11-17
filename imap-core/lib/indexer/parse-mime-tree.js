@@ -549,7 +549,8 @@ class MIMEParser {
 
             if (!charsetRequired.has(key)) {
                 charset = 'utf-8';
-                value = continuations[key].join('').replace(/%/g, '=');
+                // Unencoded continuations contain literal percent signs, not RFC 2231 escapes.
+                value = continuations[key].join('').replace(/[=]/g, '=3D');
             } else {
                 continuations[key].forEach((val, i) => {
                     if (!i) {
@@ -558,10 +559,13 @@ class MIMEParser {
                         parts.shift(); // lang argument, ignored
                         val = parts.join("'"); // eslint-disable-line quotes
                     }
-                    value += val.replace(/%/g, '=');
+                    // Escape literal equals signs before converting RFC 2231 escapes to Q encoding.
+                    value += val.replace(/[=]/g, '=3D').replace(/%/g, '=');
                 });
             }
 
+            // Q encoding treats underscores as spaces and question marks as word delimiters.
+            value = value.replace(/_/g, '=5F').replace(/\?/g, '=3F');
             data.params[key] = '=?' + (charset || 'ISO-8859-1').toUpperCase() + '?Q?' + value + '?=';
         });
 

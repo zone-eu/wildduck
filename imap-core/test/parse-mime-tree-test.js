@@ -2,7 +2,8 @@
 
 'use strict';
 
-const MIMEParser = require('../lib/indexer/parse-mime-tree').MIMEParser;
+const parseMimeTree = require('../lib/indexer/parse-mime-tree');
+const MIMEParser = parseMimeTree.MIMEParser;
 const Indexer = require('../lib/indexer/indexer');
 const libmime = require('libmime');
 const indexer = new Indexer();
@@ -159,7 +160,7 @@ function expectedFromDeclaredCharset(value, scenario) {
 }
 
 describe('#parseValueParams', function () {
-    it('should return continuation value as mime-word', function () {
+    it('should escape underscores in continuation mime-words', function () {
         let parser = new MIMEParser();
         const parsed = parser.parseValueParams(
             'text/plain;\n' +
@@ -174,10 +175,11 @@ describe('#parseValueParams', function () {
             subtype: 'plain',
             params: {
                 'x-apple-part-url': '99AFDE83-8953-43B4-BE59-F59D6160AFAB',
-                name: '=?UTF-8?Q?emailengine_uuendamise_kasud_ja_muud_asjad_ja_veelgi_pikem_pealkiri.txt?='
+                name: '=?UTF-8?Q?emailengine=5Fuuendamise=5Fkasud=5Fja=5Fmuud=5Fasjad=5Fja=5Fveelgi=5Fpikem=5Fpealkiri.txt?='
             },
             hasParams: true
         });
+        expect(libmime.decodeWords(parsed.params.name)).to.equal('emailengine_uuendamise_kasud_ja_muud_asjad_ja_veelgi_pikem_pealkiri.txt');
     });
 
     it('should return continuation value as mime-word', function () {
@@ -208,6 +210,48 @@ describe('#parseValueParams', function () {
             },
             hasParams: true
         });
+    });
+
+    it('should preserve literal underscores in extended parameters and continuations', function () {
+        const parser = new MIMEParser();
+        const cases = [
+            ["attachment; filename*=utf-8''Rechnung_M%C3%A4rz.pdf", 'Rechnung_März.pdf'],
+            ["attachment; filename*=utf-8''Rechnung%5FM%C3%A4rz.pdf", 'Rechnung_März.pdf'],
+            ["attachment; filename*0*=utf-8''Rechnung_; filename*1*=M%C3%A4rz.pdf", 'Rechnung_März.pdf'],
+            ['attachment; filename*0="annual_report_100%_"; filename*1="complete.pdf"', 'annual_report_100%_complete.pdf']
+        ];
+
+        for (const [header, expected] of cases) {
+            const parsed = parser.parseValueParams(header);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        }
+    });
+
+    it('should preserve parameter text that is sensitive to encoded-word decoding', function () {
+        const parser = new MIMEParser();
+        const cases = [
+            ['attachment; filename*0="report%20_"; filename*1="final.pdf"', 'report%20_final.pdf'],
+            ['attachment; filename*0="report=41_"; filename*1="final.pdf"', 'report=41_final.pdf'],
+            ['attachment; filename*0="report?_"; filename*1="final.pdf"', 'report?_final.pdf'],
+            ["attachment; filename*=utf-8''report_%3D41%3F.pdf", 'report_=41?.pdf']
+        ];
+
+        for (const [header, expected] of cases) {
+            const parsed = parser.parseValueParams(header);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        }
+    });
+
+    it('should parse and byte-preserve a libmime generated filename header', async function () {
+        const header = libmime.buildHeaderValue({ value: 'attachment', params: { filename: 'Rechnung_März.pdf' } });
+        const source = Buffer.from(`Content-Type: application/pdf\r\nContent-Disposition: ${header}\r\n\r\nbody\r\n`);
+        const tree = parseMimeTree(source);
+
+        expect(libmime.decodeWords(tree.parsedHeader['content-disposition'].params.filename)).to.equal('Rechnung_März.pdf');
+        const rebuilt = await new Promise((resolve, reject) => {
+            indexer.bodyQuery(tree, '', (err, data) => (err ? reject(err) : resolve(data)));
+        });
+        expect(rebuilt).to.deep.equal(source);
     });
 
     it('should parse a file with no empty line between text and boundary', function (done) {
