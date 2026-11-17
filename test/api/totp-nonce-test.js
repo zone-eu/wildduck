@@ -176,7 +176,8 @@ describe('Authenticate Strict 2FA Handling', function () {
                 }
             },
             {
-                createSession: async authUser => {
+                createSession: async (authUser, data) => {
+                    expect(data.mcpRole).to.equal('mcp:write_partial');
                     calls.push(authUser.toString());
                     return mcpToken;
                 }
@@ -193,6 +194,7 @@ describe('Authenticate Strict 2FA Handling', function () {
                     username: 'mcpuser',
                     password: 'mcpsecret',
                     scope: 'mcp',
+                    mcpRole: 'mcp:write_partial',
                     token: true,
                     sess: 'session-id',
                     ip: '192.0.2.1'
@@ -243,6 +245,7 @@ describe('Authenticate Strict 2FA Handling', function () {
                     username: 'mcptotpuser',
                     password: 'mcpsecret',
                     scope: 'mcp',
+                    mcpRole: 'mcp:write_partial',
                     token: true
                 },
                 role: 'root',
@@ -254,7 +257,7 @@ describe('Authenticate Strict 2FA Handling', function () {
         expect(res.statusCode).to.equal(200);
         expect(res.body.token).to.not.exist;
         expect(res.body.totpNonce).to.equal(twoFactorNonce);
-        expect(pendingData).to.deep.equal({ methods: ['totp'], tokenRequested: true, tokenScope: 'mcp', passwordChangeRequired: false });
+        expect(pendingData).to.deep.equal({ methods: ['totp'], tokenRequested: true, tokenScope: 'mcp', mcpRole: 'mcp:write_partial', passwordChangeRequired: false });
     });
 
     it('should return a token and standalone TOTP nonce when strict2fa is disabled', async () => {
@@ -357,7 +360,7 @@ describe('Master token MCP exchange', function () {
         await route.handler(
             {
                 route: { spec: route.spec },
-                params: { scope: 'mcp', sess, ip: '192.0.2.1' },
+                params: { scope: 'mcp', mcpRole: 'mcp:write_partial', sess, ip: '192.0.2.1' },
                 role: 'user',
                 user: user.toString(),
                 accessToken: {
@@ -375,7 +378,7 @@ describe('Master token MCP exchange', function () {
 
         expect(res.statusCode).to.equal(200);
         expect(mintedFor).to.equal(user.toString());
-        expect(mintedData).to.deep.equal({ sess, ip: '192.0.2.1' });
+        expect(mintedData).to.deep.equal({ mcpRole: 'mcp:write_partial', sess, ip: '192.0.2.1' });
         expect(res.body).to.deep.equal({
             success: true,
             scope: 'mcp',
@@ -1126,7 +1129,9 @@ describe('Temporary Password With Pending 2FA', function () {
         await UserHandler.prototype.generatePending2faNonce.call(handler, user, {
             methods: ['totp'],
             tokenRequested: true,
-            passwordChangeRequired: true
+            passwordChangeRequired: true,
+            tokenScope: 'mcp',
+            mcpRole: 'mcp:write_partial'
         });
         expect(storedData.passwordChangeRequired).to.equal('true');
 
@@ -1134,6 +1139,7 @@ describe('Temporary Password With Pending 2FA', function () {
             code: 'InvalidTotpNonce'
         });
         expect(pending2faAuth.passwordChangeRequired).to.be.true;
+        expect(pending2faAuth.mcpRole).to.equal('mcp:write_partial');
     });
 
     it('should keep the pending password change on the token issued after TOTP', async () => {
@@ -1145,11 +1151,13 @@ describe('Temporary Password With Pending 2FA', function () {
             checkTotp: async () => ({
                 pending2fa: {
                     tokenRequested: true,
-                    tokenScope: 'master',
+                    tokenScope: 'mcp',
+                    mcpRole: 'mcp:write_partial',
                     passwordChangeRequired: true
                 }
             }),
-            generateAuthToken: async (authUser, options) => {
+        }, {
+            createSession: async (authUser, options) => {
                 tokenOptions = options;
                 return crypto.randomBytes(20).toString('hex');
             }
@@ -1175,7 +1183,51 @@ describe('Temporary Password With Pending 2FA', function () {
 
         expect(res.statusCode).to.equal(200);
         expect(res.body.token).to.exist;
+        expect(tokenOptions.mcpRole).to.equal('mcp:write_partial');
         expect(tokenOptions.mfaVerified).to.be.true;
         expect(tokenOptions.passwordChangeRequired).to.be.true;
+    });
+});
+
+describe('MCP role validation and WebAuthn completion', () => {
+    it('accepts the role only for MCP login and exchange', () => {
+        for (let [path, name, base] of [
+            ['/authenticate', 'authenticate', { username: 'alice', password: 'secret', token: true }],
+            ['/authenticate/:scope', 'createScopedAuthenticationToken', {}]
+        ]) {
+            let route = getAuthRoute({}, {}, path, name);
+            let validate = compileRouteValidator(route.spec.validationObjs);
+            expect(validate({ ...base, scope: 'mcp', mcpRole: 'mcp:write_partial' }).error).to.not.exist;
+            for (let params of [
+                { scope: 'mcp', mcpRole: 'mcp:full' },
+                { scope: 'master', mcpRole: 'mcp:read' },
+                { scope: 'imap', mcpRole: 'mcp:write_partial' }
+            ]) {
+                expect(validate({ ...base, ...params }).error).to.exist;
+            }
+        }
+    });
+
+    it('issues the selected MCP role after WebAuthn', async () => {
+        let user = new ObjectId();
+        let issued;
+        let routes = [];
+        webauthnRoutes({}, routeCollector(routes), {
+            webauthnAssertAuthentication: async () => ({
+                authenticated: true,
+                pending2fa: { tokenRequested: true, tokenScope: 'mcp', mcpRole: 'mcp:write_partial' }
+            })
+        }, {
+            createSession: async (authUser, data) => {
+                issued = data;
+                return 'mcp-session';
+            }
+        });
+        let route = routes.find(entry => entry.spec.name === 'assertWebAuthN');
+        let res = getResponse();
+        await route.handler({ params: { user: user.toString() }, role: 'root', validate: assertGranted }, res);
+        expect(res.statusCode).to.equal(200);
+        expect(res.body.token).to.equal('mcp-session');
+        expect(issued).to.include({ mcpRole: 'mcp:write_partial', mfaVerified: true });
     });
 });

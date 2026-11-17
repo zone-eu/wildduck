@@ -12,6 +12,7 @@ const log = require('npmlog');
 const mcp = require('../mcp');
 const certs = require('../lib/certs');
 const metrics = require('../lib/metrics');
+const { TOOL_LEVELS, TOOL_NAMES } = require('../lib/mcp-tools');
 
 const expect = chai.expect;
 const TOKEN = `wdmcp_${'a'.repeat(64)}`;
@@ -24,9 +25,9 @@ function id(value) {
     return { toString: () => value };
 }
 
-function createReader() {
+function createReader(role) {
     return {
-        role: 'mcp:read',
+        role: role || 'mcp:read',
         async getAccount() {
             return {
                 id: USER_ID,
@@ -103,10 +104,10 @@ function createReader() {
     };
 }
 
-function createDependencies() {
+function createDependencies(role) {
     let calls = [];
     let addresses = [];
-    let reader = createReader();
+    let reader = createReader(role);
     return {
         calls,
         addresses,
@@ -122,7 +123,7 @@ function createDependencies() {
                 return {
                     tokenId: id(TOKEN_ID),
                     user: { _id: id(USER_ID) },
-                    role: 'mcp:read'
+                    role: role || 'mcp:read'
                 };
             }
         },
@@ -142,7 +143,7 @@ function startServer(options, dependencies) {
     });
 }
 
-function startMcp(secure, overrides) {
+function startMcp(secure, overrides, role) {
     let options = {
         enabled: true,
         host: '127.0.0.1',
@@ -156,7 +157,7 @@ function startMcp(secure, overrides) {
         maxBodyChars: 50000,
         ...overrides
     };
-    let dependencies = createDependencies();
+    let dependencies = createDependencies(role);
     return startServer(options, dependencies).then(server => ({ server, dependencies }));
 }
 
@@ -250,15 +251,7 @@ describe('Read-only MCP service', function () {
             expect(client.getInstructions()).to.include('untrusted data');
 
             let result = await client.listTools();
-            expect(result.tools.map(tool => tool.name)).to.deep.equal([
-                'get_account',
-                'list_mailboxes',
-                'list_labels',
-                'list_messages',
-                'search_messages',
-                'get_message',
-                'get_message_text'
-            ]);
+            expect(result.tools.map(tool => tool.name)).to.have.members(TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:read')));
             for (let tool of result.tools) {
                 expect(tool.inputSchema.type).to.equal('object');
                 expect(tool.outputSchema.type).to.equal('object');
@@ -320,6 +313,60 @@ describe('Read-only MCP service', function () {
             expect(overLimit.isError).to.equal(true);
         });
     }
+
+    it('advertises write instructions and tools only for a partial-write token', async () => {
+        ({ server } = await startMcp(false, {}, 'mcp:write_partial'));
+        client = await connectClient(server, 'auto');
+        expect(client.getInstructions()).to.include('create incoming mail filters');
+        let result = await client.listTools();
+        expect(result.tools.map(tool => tool.name)).to.include.members(['create_filter', 'create_mailbox', 'set_autoreply']);
+        expect(result.tools.map(tool => tool.name)).to.not.include('send_message');
+    });
+
+    it('publishes descriptions for read tools and every nested write input', async () => {
+        ({ server } = await startMcp(false, {}, 'mcp:write_partial'));
+        client = await connectClient(server, 'auto');
+        let { tools } = await client.listTools();
+        let byName = Object.fromEntries(tools.map(tool => [tool.name, tool]));
+        for (let name of ['list_filters', 'get_autoreply']) {
+            if (!byName[name]) throw new Error(`${name} is not advertised`);
+            expect(byName[name].inputSchema.properties).to.deep.equal({});
+        }
+
+        let input = (name, path) => {
+            let schema = byName[name].inputSchema;
+            for (let key of path) schema = schema.properties[key];
+            return schema;
+        };
+        for (let [tool, paths] of Object.entries({
+            create_filter: [
+                ['name'],
+                ['query'],
+                ['query', 'from'],
+                ['query', 'to'],
+                ['query', 'subject'],
+                ['query', 'listId'],
+                ['query', 'text'],
+                ['query', 'ha'],
+                ['query', 'size'],
+                ['action'],
+                ['action', 'seen'],
+                ['action', 'flag'],
+                ['action', 'delete'],
+                ['action', 'spam'],
+                ['action', 'mailbox'],
+                ['action', 'labels'],
+                ['disabled']
+            ],
+            create_mailbox: [['path'], ['hidden'], ['retention'], ['encryptMessages']],
+            set_autoreply: [['status'], ['name'], ['subject'], ['text'], ['html'], ['start'], ['end']]
+        })) {
+            for (let path of paths) {
+                let description = input(tool, path).description;
+                if (typeof description !== 'string' || !description.trim()) throw new Error(`${tool}.${path.join('.')} has no description`);
+            }
+        }
+    });
 
     it('rejects missing and non-MCP credentials', async () => {
         let started = await startMcp();

@@ -63,7 +63,7 @@
         },
         {
             "name": "MCPAccessTokens",
-            "description": "Read-only personal access tokens for the MCP (Model Context Protocol) server."
+            "description": "Personal access tokens with explicit read, partial-write, write, or send access for the MCP (Model Context Protocol) server."
         },
         {
             "name": "PushSubscriptions",
