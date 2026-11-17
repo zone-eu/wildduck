@@ -48,6 +48,11 @@ module.exports = {
             return callback(E);
         }
 
+        // RFC 8474 6: EMAILID and THREADID exist only where the server can name its objects
+        if (!this._server.options.objectIds && parsed.terms.some(term => term === 'emailid' || term === 'threadid')) {
+            return callback(new Error('Unknown search term'));
+        }
+
         // RFC 3501 6.4.4: "If the server does not support the specified [CHARSET], it MUST return a
         // tagged NO response (not a BAD). This response SHOULD contain the BADCHARSET response code"
         if (parsed.charset && !SUPPORTED_CHARSETS.includes(parsed.charset.toString().toUpperCase())) {

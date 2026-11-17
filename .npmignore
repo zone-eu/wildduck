@@ -1,0 +1,17 @@
+# npm uses this file instead of .gitignore. Keep every .gitignore entry here, especially anything secret.
+node_modules
+.DS_Store
+npm-debug.log
+.npmrc
+config/production.*
+config/development.*
+certs/test-*
+zmta-milter
+zmta-milter.toml
+api-tests-overview.md
+docker-mcp-demo
+coverage
+test/jmap/overview.html
+
+# JMAP test portfolio: development only, about 2 MB of scenario data
+test/jmap/

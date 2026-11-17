@@ -214,6 +214,37 @@ module.exports = {
                 })
             );
 
+            // * OK [MAILBOXID (F123)] Ok (RFC 8474 4.2)
+            if (this._server.options.objectIds) {
+                this.send(
+                    imapHandler.compiler({
+                        tag: '*',
+                        command: 'OK',
+                        attributes: [
+                            {
+                                type: 'section',
+                                section: [
+                                    {
+                                        type: 'atom',
+                                        value: 'MAILBOXID'
+                                    },
+                                    [
+                                        {
+                                            type: 'atom',
+                                            value: this._server.options.objectIds.mailbox(mailboxData._id)
+                                        }
+                                    ]
+                                ]
+                            },
+                            {
+                                type: 'text',
+                                value: 'Ok'
+                            }
+                        ]
+                    })
+                );
+            }
+
             callback(null, {
                 response: 'OK',
                 code: this.selected.readOnly ? 'READ-ONLY' : 'READ-WRITE',

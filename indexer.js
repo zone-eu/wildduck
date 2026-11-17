@@ -16,7 +16,8 @@ const { getClient } = require('./lib/elasticsearch');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const metrics = require('./lib/metrics');
 
-let loggelf;
+// replaced in start(); a no-op until then, so indexingJob() also works outside the indexer service
+let loggelf = () => false;
 let processlock;
 let queueWorkers = {};
 
@@ -419,7 +420,8 @@ function indexingJob(esclient) {
 
                         html: (messageData.html && messageData.html.join('\n')) || null,
 
-                        text: messageData.text || null,
+                        // the stored plain text is split after its first kilobyte (MessageHandler), the search index gets all of it
+                        text: [messageData.text, messageData.textFooter].filter(Boolean).join('') || null,
 
                         modseq: data.modseq
                     });
@@ -598,6 +600,8 @@ function indexingJob(esclient) {
         }
     };
 }
+
+module.exports.indexingJob = indexingJob;
 
 module.exports.start = callback => {
     if (!config.elasticsearch || !config.elasticsearch.indexer || !config.elasticsearch.indexer.enabled) {

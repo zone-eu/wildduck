@@ -1,0 +1,443 @@
+{
+    "comment": "Finished work packages of docs/jmap/implementation-plan.md and the catalogue scenarios each one must keep passing. ids accepts single ids and ranges (WDP-001..WDP-005); select picks by prefix, phase and method. Checked by tools/check-coverage.js.",
+    "packages": [
+        {
+            "package": "0.2",
+            "ids": ["WDP-001"]
+        },
+        {
+            "package": "0.3",
+            "ids": ["WDP-002..WDP-005", "WDP-012"]
+        },
+        {
+            "package": "0.4",
+            "ids": ["WDP-006", "WDP-009", "WDP-010"]
+        },
+        {
+            "package": "0.5",
+            "ids": ["WDP-007", "WDP-008", "WDP-011"]
+        },
+        {
+            "package": "0.6",
+            "ids": ["WDP-020..WDP-022", "WDP-027"]
+        },
+        {
+            "package": "0.7",
+            "ids": ["WDP-023", "WDP-028"]
+        },
+        {
+            "package": "0.8",
+            "ids": ["WDP-024"]
+        },
+        {
+            "package": "0.9",
+            "ids": ["WDP-025", "WDP-026"]
+        },
+        {
+            "package": "0.10",
+            "ids": ["WDP-040..WDP-043"]
+        },
+        {
+            "package": "0.11",
+            "ids": ["WDP-050", "WDP-051"]
+        },
+        {
+            "package": "0.12",
+            "ids": ["WDP-013"]
+        },
+        {
+            "package": "Milestone 0",
+            "select": [
+                {
+                    "phase": 0
+                }
+            ]
+        },
+        {
+            "package": "1.1",
+            "ids": ["WDS-001", "WDS-002", "WDS-004"]
+        },
+        {
+            "package": "1.2",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Auth"
+                }
+            ]
+        },
+        {
+            "package": "1.3",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Session"
+                }
+            ],
+            "ids": ["WDS-003"]
+        },
+        {
+            "package": "1.4",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Request"
+                },
+                {
+                    "prefix": "CORE",
+                    "phase": 1,
+                    "method": "Core/echo"
+                }
+            ]
+        },
+        {
+            "package": "1.5",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.8",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 1,
+                    "method": "Mailbox/get"
+                }
+            ],
+            "ids": ["WDX-010"]
+        },
+        {
+            "package": "1.9",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.10",
+            "select": [
+                {
+                    "prefix": "THR",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.13",
+            "select": [
+                {
+                    "prefix": "EGET",
+                    "phase": 1
+                }
+            ],
+            "ids": ["WDX-003", "WDX-005"]
+        },
+        {
+            "package": "1.14",
+            "select": [
+                {
+                    "prefix": "ECHG",
+                    "phase": 1
+                }
+            ],
+            "ids": ["WDX-001", "WDX-002", "WDX-004"]
+        },
+        {
+            "package": "1.15",
+            "select": [
+                {
+                    "prefix": "EQRY",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.16",
+            "select": [
+                {
+                    "prefix": "SNIP",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.17",
+            "select": [
+                {
+                    "prefix": "BLOB",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "1.18",
+            "select": [
+                {
+                    "prefix": "ESRC",
+                    "phase": 1
+                },
+                {
+                    "prefix": "EDLV",
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "Milestone 1",
+            "select": [
+                {
+                    "phase": 1
+                }
+            ]
+        },
+        {
+            "package": "2.1",
+            "ids": ["BLOB-024..BLOB-032", "BLOB-035..BLOB-038", "BLOB-041..BLOB-044", "BLOB-087..BLOB-089"]
+        },
+        {
+            "package": "2.11",
+            "select": [
+                {
+                    "prefix": "IDN"
+                }
+            ]
+        },
+        {
+            "package": "2.12",
+            "select": [
+                {
+                    "prefix": "VAC"
+                }
+            ]
+        },
+        {
+            "package": "2.13",
+            "ids": ["WDS-007", "WDS-008"]
+        },
+        {
+            "package": "2.2",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 2
+                }
+            ]
+        },
+        {
+            "package": "2.7",
+            "select": [
+                {
+                    "prefix": "EIMP",
+                    "phase": 2
+                }
+            ],
+            "ids": ["ECHG-109", "EDLV-012", "BLOB-034"]
+        },
+        {
+            "package": "2.8",
+            "select": [
+                {
+                    "prefix": "EPAR",
+                    "phase": 2
+                }
+            ]
+        },
+        {
+            "package": "2.9",
+            "select": [
+                {
+                    "prefix": "ECPY",
+                    "phase": 2
+                }
+            ]
+        },
+        {
+            "package": "2.6",
+            "select": [
+                {
+                    "prefix": "ESET",
+                    "phase": 2
+                }
+            ],
+            "ids": ["WDX-007", "WDX-008", "WDX-009", "BLOB-033", "BLOB-039", "BLOB-040", "ESRC-039", "ESRC-040"]
+        },
+        {
+            "package": "2.4",
+            "ids": ["ECHG-023", "ECHG-033", "ECHG-036", "ECHG-055", "ECHG-059", "ECHG-107", "ECHG-108"]
+        },
+        {
+            "package": "3.1 to 3.6",
+            "select": [
+                {
+                    "prefix": "SUB",
+                    "phase": 3
+                }
+            ],
+            "ids": ["CORE-014", "ESET-087"]
+        },
+        {
+            "package": "Milestone 3",
+            "select": [
+                {
+                    "phase": 3
+                }
+            ]
+        },
+        {
+            "package": "Phase 2 core",
+            "select": [
+                {
+                    "prefix": "CORE",
+                    "phase": 2
+                },
+                {
+                    "prefix": "THR",
+                    "phase": 2
+                }
+            ]
+        },
+        {
+            "package": "4.7",
+            "select": [
+                {
+                    "prefix": "BLOB",
+                    "phase": 4
+                }
+            ],
+            "ids": ["EIMP-026", "EPAR-032"]
+        },
+        {
+            "package": "4.8",
+            "select": [
+                {
+                    "prefix": "QUOTA",
+                    "phase": 4
+                }
+            ]
+        },
+        {
+            "package": "4.9",
+            "ids": ["WDX-006"]
+        },
+        {
+            "package": "4.1",
+            "ids": ["PUSH-002..PUSH-031", "PUSH-043..PUSH-055"]
+        },
+        {
+            "package": "4.2",
+            "select": [
+                {
+                    "prefix": "PUSH",
+                    "phase": 4
+                }
+            ]
+        },
+        {
+            "package": "4.3",
+            "select": [
+                {
+                    "prefix": "MBX",
+                    "phase": 4
+                }
+            ],
+            "ids": ["EQRY-158", "EQRY-166..EQRY-197"]
+        },
+        {
+            "package": "4.4",
+            "ids": ["EQRY-038..EQRY-042", "EQRY-114", "EQRY-115"]
+        },
+        {
+            "package": "4.5",
+            "ids": ["EQRY-105", "EQRY-106", "EQRY-110..EQRY-113", "CORE-012"]
+        },
+        {
+            "package": "4.6",
+            "ids": ["EQRY-065"]
+        },
+        {
+            "package": "6.1",
+            "ids": ["CAL-010..CAL-012", "CAL-065", "CAL-066"]
+        },
+        {
+            "package": "6.2",
+            "ids": ["CAL-022", "CAL-033", "CAL-035", "CAL-036"]
+        },
+        {
+            "package": "6.4",
+            "ids": ["CAL-001..CAL-007", "CAL-009", "CAL-014..CAL-040", "CAL-042..CAL-059", "CAL-062..CAL-074", "CAL-077", "PID-001..PID-019"]
+        },
+        {
+            "package": "5.1",
+            "ids": ["ABK-006", "ABK-009", "ABK-010", "CARD-012..CARD-015", "CARD-074", "CARD-075"]
+        },
+        {
+            "package": "5.2",
+            "ids": ["CARD-008", "CARD-009", "CARD-023", "CARD-024", "CARD-027..CARD-059"]
+        },
+        {
+            "package": "5.3",
+            "ids": ["ABK-001..ABK-013", "ABK-015..ABK-050", "ABK-054..ABK-075"]
+        },
+        {
+            "package": "5.4",
+            "ids": ["CARD-001..CARD-022", "CARD-025", "CARD-026", "CARD-077..CARD-097", "CARD-104..CARD-110", "CARD-167..CARD-173", "CARD-175..CARD-178"]
+        },
+        {
+            "package": "5.5",
+            "ids": ["CARD-060..CARD-073", "CARD-076"]
+        },
+        {
+            "package": "5.6",
+            "ids": ["CARD-111..CARD-159", "CARD-174"]
+        },
+        {
+            "package": "5.7",
+            "ids": ["ABK-014", "ABK-051..ABK-053", "CARD-098..CARD-103"]
+        },
+        {
+            "package": "5.8",
+            "ids": ["ABK-076..ABK-078", "CARD-160..CARD-166"]
+        },
+        {
+            "package": "Milestone 5",
+            "select": [
+                {
+                    "phase": 5
+                }
+            ]
+        },
+        {
+            "package": "6.3",
+            "ids": ["CEQ-049..CEQ-070"]
+        },
+        {
+            "package": "6.5",
+            "ids": ["CEV-001..CEV-112", "CEV-115..CEV-159", "CEV-161", "CAL-041", "CAL-075", "CAL-076"]
+        },
+        {
+            "package": "6.6",
+            "ids": ["CEQ-001..CEQ-048", "CEQ-071..CEQ-077", "CAL-013"]
+        },
+        {
+            "package": "6.7",
+            "ids": ["CALR-001..CALR-042"]
+        },
+        {
+            "package": "6.8",
+            "ids": ["CEV-113", "CEV-114", "CAL-008", "CAL-060", "CAL-061"]
+        },
+        {
+            "package": "F.7",
+            "ids": ["CORE-140..CORE-144", "ESRC-054", "ESRC-055", "PUSH-089", "BLOB-087..BLOB-089", "CARD-177", "CARD-178", "CEV-162", "CEQ-078", "SUB-145..SUB-147", "MBX-223"]
+        }
+    ]
+}

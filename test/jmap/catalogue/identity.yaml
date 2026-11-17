@@ -1,0 +1,894 @@
+area: identity
+title: "Identity"
+description: "RFC 8621 section 6: Identity/get, /set and /changes. In WildDuck every address the user owns yields one address derived identity (the main address first, mayDelete false), extra identities may be created only for addresses the user may send from, and changes to the address list made through the REST API surface in Identity/changes."
+scenarios:
+  - id: IDN-001
+    title: "Return one identity per owned address when ids is null"
+    method: Identity/get
+    spec: "RFC 8621 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user with the main address a@example.com and two more addresses b@example.com and c@example.org added through the REST API."
+    when: "Identity/get with ids null."
+    then: "list has exactly three objects whose email values are the three addresses, each with a distinct id. notFound is an empty array, state is a non empty string and accountId is echoed."
+    sources:
+      - "james:IdentityGetContract#getIdentityShouldReturnDefaultIdentity"
+      - "james:IdentityGetContract#getIdentityShouldReturnAliases"
+      - "cyrus:JMAPCore/identity_get"
+      - "stalwart:mail/submission.rs"
+      - "jmapio:identity/get-all-identities"
+      - "fastmail:t/Identity/get/basic.t"
+
+  - id: IDN-002
+    title: "Return every Identity property with the right type and default"
+    method: Identity/get
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A fresh user whose identities were never modified."
+    when: "Identity/get with ids null and properties null."
+    then: "Each object has exactly id (string), name (string), email (string), replyTo null, bcc null, textSignature empty string, htmlSignature empty string and mayDelete (boolean). No other properties are present."
+    sources:
+      - "jmapio:identity/get-identity-properties"
+      - "jmapio:identity/get-identity-email-matches"
+      - "james:IdentityGetContract#propertiesShouldBeSupported"
+      - "rfc:8621 6"
+
+  - id: IDN-003
+    title: "List the main address first with mayDelete false"
+    method: Identity/get
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user with a main address and two additional addresses."
+    when: "Identity/get with ids null."
+    then: "list[0] is the identity of the main address and has mayDelete false. The identities of the other addresses have mayDelete true."
+    sources:
+      - "james:IdentityGetContract#getIdentityShouldReturnDefaultIdentity"
+      - "wildduck:lib/api/addresses.js"
+      - "rfc:8621 6"
+    notes: "Identity has no default marker in RFC 8621, so clients take the first one. See IDN-046 for what destroying a non main address identity means."
+
+  - id: IDN-004
+    title: "Default the name to the address name, then the user name"
+    method: Identity/get
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user with name Jane Doe, address a@example.com without an address name and address b@example.com created with name Sales Team."
+    when: "Identity/get."
+    then: "The identity for a@example.com has name Jane Doe and the one for b@example.com has name Sales Team. For a user without a name and an address without a name, name is the empty string, never null."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "wildduck:lib/api/addresses.js"
+
+  - id: IDN-005
+    title: "Expose a domain wildcard address as a wildcard identity"
+    method: Identity/get
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user who owns the wildcard address *@wild.example (created with allowWildcard)."
+    when: "Identity/get."
+    then: "One identity has email exactly *@wild.example and mayDelete true."
+    sources:
+      - "james:IdentityGetContract#getIdentityShouldReturnDomainAliases"
+      - "rfc:8621 6"
+      - "wildduck:lib/api/addresses.js"
+
+  - id: IDN-006
+    title: "Omit wildcard addresses that have no JMAP form"
+    method: Identity/get
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [api]
+    given: "A user who owns user@* and *suffix@example.com in addition to normal addresses."
+    when: "Identity/get."
+    then: "No identity has an email containing an asterisk other than the exact form *@domain. The two special addresses are not listed and the rest are."
+    sources:
+      - "wildduck:lib/api/addresses.js"
+    notes: "RFC 8621 only defines the local part being the single character *. Plan section 4.6."
+
+  - id: IDN-007
+    title: "Fetch identities by id and report unknown ids"
+    method: Identity/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user with two identities X and Y, and another user with identity Z."
+    when: "Identity/get with ids [X, unknownId, Z]."
+    then: "list contains only X, notFound contains unknownId and Z (order not significant). No method level error."
+    sources:
+      - "james:IdentityGetContract#getIdentityShouldSupportIdsField"
+      - "james:IdentityGetContract#getRandomIdShouldNotFail"
+      - "jmapio:identity/get-identity-by-id"
+      - "jmapio:identity/get-identity-not-found"
+      - "fastmail:t/Identity/get/basic.t"
+
+  - id: IDN-008
+    title: "Return an empty list for an empty ids array"
+    method: Identity/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with at least one identity."
+    when: "Identity/get with ids []."
+    then: "list is [] and notFound is [], state is present."
+    sources:
+      - "cyrus:JMAPCore/identity_get"
+
+  - id: IDN-009
+    title: "Filter properties and always include id"
+    method: Identity/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with one identity."
+    when: "Identity/get with properties [email, name], then with properties []."
+    then: "The first returns exactly id, email and name per object. The second returns only id."
+    sources:
+      - "james:IdentityGetContract#propertiesShouldBeFiltered"
+
+  - id: IDN-010
+    title: "Reject an unknown property name"
+    method: Identity/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "Identity/get with properties [email, bogus]."
+    then: "The method answers with an error of type invalidArguments."
+    sources:
+      - "james:IdentityGetContract#badPropertiesShouldBeRejected"
+
+  - id: IDN-011
+    title: "Reject a foreign or unknown accountId on all Identity methods"
+    method: Identity/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Users A and B, the request is authenticated as A."
+    when: "Identity/get, Identity/set (with a create) and Identity/changes with the accountId of B, and with a random accountId."
+    then: "Each call answers with an error of type accountNotFound and nothing is created for B."
+    sources:
+      - "james:IdentityGetContract#badAccountIdShouldBeRejected"
+      - "james:IdentitySetContract#setIdentityShouldFailWhenWrongAccountId"
+      - "james:IdentityChangesContract#badAccountIdShouldBeRejected"
+      - "fastmail:t/Identity/foreign-account.t"
+
+  - id: IDN-012
+    title: "Require the submission capability for Identity methods"
+    method: Identity/get
+    spec: "RFC 8621 1.3.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "Identity/get, Identity/set and Identity/changes with using listing only core and mail."
+    then: "Each answers with an error invocation of type unknownMethod. With urn:ietf:params:jmap:submission in using the same calls succeed."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldFailWhenMissingCapability"
+      - "rfc:8621 1.3.2"
+    notes: "The submission capability therefore has to be advertised from phase 2 (Identity), even though EmailSubmission methods arrive in phase 3. See SUB-001."
+
+  - id: IDN-013
+    title: "Keep ids and state stable across repeated reads"
+    method: Identity/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user with two identities."
+    when: "Identity/get twice, with a worker restart and an unrelated Email change (a delivered message) in between."
+    then: "The same ids map to the same email values in the same order and state is identical in both responses. Ids use only A-Za-z0-9, hyphen and underscore and start with a letter."
+    sources:
+      - "rfc:8620 5.1"
+      - "rfc:8620 1.2"
+
+  - id: IDN-014
+    title: "Show an address added through the REST API"
+    method: Identity/get
+    spec: "RFC 8621 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user with one address and a known Identity state S1."
+    when: "POST /users/:user/addresses adds new@example.com, then Identity/get."
+    then: "A new identity with email new@example.com and mayDelete true is listed, the existing identity keeps its id, and state differs from S1."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "james:IdentityGetContract#getIdentityShouldReturnAliases"
+      - "wildduck:lib/api/addresses.js"
+
+  - id: IDN-015
+    title: "Drop the identities of an address removed through the REST API"
+    method: Identity/get
+    spec: "RFC 8621 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api, jmap]
+    given: "A user with address old@example.com, its derived identity D, and an extra identity C created for the same address through Identity/set."
+    when: "DELETE /users/:user/addresses/:id removes old@example.com, then Identity/get with ids [D, C] and Identity/set updating C."
+    then: "Both D and C are in notFound and no listed identity has that email. The update of C gives notUpdated of type notFound. The user can no longer create an identity for that address (forbiddenFrom)."
+    sources:
+      - "james:IdentitySetContract#deletedIdentityShouldNotBeFetchedAnyMore"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 9.6"
+    notes: "James keeps the custom identity but makes it non usable. Removing it keeps the invariant that every identity is an address the user may send from."
+
+  - id: IDN-016
+    title: "Follow a change of the main address"
+    method: Identity/get
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user with main address a@example.com and a second address b@example.com."
+    when: "PUT /users/:user/addresses/:id with main true for b@example.com, then Identity/get."
+    then: "Both identities keep their ids. The identity of b@example.com is now first with mayDelete false and the one of a@example.com has mayDelete true."
+    sources:
+      - "wildduck:lib/api/addresses.js"
+
+  - id: IDN-017
+    title: "Expose exact and domain wildcard fromWhitelist entries"
+    method: Identity/get
+    spec: "RFC 8621 9.6"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [api]
+    given: "A user whose fromWhitelist contains ext@partner.example, *@brand.example and sales*@other.example."
+    when: "Identity/get."
+    then: "Identities exist for ext@partner.example and *@brand.example (mayDelete true). The partial pattern sales*@other.example has no identity. An EmailSubmission with From ext@partner.example and that identity is accepted in phase 3."
+    sources:
+      - "wildduck:lib/api/submit.js"
+      - "rfc:8621 9.6"
+    notes: "Plan section 4.6 says these can be exposed. Without it a whitelisted sender address could be used over the REST API but not over JMAP. Open decision."
+
+  - id: IDN-018
+    title: "Create an additional identity for an owned address"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user who owns a@example.com."
+    when: "Identity/set create {c1: {email: a@example.com, name: Work, textSignature: text sig, htmlSignature: an html fragment, replyTo: [{name: R, email: r@example.com}], bcc: [{name: null, email: archive@example.com}]}}, then Identity/get."
+    then: "created.c1 contains a new id and mayDelete true. Identity/get lists both the address derived identity and the new one with the same email, the new one returning every value as sent. newState differs from oldState."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldSucceed"
+      - "james:IdentitySetContract#setIdentityShouldSucceedWhenValidEmailProperty"
+      - "james:IdentityGetContract#getIdentityShouldReturnCustomIdentity"
+      - "stalwart:mail/submission.rs"
+      - "rfc:8621 6"
+    notes: "RFC 8621 6 allows several identities with the same email. This needs the identities store of plan section 4.6. The Fastmail suite expects create to be refused on servers that do not allow it, which does not apply here."
+
+  - id: IDN-019
+    title: "Return defaults for properties omitted on create"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user who owns a@example.com."
+    when: "Identity/set create {c1: {email: a@example.com}}, then Identity/get for the new id."
+    then: "created.c1 lists id and the server set or defaulted properties the client did not send (name, replyTo, bcc, textSignature, htmlSignature, mayDelete). get returns name as an empty string, replyTo null, bcc null, both signatures empty strings and mayDelete true."
+    sources:
+      - "james:IdentitySetContract#setIdentityWithSomePropertiesOmittedShouldSucceedAndReturnDefaultValues"
+      - "rfc:8620 5.3"
+
+  - id: IDN-020
+    title: "Create several identities in one call and use them in the same request"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user who owns a@example.com and b@example.com."
+    when: "One request with Identity/set create {c1: {email: a@example.com, name: One}, c2: {email: b@example.com, name: Two}} followed by Identity/get with ids [#c1, #c2]."
+    then: "Both are in created with distinct ids, the top level createdIds is returned when the request supplied createdIds, and the Identity/get resolves both creation references and returns the two objects."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldCreatedSeveralValidCreationRequest"
+      - "james:IdentitySetContract#setIdentityAndGetIdentityCombinedShouldSucceed"
+      - "rfc:8620 3.3"
+
+  - id: IDN-021
+    title: "Reject an identity for another user's address with forbiddenFrom"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "User A, and user B who owns b@example.com."
+    when: "A calls Identity/set create {c1: {email: b@example.com}}."
+    then: "notCreated.c1 has type forbiddenFrom, created is absent or empty, newState equals oldState and Identity/get for A is unchanged."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldReturnForbiddenFromErrorWhenForbiddenEmailProperty"
+      - "stalwart:mail/submission.rs"
+      - "fastmail:t/Identity/set/basic.t"
+      - "rfc:8621 6.3"
+      - "rfc:8621 9.6"
+    notes: "Stalwart answers invalidProperties here, the RFC error is forbiddenFrom."
+
+  - id: IDN-022
+    title: "Reject an identity for an unregistered or external address with forbiddenFrom"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user who owns only a@example.com."
+    when: "Identity/set create with email nobody@example.com (same domain, not registered), with email someone@elsewhere.test, and with a forwarded only address registered in WildDuck."
+    then: "Each gives notCreated of type forbiddenFrom. No address is created in WildDuck as a side effect (GET /users/:user/addresses is unchanged)."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldReturnForbiddenFromErrorWhenForbiddenEmailProperty"
+      - "rfc:8621 9.6"
+    notes: "Identity/set never adds addresses to the account. Plan section 4.6 words create as mapping to adding an address, which would let any JMAP user claim free addresses. Treated here as creating an identity for an existing sending right only. Open question."
+
+  - id: IDN-023
+    title: "Allow identities covered by an owned domain wildcard"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user who owns *@wild.example. Another user owns *@other.example."
+    when: "Identity/set create with email anything@wild.example, with email *@wild.example, with email x@other.example and with email *@other.example."
+    then: "The first two are created. The last two give notCreated of type forbiddenFrom."
+    sources:
+      - "rfc:8621 6"
+      - "wildduck:lib/api/submit.js"
+
+  - id: IDN-024
+    title: "Match the email of a new identity the way WildDuck normalises addresses"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user who owns first.last@example.com."
+    when: "Identity/set create with email First.Last@EXAMPLE.com, and with the internationalised domain of an owned address given in its unicode and its punycode form."
+    then: "The identities are created (the address resolves to the user after normalisation). The returned email is in one documented canonical form and is the same value on every later read."
+    sources:
+      - "james:EmailSubmissionSetMethodContract#recipientShouldBeCaseInsensitive"
+      - "wildduck:lib/tools.js"
+
+  - id: IDN-025
+    title: "Require a syntactically valid email on create"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Any user."
+    when: "Identity/set create without email, with email null, with email as a number, with email not-an-address, and with an email containing a line break or angle brackets."
+    then: "Each gives notCreated of type invalidProperties with properties [email]. None is reported as forbiddenFrom."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldFailWhenEmailPropertyIsMissing"
+      - "james:IdentitySetContract#setIdentityShouldFailWhenEmailPropertyIsNull"
+      - "stalwart:mail/submission.rs"
+
+  - id: IDN-026
+    title: "Reject server set and unknown properties on create"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user who owns a@example.com."
+    when: "Identity/set create with a valid email plus id set to a value, plus mayDelete false, and plus an unknown property."
+    then: "Each gives notCreated of type invalidProperties naming the offending property, and no identity is created."
+    sources:
+      - "james:IdentitySetContract#setIdentityShouldNotCreatedWhenCreationRequestHasServerSetProperty"
+      - "rfc:8620 5.3"
+
+  - id: IDN-027
+    title: "Validate replyTo and bcc as EmailAddress lists"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user who owns a@example.com and an existing identity X."
+    when: "Create and update with replyTo as a string, replyTo as a list containing an object without email, bcc with an email that is not an address, bcc with an email containing CR LF, and replyTo with an unknown key in the address object."
+    then: "Each gives notCreated or notUpdated of type invalidProperties naming replyTo or bcc. An empty array is accepted and reads back as an empty array or null, consistently."
+    sources:
+      - "james:IdentitySetContract#updateShouldNotUpdatedWhenInvalidPropertyValue"
+      - "rfc:8621 4.1.2.3"
+    notes: "The stored values are later put into message headers by clients, so header injection characters must not be accepted."
+
+  - id: IDN-028
+    title: "Store replyTo and bcc addresses with and without names"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X."
+    when: "Update X with replyTo [{name: Reply Desk, email: reply@example.com}, {email: second@example.com}] and bcc [{name: null, email: archive@example.com}], then Identity/get."
+    then: "Both lists are returned in the same order. An address sent without name or with name null is returned with name null. Non ASCII names are returned unchanged."
+    sources:
+      - "james:IdentitySetContract#updateShouldModifyIdentityEntryWhenBccNameIsNull"
+      - "jmapio:identity/set-update-reply-to"
+      - "rfc:8621 6.4"
+
+  - id: IDN-029
+    title: "Store signatures verbatim"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X."
+    when: "Update X with a multi line textSignature (including the two dash delimiter line with trailing space) and an htmlSignature containing markup, entities and non ASCII text, then Identity/get."
+    then: "Both values are returned byte for byte, without trimming, sanitising or line ending conversion."
+    sources:
+      - "jmapio:identity/set-update-text-signature"
+      - "jmapio:identity/set-update-html-signature"
+      - "james:IdentitySetContract#updateShouldModifyIdentityEntry"
+
+  - id: IDN-030
+    title: "Limit the size of names and signatures"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A user who owns a@example.com and the configured identity limits."
+    when: "Create an identity with a name, textSignature or htmlSignature longer than the configured maximum, or with more replyTo or bcc entries than allowed."
+    then: "notCreated has type tooLarge (or invalidProperties naming the property) and nothing is stored. Values at the limit are accepted."
+    sources:
+      - "rfc:8620 5.3"
+    notes: "Limits are a WildDuck decision still to be made. The scenario exists so that unbounded signatures cannot be stored."
+
+  - id: IDN-031
+    title: "Limit the number of identities per account"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A user who already has the configured maximum number of identities."
+    when: "Identity/set create one more for an owned address."
+    then: "notCreated has type overQuota and the number of identities is unchanged."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: IDN-032
+    title: "Update the name of an identity"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X created through Identity/set with name Old."
+    when: "Identity/set update {X: {name: New}}, then Identity/get."
+    then: "updated has the key X, get returns name New and every other property unchanged, and the state changed."
+    sources:
+      - "james:IdentitySetContract#updateShouldSucceed"
+      - "jmapio:identity/set-update-name"
+      - "fastmail:t/Identity/set/basic.t"
+
+  - id: IDN-033
+    title: "Update an address derived identity and keep unpatched properties"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "The untouched identity M of the main address with name Jane Doe."
+    when: "Identity/set update {M: {textSignature: sig}}, then Identity/get."
+    then: "The update succeeds. M keeps its id, email, name Jane Doe and mayDelete false, and textSignature is sig."
+    sources:
+      - "james:IdentitySetContract#updateShouldAcceptServerSetId"
+      - "james:IdentitySetContract#firstUpdateOfServerSetIdentityShouldKeepUnpatchedProperties"
+      - "james:IdentityGetContract#mayDeleteShouldReturnFalseWhenUpdateServerSetIdentity"
+
+  - id: IDN-034
+    title: "Round trip the name of an address derived identity with the REST address name"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api, jmap]
+    given: "An owned address b@example.com with its derived identity D."
+    when: "Identity/set update {D: {name: From JMAP}} and GET /users/:user/addresses/:id. Then PUT the address with name From REST and Identity/get."
+    then: "The REST address shows name From JMAP after the first step and Identity/get shows name From REST after the second. Each change moves the Identity state."
+    sources:
+      - "wildduck:lib/api/addresses.js"
+    notes: "Assumes the address document is the single store for the name of a derived identity (plan section 4.6 leaves the storage open). Extra identities created over JMAP have their own name."
+
+  - id: IDN-035
+    title: "Reset replyTo and bcc with null"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X with replyTo and bcc set."
+    when: "Identity/set update {X: {replyTo: null, bcc: null}}, then Identity/get."
+    then: "Both properties are null."
+    sources:
+      - "james:IdentitySetContract#updateWithNullReplyToAndBccShouldResetThem"
+
+  - id: IDN-036
+    title: "Reject null for name and signatures"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An identity X with name and both signatures set."
+    when: "Identity/set update {X: {name: null}}, and separately textSignature null and htmlSignature null. Then update each with an empty string."
+    then: "null gives notUpdated of type invalidProperties naming the property, because the type is String without null. The empty string is accepted and read back as an empty string."
+    sources:
+      - "james:IdentitySetContract#updateWithNullNameAndSignaturesShouldResetThemToEmpty"
+      - "rfc:8621 6"
+    notes: "James treats null as a reset to the empty string. The RFC types are not nullable, so the strict result is expected. Revisit if a real client sends null."
+
+  - id: IDN-037
+    title: "Keep email immutable"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X with email a@example.com, the user also owns b@example.com."
+    when: "Identity/set update {X: {email: b@example.com}}, then update {X: {email: a@example.com, name: Same}}."
+    then: "The first gives notUpdated.X of type invalidProperties with properties [email] and nothing changes. The second, where the value equals the current one, succeeds and only the name changes."
+    sources:
+      - "james:IdentitySetContract#updateShouldNotUpdatedWhenAssignServerSetProperty"
+      - "rfc:8621 6"
+      - "rfc:8620 5.3"
+
+  - id: IDN-038
+    title: "Reject changes to server set properties on update"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "The main address identity M (mayDelete false) and an extra identity X."
+    when: "Identity/set update {M: {mayDelete: true}}, {X: {id: other}}, and {X: {bogus: 1}}."
+    then: "Each gives notUpdated of type invalidProperties naming the property. M still has mayDelete false."
+    sources:
+      - "james:IdentitySetContract#updateShouldNotUpdatedWhenAssignServerSetProperty"
+
+  - id: IDN-039
+    title: "Reject patch paths that point into the address arrays"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X with replyTo holding one address."
+    when: "Identity/set update {X: {replyTo/0/name: Changed}}."
+    then: "notUpdated.X has type invalidPatch and replyTo is unchanged. A PatchObject pointer must not reference inside an array."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: IDN-040
+    title: "Report unknown and malformed ids on update as notFound"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An identity X, and an identity Z belonging to another user."
+    when: "Identity/set update {X: {name: Ok}, unknownId: {name: A}, Z: {name: B}, an id with characters outside the Id alphabet: {name: C}}."
+    then: "updated contains only X. The other three are in notUpdated with type notFound, and the identity of the other user is untouched."
+    sources:
+      - "james:IdentitySetContract#updateShouldNotUpdatedWhenIdNotfound"
+      - "james:IdentitySetContract#updateShouldNotUpdatedWhenIdNotParsed"
+      - "james:IdentitySetContract#updateShouldSuccessWhenMixed"
+      - "jmapio:identity/set-not-found"
+
+  - id: IDN-041
+    title: "Destroy an extra identity"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An extra identity X (mayDelete true) created through Identity/set."
+    when: "Identity/set destroy [X], then Identity/get with ids [X]."
+    then: "destroyed is [X], the get reports X in notFound, the address derived identity for the same email still exists and the state changed."
+    sources:
+      - "james:IdentitySetContract#destroyShouldSucceedWhenDeleteCustomIdentity"
+      - "james:IdentitySetContract#deletedIdentityShouldNotBeFetchedAnyMore"
+      - "fastmail:t/Identity/set/basic.t"
+
+  - id: IDN-042
+    title: "Refuse to destroy the main address identity"
+    method: Identity/set
+    spec: "RFC 8621 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The identity M of the main address with mayDelete false."
+    when: "Identity/set destroy [M]."
+    then: "notDestroyed.M has type forbidden, destroyed is absent or empty, M is still returned by Identity/get and the state is unchanged."
+    sources:
+      - "james:IdentitySetContract#destroyShouldFailWhenDeleteServerSetIdentities"
+      - "fastmail:t/Identity/set/basic.t"
+      - "rfc:8621 6"
+
+  - id: IDN-043
+    title: "Report unknown ids on destroy and handle mixed batches"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "An extra identity X, the main identity M, and an identity Z of another user."
+    when: "Identity/set destroy [X, M, unknownId, Z]."
+    then: "destroyed is [X]. notDestroyed has M with type forbidden and unknownId and Z with type notFound. Z still exists for its owner."
+    sources:
+      - "james:IdentitySetContract#destroyShouldHandleMixedCases"
+      - "james:IdentitySetContract#destroyShouldFailWhenInvalidId"
+      - "james:IdentitySetContract#destroyShouldNotFailWhenUnknownId"
+    notes: "James silently accepts an unknown id on destroy. RFC 8620 5.3 requires notFound."
+
+  - id: IDN-044
+    title: "Leave the state untouched when nothing was changed"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Identity state S."
+    when: "An Identity/set in which every create, update and destroy is rejected, and an Identity/set with empty create, update and destroy."
+    then: "Both responses have oldState and newState equal to S, and Identity/changes since S is empty."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: IDN-045
+    title: "Enforce ifInState on Identity/set"
+    method: Identity/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Identity state S2 and an older state S1."
+    when: "Identity/set with ifInState S1 and a valid create, then the same with ifInState S2."
+    then: "The first answers with an error of type stateMismatch and creates nothing. The second succeeds."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: IDN-046
+    title: "Destroying the identity of an owned address never removes the address"
+    method: Identity/set
+    spec: "RFC 8621 6.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [api, lmtp]
+    given: "A user with main address a@example.com and a second address b@example.com whose derived identity D has mayDelete true."
+    when: "Identity/set destroy [D], then GET /users/:user/addresses and deliver a message to b@example.com."
+    then: "D is in destroyed and no longer returned by Identity/get. The address b@example.com is still registered and the message is delivered to the user. The identity does not reappear on later reads unless the address is removed and added again."
+    sources:
+      - "wildduck:lib/api/addresses.js"
+      - "rfc:8621 6"
+    notes: "Open question. The brief only fixes mayDelete false for the main address. A destroy over JMAP must not delete a receiving address, so it can only hide the identity. The alternative is mayDelete false for every address derived identity, which is simpler and what James does for server set identities."
+
+  - id: IDN-047
+    title: "Return no changes for the current state"
+    method: Identity/changes
+    spec: "RFC 8621 6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "State S taken from Identity/get."
+    when: "Identity/changes with sinceState S."
+    then: "oldState and newState equal S, hasMoreChanges is false, and created, updated and destroyed are empty arrays."
+    sources:
+      - "james:IdentityChangesContract#shouldReturnEmptyWhenKnownState"
+      - "cyrus:JMAPCore/identity_changes"
+      - "jmapio:identity/changes-no-changes"
+      - "jmapio:identity/changes-response-structure"
+      - "fastmail:t/Identity/changes/basic.t"
+
+  - id: IDN-048
+    title: "Report created, updated and destroyed identities exactly"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "State S1 with identities X and Y."
+    when: "Create identity N, update the name of X and destroy Y through Identity/set, then Identity/changes with sinceState S1."
+    then: "created is [N], updated is [X], destroyed is [Y], each id appears in one list only, newState equals the state of Identity/get, and a second call since newState is empty."
+    sources:
+      - "jmapio:identity/changes-after-update"
+      - "rfc:8620 5.2"
+    notes: "Identity uses the exact owned change log (plan section 10.3), not the mail journal."
+
+  - id: IDN-049
+    title: "Collapse intermediate changes"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "State S1."
+    when: "Create identity T and destroy it again, create identity U and update it twice, update existing identity X and then destroy it. Then Identity/changes with sinceState S1."
+    then: "T is in no list, U is only in created, X is only in destroyed."
+    sources:
+      - "rfc:8620 5.2"
+
+  - id: IDN-050
+    title: "Report address changes made through the REST API"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "State S1, a user with addresses a@example.com (main), b@example.com and c@example.com."
+    when: "Through the REST API add d@example.com, delete c@example.com and change the name of b@example.com. Then Identity/changes with sinceState S1."
+    then: "created holds the identity of d@example.com, destroyed the former identity of c@example.com and updated the identity of b@example.com. Nothing else is listed."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "wildduck:lib/api/addresses.js"
+    notes: "Address changes are not journaled today (plan section 4.6 and prerequisites). Answering cannotCalculateChanges for every address change is the fallback the plan mentions, this scenario asks for the exact form."
+
+  - id: IDN-051
+    title: "Report both identities as updated when the main address changes"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "State S1, main address a@example.com and second address b@example.com."
+    when: "Make b@example.com the main address through the REST API, then Identity/changes with sinceState S1."
+    then: "updated contains the identities of both addresses (their mayDelete values changed), created and destroyed are empty."
+    sources:
+      - "wildduck:lib/api/addresses.js"
+
+  - id: IDN-052
+    title: "Move identities between accounts when an address changes owner"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "User A owns x@example.com, user B does not. Both have known Identity states."
+    when: "The address is deleted from A and added to B through the REST API. Both call Identity/changes."
+    then: "A sees the identity in destroyed, B sees a new identity in created with a different id. Extra identities and stored signatures of A for that address are not carried over to B."
+    sources:
+      - "stalwart:mail/submission.rs"
+      - "wildduck:lib/api/addresses.js"
+
+  - id: IDN-053
+    title: "Answer cannotCalculateChanges for an unknown or expired state"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [db, time]
+    given: "A user with identities."
+    when: "Identity/changes with a sinceState that was never issued, with a state string of another data type (the Email state), and with a real state whose tombstones have passed the retention of at least 30 days."
+    then: "Each answers with an error of type cannotCalculateChanges. A state younger than the retention never does."
+    sources:
+      - "james:IdentityChangesContract#shouldReturnCannotCalculateChanges"
+      - "fastmail:t/Identity/changes/basic.t"
+      - "rfc:8620 5.2"
+
+  - id: IDN-054
+    title: "Page through changes with maxChanges"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "State S1 followed by five identity creations."
+    when: "Identity/changes with sinceState S1 and maxChanges 2, repeated with each returned newState until hasMoreChanges is false. Also once with maxChanges 0."
+    then: "No response lists more than 2 ids in total, hasMoreChanges is true until the last page, the union of all pages is exactly the five ids, and the final newState equals the current state. maxChanges 0 answers invalidArguments."
+    sources:
+      - "rfc:8620 5.2"
+
+  - id: IDN-055
+    title: "Keep the Identity state independent of mail activity"
+    method: Identity/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Identity state S."
+    when: "A message is delivered, flags are changed over IMAP and a mailbox is created."
+    then: "Identity/get still returns state S and Identity/changes since S is empty."
+    sources:
+      - "rfc:8620 5.1"
+
+  - id: IDN-056
+    title: "Push an Identity state change when the address list changes"
+    method: EventSource
+    spec: "RFC 8620 7.1"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [api, jmap]
+    given: "An open EventSource connection for all types."
+    when: "An address is added through the REST API, and later an identity is updated through Identity/set."
+    then: "A state event arrives for each change whose changed map carries an Identity entry for the account equal to the state Identity/get then returns."
+    sources:
+      - "rfc:8620 7.1"
+
+  - id: IDN-057
+    title: "Change the session state when session visible address data changes"
+    method: Session
+    spec: "RFC 8620 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [api]
+    given: "The session state T1 and the sessionState T1 returned in API responses. The account name in the session object is the main address."
+    when: "The main address is changed through the REST API, then the session is fetched and an API request is made. Separately, a non main address is added."
+    then: "After the main address change the session state and the sessionState of API responses are a new value T2 and the account name is the new main address. Adding a non main address changes the Identity state but leaves the session state alone unless the session object content changed."
+    sources:
+      - "rfc:8620 2"
+      - "rfc:8620 3.4"
+    notes: "RFC 8620 ties the session state to the content of the session object only. The address list is not part of that object, so a blanket change on every address edit would be a WildDuck choice that makes clients refetch the session needlessly. Open question, see final report."

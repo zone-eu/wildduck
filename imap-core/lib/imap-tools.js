@@ -52,7 +52,10 @@ module.exports.fetchSchema = {
     'rfc822.size': true,
     'rfc822.text': true,
     modseq: true,
-    uid: true
+    uid: true,
+    // RFC 8474 OBJECTID, only with the objectIds server option
+    emailid: true,
+    threadid: true
 };
 
 module.exports.searchSchema = {
@@ -65,6 +68,8 @@ module.exports.searchSchema = {
     cc: ['string'],
     deleted: true,
     draft: true,
+    // RFC 8474 OBJECTID, only with the objectIds server option
+    emailid: ['string'],
     flagged: true,
     from: ['string'],
     header: ['string', 'string'],
@@ -86,6 +91,7 @@ module.exports.searchSchema = {
     smaller: ['number'],
     subject: ['string'],
     text: ['string'],
+    threadid: ['string'],
     to: ['string'],
     uid: ['sequence'],
     unanswered: true,
@@ -642,6 +648,14 @@ module.exports.getQueryResponse = function (query, message, options) {
                 value = message.modseq;
                 break;
 
+            // RFC 8474 5: EMAILID (<objectid>), THREADID (<objectid>) or THREADID NIL
+            case 'emailid':
+            case 'threadid': {
+                let objectId = options.objectIds && options.objectIds[item.item === 'emailid' ? 'email' : 'thread'](message);
+                value = objectId ? [{ type: 'ATOM', value: objectId }] : null;
+                break;
+            }
+
             case 'flags':
                 value = message.flags;
                 break;
@@ -894,6 +908,10 @@ module.exports.sendCapabilityResponse = connection => {
         if (connection._server.options.maxMessage) {
             capabilities.push('APPENDLIMIT=' + connection._server.options.maxMessage);
         }
+    }
+
+    if (connection._server.options.objectIds) {
+        capabilities.push('OBJECTID');
     }
 
     capabilities.sort((a, b) => a.localeCompare(b));

@@ -1,0 +1,3636 @@
+area: mailbox
+title: "Mailbox"
+description: "RFC 8621 section 2: Mailbox/get, Mailbox/changes, Mailbox/query, Mailbox/queryChanges and Mailbox/set, mapped onto WildDuck's path based mailboxes. Includes the cross protocol cases where a change is made over IMAP, LMTP or the REST API and observed over JMAP, and the reverse."
+scenarios:
+  # ---------------------------------------------------------------- Mailbox/get
+  - id: MBX-001
+    title: "Mailbox/get with ids null returns every mailbox of the account"
+    method: Mailbox/get
+    spec: "RFC 8621 2.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A freshly created user with only the default mailboxes (INBOX, Sent Mail, Trash, Drafts, Junk)."
+    when: "Mailbox/get is called with accountId set to the user id and ids null."
+    then: "The response is a Mailbox/get invocation with the same accountId, a non-empty string state, notFound equal to an empty array and list holding exactly five objects, one per default mailbox, each with a distinct id."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnAllPropertiesWhenNull"
+      - "cyrus:JMAPMailbox/mailbox_get"
+      - "stalwart:compliance/mailbox.rs#get_all"
+      - "jmapio:mailbox/get-all"
+      - "jmapio:mailbox/get-state-returned"
+      - "jmapio:mailbox/get-account-id-returned"
+      - "fastmail:t/Mailbox/get/no-existing-entities.t"
+      - "rfc:8621 2.1"
+
+  - id: MBX-002
+    title: "A Mailbox object carries every RFC property with the right type"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A user with the default mailboxes plus a mailbox 'Projects' created over IMAP."
+    when: "Mailbox/get is called with ids null and properties null."
+    then: "Every object has exactly the keys id, name, parentId, role, sortOrder, totalEmails, unreadEmails, totalThreads, unreadThreads, myRights and isSubscribed. id and name are strings, parentId and role are string or null, the five numbers are non-negative integers, isSubscribed is a boolean and myRights holds exactly the nine boolean rights mayReadItems, mayAddItems, mayRemoveItems, maySetSeen, maySetKeywords, mayCreateChild, mayRename, mayDelete, maySubmit."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnAllPropertiesWhenNull"
+      - "cyrus:JMAPMailbox/mailbox_get"
+      - "stalwart:compliance/mailbox.rs#get_mailbox_properties"
+      - "jmapio:mailbox/get-mailbox-properties"
+      - "rfc:8621 2"
+
+  - id: MBX-003
+    title: "Mailbox objects expose no sharing, quota or vendor properties"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [none]
+    given: "Two users A and B on the same server, each with default mailboxes."
+    when: "User A calls Mailbox/get with ids null, with every capability the session advertises in using."
+    then: "Only A's own mailboxes are listed. No object has shareWith, rights, namespace, quotas or any other key beyond the eleven RFC 8621 properties, and requesting shareWith in properties answers invalidArguments. A B mailbox id passed in ids comes back in notFound."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnOnlyMailboxesOfCurrentUser"
+      - "james:MailboxGetMethodContract#getMailboxesShouldNotIncludeDelegatedMailboxesWhenExtensionNotPresent"
+      - "cyrus:JMAPMailbox/mailbox_get_mail_share_isolation"
+      - "wildduck:brief accounts and auth"
+    notes: "WildDuck has no sharing, so all James and Cyrus delegation tests collapse into this one scenario."
+
+  - id: MBX-004
+    title: "Mailbox/get with a list of ids returns only those mailboxes"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes; the ids of INBOX and Trash are known."
+    when: "Mailbox/get is called with ids set to those two ids."
+    then: "list has exactly two objects whose ids are the requested ones and notFound is an empty array."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesByIdsShouldReturnCorrespondingMailbox"
+      - "james:MailboxGetMethodContract#getMailboxesByIdsShouldReturnOnlyRequestedMailbox"
+      - "cyrus:JMAPMailbox/mailbox_get_ids"
+      - "stalwart:compliance/mailbox.rs#get_by_ids"
+      - "jmapio:mailbox/get-by-ids"
+      - "fastmail:t/Mailbox/get/some-entities.t"
+
+  - id: MBX-005
+    title: "Unknown mailbox ids are reported in notFound next to the found ones"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with ids holding the INBOX id and a well formed id that names no mailbox."
+    then: "list has only the INBOX object and notFound is an array holding exactly the unknown id. The method does not fail."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesByIdsShouldReturnBothFoundAndNotFound"
+      - "james:MailboxGetMethodContract#getMailboxesByIdsShouldReturnNotFoundWhenMailboxDoesNotExist"
+      - "cyrus:JMAPMailbox/mailbox_get_ids"
+      - "stalwart:compliance/mailbox.rs#get_not_found"
+      - "jmapio:mailbox/get-not-found"
+
+  - id: MBX-006
+    title: "An id that cannot be a WildDuck mailbox id is notFound, not an error"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with ids holding a valid JMAP Id that does not have the WildDuck mailbox id shape (for example 'abc' or a creation style id '#x' that was never created)."
+    then: "Each such id is returned in notFound and list is empty. No invalidArguments error and no server error is raised."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnNotFoundWhenInvalid"
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnNotFoundWhenUnknownClientId"
+    notes: "Guards against passing an unparsable string to the ObjectId constructor."
+
+  - id: MBX-007
+    title: "Mailbox/get with an empty ids array returns an empty list"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with ids set to an empty array."
+    then: "list and notFound are both empty arrays and state is returned."
+    sources:
+      - "fastmail:t/Mailbox/get/no-existing-entities.t"
+      - "rfc:8620 5.1"
+
+  - id: MBX-008
+    title: "The properties argument limits the returned properties and id is always included"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with ids null and properties ['name', 'role'], then again with properties ['name'] only."
+    then: "In the first response every object has exactly the keys id, name and role. In the second every object has exactly id and name, although id was not requested."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnOnlyNameAndIdWhenPropertiesRequested"
+      - "james:MailboxGetMethodContract#getMailboxesShouldAlwaysReturnIdEvenIfNotRequested"
+      - "cyrus:JMAPMailbox/mailbox_get_properties"
+      - "stalwart:compliance/mailbox.rs#get_properties_filter"
+      - "jmapio:mailbox/get-properties-filter"
+      - "fastmail:t/Mailbox/get/limiting-properties-in-response.t"
+
+  - id: MBX-009
+    title: "An empty properties array returns objects holding only id"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with ids null and properties set to an empty array."
+    then: "list has five objects and each has the single key id."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnIdWhenNoPropertiesRequested"
+
+  - id: MBX-010
+    title: "An unknown property name in properties is rejected with invalidArguments"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with properties ['name', 'invalidProperty']."
+    then: "The method response is an error invocation of type invalidArguments, and no list is returned."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnInvalidArgumentsErrorWhenInvalidProperty"
+      - "cyrus:JMAPMailbox/mailbox_get_properties"
+      - "rfc:8620 3.6.2"
+
+  - id: MBX-011
+    title: "Mailbox/get with a foreign or unknown accountId answers accountNotFound"
+    method: Mailbox/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Two users A and B."
+    when: "User A calls Mailbox/get once with accountId set to B's user id and once with a made up accountId."
+    then: "Both calls return an error invocation of type accountNotFound, with HTTP status 200 for the request as a whole."
+    sources:
+      - "james:MailboxGetMethodContract#mailboxGetShouldFailWhenWrongAccountId"
+      - "fastmail:t/Mailbox/foreign-account.t"
+      - "rfc:8620 3.6.2"
+
+  - id: MBX-012
+    title: "Mailbox methods need the mail capability in using"
+    method: Mailbox/get
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called in a request whose using lists only urn:ietf:params:jmap:core."
+    then: "The method response is an error invocation of type unknownMethod."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnUnknownMethodWhenMissingOneCapability"
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnUnknownMethodWhenMissingAllCapabilities"
+      - "james:MailboxQueryChangesContract#missCapabilities"
+      - "rfc:8620 3.3"
+
+  - id: MBX-013
+    title: "More ids than maxObjectsInGet answers requestTooLarge"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxObjectsInGet N."
+    when: "Mailbox/get is called with ids holding N plus 1 distinct ids."
+    then: "The method response is an error invocation of type requestTooLarge. With ids null the call succeeds even if the account holds more than N mailboxes only when the server chooses to allow it; WildDuck returns all mailboxes for ids null because the per user maximum is 1500."
+    sources:
+      - "rfc:8620 5.1"
+    notes: "maxObjectsInGet must therefore not make ids null unusable; either it is at least 1500 or ids null is exempt. Decision needed."
+
+  - id: MBX-014
+    title: "Roles are derived from special use, plus inbox for INBOX"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A user with the default mailboxes and an ordinary mailbox 'Projects' created over IMAP."
+    when: "Mailbox/get is called with ids null and properties ['name', 'role']."
+    then: "INBOX has role 'inbox', the mailbox with special use \\Sent has 'sent', \\Trash has 'trash', \\Drafts has 'drafts', \\Junk has 'junk', all lowercase and without the backslash. 'Projects' has role null. The role strings match what IMAP LIST reports as special use attributes for the same paths."
+    sources:
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnCorrectMailboxRoleForJunk"
+      - "cyrus:JMAPMailbox/mailbox_get_specialuse"
+      - "stalwart:compliance/mailbox.rs#get_inbox_exists"
+      - "jmapio:mailbox/get-inbox-exists"
+      - "jmap-perl:t/mailbox-roles.t"
+
+  - id: MBX-015
+    title: "No two mailboxes share a role and a role never comes from the name"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A user with the default mailboxes plus mailboxes named 'Sent', 'Archive', 'Spam' and 'Posteingang' created over IMAP without special use."
+    when: "Mailbox/get is called with ids null."
+    then: "Each of the roles inbox, sent, trash, drafts and junk appears on exactly one mailbox. The four IMAP created mailboxes have role null, whatever their names suggest."
+    sources:
+      - "jmap-perl:t/mailbox-roles.t"
+      - "cyrus:JMAPMailbox/mailbox_set_role_dups_existingrole"
+      - "rfc:8621 2"
+    notes: "Unlike an IMAP proxy, WildDuck knows the special use and must not guess a role from a name."
+
+  - id: MBX-016
+    title: "A special use mailbox renamed over IMAP keeps its id and role"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "A user whose \\Sent mailbox 'Sent Mail' has a known JMAP id."
+    when: "The mailbox is renamed to 'Sent Items' over IMAP RENAME, then Mailbox/get is called for the id."
+    then: "The same id is found, name is 'Sent Items', role is still 'sent', and no other mailbox has role sent."
+    sources:
+      - "wildduck:lib/mailbox-handler.js rename"
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+    notes: "Decided 2026-11-11: JMAP mirrors the mailbox handler, which refuses rename only for INBOX and hidden mailboxes. Special use mailboxes can be renamed and keep their role."
+
+  - id: MBX-017
+    title: "The INBOX is returned with name INBOX and no parent"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called for the mailbox with role inbox."
+    then: "name is the stored path 'INBOX' unchanged and parentId is null. The server does not localise or re-case the name."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get"
+      - "wildduck:brief mailboxes"
+
+  - id: MBX-018
+    title: "parentId and name are derived from the path"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'Work', 'Work/Clients' and 'Work/Clients/Acme' created over IMAP in that order."
+    when: "Mailbox/get is called with ids null."
+    then: "'Work' has name 'Work' and parentId null. The second has name 'Clients' and parentId equal to the id of 'Work'. The third has name 'Acme' and parentId equal to the id of 'Work/Clients'. No name contains a slash."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get"
+      - "stalwart:compliance/mailbox.rs#get_parent_id_correct"
+      - "jmapio:mailbox/get-parent-id-correct"
+
+  - id: MBX-019
+    title: "A mailbox under INBOX has the INBOX as its parent"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox 'INBOX/Receipts' created over IMAP."
+    when: "Mailbox/get is called with ids null."
+    then: "The mailbox has name 'Receipts', role null and parentId equal to the id of the mailbox with role inbox."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get_inbox_sub"
+      - "cyrus:JMAPMailbox/mailbox_set_inbox_children"
+
+  - id: MBX-020
+    title: "A mailbox whose parent path does not exist hangs off the nearest existing ancestor"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Mailbox 'A' exists. Mailbox 'A/B/C' is created over IMAP while 'A/B' does not exist."
+    when: "Mailbox/get is called with ids null."
+    then: "No Mailbox object exists for 'A/B'. The object for 'A/B/C' has parentId equal to the id of 'A' and name 'B/C'. The set of returned ids equals the set of mailboxes IMAP LIST returns as selectable."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get_intermediate"
+      - "cyrus:JMAPMailbox/mailbox_intermediate_no_emails"
+      - "wildduck:jmap-report 4.2"
+    notes: "Cyrus invents intermediate mailboxes with their own ids; WildDuck does not. The derived name then contains the delimiter, which Mailbox/set would reject as input. This asymmetry is accepted by the plan."
+
+  - id: MBX-021
+    title: "A mailbox with no existing ancestor at all is top level with its full path as name"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Mailbox 'X/Y/Z' is created over IMAP while neither 'X' nor 'X/Y' exists."
+    when: "Mailbox/get is called with ids null."
+    then: "The object for the mailbox has parentId null and name 'X/Y/Z'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get_intermediate"
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-022
+    title: "Creating the missing ancestor later re-parents the orphan without changing its id"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "'A' and 'A/B/C' exist without 'A/B' (state S1 taken); the id of 'A/B/C' is known."
+    when: "'A/B' is created over IMAP, then Mailbox/get ids null and Mailbox/changes sinceState S1 are called."
+    then: "The object for 'A/B/C' keeps its id, now has name 'C' and parentId equal to the id of the new 'A/B'. Mailbox/changes lists the new mailbox in created and the id of 'A/B/C' in updated with updatedProperties null."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_createchild"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_intermediary_added"
+      - "wildduck:jmap-report 4.2"
+    notes: "The journal has a CREATE entry only for the new mailbox, so the change fold must derive the affected descendants."
+
+  - id: MBX-023
+    title: "Hidden mailboxes are not exposed"
+    method: Mailbox/get
+    spec: "RFC 8621 2.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "A mailbox 'Internal' marked hidden through the REST API, with a known id, and a visible child 'Internal/Visible'."
+    when: "Mailbox/get is called with ids null, then with ids holding the hidden mailbox id."
+    then: "The hidden mailbox is absent from the full list and its id is returned in notFound. The visible child is listed with the missing ancestor rule applied (parentId null, name 'Internal/Visible')."
+    sources:
+      - "wildduck:jmap-report 4.2"
+      - "cyrus:JMAPMailbox/mailbox_ignore_notes_subfolders"
+    notes: "Treating a hidden mailbox like a missing ancestor keeps the tree consistent."
+
+  - id: MBX-024
+    title: "A mailbox name created over IMAP in modified UTF-7 is returned as Unicode"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox created over IMAP whose wire name is the modified UTF-7 form of 'Entwürfe ☺'."
+    when: "Mailbox/get is called with ids null."
+    then: "The object's name is the Unicode string 'Entwürfe ☺', with no ampersand escapes."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+      - "jmap-perl:t/mailbox-roles.t"
+
+  - id: MBX-025
+    title: "The mailbox id survives an IMAP rename"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox 'foo' created over IMAP with a known JMAP id."
+    when: "It is renamed to 'bar' over IMAP and Mailbox/get is called with that id."
+    then: "The id is found, name is 'bar', counts are unchanged, and no mailbox named 'foo' is listed."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+      - "cyrus:JMAPMailbox/mailbox_changes_rename"
+      - "wildduck:brief ids"
+
+  - id: MBX-026
+    title: "sortOrder defaults to 0"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Default mailboxes and one mailbox created over IMAP; sortOrder was never set."
+    when: "Mailbox/get is called with properties ['sortOrder']."
+    then: "sortOrder is the integer 0 on every mailbox, including INBOX and the special use mailboxes."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_create_defaults"
+      - "fastmail:t/Mailbox/set/create/defaults-omitted.t"
+      - "wildduck:brief mailboxes"
+
+  - id: MBX-027
+    title: "isSubscribed mirrors the IMAP subscription"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'Sub' and 'Unsub' created over IMAP; IMAP UNSUBSCRIBE is sent for 'Unsub'."
+    when: "Mailbox/get is called with properties ['name', 'isSubscribed'] and IMAP LSUB is run."
+    then: "'Sub' has isSubscribed true and 'Unsub' false. The set of mailboxes with isSubscribed true equals the set LSUB returns. The default mailboxes have isSubscribed true."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get_inbox_sub"
+      - "cyrus:JMAPMailbox/mailbox_set_issubscribed"
+      - "james:MailboxSetMethodContract#mailboxSetShouldSubscribeMailboxByDefault"
+
+  - id: MBX-028
+    title: "totalEmails counts the messages in the mailbox"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "Three messages delivered to INBOX and two appended to 'Projects' over IMAP; no flags changed."
+    when: "Mailbox/get is called with properties ['totalEmails']."
+    then: "totalEmails is 3 for INBOX, 2 for 'Projects' and 0 for every other mailbox. The values equal IMAP STATUS MESSAGES for the same mailboxes."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "stalwart:compliance/mailbox.rs#get_total_emails_accurate"
+      - "stalwart:mail/mailbox.rs"
+      - "jmapio:mailbox/get-total-emails-accurate"
+      - "jmap-perl:t/mailbox-counts.t"
+
+  - id: MBX-029
+    title: "unreadEmails counts messages without $seen"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "Four messages in INBOX, one of them flagged \\Seen over IMAP."
+    when: "Mailbox/get is called for INBOX."
+    then: "totalEmails is 4 and unreadEmails is 3. After a second message is flagged \\Seen over IMAP, a new call returns unreadEmails 2. After the flag is removed again, 3."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "cyrus:JMAPMailbox/mailbox_counts_add_remove"
+      - "stalwart:mail/mailbox.rs"
+      - "jmap-perl:t/mailbox-counts.t"
+
+  - id: MBX-030
+    title: "Unread drafts do not count as unread"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The Drafts mailbox holds two messages appended over IMAP with \\Draft and without \\Seen, and one message with neither flag."
+    when: "Mailbox/get is called for Drafts."
+    then: "totalEmails is 3 and unreadEmails is 1. IMAP STATUS UNSEEN for the same mailbox reports 3, which is expected to differ."
+    sources:
+      - "rfc:8621 2"
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "wildduck:jmap-report 4.2"
+    notes: "The existing Redis unseen counter includes unread drafts, so JMAP needs its own count."
+
+  - id: MBX-031
+    title: "Messages flagged \\Deleted are excluded from every count"
+    method: Mailbox/get
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox with three unread messages in three different threads; one is flagged \\Deleted over IMAP and not expunged."
+    when: "Mailbox/get is called for the mailbox."
+    then: "totalEmails is 2, unreadEmails is 2, totalThreads is 2 and unreadThreads is 2. After the \\Deleted flag is cleared over IMAP all four are 3 again."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "wildduck:brief emails"
+      - "rfc:8621 4.1.1"
+    notes: "RFC 8621 4.1.1 says a message with the IMAP \\Deleted flag must be treated as not present. IMAP STATUS MESSAGES still reports 3."
+
+  - id: MBX-032
+    title: "totalThreads counts distinct threads with at least one message in the mailbox"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "INBOX holds a thread of three messages (original and two replies with matching references and subject) and two unrelated single messages."
+    when: "Mailbox/get is called for INBOX."
+    then: "totalEmails is 5 and totalThreads is exactly 3."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "cyrus:JMAPMailbox/mailbox_changes_on_thread_counts"
+      - "jmap-perl:t/mailbox-counts.t"
+      - "wildduck:jmap-report 5.6"
+
+  - id: MBX-033
+    title: "A thread spread over two mailboxes counts once in each"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "A thread with one message in INBOX and the reply in Sent Mail, nothing else in either mailbox."
+    when: "Mailbox/get is called for both mailboxes."
+    then: "totalThreads is 1 for INBOX and 1 for Sent Mail; totalEmails is 1 for each. After the INBOX message is moved to Sent Mail over IMAP, INBOX has totalThreads 0 and Sent Mail has totalEmails 2 and totalThreads 1."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "cyrus:JMAPMailbox/mailbox_counts_add_remove"
+      - "jmap-perl:t/mailbox-counts.t"
+
+  - id: MBX-034
+    title: "unreadThreads counts threads with an unread, non-draft message in this mailbox"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: should
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "Mailbox 'a' holds thread T1 (messages A seen, B unseen) and thread T2 (message D unseen). Mailbox 'b' holds message C of thread T1, seen."
+    when: "Mailbox/get is called for 'a' and 'b', then B is marked \\Seen over IMAP and the call is repeated."
+    then: "First: 'a' has unreadThreads 2 and 'b' has 0. After marking B seen: 'a' has unreadThreads 1 and 'b' still 0. unreadThreads never exceeds totalThreads or unreadEmails."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_changes_on_thread_counts"
+      - "cyrus:JMAPMailbox/mailbox_counts"
+      - "rfc:8621 2"
+    notes: "WildDuck implements the simple definition the RFC allows (unread message in this mailbox). The quality definition would give 'b' an unreadThreads of 1 in the first step because the unread message may be elsewhere. Cyrus implements the quality definition; this is a recorded deviation."
+
+  - id: MBX-035
+    title: "Trash is counted separately for unreadThreads"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "The whole account is one thread of two messages: an unread one in Trash and a read one in INBOX."
+    when: "Mailbox/get is called for Trash and INBOX."
+    then: "unreadThreads is 1 for Trash and 0 for INBOX; totalThreads is 1 for both."
+    sources:
+      - "rfc:8621 2"
+      - "cyrus:JMAPMailbox/mailbox_trash_counts_ondelete"
+      - "cyrus:JMAPMailbox/mailbox_counts"
+
+  - id: MBX-036
+    title: "Counts return to zero when the mailbox is emptied"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox with four messages in two threads, two unread."
+    when: "All messages are flagged \\Deleted and expunged over IMAP, then Mailbox/get is called."
+    then: "totalEmails, unreadEmails, totalThreads and unreadThreads are all exactly 0, never negative and never stale."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_trash_counts_ondelete"
+      - "cyrus:JMAPMailbox/mailbox_counts_add_remove"
+      - "jmap-perl:t/mailbox-counts.t"
+    notes: "Cached counters must equal a full recount after every kind of change."
+
+  - id: MBX-037
+    title: "An ordinary mailbox grants every right"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "An ordinary mailbox 'Projects' created over IMAP."
+    when: "Mailbox/get is called with properties ['myRights']."
+    then: "All nine rights are true: mayReadItems, mayAddItems, mayRemoveItems, maySetSeen, maySetKeywords, mayCreateChild, mayRename, mayDelete, maySubmit."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get"
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnDeleteMailboxRight"
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-038
+    title: "INBOX may not be renamed or deleted, special use mailboxes may be renamed but not deleted"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/get is called with properties ['role', 'myRights']."
+    then: "INBOX has mayRename and mayDelete false. Mailboxes with roles sent, trash, drafts and junk have mayRename true and mayDelete false. All other rights are true for all of them (including mayCreateChild)."
+    sources:
+      - "wildduck:brief mailboxes"
+      - "wildduck:lib/mailbox-handler.js"
+      - "cyrus:JMAPMailbox/mailbox_set_role_protected_destroy"
+    notes: "Decided 2026-11-11: JMAP mirrors the mailbox handler, which refuses rename only for INBOX and hidden mailboxes. Special use mailboxes can be renamed and keep their role."
+
+  - id: MBX-039
+    title: "Mailbox, Email and Thread report the same state string"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "A user with one delivered message."
+    when: "Mailbox/get, Email/get and Thread/get are called in one request, each with an empty ids array."
+    then: "The three state values are identical strings."
+    sources:
+      - "wildduck:brief state and changes"
+      - "james:MailboxGetMethodContract#mailboxStateShouldBeTheLatestOne"
+
+  - id: MBX-040
+    title: "The state is stable while nothing changes"
+    method: Mailbox/get
+    spec: "RFC 8620 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes and no activity."
+    when: "Mailbox/get is called twice, with IMAP SELECT, STATUS and FETCH of INBOX (read only commands) run in between."
+    then: "Both responses carry the same state string."
+    sources:
+      - "james:MailboxGetMethodContract#mailboxStateShouldBeTheLatestOne"
+      - "fastmail:t/Mailbox/changes/container-state-tracking.t"
+      - "rfc:8620 5.1"
+
+  - id: MBX-041
+    title: "Mailbox/get accepts ids from a Mailbox/query result reference"
+    method: Mailbox/get
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "One request holds Mailbox/query with filter hasAnyRole true (call id 'q') and Mailbox/get with '#ids' set to resultOf 'q', name 'Mailbox/query', path '/ids'."
+    then: "Mailbox/get returns exactly the five role mailboxes, in the order of the query ids or any order, with notFound empty."
+    sources:
+      - "rfc:8621 2.6"
+      - "cyrus:JMAPMailbox/mailbox_query"
+
+  # ------------------------------------------------------------ Mailbox/changes
+  - id: MBX-042
+    title: "Mailbox/changes with the current state reports nothing"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "State S obtained from Mailbox/get; nothing happens afterwards."
+    when: "Mailbox/changes is called with sinceState S."
+    then: "The response has accountId, oldState S, newState S, hasMoreChanges false, created, updated and destroyed as empty arrays and updatedProperties null."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnNoChangesWhenNoNewerState"
+      - "cyrus:JMAPMailbox/mailbox_changes"
+      - "stalwart:compliance/mailbox.rs#changes_no_changes"
+      - "stalwart:compliance/mailbox.rs#changes_response_structure"
+      - "jmapio:mailbox/changes-no-changes"
+      - "jmapio:mailbox/changes-response-structure"
+      - "fastmail:t/Mailbox/changes/no-changes.t"
+
+  - id: MBX-043
+    title: "A mailbox created over IMAP is reported as created"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1 from Mailbox/get."
+    when: "A mailbox 'New' is created over IMAP CREATE, then Mailbox/changes is called with sinceState S1."
+    then: "created holds exactly one id, updated and destroyed are empty, newState differs from S1 and equals the state of a following Mailbox/get. Mailbox/get for the created id returns name 'New'."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnCreatedChanges"
+      - "cyrus:JMAPMailbox/mailbox_changes"
+      - "stalwart:compliance/mailbox.rs#changes_after_create"
+      - "jmapio:mailbox/changes-after-create"
+      - "fastmail:t/Mailbox/changes/with-changes.t"
+
+  - id: MBX-044
+    title: "A mailbox created through the REST API is reported as created"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "State S1 from Mailbox/get."
+    when: "POST /users/:user/mailboxes creates path 'Api/Made' in the REST API, then Mailbox/changes is called with sinceState S1."
+    then: "created holds the JMAP id of the new mailbox, which corresponds to the id the REST API returned. updated and destroyed are empty."
+    sources:
+      - "wildduck:brief state and changes"
+
+  - id: MBX-045
+    title: "An IMAP rename is reported as updated with updatedProperties null"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox 'Before' with a known id; state S1."
+    when: "It is renamed to 'After' over IMAP RENAME, then Mailbox/changes is called with sinceState S1."
+    then: "updated holds exactly the mailbox id, created and destroyed are empty and updatedProperties is null."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenRenameMailbox"
+      - "cyrus:JMAPMailbox/mailbox_changes_rename"
+      - "stalwart:compliance/mailbox.rs#changes_after_rename"
+      - "jmapio:mailbox/changes-after-rename"
+
+  - id: MBX-046
+    title: "A REST API rename is reported as updated"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A mailbox 'Before' with a known id; state S1."
+    when: "PUT /users/:user/mailboxes/:mailbox sets path 'After', then Mailbox/changes is called with sinceState S1."
+    then: "updated holds the mailbox id, created and destroyed are empty, updatedProperties is null, and Mailbox/get shows name 'After' under the same id."
+    sources:
+      - "wildduck:brief state and changes"
+
+  - id: MBX-047
+    title: "Renaming a parent over IMAP never destroys or recreates its children"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'P', 'P/C1' and 'P/C1/C2' with known ids; state S1."
+    when: "'P' is renamed to 'Q' over IMAP, then Mailbox/changes sinceState S1 and Mailbox/get ids null are called."
+    then: "created and destroyed are empty. updated contains the id of the renamed parent; the children ids may also appear. Mailbox/get shows the same three ids, the parent named 'Q', and the children with unchanged name and parentId."
+    sources:
+      - "james:MailboxSetMethodContract#parentRenameShouldNotAffectChild"
+      - "cyrus:JMAPMailbox/mailbox_intermediary_imaprename_preservetree"
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_rename_children"
+      - "wildduck:lib/mailbox-handler.js renameChildren"
+
+  - id: MBX-048
+    title: "A mailbox deleted over IMAP is reported as destroyed"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "An empty mailbox 'Gone' with a known id; state S1."
+    when: "It is deleted over IMAP DELETE, then Mailbox/changes is called with sinceState S1."
+    then: "destroyed holds exactly the mailbox id, created and updated are empty. Mailbox/get for the id returns it in notFound."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnDestroyedChanges"
+      - "cyrus:JMAPMailbox/mailbox_changes"
+      - "cyrus:JMAPMailbox/mailbox_changes_tombstones"
+
+  - id: MBX-049
+    title: "A mailbox deleted through the REST API is reported as destroyed, with its messages"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api, imap]
+    given: "A mailbox 'Gone' holding two messages with known Email ids; state S1."
+    when: "DELETE /users/:user/mailboxes/:mailbox is called, then Mailbox/changes and Email/changes are called with sinceState S1."
+    then: "Mailbox/changes lists the mailbox id in destroyed. Email/changes lists both Email ids in destroyed, immediately or once the background cleanup has run, and they are not returned by Email/get from the moment the mailbox is gone."
+    sources:
+      - "wildduck:brief state and changes"
+      - "cyrus:JMAPMailbox/mailbox_changes_create_delete"
+    notes: "Mailbox deletion marks messages for garbage collection; the JMAP view must not show Emails whose only mailbox no longer exists."
+
+  - id: MBX-050
+    title: "Deleting a parent over IMAP re-parents its children instead of destroying them"
+    method: Mailbox/changes
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Mailboxes 'P' (empty) and 'P/C' with known ids; state S1."
+    when: "'P' is deleted over IMAP DELETE, then Mailbox/changes sinceState S1 and Mailbox/get for the child id are called."
+    then: "destroyed holds only the id of 'P'. The child id is in updated with updatedProperties null, and Mailbox/get shows it with parentId null and name 'P/C'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_intermediary_removed"
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_destroy"
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-051
+    title: "IMAP SUBSCRIBE and UNSUBSCRIBE are reported as updated"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A subscribed mailbox 'Sub' with a known id; state S1."
+    when: "IMAP UNSUBSCRIBE is sent for it and Mailbox/changes sinceState S1 is called (new state S2); then IMAP SUBSCRIBE is sent and Mailbox/changes sinceState S2 is called."
+    then: "Both responses list the mailbox id in updated with updatedProperties null and a new state. Mailbox/get shows isSubscribed false after the first step and true after the second."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenSubscribed"
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenUnSubscribed"
+      - "wildduck:jmap-report 5.2"
+    notes: "Subscription changes are not journaled today (phase 0 prerequisite)."
+
+  - id: MBX-052
+    title: "A subscription change through the REST API is reported as updated"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A subscribed mailbox with a known id; state S1."
+    when: "PUT /users/:user/mailboxes/:mailbox sets subscribed false, then Mailbox/changes is called with sinceState S1."
+    then: "updated holds the mailbox id, updatedProperties is null and Mailbox/get shows isSubscribed false."
+    sources:
+      - "wildduck:jmap-report 5.2"
+
+  - id: MBX-053
+    title: "Hiding a mailbox through the REST API reports it destroyed, unhiding reports it created"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "A visible mailbox 'Internal' with a known id; state S1."
+    when: "The REST API sets hidden true and Mailbox/changes sinceState S1 is called (S2); then hidden is set false and Mailbox/changes sinceState S2 is called."
+    then: "The first response lists the id in destroyed. The second lists the same id in created, and Mailbox/get returns the mailbox again."
+    sources:
+      - "wildduck:jmap-report 5.2"
+    notes: "Hidden updates are not journaled today (phase 0 prerequisite)."
+
+  - id: MBX-054
+    title: "Message delivery changes only counts, and updatedProperties says so"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "State S1; INBOX has a known id."
+    when: "One message is delivered to INBOX over LMTP, then Mailbox/changes is called with sinceState S1."
+    then: "updated holds exactly the INBOX id, created and destroyed are empty, and updatedProperties is an array whose members are all among totalEmails, unreadEmails, totalThreads, unreadThreads and which includes at least totalEmails and unreadEmails."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenAppendMessageToMailbox"
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedPropertiesWhenOnlyCountChanges"
+      - "cyrus:JMAPMailbox/mailbox_changes_counts"
+      - "stalwart:mail/mailbox.rs"
+      - "fastmail:t/Mailbox/changes/changed-properties.t"
+
+  - id: MBX-055
+    title: "An IMAP APPEND is reported as a count change of the target mailbox"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox 'Projects' with a known id; state S1."
+    when: "A message is appended to it over IMAP APPEND with \\Seen set, then Mailbox/changes sinceState S1 is called."
+    then: "updated holds exactly the id of 'Projects' and updatedProperties is a non-null array of count property names. Mailbox/get shows totalEmails 1 and unreadEmails 0."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenAppendMessageToMailbox"
+      - "cyrus:JMAPMailbox/mailbox_changes_counts"
+
+  - id: MBX-056
+    title: "Setting or clearing \\Seen over IMAP updates the mailbox"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "INBOX with one unread message; state S1."
+    when: "\\Seen is stored on the message over IMAP and Mailbox/changes sinceState S1 is called (S2); then \\Seen is removed and Mailbox/changes sinceState S2 is called."
+    then: "Each response lists the INBOX id in updated with a non-null updatedProperties that includes unreadEmails. Mailbox/get shows unreadEmails 0 then 1."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenAddSeenFlag"
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenRemoveSeenFlag"
+      - "cyrus:JMAPMailbox/mailbox_changes_on_thread_counts"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-057
+    title: "Removing a message over IMAP updates the mailbox"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "INBOX with two messages; state S1."
+    when: "One message is flagged \\Deleted over IMAP and Mailbox/changes sinceState S1 is called (S2); then EXPUNGE is sent and Mailbox/changes sinceState S2 is called."
+    then: "The first response lists the INBOX id in updated with count properties, and Mailbox/get shows totalEmails 1. The second response must not report a further count change for INBOX: updated is empty or holds INBOX with counts unchanged at 1."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenDestroyEmail"
+      - "cyrus:JMAPMailbox/mailbox_changes_counts"
+      - "wildduck:brief emails"
+    notes: "The count changes when \\Deleted is set, not at EXPUNGE, because flagged messages are already invisible."
+
+  - id: MBX-058
+    title: "Moving a message updates both mailboxes"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "One message in INBOX; state S1."
+    when: "The message is moved to Trash over IMAP MOVE, then Mailbox/changes sinceState S1 is called."
+    then: "updated holds exactly the ids of INBOX and Trash, created and destroyed are empty and updatedProperties is a non-null array of count names. Mailbox/get shows totalEmails 0 for INBOX and 1 for Trash."
+    sources:
+      - "stalwart:mail/mailbox.rs"
+      - "cyrus:JMAPMailbox/mailbox_counts_add_remove"
+
+  - id: MBX-059
+    title: "A REST API message move or delete updates the affected mailboxes"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, api]
+    given: "Two messages in INBOX; state S1."
+    when: "The REST API moves one message to 'Projects' and deletes the other, then Mailbox/changes sinceState S1 is called."
+    then: "updated contains the ids of INBOX and 'Projects' (and of Trash if the delete moved the message there), with a non-null updatedProperties. Counts in Mailbox/get match the new contents."
+    sources:
+      - "wildduck:brief state and changes"
+
+  - id: MBX-060
+    title: "An IMAP COPY updates the target mailbox only"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "One message in INBOX; state S1."
+    when: "The message is copied to 'Projects' over IMAP COPY, then Mailbox/changes sinceState S1 is called."
+    then: "updated holds the id of 'Projects' with count properties. INBOX counts are unchanged; if INBOX is listed in updated its counts are still the old values."
+    sources:
+      - "wildduck:brief ids"
+      - "cyrus:JMAPMailbox/mailbox_changes_counts"
+
+  - id: MBX-061
+    title: "updatedProperties is null when a non-count property changed in the same window"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "State S1."
+    when: "A message is delivered to INBOX and an unrelated mailbox 'Projects' is renamed over IMAP, then Mailbox/changes sinceState S1 is called."
+    then: "updated holds the ids of INBOX and 'Projects' and updatedProperties is null."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldNotReturnUpdatedPropertiesWhenMixedChanges"
+      - "cyrus:JMAPMailbox/mailbox_changes_counts"
+      - "fastmail:t/Mailbox/changes/changed-properties.t"
+
+  - id: MBX-062
+    title: "updatedProperties is null when a mailbox was created or destroyed in the window"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp, imap]
+    given: "State S1."
+    when: "A message is delivered to INBOX and a mailbox is created over IMAP, then Mailbox/changes sinceState S1 is called."
+    then: "created holds the new id, updated holds the INBOX id and updatedProperties is null."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldNotReturnUpdatedPropertiesWhenMixedChanges"
+      - "rfc:8621 2.2"
+    notes: "Stricter than the letter of the RFC, which only speaks about updated mailboxes, but it is what clients using the back reference pattern need."
+
+  - id: MBX-063
+    title: "updatedProperties can be used as a back reference for Mailbox/get properties"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "State S1, then one message delivered to INBOX."
+    when: "One request holds Mailbox/changes sinceState S1 (call id 'c') and Mailbox/get with '#ids' referencing '/updated' and '#properties' referencing '/updatedProperties' of 'c'."
+    then: "Mailbox/get returns the INBOX object holding only id and the count properties named in updatedProperties, with the new values."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldSupportBackReferenceWithUpdatedProperties"
+      - "stalwart:mail/mailbox.rs"
+      - "rfc:8621 2.2"
+
+  - id: MBX-064
+    title: "A null updatedProperties back reference returns all properties"
+    method: Mailbox/changes
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1, then a mailbox renamed over IMAP."
+    when: "The same two call request as in MBX-063 is sent."
+    then: "updatedProperties is null, the back reference resolves to properties null, and Mailbox/get returns the renamed mailbox with all eleven properties."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldSupportBackReferenceWithNullUpdatedProperties"
+
+  - id: MBX-065
+    title: "A keyword change that does not affect counts does not invent mailbox changes"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, imap]
+    given: "One message in INBOX; state S1."
+    when: "\\Flagged is stored on the message over IMAP, then Mailbox/changes sinceState S1 is called."
+    then: "created and destroyed are empty and newState differs from S1 (the state is shared with Email). updated is empty, or holds only the INBOX id with a non-null updatedProperties; it never holds another mailbox."
+    sources:
+      - "wildduck:brief state and changes"
+      - "rfc:8620 5.2"
+    notes: "Because the state string is shared, the Mailbox state advances on Email only changes. Reporting INBOX as updated is allowed, missing a real change is not."
+
+  - id: MBX-066
+    title: "All three kinds of change are reported together without duplicates"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'ToRename' and 'ToDelete' with known ids; state S1."
+    when: "Over IMAP 'New' is created, 'ToRename' is renamed and 'ToDelete' is deleted, then Mailbox/changes sinceState S1 is called."
+    then: "created holds only the id of 'New', updated only the id of the renamed mailbox, destroyed only the id of 'ToDelete'. No id appears in more than one array or twice in one array."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnAllTypeOfChanges"
+      - "james:MailboxChangesMethodContract#returnedIdsShouldNotReturnDuplicatesAccrossCreatedUpdatedOrDestroyed"
+      - "cyrus:JMAPMailbox/mailbox_changes"
+      - "fastmail:t/Mailbox/changes/with-changes.t"
+
+  - id: MBX-067
+    title: "A mailbox created and then changed in the window is reported only as created"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1."
+    when: "Over IMAP a mailbox is created, renamed and gets a message appended, then Mailbox/changes sinceState S1 is called."
+    then: "The mailbox id is in created and not in updated or destroyed."
+    sources:
+      - "james:MailboxChangesMethodContract#returnedIdsShouldNotReturnDuplicatesAccrossCreatedUpdatedOrDestroyed"
+      - "rfc:8620 5.2"
+
+  - id: MBX-068
+    title: "A mailbox created and destroyed in the window is not reported at all"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1."
+    when: "Over IMAP a mailbox is created and then deleted, then Mailbox/changes sinceState S1 is called."
+    then: "created, updated and destroyed are all empty and newState differs from S1."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_changes_create_delete"
+      - "rfc:8620 5.2"
+
+  - id: MBX-069
+    title: "A mailbox updated and then destroyed in the window is reported only as destroyed"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox with a known id; state S1."
+    when: "Over IMAP it is renamed and then deleted, then Mailbox/changes sinceState S1 is called."
+    then: "The id is in destroyed and not in updated or created."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_changes_tombstones"
+      - "rfc:8620 5.2"
+
+  - id: MBX-070
+    title: "maxChanges caps the response and hasMoreChanges drives paging to completion"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1, then six mailboxes created over IMAP."
+    when: "Mailbox/changes is called with sinceState S1 and maxChanges 4, and repeated with sinceState set to each returned newState until hasMoreChanges is false."
+    then: "No response holds more than 4 ids in created, updated and destroyed together. The first response has hasMoreChanges true and a newState that is neither S1 nor the current state. The union of created over all responses is exactly the six ids, and the final newState equals the Mailbox/get state."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnHasMoreChangesWhenTrue"
+      - "james:MailboxChangesMethodContract#maxChangesShouldBeTakenIntoAccount"
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldEventuallyReturnNoChanges"
+      - "cyrus:JMAPMailbox/mailbox_changes_maxchanges_duplicate_modseqs"
+      - "stalwart:compliance/mailbox.rs#changes_has_more_changes"
+      - "jmapio:mailbox/changes-has-more-changes"
+      - "fastmail:t/Mailbox/changes/max-changes-has-more-changes.t"
+      - "jmap-perl:t/changes-paging.t"
+
+  - id: MBX-071
+    title: "Changes that cannot be split still make progress under a small maxChanges"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1, then one IMAP MOVE of a message between two mailboxes (one journal step touching two mailboxes) and one mailbox creation."
+    when: "Mailbox/changes is called with sinceState S1 and maxChanges 1, repeatedly following newState."
+    then: "Every response returns at most one id and a newState different from its sinceState, and after a finite number of calls hasMoreChanges is false with all three mailbox ids reported. The loop never returns the same state twice."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_changes_maxchanges_too_small_duplicate_modseqs"
+      - "cyrus:JMAPMailbox/mailbox_changes_maxchanges_duplicate_thread_modseqs"
+      - "rfc:8620 5.2"
+    notes: "Cyrus returns an error when several changes share one modseq and do not fit. WildDuck intermediate states are journal ids, so a split inside one journal batch must either be possible or the batch must be returned whole with an id reported again later."
+
+  - id: MBX-072
+    title: "maxChanges must be a positive integer"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A valid state S."
+    when: "Mailbox/changes is called with sinceState S and maxChanges 0, then with maxChanges -1, then with maxChanges 'ten'."
+    then: "Each call returns an error invocation of type invalidArguments."
+    sources:
+      - "rfc:8620 5.2"
+
+  - id: MBX-073
+    title: "A missing or non-string sinceState is rejected with invalidArguments"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/changes is called without sinceState, then with sinceState null, then with sinceState 42."
+    then: "Each call returns an error invocation of type invalidArguments."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "cyrus:JMAPMailbox/mailbox_changes"
+
+  - id: MBX-074
+    title: "A sinceState the server never issued answers cannotCalculateChanges"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A user with the default mailboxes."
+    when: "Mailbox/changes is called with sinceState set to a random string, and again with a well formed state value that lies in the future."
+    then: "Both calls return an error invocation of type cannotCalculateChanges."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldFailWhenStateNotFound"
+      - "cyrus:JMAPMailbox/mailbox_changes"
+      - "fastmail:t/Mailbox/changes/cannot-calculate-changes.t"
+
+  - id: MBX-075
+    title: "A sinceState older than the journal retention answers cannotCalculateChanges"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, time]
+    given: "State S1; a mailbox is created over IMAP; then the clock passes the configured journal retention (or the test config uses a retention of seconds)."
+    when: "Mailbox/changes is called with sinceState S1."
+    then: "The response is an error invocation of type cannotCalculateChanges, not an empty or partial change list."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_changes"
+      - "fastmail:t/Mailbox/changes/cannot-calculate-changes.t"
+      - "wildduck:jmap-report 5.2"
+
+  - id: MBX-076
+    title: "After the journal retention passes with no activity the state is replaced, not reused"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, time]
+    given: "A mailbox is created over IMAP and state S is read afterwards. The journal retention then passes with no further activity, so every journal entry of the user has expired."
+    when: "Mailbox/get and Mailbox/changes with sinceState S are called."
+    then: "Mailbox/get reports a new state S2 different from S. Mailbox/changes with sinceState S answers cannotCalculateChanges, and Mailbox/changes with sinceState S2 returns no changes with newState S2. A further Mailbox/get still reports S2."
+    sources:
+      - "wildduck:jmap-report 5.2"
+      - "wildduck:brief state and changes"
+    notes: "Changed 2026-11-11 to follow WDP-026: an anchor older than the journal retention with nothing newer is replaced by a fresh one, because changes made after it may have expired unseen. Reusing S would hide such changes. The original expectation (S stays valid) is unsafe for that reason. Simulated by aging the stored anchor and removing the journal entries of the user."
+
+  - id: MBX-077
+    title: "Mailbox/changes with a foreign accountId answers accountNotFound"
+    method: Mailbox/changes
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Two users A and B."
+    when: "User A calls Mailbox/changes with accountId of B and a state taken from A."
+    then: "The response is an error invocation of type accountNotFound."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldFailWhenAccountIdNotFound"
+      - "fastmail:t/Mailbox/foreign-account.t"
+
+  - id: MBX-078
+    title: "Another user's activity does not change this user's state"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Users A and B; state S of A."
+    when: "B creates mailboxes over IMAP and receives mail, then A calls Mailbox/changes with sinceState S."
+    then: "newState equals S and all arrays are empty."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnUpdatedChangesWhenSubscribedOnlyPerUser"
+      - "rfc:8620 5.2"
+
+  - id: MBX-079
+    title: "newState after a change equals the state Mailbox/get reports"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "State S1, then a mailbox created over IMAP."
+    when: "One request holds Mailbox/changes sinceState S1 and Mailbox/get with an empty ids array."
+    then: "oldState is S1, newState differs from S1 and equals the Mailbox/get state. A further Mailbox/changes with that newState returns no changes."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnDifferentStateThanOldState"
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldEventuallyReturnNoChanges"
+      - "fastmail:t/Mailbox/changes/container-state-tracking.t"
+
+  # -------------------------------------------------------------- Mailbox/query
+  - id: MBX-080
+    title: "Mailbox/query without a filter returns every mailbox id"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects' created over IMAP."
+    when: "Mailbox/query is called with only accountId."
+    then: "The response has accountId, a string queryState, a boolean canCalculateChanges, position 0 and ids holding exactly the six mailbox ids, each once. total and limit are absent."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "stalwart:compliance/mailbox.rs#query_all"
+      - "stalwart:compliance/mailbox.rs#query_response_structure"
+      - "jmapio:mailbox/query-all"
+      - "jmapio:mailbox/query-response-structure"
+      - "fastmail:t/Mailbox/query/no-existing-entities.t"
+    notes: "James makes filter compulsory (filterShouldBeCompulsory); the RFC does not, and WildDuck follows the RFC."
+
+  - id: MBX-081
+    title: "filter null and an empty FilterCondition both match everything"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with filter null, then with filter set to an empty object."
+    then: "Both calls succeed and return all five ids."
+    sources:
+      - "stalwart:compliance/mailbox.rs#query_filter_null_accepted"
+      - "jmapio:mailbox/query-filter-null-accepted"
+      - "rfc:8621 2.3"
+
+  - id: MBX-082
+    title: "Filter parentId null returns the top level mailboxes"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Work' and 'Work/Clients'."
+    when: "Mailbox/query is called with filter parentId null."
+    then: "ids holds the five default mailboxes and 'Work', and not 'Work/Clients'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_parentid_null"
+      - "stalwart:compliance/mailbox.rs#query_filter_by_parent_id_null"
+      - "jmapio:mailbox/query-filter-by-parent-id-null"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-conditions.t"
+
+  - id: MBX-083
+    title: "Filter parentId with an id returns the direct children only"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "'Work', 'Work/Clients', 'Work/Clients/Acme' and 'Work/Admin'."
+    when: "Mailbox/query is called with filter parentId set to the id of 'Work', then with an id that names no mailbox."
+    then: "The first call returns exactly the ids of 'Work/Clients' and 'Work/Admin', not the grandchild. The second returns an empty ids array without an error."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "stalwart:compliance/mailbox.rs#query_filter_by_parent_id"
+      - "jmapio:mailbox/query-filter-by-parent-id"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-conditions.t"
+
+  - id: MBX-084
+    title: "Filter parentId follows the missing ancestor rule"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "'A' and 'A/B/C' exist without 'A/B'."
+    when: "Mailbox/query is called with filter parentId set to the id of 'A'."
+    then: "ids holds the id of 'A/B/C', consistent with the parentId Mailbox/get reports for it."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get_intermediate"
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-085
+    title: "Filter name matches mailboxes whose name contains the string"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'Test Folder A', 'Another Test', 'Tests', 'Tests/Leaf' and 'Unrelated'."
+    when: "Mailbox/query is called with filter name 'Test'."
+    then: "ids holds exactly 'Test Folder A', 'Another Test' and 'Tests': every mailbox whose own name contains 'Test', matched as a substring and not only as a prefix. 'Unrelated' and 'Tests/Leaf' (whose name is 'Leaf') are not returned, so the match is on the name and not on the path."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_name"
+      - "stalwart:compliance/mailbox.rs#query_filter_by_name"
+      - "jmapio:mailbox/query-filter-by-name"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-conditions.t"
+
+  - id: MBX-086
+    title: "The name filter is case insensitive"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'Projects' and 'ARCHIVE 2025'."
+    when: "Mailbox/query is called with filter name 'proj', then with name 'archive', then with name 'entw' against a mailbox 'Entwürfe'."
+    then: "Each call returns the one matching mailbox."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_name"
+      - "wildduck:design decision"
+    notes: "The RFC does not define case handling for 'contains'. Decision needed; case insensitive matching is what a mailbox search box expects."
+
+  - id: MBX-087
+    title: "Filter role returns the mailbox with exactly that role"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with filter role 'inbox', then role 'trash'."
+    then: "Each call returns exactly one id, the one whose Mailbox/get role equals the filter value."
+    sources:
+      - "james:MailboxQueryMethodContract#roleShouldAllowToRetrieveTheInbox"
+      - "stalwart:mail/mailbox.rs"
+      - "stalwart:compliance/mailbox.rs#query_filter_by_role"
+      - "jmapio:mailbox/query-filter-by-role"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-conditions.t"
+
+  - id: MBX-088
+    title: "Filter role null returns the mailboxes without a role"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects' and 'Work'."
+    when: "Mailbox/query is called with filter role null."
+    then: "ids holds exactly 'Projects' and 'Work'."
+    sources:
+      - "rfc:8621 2.3"
+      - "cyrus:JMAPMailbox/mailbox_query"
+
+  - id: MBX-089
+    title: "A role the account does not have matches nothing"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes (no archive, no all, no flagged mailbox)."
+    when: "Mailbox/query is called with filter role 'archive', then role 'Inbox' (capitalised), then role 'nosuchrole'."
+    then: "Each call succeeds with an empty ids array. The match is exact, so 'Inbox' does not match the role 'inbox'."
+    sources:
+      - "rfc:8621 2.3"
+      - "james:MailboxQueryMethodContract#roleShouldAllowToRetrieveTheInboxUponCaseVariation"
+      - "james:MailboxQueryMethodContract#invalidRoleShouldBeRejected"
+    notes: "James matches case insensitively and rejects unknown role names with invalidArguments. The RFC says exact match and any string is a valid value, so WildDuck returns an empty result."
+
+  - id: MBX-090
+    title: "Filter hasAnyRole true returns only role mailboxes, false only the others"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects'."
+    when: "Mailbox/query is called with filter hasAnyRole true, then hasAnyRole false."
+    then: "The first call returns exactly the five default mailboxes, the second exactly 'Projects'. The two results are disjoint and together cover all mailboxes."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "stalwart:compliance/mailbox.rs#query_filter_has_any_role"
+      - "stalwart:compliance/mailbox.rs#query_filter_has_any_role_false"
+      - "jmapio:mailbox/query-filter-has-any-role"
+      - "jmapio:mailbox/query-filter-has-any-role-false"
+    notes: "The RFC only defines the true case. false is read as the complement, as every suite does."
+
+  - id: MBX-091
+    title: "Filter isSubscribed matches the subscription flag exactly"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Unsub', unsubscribed over IMAP."
+    when: "Mailbox/query is called with filter isSubscribed false, then isSubscribed true."
+    then: "The first call returns only 'Unsub', the second returns the five default mailboxes. The second result equals the set IMAP LSUB returns."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "rfc:8621 2.3"
+
+  - id: MBX-092
+    title: "Several properties in one FilterCondition are combined with AND"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "'Work', 'Work/Reports', 'Reports' and 'Work/Admin'."
+    when: "Mailbox/query is called with filter parentId set to the id of 'Work' and name 'Rep'."
+    then: "ids holds only 'Work/Reports'."
+    sources:
+      - "rfc:8621 2.3"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-conditions.t"
+
+  - id: MBX-093
+    title: "FilterOperator AND intersects its conditions"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects' (subscribed) and 'Unsub' (unsubscribed)."
+    when: "Mailbox/query is called with filter operator AND over conditions hasAnyRole false and isSubscribed true."
+    then: "ids holds only 'Projects'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_filteroperator"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-operators.t"
+      - "jmap-perl:t/filter-operators.t"
+
+  - id: MBX-094
+    title: "FilterOperator OR unites its conditions"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects' and 'Work'."
+    when: "Mailbox/query is called with filter operator OR over conditions role 'inbox' and name 'Proj'."
+    then: "ids holds exactly INBOX and 'Projects', each once."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_filteroperator"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-operators.t"
+      - "jmap-perl:t/filter-operators.t"
+
+  - id: MBX-095
+    title: "FilterOperator NOT excludes mailboxes matching any of its conditions"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects' and 'Work'."
+    when: "Mailbox/query is called with filter operator NOT over conditions hasAnyRole true and name 'Work'."
+    then: "ids holds only 'Projects'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_filteroperator"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-operators.t"
+      - "jmap-perl:t/filter-operators.t"
+
+  - id: MBX-096
+    title: "Filter operators nest"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects', 'Work' and 'Work/Clients'."
+    when: "Mailbox/query is called with AND over (OR over role 'inbox' and parentId null) and (NOT over hasAnyRole true)."
+    then: "ids holds exactly 'Projects' and 'Work'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_filteroperator"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-operators.t"
+
+  - id: MBX-097
+    title: "A malformed filter is rejected with invalidArguments"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with (a) filter role 42, (b) filter hasAnyRole 'yes', (c) filter with an unknown property 'colour', (d) an operator 'XOR', (e) an operator AND without conditions, (f) filter set to a string."
+    then: "Each call returns an error invocation of type invalidArguments and no ids."
+    sources:
+      - "james:MailboxQueryMethodContract#roleShouldBeAString"
+      - "james:MailboxQueryMethodContract#shouldReturnInvalidArgumentsWhenInvalidFilterCondition"
+      - "cyrus:JMAPMailbox/mailbox_query_issue2286"
+      - "rfc:8620 5.5"
+    notes: "An unknown condition name could also be read as unsupportedFilter. invalidArguments is chosen because the Mailbox filter vocabulary is closed and every suite expects it."
+
+  - id: MBX-098
+    title: "Sort by name ascending and descending"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Top level mailboxes 'Bravo', 'alpha' and 'Charlie' in addition to the defaults."
+    when: "Mailbox/query is called with filter hasAnyRole false and sort property name, isAscending true; then with isAscending false; then with isAscending omitted."
+    then: "Ascending gives alpha, Bravo, Charlie (case insensitive ordering, not ASCII byte order). Descending gives the exact reverse. Omitting isAscending gives the ascending order."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "stalwart:mail/mailbox.rs"
+      - "stalwart:compliance/mailbox.rs#query_sort_by_name"
+      - "jmapio:mailbox/query-sort-by-name"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+    notes: "The default collation for name must be decided and documented; i;unicode-casemap behaviour is assumed here."
+
+  - id: MBX-099
+    title: "Sort by sortOrder with name as tie breaker"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, db]
+    given: "Mailboxes 'A' with sortOrder 30, 'B' with 10, 'C' with 10 and 'D' with 20 (sortOrder seeded directly or through Mailbox/set once phase 2 exists)."
+    when: "Mailbox/query is called with filter hasAnyRole false and sort [sortOrder ascending, name ascending]; then with sort [sortOrder descending] only."
+    then: "The first call returns B, C, D, A. The second returns A, D, then B and C in a deterministic order that is the same on every call."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "stalwart:compliance/mailbox.rs#query_sort_by_sort_order"
+      - "jmapio:mailbox/query-sort-by-sort-order"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+
+  - id: MBX-100
+    title: "Sorting on an unsupported property answers unsupportedSort"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with sort property 'totalEmails', then with sort property 'name' and collation 'i;nosuch'."
+    then: "Each call returns an error invocation of type unsupportedSort."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPMailbox/mailbox_query"
+
+  - id: MBX-101
+    title: "Without a sort the order is deterministic"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus ten mailboxes created over IMAP."
+    when: "Mailbox/query without sort is called three times, and once more split in two pages with limit 8 and position 0, then position 8."
+    then: "All full calls return the same id order, and the two pages concatenated equal that order with no id missing or repeated."
+    sources:
+      - "rfc:8620 5.5"
+      - "james:MailboxGetMethodContract#getMailboxesShouldReturnMailboxesInSorteredOrder"
+
+  - id: MBX-102
+    title: "sortAsTree lists every parent before its children and sorts siblings by the comparators"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Non-role mailboxes 'B', 'B/Z', 'B/A', 'A', 'A/M' and 'A/M/X'."
+    when: "Mailbox/query is called with filter hasAnyRole false, sort by name ascending and sortAsTree true; then the same with sortAsTree false."
+    then: "With sortAsTree the order is A, A/M, A/M/X, B, B/A, B/Z. Without it the order follows the bare names: A, A (the child of B), B, M, X, Z, with ties in a deterministic order."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_sortastree"
+      - "stalwart:mail/mailbox.rs"
+      - "rfc:8621 2.3"
+
+  - id: MBX-103
+    title: "sortAsTree compares the nearest ancestors that share a parent"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, db]
+    given: "'P1' with sortOrder 2 and child 'P1/a'; 'P2' with sortOrder 1 and child 'P2/z'."
+    when: "Mailbox/query is called with filter hasAnyRole false, sort [sortOrder ascending, name ascending] and sortAsTree true."
+    then: "The order is P2, P2/z, P1, P1/a: the children are placed by their parents' sortOrder, not by their own name or sortOrder."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_sortastree"
+      - "stalwart:mail/mailbox.rs"
+      - "rfc:8621 2.3"
+
+  - id: MBX-104
+    title: "sortAsTree treats a mailbox with a missing ancestor as a child of its nearest existing ancestor"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "'A', 'A/B/C' (no 'A/B') and 'Z'."
+    when: "Mailbox/query is called with filter hasAnyRole false, sort by name ascending and sortAsTree true."
+    then: "The order is A, A/B/C, Z."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_get_intermediate"
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-105
+    title: "filterAsTree drops mailboxes whose ancestors do not match the filter"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "'One' (subscribed), 'One/Kid' (subscribed), 'Two' (unsubscribed) and 'Two/Kid' (subscribed), 'Two/Kid/Deep' (subscribed)."
+    when: "Mailbox/query is called with filter AND over isSubscribed true and hasAnyRole false, once with filterAsTree false and once with filterAsTree true."
+    then: "Without filterAsTree the ids are One, One/Kid, Two/Kid and Two/Kid/Deep. With filterAsTree only One and One/Kid remain, because 'Two' fails the filter and takes its whole subtree with it."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_filterastree"
+      - "stalwart:mail/mailbox.rs"
+      - "rfc:8621 2.3"
+
+  - id: MBX-106
+    title: "filterAsTree and sortAsTree combine"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The tree of MBX-105 plus 'Alpha' (subscribed)."
+    when: "Mailbox/query is called with the same filter, filterAsTree true, sortAsTree true and sort by name descending."
+    then: "The order is One, One/Kid, Alpha."
+    sources:
+      - "stalwart:mail/mailbox.rs"
+      - "cyrus:JMAPMailbox/mailbox_query_filterastree"
+
+  - id: MBX-107
+    title: "limit caps the number of ids"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with sort by name and limit 2."
+    then: "ids holds the first two ids of the unlimited result and position is 0. limit is echoed in the response only if the server clamped it to a lower value."
+    sources:
+      - "stalwart:compliance/mailbox.rs#query_limit"
+      - "jmapio:mailbox/query-limit"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+
+  - id: MBX-108
+    title: "limit 0 returns no ids but still answers"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with limit 0 and calculateTotal true."
+    then: "ids is an empty array, total is 5 and queryState is present."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_limit_zero"
+      - "rfc:8620 5.5"
+
+  - id: MBX-109
+    title: "A negative limit is rejected with invalidArguments"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with limit -1."
+    then: "The response is an error invocation of type invalidArguments."
+    sources:
+      - "rfc:8620 5.5"
+
+  - id: MBX-110
+    title: "position skips results"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes; R is the full result sorted by name."
+    when: "Mailbox/query is called with the same sort and position 2, then with position 2 and limit 2."
+    then: "The first call returns R from index 2 to the end with position 2 in the response. The second returns exactly R[2] and R[3]."
+    sources:
+      - "stalwart:compliance/mailbox.rs#query_position"
+      - "jmapio:mailbox/query-position"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+
+  - id: MBX-111
+    title: "A negative position counts from the end and clamps at zero"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes; R is the full result of five ids sorted by name."
+    when: "Mailbox/query is called with position -2, then with position -50."
+    then: "The first call returns R[3] and R[4] with position 3. The second returns all five ids with position 0."
+    sources:
+      - "rfc:8620 5.5"
+      - "jmap-perl:t/query-negative-position.t"
+
+  - id: MBX-112
+    title: "A position beyond the end returns an empty list, not an error"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with position 100."
+    then: "ids is an empty array and the call succeeds."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPMailbox/mailbox_query"
+
+  - id: MBX-113
+    title: "anchor and anchorOffset select a window relative to a known id"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes; R is the full result of five ids sorted by name."
+    when: "Mailbox/query is called with anchor R[2] and limit 2; then with anchor R[2], anchorOffset -1 and limit 2; then with anchor R[1], anchorOffset -5; then with anchor R[2] and position 4."
+    then: "The calls return R[2], R[3] with position 2; R[1], R[2] with position 1; all of R with position 0 (the offset is clamped at the start); and again the window starting at R[2], because position is ignored when anchor is given."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPMailbox/mailbox_query_anchor_not_found"
+
+  - id: MBX-114
+    title: "An anchor that is not in the results answers anchorNotFound"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects'."
+    when: "Mailbox/query is called with anchor set to an unknown id; then with filter hasAnyRole true and anchor set to the id of 'Projects'."
+    then: "Both calls return an error invocation of type anchorNotFound."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_anchor_not_found"
+      - "rfc:8620 5.5"
+
+  - id: MBX-115
+    title: "calculateTotal true adds the total, otherwise it is omitted"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes plus 'Projects'."
+    when: "Mailbox/query is called with filter hasAnyRole true, limit 2 and calculateTotal true; then the same without calculateTotal."
+    then: "The first response has total 5 (the filtered count, not the page size and not the account count of 6). The second has no total key."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+      - "wildduck:brief query and search"
+
+  - id: MBX-116
+    title: "Hidden mailboxes never appear in query results or totals"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "The default mailboxes plus a mailbox marked hidden through the REST API."
+    when: "Mailbox/query is called with no filter and calculateTotal true, then with filter name matching the hidden mailbox."
+    then: "The first call returns five ids and total 5. The second returns an empty ids array."
+    sources:
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-117
+    title: "queryState changes when the result could have changed and is stable otherwise"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A query with sort by name; queryState Q1."
+    when: "The same query is repeated with nothing changed (Q2); then a mailbox is created over IMAP and the query is repeated (Q3)."
+    then: "Q2 equals Q1. Q3 differs from Q1 and the ids include the new mailbox."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_name"
+    notes: "The queryState may be the shared account state, in which case it also changes on Email only activity. That is allowed (the state may change without the results changing) but costs clients a refetch; a mailbox only state is preferable."
+
+  - id: MBX-118
+    title: "canCalculateChanges is false until Mailbox/queryChanges exists"
+    method: Mailbox/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/query is called with and without filter and sort."
+    then: "canCalculateChanges is false in every response."
+    sources:
+      - "wildduck:brief phases"
+      - "james:MailboxQueryChangesContract#shouldReturnCannotCalculateChanges"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the Mailbox/queryChanges scenarios."
+
+  - id: MBX-119
+    title: "Mailbox/query with a foreign accountId answers accountNotFound"
+    method: Mailbox/query
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Two users A and B."
+    when: "User A calls Mailbox/query with accountId of B."
+    then: "The response is an error invocation of type accountNotFound."
+    sources:
+      - "james:MailboxQueryMethodContract#mailboxQueryShouldFailWhenWrongAccountId"
+      - "fastmail:t/Mailbox/foreign-account.t"
+
+  - id: MBX-120
+    title: "Query results reflect changes made over IMAP immediately"
+    method: Mailbox/query
+    spec: "RFC 8621 2.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A mailbox 'Alpha' that a name filter 'Alph' matches."
+    when: "It is renamed to 'Beta' over IMAP and unsubscribed, then Mailbox/query is called with filter name 'Alph', with name 'Bet', and with isSubscribed false."
+    then: "The first query returns nothing; the second and third return the mailbox id."
+    sources:
+      - "stalwart:mail/mailbox.rs"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_name"
+
+  # ------------------------------------------------------- Mailbox/queryChanges
+  - id: MBX-121
+    title: "Mailbox/queryChanges answers cannotCalculateChanges before phase 4"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "A queryState Q from Mailbox/query."
+    when: "Mailbox/queryChanges is called with sinceQueryState Q."
+    then: "The response is an error invocation of type cannotCalculateChanges (not unknownMethod), consistent with canCalculateChanges false."
+    sources:
+      - "james:MailboxQueryChangesContract#shouldReturnCannotCalculateChanges"
+      - "wildduck:brief phases"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the Mailbox/queryChanges scenarios."
+
+  - id: MBX-122
+    title: "Mailbox/queryChanges with the current queryState reports nothing"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "queryState Q from Mailbox/query with sort by name; canCalculateChanges is now true."
+    when: "Mailbox/queryChanges is called with the same sort, filter null and sinceQueryState Q."
+    then: "The response has accountId, oldQueryState Q, newQueryState Q, removed and added as empty arrays, and no total unless calculateTotal was requested."
+    sources:
+      - "stalwart:compliance/mailbox.rs#query_changes_no_changes"
+      - "stalwart:compliance/mailbox.rs#query_changes_response_structure"
+      - "stalwart:compliance/mailbox.rs#query_changes_filter_null_accepted"
+      - "jmapio:mailbox/query-changes-no-changes"
+      - "jmapio:mailbox/query-changes-response-structure"
+      - "jmapio:mailbox/query-changes-filter-null-accepted"
+      - "fastmail:t/Mailbox/queryChanges/basic.t"
+
+  - id: MBX-123
+    title: "A new mailbox appears in added with its index in the new result"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Non-role mailboxes 'A' and 'C'; queryState Q from a query with filter hasAnyRole false and sort by name."
+    when: "'B' is created over IMAP, then Mailbox/queryChanges is called with the same filter and sort and sinceQueryState Q."
+    then: "removed is empty, added holds one item with the id of 'B' and index 1, and newQueryState equals the queryState of a fresh Mailbox/query."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_index_total"
+      - "stalwart:compliance/mailbox.rs#query_changes_after_create"
+      - "jmapio:mailbox/query-changes-after-create"
+      - "fastmail:t/Mailbox/queryChanges/basic.t"
+
+  - id: MBX-124
+    title: "A destroyed mailbox appears in removed"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'A', 'B' and 'C'; queryState Q from a query sorted by name."
+    when: "'B' is deleted over IMAP, then Mailbox/queryChanges is called with sinceQueryState Q."
+    then: "removed holds the id of 'B' and added is empty."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_removed_state"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_intermediary_removed"
+
+  - id: MBX-125
+    title: "A rename under a name sort is reported as removed plus added at the new index"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Non-role mailboxes 'A', 'B' and 'C'; queryState Q from a query with filter hasAnyRole false sorted by name ascending."
+    when: "'A' is renamed to 'D' over IMAP, then Mailbox/queryChanges is called with the same arguments and sinceQueryState Q."
+    then: "removed holds the id of the renamed mailbox and added holds the same id with index 2. Applying removed then added to the old result gives exactly the new Mailbox/query result."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_name"
+      - "rfc:8620 5.6"
+
+  - id: MBX-126
+    title: "A mailbox that starts or stops matching the filter is added or removed"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Mailboxes 'S1' and 'S2', both subscribed; queryState Q from a query with filter isSubscribed true."
+    when: "'S1' is unsubscribed over IMAP and an unsubscribed mailbox 'S3' is subscribed, then Mailbox/queryChanges is called with the same filter and sinceQueryState Q."
+    then: "removed holds the id of 'S1' and added holds the id of 'S3' with its index in the new result."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_role"
+      - "rfc:8620 5.6"
+    notes: "Cyrus tests this with a role change; roles are immutable in WildDuck so subscription is used."
+
+  - id: MBX-127
+    title: "Count only changes produce no query changes"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [lmtp]
+    given: "queryState Q from a query sorted by name."
+    when: "A message is delivered to INBOX, then Mailbox/queryChanges is called with sinceQueryState Q."
+    then: "removed and added are empty. newQueryState may differ from Q."
+    sources:
+      - "rfc:8620 5.6"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_index_total"
+
+  - id: MBX-128
+    title: "More changes than maxChanges answers tooManyChanges"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "queryState Q, then five mailboxes created over IMAP."
+    when: "Mailbox/queryChanges is called with sinceQueryState Q and maxChanges 2; then with maxChanges 5."
+    then: "The first call returns an error invocation of type tooManyChanges. The second succeeds with five items in added."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_max_changes"
+      - "rfc:8620 5.6"
+
+  - id: MBX-129
+    title: "calculateTotal returns the total of the new result"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "The default mailboxes; queryState Q; then one mailbox created over IMAP."
+    when: "Mailbox/queryChanges is called with sinceQueryState Q and calculateTotal true."
+    then: "total is 6."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_index_total"
+      - "rfc:8620 5.6"
+
+  - id: MBX-130
+    title: "upToId limits the reported changes to the part of the list the client holds"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Non-role mailboxes 'A', 'B', 'C' sorted by name; queryState Q."
+    when: "'D' is created over IMAP and Mailbox/queryChanges is called with sinceQueryState Q and upToId set to the id of 'B'."
+    then: "added is empty or holds 'D' at index 3 (the server may ignore upToId), and nothing before or at 'B' is reported changed. With upToId set to an id that is not in the result the call still succeeds."
+    sources:
+      - "rfc:8620 5.6"
+
+  - id: MBX-131
+    title: "An unknown or expired sinceQueryState answers cannotCalculateChanges"
+    method: Mailbox/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [time]
+    given: "The default mailboxes."
+    when: "Mailbox/queryChanges is called with a random sinceQueryState, and with one older than the journal retention."
+    then: "Both calls return an error invocation of type cannotCalculateChanges."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_querychanges_removed_state"
+      - "james:MailboxQueryChangesContract#shouldReturnCannotCalculateChanges"
+      - "rfc:8620 5.6"
+
+  # ------------------------------------------------------- Mailbox/set: create
+  - id: MBX-132
+    title: "Create a top level mailbox with only a name"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'a': {name: 'Projects'}}."
+    then: "created.a holds a new id and the properties the client did not send: parentId null, role null, sortOrder 0, totalEmails 0, unreadEmails 0, totalThreads 0, unreadThreads 0, myRights with all nine rights true and isSubscribed true. notCreated is null. Mailbox/get for the id returns name 'Projects'."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldCreateMailboxWhenOnlyName"
+      - "cyrus:JMAPMailbox/mailbox_set"
+      - "cyrus:JMAPMailbox/mailbox_set_create_defaults"
+      - "stalwart:compliance/mailbox.rs#set_create_top_level"
+      - "stalwart:compliance/mailbox.rs#set_create_returns_server_set_props"
+      - "jmapio:mailbox/set-create-top-level"
+      - "jmapio:mailbox/set-create-returns-server-set-props"
+      - "fastmail:t/Mailbox/set/create/defaults-omitted.t"
+
+  - id: MBX-133
+    title: "A mailbox created over JMAP is visible and usable over IMAP"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "Mailbox/set created 'Projects' at top level."
+    when: "An IMAP session runs LIST \"\" \"*\", LSUB \"\" \"*\", SELECT Projects and APPEND of one message."
+    then: "LIST and LSUB both include 'Projects' with delimiter '/', SELECT succeeds with 0 EXISTS, and after the APPEND Mailbox/get shows totalEmails 1 for the mailbox id."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+      - "james:MailboxSetMethodContract#mailboxSetShouldSubscribeMailboxByDefault"
+      - "cyrus:JMAPMailbox/mailbox_autosub"
+
+  - id: MBX-134
+    title: "Create a child mailbox with parentId"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox 'Work' with a known id."
+    when: "Mailbox/set is called with create {'a': {name: 'Clients', parentId: <id of Work>}}."
+    then: "created.a has a new id. Mailbox/get shows name 'Clients' and parentId equal to the id of 'Work'. IMAP LIST shows 'Work/Clients'."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldCreateMailboxWhenNameAndParentId"
+      - "cyrus:JMAPMailbox/mailbox_set_parent"
+      - "stalwart:compliance/mailbox.rs#set_create_child"
+      - "jmapio:mailbox/set-create-child"
+      - "fastmail:t/Mailbox/set/create/all-settable-fields-provided.t"
+
+  - id: MBX-135
+    title: "Create every settable property at once"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox 'Work' with a known id."
+    when: "Mailbox/set is called with create {'a': {name: 'Admin', parentId: <id of Work>, role: null, sortOrder: 7, isSubscribed: false}}."
+    then: "created.a holds id and the server set properties but not name, parentId, sortOrder or isSubscribed (they were sent). Mailbox/get returns exactly the sent values."
+    sources:
+      - "fastmail:t/Mailbox/set/create/all-settable-fields-provided.t"
+      - "cyrus:JMAPMailbox/mailbox_set"
+
+  - id: MBX-136
+    title: "Mailboxes can be created under INBOX and under special use mailboxes"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "The default mailboxes."
+    when: "Mailbox/set creates 'Receipts' with parentId of the INBOX and 'Old' with parentId of the Trash mailbox."
+    then: "Both are created with role null. IMAP LIST shows 'INBOX/Receipts' and 'Trash/Old'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_inbox_children"
+      - "cyrus:JMAPMailbox/mailbox_set_create_specialuse_nochildren"
+    notes: "Cyrus can forbid children of special use mailboxes; WildDuck does not, and mayCreateChild is true everywhere."
+
+  - id: MBX-137
+    title: "parentId may reference a mailbox created in the same call, whatever the key order"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create listing, in this order, 'c': {name: 'C', parentId: '#b'}, 'b': {name: 'B', parentId: '#a'}, 'a': {name: 'A'}."
+    then: "All three are created. Mailbox/get shows B's parentId equal to A's id and C's parentId equal to B's id; IMAP LIST shows 'A', 'A/B' and 'A/B/C'."
+    sources:
+      - "james:MailboxSetMethodContract#createParentIdShouldAcceptCreationIdsWithinTheSameRequest"
+      - "cyrus:JMAPMailbox/mailbox_set_order"
+      - "rfc:8620 5.3"
+    notes: "James rejects a forward reference (creationIdReferencesShouldFailWhenWrongOrder). RFC 8620 5.3 requires the server to order creates within one call."
+
+  - id: MBX-138
+    title: "A creation id from an earlier call in the same request resolves"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "One request holds Mailbox/set create {'a': {name: 'A'}}, then Mailbox/set create {'b': {name: 'B', parentId: '#a'}}, then Mailbox/get with ids ['#a', '#b']."
+    then: "Both creates succeed, Mailbox/get returns the two mailboxes with B's parentId equal to A's id, and the response createdIds is not required unless the request sent createdIds."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxGetShouldAllowTheUseOfCreationIds"
+      - "james:MailboxSetMethodContract#createParentIdShouldAcceptCreationIdsWithinTheSameRequest"
+      - "rfc:8620 5.3"
+
+  - id: MBX-139
+    title: "An unresolvable creation id in parentId rejects that create only"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'x': {name: 'X', parentId: '#nosuch'}, 'y': {name: 'Y'}}; and separately with parentId '#' (empty reference)."
+    then: "notCreated.x is a SetError of type invalidProperties with properties ['parentId'], and 'y' is created. The empty reference is rejected the same way."
+    sources:
+      - "james:MailboxSetMethodContract#creationIdReferencesShouldFailWhenNone"
+      - "james:MailboxSetMethodContract#emptyCreationIdReferencesShouldFailDuringRequestParsing"
+      - "james:MailboxSetMethodContract#createShouldPreserveIndependentItemsWhenParentReferenceIsEmpty"
+      - "rfc:8620 5.3"
+
+  - id: MBX-140
+    title: "A child whose parent creation failed is not created either"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'p': {name: ''}, 'c': {name: 'Child', parentId: '#p'}}."
+    then: "Both creation ids are in notCreated: 'p' with invalidProperties on name and 'c' with invalidProperties on parentId. No mailbox is created."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_cycle_in_create"
+      - "rfc:8620 5.3"
+
+  - id: MBX-141
+    title: "Creation ids that form a cycle are all rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'a': {name: 'A', parentId: '#c'}, 'b': {name: 'B', parentId: '#a'}, 'c': {name: 'C', parentId: '#b'}}."
+    then: "created is null and all three creation ids are in notCreated with type invalidProperties and properties ['parentId']. The request does not hang and the state is unchanged."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_cycle_in_create"
+      - "rfc:8621 2"
+
+  - id: MBX-142
+    title: "parentId naming no mailbox is rejected"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "The default mailboxes and a hidden mailbox with a known id."
+    when: "Mailbox/set create is called with parentId set to an unknown id, to a malformed id, to the hidden mailbox id, and to a mailbox id of another user."
+    then: "Each create is in notCreated with type invalidProperties and properties ['parentId']."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldNotCreateMailboxWhenParentIdNotFound"
+      - "stalwart:mail/mailbox.rs"
+      - "cyrus:JMAPMailbox/mailbox_move_to_deleted_parent"
+
+  - id: MBX-143
+    title: "A create without a usable name is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with (a) no name property, (b) name '', (c) name null, (d) name 42."
+    then: "Each is in notCreated with type invalidProperties and properties ['name']. Nothing is created."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenNameIsMissing"
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenNameIsEmpty"
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenBadParameter"
+      - "cyrus:JMAPMailbox/mailbox_set_name_missing"
+      - "fastmail:t/Mailbox/set/create/missing-required-fields.t"
+      - "jmap-perl:t/mailbox-name-policy.t"
+
+  - id: MBX-144
+    title: "A name made only of white space is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with name '   ' (spaces only)."
+    then: "notCreated holds type invalidProperties with properties ['name']. A name with inner spaces such as 'My Folder' is accepted and stored unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenNameIsBlank"
+      - "wildduck:design decision"
+    notes: "Decided 2026-11-11: only a blank name is rejected. Leading and trailing white space is kept as sent, like a name created over IMAP."
+
+  - id: MBX-145
+    title: "A name containing the hierarchy delimiter is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with name 'a/b', with name '/a' and with name 'a/'."
+    then: "Each is in notCreated with type invalidProperties and properties ['name']. No mailbox 'a' or 'a/b' appears over IMAP."
+    sources:
+      - "james:MailboxSetMethodContract#createShouldFailWhenNameWithDelimiter"
+      - "cyrus:JMAPMailbox/mailbox_set_name_badchars"
+      - "wildduck:brief mailboxes"
+    notes: "The RFC explicitly allows rejecting names with a slash. Mailbox/get can still return such a name for a mailbox with a missing ancestor (MBX-020)."
+
+  - id: MBX-146
+    title: "Names with control characters are rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: may
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with a name containing U+0000, with one containing a line feed, and with one containing U+007F."
+    then: "Each is in notCreated with type invalidProperties and properties ['name']."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_badchars"
+      - "rfc:8621 2"
+    notes: "A leading '(' is refused by jmap-perl because IMAP libraries mis-serialise it; WildDuck owns its IMAP layer and accepts it."
+
+  - id: MBX-147
+    title: "A name longer than maxSizeMailboxName is rejected and the limit itself is accepted"
+    method: Mailbox/set
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxSizeMailboxName N for the account (at least 100)."
+    when: "Mailbox/set create is called with an ASCII name of exactly N characters and with one of N plus 1 characters."
+    then: "The first is created and Mailbox/get returns the full name. The second is in notCreated with type invalidProperties and properties ['name']."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldNotCreateMailboxWhenNameTooLong"
+      - "cyrus:JMAPMailbox/mailbox_set_name_toolong"
+      - "jmap-perl:t/mailbox-name-policy.t"
+    notes: "RFC 8621 1.3.1 defines maxSizeMailboxName in UTF-8 octets. WildDuck advertises 512 and counts octets on JMAP input (see MBX-148), which keeps every accepted name within the 512 character limit of the mailbox handler."
+
+  - id: MBX-148
+    title: "The name length limit holds for multi byte names"
+    method: Mailbox/set
+    spec: "RFC 8621 1.3.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "The session advertises maxSizeMailboxName N."
+    when: "Mailbox/set create is called with a name of three byte characters whose UTF-8 length is at most N octets, and with one whose UTF-8 length exceeds N octets."
+    then: "The first is created and readable over IMAP; the second is rejected with invalidProperties on name. No name the session limit allows is refused by the mailbox handler."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "cyrus:JMAPMailbox/mailbox_set_name_toolong"
+    notes: "Decided 2026-11-11: advertise 512 and count UTF-8 octets in JMAP, the RFC unit. This is stricter than IMAP for non-ASCII names, never looser, so the handler never refuses a name the session limit allows."
+
+  - id: MBX-149
+    title: "Unicode names round trip between JMAP and IMAP"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "The default mailboxes."
+    when: "Mailbox/set creates mailboxes named 'Entwürfe', '日本語' and 'I feel ☺ 😀'."
+    then: "Mailbox/get returns the three names unchanged. IMAP LIST returns them in modified UTF-7 (or UTF-8 when the client enabled it) and decoding gives the same strings. Each can be selected over IMAP."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+      - "cyrus:JMAPMailbox/mailbox_set_name_unicode_nfc"
+      - "jmap-perl:t/mailbox-roles.t"
+
+  - id: MBX-150
+    title: "Names are compared in NFC so composed and decomposed forms collide"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A mailbox created with the name 'Café' in decomposed form (e followed by U+0301)."
+    when: "Mailbox/get is called, then Mailbox/set create is called with 'Café' in composed form (U+00E9) under the same parent."
+    then: "Mailbox/get returns the name in NFC (composed). The second create is rejected with invalidProperties on name because the sibling already exists."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_unicode_nfc"
+      - "rfc:8621 2"
+    notes: "Decided 2026-11-11: Mailbox/set normalises names to NFC on JMAP input. The handler and IMAP are unchanged, so a decomposed name created over IMAP is returned as stored."
+
+  - id: MBX-151
+    title: "Two siblings cannot have the same name"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A top level mailbox 'Dup' created over IMAP and a mailbox 'Work' with child 'Work/Dup2'."
+    when: "Mailbox/set create is called with name 'Dup' at top level, and with name 'Dup2' and parentId of 'Work'."
+    then: "Both are in notCreated with type invalidProperties and properties ['name']. The existing mailboxes are untouched."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldNotCreateMailboxWhenNameExists"
+      - "cyrus:JMAPMailbox/mailbox_set_already_exists"
+      - "cyrus:JMAPMailbox/mailbox_set_name_collision"
+      - "stalwart:mail/mailbox.rs"
+      - "stalwart:compliance/mailbox.rs#set_duplicate_name_same_parent"
+      - "jmapio:mailbox/set-duplicate-name-same-parent"
+
+  - id: MBX-152
+    title: "Two creates with the same name and parent in one call create only one mailbox"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'a': {name: 'Twin'}, 'b': {name: 'Twin'}}."
+    then: "Exactly one of the two is in created and the other is in notCreated with invalidProperties on name. Mailbox/query with name 'Twin' returns one id."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_nameclash"
+      - "rfc:8621 2"
+
+  - id: MBX-153
+    title: "The same name is allowed under different parents"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Mailboxes 'A' and 'B'."
+    when: "Mailbox/set creates 'Reports' at top level, under 'A' and under 'B' in one call."
+    then: "All three are created with distinct ids."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldAllowDifferentIsSubscribedValuesWhenMailboxHaveTheSameName"
+      - "cyrus:JMAPMailbox/mailbox_set_name_collision"
+
+  - id: MBX-154
+    title: "Sibling names differing only in case are distinct, except INBOX"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, imap]
+    given: "A top level mailbox 'projects'."
+    when: "Mailbox/set creates top level mailboxes named 'Projects', 'inbox' and 'Inbox'."
+    then: "'Projects' is created and IMAP LIST shows both 'projects' and 'Projects'. 'inbox' and 'Inbox' are rejected with invalidProperties on name, because INBOX is case insensitive over IMAP."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_changes_inbox_inbox"
+      - "stalwart:mail/mailbox.rs"
+      - "wildduck:lib/mailbox-handler.js"
+    notes: "WildDuck paths are case sensitive; only a first path part equal to INBOX in any case is normalised (imap-core/lib/imap-tools.js)."
+
+  - id: MBX-155
+    title: "Setting a role on create is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with (a) name 'Archive', role 'archive'; (b) name 'Trash2', role 'trash'; (c) name 'X', role 'Trash'; (d) name 'Y', role 'nosuchrole'; (e) name 'Plain', role null."
+    then: "(a) to (d) are in notCreated with type invalidProperties and properties ['role']. (e) is created with role null."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_role_create"
+      - "cyrus:JMAPMailbox/mailbox_set_role_dups_createrole"
+      - "cyrus:JMAPMailbox/mailbox_set_role_nested"
+      - "cyrus:JMAPMailbox/mailbox_set_no_outbox_role"
+      - "stalwart:mail/mailbox.rs"
+      - "wildduck:brief mailboxes"
+    notes: "Roles exist only on the mailboxes created with the account. Case (b) would violate role uniqueness on any server."
+
+  - id: MBX-156
+    title: "Server set properties are rejected on create"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with name plus, one at a time, id, totalEmails, unreadEmails, totalThreads, unreadThreads and myRights."
+    then: "Each create is in notCreated with type invalidProperties and properties naming the offending property. Nothing is created."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenServerSetParameter"
+      - "cyrus:JMAPMailbox/mailbox_set_create_serverset_props"
+      - "fastmail:t/Mailbox/set/create/immutable-fields.t"
+
+  - id: MBX-157
+    title: "Unknown or wrongly typed properties are rejected on create"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with (a) name and an unknown property 'colour', (b) isSubscribed 'yes', (c) parentId 5, (d) shareWith {}."
+    then: "Each is in notCreated with type invalidProperties and properties listing 'colour', 'isSubscribed', 'parentId' and 'shareWith' respectively."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenUnknownParameter"
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnNotCreatedWhenBadParameter"
+      - "james:MailboxSetMethodContract#mailboxSetCreationShouldValidateRightsWhenWrongValue"
+      - "cyrus:JMAPMailbox/mailbox_set_extendedprops"
+
+  - id: MBX-158
+    title: "sortOrder must be an integer from 0 to 2^31 minus 1"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set create is called with sortOrder 2147483647, then -1, 2147483648, 1.5 and '3'."
+    then: "The first is created and Mailbox/get returns 2147483647. The other four are in notCreated with type invalidProperties and properties ['sortOrder']."
+    sources:
+      - "rfc:8621 2"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingSortOrder"
+    notes: "James treats sortOrder as read only; WildDuck stores it."
+
+  - id: MBX-159
+    title: "isSubscribed false on create leaves the mailbox out of LSUB"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "The default mailboxes."
+    when: "Mailbox/set creates 'Quiet' with isSubscribed false and 'Loud' without isSubscribed."
+    then: "Mailbox/get shows isSubscribed false for 'Quiet' and true for 'Loud'. IMAP LIST shows both; IMAP LSUB shows 'Loud' only."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldNotSubscribeMailboxWhenRequired"
+      - "james:MailboxSetMethodContract#mailboxSetShouldSubscribeMailboxByDefault"
+      - "james:MailboxSetMethodContract#createShouldNotReturnSubscribeWhenSpecified"
+      - "cyrus:JMAPMailbox/mailbox_set_issubscribed"
+
+  - id: MBX-160
+    title: "A call with good and bad creates applies the good ones"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'ok': {name: 'Good'}, 'bad': {}}."
+    then: "created has only 'ok', notCreated has only 'bad' with invalidProperties, and newState differs from oldState."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldReturnCreatedAndNotCreatedWhenOneWithOnlyNameAndOneWithoutName"
+      - "rfc:8620 5.3"
+
+  - id: MBX-161
+    title: "Creating beyond the maximum depth is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "The session advertises maxMailboxDepth 128. A chain of 128 nested mailboxes exists (seeded over IMAP or the REST API)."
+    when: "Mailbox/set create is called with parentId set to the deepest mailbox."
+    then: "notCreated holds type invalidProperties with properties ['parentId'], and nothing is created. Creating a sibling of the deepest mailbox still works."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "wildduck:lib/consts.js MAX_SUB_MAILBOXES"
+
+  - id: MBX-162
+    title: "Creating beyond 1500 mailboxes is rejected with overQuota"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [db]
+    given: "A user who already has 1500 mailboxes (seeded directly)."
+    when: "Mailbox/set create is called with a valid new name."
+    then: "notCreated holds a SetError of type overQuota and the mailbox count stays 1500. After one mailbox is destroyed the same create succeeds."
+    sources:
+      - "rfc:8620 5.3"
+      - "wildduck:lib/consts.js MAX_MAILBOXES"
+
+  - id: MBX-163
+    title: "Creating the missing ancestor over JMAP adopts the orphaned descendants"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "'A' and 'A/B/C' exist without 'A/B'; the object for 'A/B/C' has name 'B/C' and parentId of 'A'."
+    when: "Mailbox/set create is called with name 'B' and parentId of 'A'."
+    then: "The create succeeds although a mailbox whose derived name starts with 'B/' exists. Afterwards 'A/B/C' has name 'C' and the new mailbox as parentId, with its id unchanged, and Mailbox/changes reports it in updated."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_createchild"
+      - "wildduck:jmap-report 4.2"
+
+  # ------------------------------------------------------- Mailbox/set: update
+  - id: MBX-164
+    title: "Rename a mailbox"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox 'Before Rename' with a known id holding one message."
+    when: "Mailbox/set is called with update {<id>: {name: 'After Rename'}}."
+    then: "updated has the id as key (value null or an object of changed server set properties) and notUpdated is null. Mailbox/get shows the same id with the new name and unchanged counts. IMAP LIST shows 'After Rename' and no 'Before Rename', and the message is in the renamed mailbox with the same Email id."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set"
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+      - "stalwart:mail/mailbox.rs"
+      - "stalwart:compliance/mailbox.rs#set_rename"
+      - "jmapio:mailbox/set-rename"
+      - "fastmail:t/Mailbox/set/update/basic.t"
+
+  - id: MBX-165
+    title: "Renaming a parent carries its subtree over IMAP and leaves the children's JMAP properties alone"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'P', 'P/C' and 'P/C/D' with known ids."
+    when: "Mailbox/set updates the id of 'P' with name 'Q'."
+    then: "IMAP LIST shows 'Q', 'Q/C' and 'Q/C/D' and nothing under 'P'. Mailbox/get shows the three original ids; the children keep their name and parentId."
+    sources:
+      - "james:MailboxSetMethodContract#parentRenameShouldNotAffectChild"
+      - "james:MailboxSetMethodContract#nameUpdatesShouldNotAffectParentId"
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_rename_children"
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_rename"
+
+  - id: MBX-166
+    title: "Renaming to an existing sibling name is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Top level mailboxes 'One' and 'Two'."
+    when: "Mailbox/set updates 'One' with name 'Two'."
+    then: "notUpdated holds the id with type invalidProperties and properties ['name']. Both mailboxes keep their names and the state is unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenTargetMailboxAlreadyExist"
+      - "cyrus:JMAPMailbox/mailbox_set_name_collision"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-167
+    title: "An update that changes nothing succeeds"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox 'Same' under parent 'P'."
+    when: "Mailbox/set updates it with name 'Same', then with parentId set to the id of 'P', then with an empty patch object."
+    then: "Each call lists the id in updated and none in notUpdated. The mailbox is unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldAllowNameNoop"
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdNoop"
+      - "cyrus:JMAPMailbox/mailbox_set_forbidden_name_unchanged"
+
+  - id: MBX-168
+    title: "Swapping two names in one call does not corrupt either mailbox"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: may
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "Top level mailboxes 'A' (id X) and 'B' (id Y)."
+    when: "Mailbox/set is called with update {X: {name: 'B'}, Y: {name: 'A'}}."
+    then: "Either both updates succeed (X is named 'B', Y is named 'A') or both are in notUpdated with invalidProperties on name and nothing changed. A state where both have the same name, or one mailbox is lost, never occurs."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_swap"
+    notes: "Decided 2026-11-11: no temporary names. Updates run in order and each is judged on the current tree, so both renames of a swap fail with invalidProperties on name and nothing changes."
+
+  - id: MBX-169
+    title: "Renaming to an invalid name is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox 'Valid'."
+    when: "Mailbox/set updates it with name '', then '   ', then 'a/b', then a name one character longer than maxSizeMailboxName, then name null."
+    then: "Each call lists the id in notUpdated with type invalidProperties and properties ['name']. The mailbox is still named 'Valid'."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingNameToBlank"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenMailboxNameContainsDelimiter"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenMailboxNameIsTooLong"
+      - "cyrus:JMAPMailbox/mailbox_set_name_badchars"
+      - "cyrus:JMAPMailbox/mailbox_set_name_toolong"
+      - "jmap-perl:t/mailbox-name-policy.t"
+
+  - id: MBX-170
+    title: "Changing only the case of a name succeeds"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox 'reports'."
+    when: "Mailbox/set updates it with name 'Reports'."
+    then: "The update succeeds, Mailbox/get returns 'Reports' and IMAP LIST shows 'Reports' only."
+    sources:
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-171
+    title: "Move a mailbox under another parent"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "Top level mailboxes 'Movable' (with one message) and 'Target'."
+    when: "Mailbox/set updates 'Movable' with parentId set to the id of 'Target'."
+    then: "The update succeeds. Mailbox/get shows the same id with name 'Movable' and the new parentId. IMAP LIST shows 'Target/Movable' and no top level 'Movable'; the message is still there with its Email id."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdChangeWhenTopLevelMailboxAndNewName"
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdChangeWhenChildMailbox"
+      - "cyrus:JMAPMailbox/mailbox_set_parent"
+      - "stalwart:compliance/mailbox.rs#set_move_parent"
+      - "jmapio:mailbox/set-move-parent"
+
+  - id: MBX-172
+    title: "Move a child mailbox to the top level with parentId null"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'Work/Clients' with a known id."
+    when: "Mailbox/set updates it with parentId null."
+    then: "Mailbox/get shows parentId null and name 'Clients'. IMAP LIST shows 'Clients' at top level and no 'Work/Clients'."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdDropWhenChildMailbox"
+      - "cyrus:JMAPMailbox/mailbox_set_parent"
+
+  - id: MBX-173
+    title: "Rename and move in one update"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'Work/Clients' and a top level mailbox 'Archive2'."
+    when: "Mailbox/set updates 'Work/Clients' with name 'Customers' and parentId of 'Archive2'; then with name 'Top' and parentId null."
+    then: "After the first call IMAP LIST shows 'Archive2/Customers'; after the second, 'Top'. The id is the same throughout."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdChangeWhenChildMailboxAndNewName"
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdDropWhenChildMailboxAndNewName"
+      - "james:MailboxSetMethodContract#updateShouldAllowParentIdDropWhenTopLevelMailboxAndNewName"
+      - "stalwart:mail/mailbox.rs"
+      - "cyrus:JMAPMailbox/mailbox_set_parent"
+
+  - id: MBX-174
+    title: "Moving a mailbox with children moves the whole subtree"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'A', 'A/B', 'A/B/C' and a top level mailbox 'Z'."
+    when: "Mailbox/set updates 'A/B' with parentId of 'Z'."
+    then: "IMAP LIST shows 'Z/B' and 'Z/B/C' and nothing under 'A'. Mailbox/get shows 'C' still with parentId equal to the id of 'B'; all ids are unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#updatingParentIdShouldSucceedWhenMailboxHasAChild"
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_move_child"
+
+  - id: MBX-175
+    title: "Moving under a parent that already has a child with that name is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "'A/Dup' and a top level 'Dup'."
+    when: "Mailbox/set updates the top level 'Dup' with parentId of 'A'; and separately with name 'Other' plus a parentId under which 'Other' exists."
+    then: "Each call lists the id in notUpdated with type invalidProperties (properties naming parentId, name or both). Nothing moved."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenTargetMailboxAlreadyExists"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenTargetMailboxAlreadyExistsAndBothPropertiesSpecified"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-176
+    title: "A mailbox cannot become its own parent"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox 'Self' with id X."
+    when: "Mailbox/set is called with update {X: {parentId: X}}."
+    then: "notUpdated.X has type invalidProperties with properties ['parentId']."
+    sources:
+      - "james:MailboxSetMethodContract#parentIdUpdateSetToSelfShouldBeRejected"
+      - "cyrus:JMAPMailbox/mailbox_set_parent_self"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-177
+    title: "A mailbox cannot be moved under its own descendant"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'A', 'A/B' and 'A/B/C'."
+    when: "Mailbox/set updates 'A' with parentId of 'A/B'; then with parentId of 'A/B/C'; then one call updates 'A' to be under 'A/B/C' and 'A/B/C' to be top level at once."
+    then: "The first two calls answer notUpdated with invalidProperties on parentId. In the third call no outcome may leave a loop: either the dependent order is resolved and both succeed, or the move of 'A' is rejected. IMAP LIST afterwards shows a consistent tree with three mailboxes."
+    sources:
+      - "james:MailboxSetMethodContract#parentIdUpdateSetToAChildShouldBeRejected"
+      - "cyrus:JMAPMailbox/mailbox_set_cycle_in_update"
+      - "cyrus:JMAPMailbox/mailbox_set_cycle_in_mboxtree"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-178
+    title: "Updating parentId to a mailbox that does not exist is rejected"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Mailboxes 'A' and 'B'; 'A' is then destroyed."
+    when: "Mailbox/set updates 'B' with parentId set to the former id of 'A', then to a random id, then to 42."
+    then: "Each call lists 'B' in notUpdated with type invalidProperties and properties ['parentId']."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenParentIdNotFound"
+      - "james:MailboxSetMethodContract#updateShouldRejectInvalidParentIdJsonPayload"
+      - "cyrus:JMAPMailbox/mailbox_move_to_deleted_parent"
+      - "stalwart:mail/mailbox.rs"
+
+  - id: MBX-179
+    title: "An update may reference a mailbox created in the same call"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox 'Child' with id X."
+    when: "Mailbox/set is called with create {'p': {name: 'NewParent'}} and update {X: {parentId: '#p'}}; and separately update {X: {parentId: '#nosuch'}}; and separately update {'#p2': {name: 'Renamed'}} with create {'p2': {name: 'Fresh'}}."
+    then: "The first call creates the parent and moves X under it. The second answers notUpdated with invalidProperties on parentId. In the third the freshly created mailbox ends up named 'Renamed'."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldAcceptCreationIdsForParentId"
+      - "james:MailboxSetMethodContract#updateShouldRejectUnresolvableCreationIds"
+      - "james:MailboxSetMethodContract#updateShouldAcceptCreationIds"
+      - "james:MailboxSetMethodContract#updateShouldHandleNotFoundClientId"
+
+  - id: MBX-180
+    title: "A move that would exceed the maximum depth is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "A chain 127 levels deep and a separate mailbox 'T' with a child 'T/U'."
+    when: "Mailbox/set updates 'T' with parentId set to the deepest mailbox of the chain."
+    then: "notUpdated lists 'T' with type invalidProperties and properties ['parentId'], because 'T/U' would land at level 129. Neither 'T' nor 'T/U' moved."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "wildduck:lib/consts.js MAX_SUB_MAILBOXES"
+
+  - id: MBX-181
+    title: "Renaming a mailbox whose derived name spans a missing ancestor replaces all those path parts"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "'A' and 'A/B/C' exist without 'A/B'; the object has name 'B/C' and parentId of 'A'."
+    when: "Mailbox/set updates it with name 'D'."
+    then: "The update succeeds, Mailbox/get shows name 'D' with parentId of 'A', and IMAP LIST shows 'A/D' and no 'A/B/C'. Sending the unchanged name 'B/C' back in an update is accepted as a no-op."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_rename"
+      - "wildduck:jmap-report 4.2"
+
+  - id: MBX-182
+    title: "Update sortOrder"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox 'Sort Order Test' with sortOrder 0; state S1."
+    when: "Mailbox/set updates it with sortOrder 42; then with sortOrder -1."
+    then: "The first update succeeds, Mailbox/get returns 42, Mailbox/query sorted by sortOrder places it accordingly, and Mailbox/changes sinceState S1 lists the id in updated with updatedProperties null. The second is in notUpdated with invalidProperties on sortOrder and the value stays 42."
+    sources:
+      - "stalwart:compliance/mailbox.rs#set_change_sort_order"
+      - "jmapio:mailbox/set-change-sort-order"
+      - "cyrus:JMAPMailbox/mailbox_set"
+      - "fastmail:t/Mailbox/set/update/basic.t"
+
+  - id: MBX-183
+    title: "sortOrder survives changes made over IMAP"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox with sortOrder 5 set over JMAP."
+    when: "The mailbox is renamed over IMAP and a message is appended, then Mailbox/get is called."
+    then: "sortOrder is still 5."
+    sources:
+      - "wildduck:brief mailboxes"
+
+  - id: MBX-184
+    title: "Update isSubscribed and observe it over LSUB"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A subscribed mailbox 'News'."
+    when: "Mailbox/set updates it with isSubscribed false, IMAP LSUB is run, then Mailbox/set updates it with isSubscribed true and LSUB is run again."
+    then: "After the first update Mailbox/get shows false and LSUB omits 'News' while LIST still shows it. After the second, Mailbox/get shows true and LSUB lists it."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldUnsubscribeMailboxes"
+      - "cyrus:JMAPMailbox/mailbox_set_issubscribed"
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_rename"
+
+  - id: MBX-185
+    title: "isSubscribed must be a boolean"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A subscribed mailbox."
+    when: "Mailbox/set updates it with isSubscribed 'invalid', then with isSubscribed null."
+    then: "Each call lists the id in notUpdated with type invalidProperties and properties ['isSubscribed']; the mailbox stays subscribed."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenInvalidIsSubscribedJSON"
+      - "james:MailboxSetMethodContract#updateShouldSubscribeMailboxesWhenNull"
+    notes: "James reads null as 'reset to subscribed'. isSubscribed is a plain Boolean in the RFC with no default, so WildDuck rejects null."
+
+  - id: MBX-186
+    title: "Subscription changes do not propagate to parents or children"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, imap]
+    given: "'P' and 'P/C', both unsubscribed."
+    when: "Mailbox/set subscribes 'P/C'; later, with both subscribed, Mailbox/set unsubscribes 'P'."
+    then: "After the first call only 'P/C' is subscribed. After the second only 'P' is unsubscribed. LSUB agrees in both cases and updated lists only the mailbox named in the request."
+    sources:
+      - "james:MailboxSetMethodContract#subscribeChildMailboxShouldPropagateSubscriptionToParentMailboxes"
+      - "james:MailboxSetMethodContract#unsubscribeParentMailboxShouldPropagateUnsubscriptionToChildrenMailboxes"
+      - "wildduck:design decision"
+    notes: "James propagates; WildDuck subscriptions are independent per mailbox, as over IMAP."
+
+  - id: MBX-187
+    title: "A mailbox keeps its subscription across rename and move"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'P' (unsubscribed) with child 'P/C' (subscribed)."
+    when: "Mailbox/set renames 'P' to 'Q'."
+    then: "Mailbox/get shows 'Q' still unsubscribed and its child still subscribed. LSUB lists 'Q/C' and neither 'P/C' nor 'Q'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_rename"
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_rename_children"
+
+  - id: MBX-188
+    title: "Changing a role is rejected"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "The default mailboxes and an ordinary mailbox 'Plain'."
+    when: "Mailbox/set updates (a) 'Plain' with role 'archive', (b) 'Plain' with role 'trash', (c) the Trash mailbox with role null, (d) the Sent mailbox with role 'drafts'."
+    then: "Each is in notUpdated with type invalidProperties and properties ['role']. Roles reported by Mailbox/get and special use over IMAP LIST are unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingRole"
+      - "cyrus:JMAPMailbox/mailbox_set_role_move_update"
+      - "cyrus:JMAPMailbox/mailbox_set_role_dups_existingrole"
+      - "cyrus:JMAPMailbox/mailbox_set_role_nested"
+      - "stalwart:mail/mailbox.rs"
+      - "wildduck:jmap-report 9"
+
+  - id: MBX-189
+    title: "Sending the current role back unchanged is accepted"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "The Trash mailbox and an ordinary mailbox 'Plain'."
+    when: "Mailbox/set updates Trash with role 'trash' and sortOrder 3, and 'Plain' with role null and sortOrder 4."
+    then: "Both updates succeed and only sortOrder changed. Clients that write whole objects back are not broken by the read only role."
+    sources:
+      - "rfc:8620 5.3"
+      - "cyrus:JMAPMailbox/mailbox_set_update_serverset_props"
+    notes: "role is treated like a server set property: allowed in a patch when identical to the current value."
+
+  - id: MBX-190
+    title: "The INBOX cannot be renamed or moved"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, imap]
+    given: "The default mailboxes and a mailbox 'Work'."
+    when: "Mailbox/set updates the INBOX with name 'Posteingang'; then with parentId of 'Work'."
+    then: "Each call lists the INBOX id in notUpdated with a SetError of type forbidden. IMAP LIST still shows INBOX at top level and no new INBOX was created."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldRenameInbox"
+      - "james:MailboxSetMethodContract#renameInboxShouldCreateNewInbox"
+      - "james:MailboxSetMethodContract#renameInboxShouldNotAffectSubMailboxes"
+      - "wildduck:lib/mailbox-handler.js"
+    notes: "James follows IMAP semantics (rename moves the messages and recreates INBOX). WildDuck refuses, matching mayRename false."
+
+  - id: MBX-191
+    title: "Special use mailboxes can be renamed and moved over JMAP, INBOX cannot"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, imap]
+    given: "The default mailboxes and a mailbox 'Work'."
+    when: "Mailbox/set updates the Sent mailbox with name 'Outbox'; the Trash mailbox with parentId of 'Work'; INBOX with name 'Inbox2'."
+    then: "The Sent and Trash updates succeed, keep their roles, and IMAP LIST shows the new paths with the same special use flags. The INBOX update is in notUpdated with a SetError of type forbidden."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_protected_move_parent"
+      - "cyrus:JMAPMailbox/mailbox_set_role_nested"
+      - "james:MailboxSetMethodContract#updateShouldMoveCustomRoleMailbox"
+      - "wildduck:brief mailboxes"
+    notes: "Decided 2026-11-11: JMAP mirrors the mailbox handler, which refuses rename only for INBOX and hidden mailboxes. Special use mailboxes can be renamed and keep their role."
+
+  - id: MBX-192
+    title: "sortOrder and isSubscribed can be changed on INBOX and special use mailboxes"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "The default mailboxes."
+    when: "Mailbox/set updates the INBOX with sortOrder 1 and the Junk mailbox with sortOrder 9 and isSubscribed false."
+    then: "Both updates succeed and Mailbox/get returns the new values. LSUB no longer lists Junk."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_issubscribed"
+      - "rfc:8621 2"
+
+  - id: MBX-193
+    title: "Server set properties cannot be changed"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox with totalEmails 0."
+    when: "Mailbox/set updates it, one property per call, with totalEmails 5, unreadEmails 5, totalThreads 5, unreadThreads 5, myRights {mayDelete: false}, 'myRights/mayRename' false and id 'other'."
+    then: "Each call lists the id in notUpdated with type invalidProperties and properties naming the property. Mailbox/get is unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingTotalEmails"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingUnreadEmails"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingTotalThreads"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingUnreadThreads"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenModifyingMyRights"
+      - "cyrus:JMAPMailbox/mailbox_set_update_serverset_props"
+      - "fastmail:t/Mailbox/set/create/immutable-fields.t"
+
+  - id: MBX-194
+    title: "A whole object fetched with Mailbox/get can be written back with one changed property"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox object fetched with all properties."
+    when: "Mailbox/set updates its id with the complete object, changing only name."
+    then: "The update succeeds because every server set property (id, counts, myRights) is identical to the current value. Only the name changed."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_update_serverset_props"
+      - "rfc:8620 5.3"
+
+  - id: MBX-195
+    title: "Unknown properties and malformed patches are rejected per mailbox"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox with id X."
+    when: "Mailbox/set updates X with (a) {'colour': 'red'}, (b) {'/name': 'x'}, (c) {'': 'x'}, (d) {'name/first': 'x'}, (e) {'shareWith': {}}."
+    then: "(a) and (e) answer notUpdated.X with type invalidProperties naming the property. (b), (c) and (d) answer notUpdated.X with type invalidPatch. The mailbox is unchanged in all cases."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenUnknownProperty"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenPropertyStartWithImplicitSlash"
+      - "james:MailboxSetMethodContract#updateShouldFailWhenEmptyProperty"
+      - "james:MailboxSetMethodContract#updateRightsShouldFailWhenOmittingCapability"
+      - "rfc:8620 5.3"
+
+  - id: MBX-196
+    title: "A patch that is not an object fails the whole method"
+    method: Mailbox/set
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A mailbox with id X."
+    when: "Mailbox/set is called with update {X: 'invalid'}; with update set to an array; with create set to a string."
+    then: "Each call returns an error invocation of type invalidArguments and changes nothing."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenWrongJsonObject"
+      - "rfc:8620 3.6.2"
+
+  - id: MBX-197
+    title: "Updating an id that does not exist answers notFound"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "The default mailboxes and a hidden mailbox with a known id."
+    when: "Mailbox/set updates an unknown id, a malformed id, the hidden mailbox id and a mailbox id of another user, each with name 'x'."
+    then: "Each is in notUpdated with a SetError of type notFound."
+    sources:
+      - "james:MailboxSetMethodContract#updateShouldFailWhenMailboxNotFound"
+      - "james:MailboxSetMethodContract#updateShouldFailOnOthersMailbox"
+      - "fastmail:t/Mailbox/set/nonexistent-id.t"
+
+  - id: MBX-198
+    title: "One failing update does not block the others"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Mailboxes 'A' and 'B' and the INBOX."
+    when: "Mailbox/set updates 'A' with name 'A2', 'B' with name 'x/y' and the INBOX with name 'Nope' in one call."
+    then: "updated has only 'A'; notUpdated has 'B' with invalidProperties and the INBOX with forbidden. newState differs from oldState."
+    sources:
+      - "rfc:8620 5.3"
+      - "james:MailboxSetMethodContract#updateShouldNotChangeRightsWhenRenameFails"
+
+  # ------------------------------------------------------ Mailbox/set: destroy
+  - id: MBX-199
+    title: "Destroy an empty mailbox"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "An empty mailbox 'Destroy Me' with id X, subscribed."
+    when: "Mailbox/set is called with destroy [X]."
+    then: "destroyed is [X] and notDestroyed is null. Mailbox/get returns X in notFound, Mailbox/changes lists X in destroyed, and neither IMAP LIST nor LSUB shows 'Destroy Me'."
+    sources:
+      - "james:MailboxSetMethodContract#deleteShouldRemoveExistingMailbox"
+      - "james:MailboxSetMethodContract#destroyShouldUnsubscribeMailboxes"
+      - "cyrus:JMAPMailbox/mailbox_set_destroy_empty"
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_destroy"
+      - "stalwart:compliance/mailbox.rs#set_destroy_empty"
+      - "jmapio:mailbox/set-destroy-empty"
+      - "fastmail:t/Mailbox/set/destroy/good-destroy-no-messages.t"
+
+  - id: MBX-200
+    title: "Destroy several mailboxes in one call"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Empty mailboxes 'A', 'B' and 'C'."
+    when: "Mailbox/set is called with destroy listing the three ids."
+    then: "destroyed holds the three ids (any order) and Mailbox/get ids null no longer lists them."
+    sources:
+      - "james:MailboxSetMethodContract#deleteShouldRemoveExistingMailboxes"
+
+  - id: MBX-201
+    title: "Destroying an unknown, malformed or already destroyed id answers notFound"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, api]
+    given: "A mailbox destroyed a moment ago (id X), a hidden mailbox (id H) and a mailbox id of another user."
+    when: "Mailbox/set is called with destroy [X, H, <foreign id>, 'invalid', '#nosuch']."
+    then: "notDestroyed has all five keys, each with a SetError of type notFound; destroyed is null and the state is unchanged."
+    sources:
+      - "james:MailboxSetMethodContract#deleteShouldFailWhenMailboxDoesNotExist"
+      - "james:MailboxSetMethodContract#deleteShouldHandleInvalidMailboxId"
+      - "james:MailboxSetMethodContract#destroyShouldPreserveAnUnknownMaximumLengthCreationReference"
+      - "cyrus:JMAPMailbox/mailbox_set_destroy_twice"
+      - "stalwart:compliance/mailbox.rs#set_destroy_not_found"
+      - "jmapio:mailbox/set-destroy-not-found"
+      - "fastmail:t/Mailbox/set/nonexistent-id.t"
+
+  - id: MBX-202
+    title: "A mailbox with a child cannot be destroyed"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "'Parent' (empty) with child 'Parent/Child'."
+    when: "Mailbox/set is called with destroy [<id of Parent>]; and again with onDestroyRemoveEmails true."
+    then: "Both calls answer notDestroyed with a SetError of type mailboxHasChild. Parent and child still exist over JMAP and IMAP."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set"
+      - "stalwart:mail/mailbox.rs"
+      - "stalwart:compliance/mailbox.rs#set_cannot_destroy_with_children"
+      - "stalwart:compliance/mailbox.rs#set_on_destroy_remove_emails_with_children"
+      - "jmapio:mailbox/set-cannot-destroy-with-children"
+      - "jmapio:mailbox/set-on-destroy-remove-emails-with-children"
+      - "fastmail:t/Mailbox/set/destroy/mailbox-has-child-error.t"
+    notes: "MailboxHandler.del does not check for children today, so the check is a JMAP pre-check."
+
+  - id: MBX-203
+    title: "A mailbox whose only descendants have a missing ancestor still counts as having a child"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [imap]
+    given: "'A' and 'A/B/C' exist without 'A/B'."
+    when: "Mailbox/set is called with destroy [<id of A>]."
+    then: "notDestroyed has type mailboxHasChild, because Mailbox/get reports 'A' as the parentId of 'A/B/C'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_destroy"
+      - "cyrus:JMAPMailbox/mailbox_set_intermediary_destroy_child"
+
+  - id: MBX-204
+    title: "Parent and child can be destroyed in one call, whatever the order of the ids"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Empty mailboxes 'A', 'A/B' and 'A/B/C'."
+    when: "Mailbox/set is called with destroy [<id of A>, <id of A/B>, <id of A/B/C>] (parents first)."
+    then: "All three ids are in destroyed and none in notDestroyed."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_order"
+      - "rfc:8620 5.3"
+
+  - id: MBX-205
+    title: "A mailbox holding emails cannot be destroyed by default"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox with one message appended over IMAP."
+    when: "Mailbox/set is called with destroy [<id>] without onDestroyRemoveEmails, and again with onDestroyRemoveEmails false."
+    then: "Both calls answer notDestroyed with a SetError of type mailboxHasEmail. The mailbox and the message still exist."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_destroy_empty"
+      - "stalwart:mail/mailbox.rs"
+      - "fastmail:t/Mailbox/set/destroy/mailbox-has-email-error.t"
+      - "rfc:8621 2.5"
+    notes: "James deletes the mailbox regardless; the RFC behaviour is required here."
+
+  - id: MBX-206
+    title: "onDestroyRemoveEmails true destroys the mailbox together with its emails"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox with two messages (Email ids E1 and E2, one thread); state S1."
+    when: "Mailbox/set is called with destroy [<id>] and onDestroyRemoveEmails true."
+    then: "The id is in destroyed. Email/get returns E1 and E2 in notFound, Email/changes sinceState S1 lists both in destroyed, Thread/get for their thread returns notFound, and IMAP LIST no longer shows the mailbox."
+    sources:
+      - "james:MailboxSetMethodContract#deleteShouldRemoveMessagesWhenOnDestroyRemoveEmails"
+      - "cyrus:JMAPMailbox/mailbox_set_destroy_removemsgs"
+      - "stalwart:mail/mailbox.rs"
+      - "stalwart:compliance/mailbox.rs#set_on_destroy_remove_emails"
+      - "jmapio:mailbox/set-on-destroy-remove-emails"
+      - "fastmail:t/Mailbox/set/destroy/on-destroy-remove-messages-true-mail-only-here.t"
+    notes: "An Email is in exactly one mailbox, so the 'also in another mailbox' branch of the RFC (fastmail on-destroy-remove-messages-true-mail-in-other-boxes.t) cannot occur. Decided 2026-11-11: the Emails are removed as by an IMAP DELETE of the mailbox (marked for immediate expiry, journaled as EXPUNGE), not moved to the 25 day archive."
+
+  - id: MBX-207
+    title: "Messages flagged \\Deleted do not block destroying a mailbox"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap, imap]
+    given: "A mailbox whose only message is flagged \\Deleted over IMAP and not expunged; Mailbox/get shows totalEmails 0."
+    when: "Mailbox/set is called with destroy [<id>] without onDestroyRemoveEmails."
+    then: "The mailbox is destroyed (no mailboxHasEmail), since no Email is visible in it over JMAP. The flagged message is removed with the mailbox."
+    sources:
+      - "wildduck:brief emails"
+      - "rfc:8621 4.1.1"
+    notes: "Decided 2026-11-11: the mailbox is destroyed. The alternative, mailboxHasEmail for a mailbox that looks empty over JMAP, is a state clients cannot resolve. An IMAP client could still have undeleted the message; the same happens with an IMAP DELETE."
+
+  - id: MBX-208
+    title: "The INBOX and special use mailboxes cannot be destroyed"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "The default mailboxes, all empty."
+    when: "Mailbox/set is called with destroy listing the ids of INBOX, Sent, Trash, Drafts and Junk, with onDestroyRemoveEmails true."
+    then: "All five ids are in notDestroyed with a SetError of type forbidden, consistent with myRights.mayDelete false. All five still exist."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_role_protected_destroy"
+      - "cyrus:JMAPMailbox/mailbox_set_role_move_destroy"
+      - "wildduck:lib/mailbox-handler.js"
+    notes: "Stalwart allows destroying Trash with its contents; WildDuck does not."
+
+  - id: MBX-209
+    title: "Create and destroy by creation id in one call"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default mailboxes."
+    when: "Mailbox/set is called with create {'t': {name: 'Temp'}} and destroy ['#t']."
+    then: "created has 't' and destroyed holds the id that was given to 't'. Afterwards no mailbox 'Temp' exists."
+    sources:
+      - "james:MailboxSetMethodContract#deleteShouldAcceptCreationIdsWithinTheSameRequest"
+      - "rfc:8620 5.3"
+
+  - id: MBX-210
+    title: "Destroying a mailbox and creating one with the same name in one call works"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [jmap]
+    given: "An empty top level mailbox 'A' with id X."
+    when: "Mailbox/set is called with create {'n': {name: 'A'}} and destroy [X]."
+    then: "X is in destroyed and 'n' is created with an id different from X. Exactly one mailbox named 'A' exists afterwards. Mailbox/changes from the earlier state lists X in destroyed and the new id in created."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_order2"
+      - "rfc:8620 5.3"
+    notes: "A create whose name is taken by a mailbox that the same call destroys destroys that mailbox first, when the destroy can succeed on its own (no children, no Emails unless onDestroyRemoveEmails)."
+
+  - id: MBX-211
+    title: "A dependent chain of move, destroy and create in one call is ordered by the server"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: may
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "'A' (id X) with child 'A/B' (id Y), both empty."
+    when: "Mailbox/set is called with create {'n': {name: 'A'}}, update {Y: {parentId: '#n'}} and destroy [X]."
+    then: "Preferred outcome: all three succeed, leaving a new 'A' with child 'B' (id Y) and X destroyed. If the server cannot resolve the order it must fail the operations individually (for example X with mailboxHasChild and 'n' with invalidProperties) and leave the original tree intact; it must never destroy 'A' while losing 'B'."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_order2"
+
+  - id: MBX-212
+    title: "A destroyed name can be reused and gets a new id"
+    method: Mailbox/set
+    spec: "RFC 8621 2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "A mailbox 'Cycle' with id X, unsubscribed, sortOrder 9, destroyed over JMAP."
+    when: "Mailbox/set creates 'Cycle' again."
+    then: "The new mailbox has an id different from X, isSubscribed true and sortOrder 0. Mailbox/get for X still answers notFound."
+    sources:
+      - "james:MailboxSetMethodContract#destroyShouldUnsubscribeMailboxes"
+      - "cyrus:JMAPMailbox/mailbox_changes_create_delete"
+      - "cyrus:JMAPMailbox/mailbox_set_subscriptions_destroy"
+
+  - id: MBX-213
+    title: "One failing destroy does not block the others"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "An empty mailbox 'E', a mailbox 'F' with one message and the INBOX."
+    when: "Mailbox/set is called with destroy [<E>, <F>, <INBOX>]."
+    then: "destroyed is [<E>]; notDestroyed has 'F' with mailboxHasEmail and the INBOX with forbidden."
+    sources:
+      - "rfc:8620 5.3"
+      - "cyrus:JMAPMailbox/mailbox_set_destroy_movetomailbox_errors"
+
+  # -------------------------------------------------- Mailbox/set: state, misc
+  - id: MBX-214
+    title: "Mailbox/set returns oldState and newState that bracket the change"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "State S from Mailbox/get."
+    when: "One request holds Mailbox/set creating a mailbox and then Mailbox/get with an empty ids array."
+    then: "oldState equals S, newState differs from S and equals the state the following Mailbox/get returns. Mailbox/changes sinceState S returns exactly the created id."
+    sources:
+      - "james:MailboxSetMethodContract#newStateShouldBeUpToDate"
+      - "james:MailboxSetMethodContract#oldStateShouldIncludeSetChanges"
+      - "stalwart:compliance/mailbox.rs#set_state_changes"
+      - "jmapio:mailbox/set-state-changes"
+      - "jmap-perl:t/set-state-consistent.t"
+
+  - id: MBX-215
+    title: "A Mailbox/set that changes nothing keeps the state and returns null maps"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "State S from Mailbox/get."
+    when: "Mailbox/set is called with only accountId; then with create {}, update {} and destroy []; then with one create that fails validation."
+    then: "In all three responses oldState and newState equal S. created, updated and destroyed are null, and notCreated, notUpdated and notDestroyed are null except for the failed create in the third call."
+    sources:
+      - "fastmail:t/Mailbox/set/create/empty-set-fields-are-null.t"
+      - "fastmail:t/Mailbox/set/destroy/empty-set-fields-are-null.t"
+      - "jmap-perl:t/set-state-consistent.t"
+      - "rfc:8620 5.3"
+
+  - id: MBX-216
+    title: "ifInState matching the current state lets the call proceed"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "State S from Mailbox/get."
+    when: "Mailbox/set is called with ifInState S and one create."
+    then: "The mailbox is created and oldState equals S."
+    sources:
+      - "fastmail:t/Mailbox/set/if-in-state.t"
+      - "cyrus:JMAPMailbox/mailbox_set"
+      - "jmap-perl:t/set-state-consistent.t"
+
+  - id: MBX-217
+    title: "ifInState not matching aborts the call with stateMismatch"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap]
+    given: "State S1; then a mailbox is created over IMAP so the state is S2."
+    when: "Mailbox/set is called with ifInState S1 and a create, an update and a destroy; and separately with ifInState 'garbage'."
+    then: "Both calls return an error invocation of type stateMismatch. Nothing was created, updated or destroyed, and the state is still S2."
+    sources:
+      - "fastmail:t/Mailbox/set/if-in-state.t"
+      - "cyrus:JMAPMailbox/mailbox_set"
+      - "jmap-perl:t/set-state-consistent.t"
+      - "rfc:8620 5.3"
+
+  - id: MBX-218
+    title: "ifInState also trips on Email activity because the state is shared"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [lmtp]
+    given: "State S1 from Mailbox/get; then a message is delivered to INBOX."
+    when: "Mailbox/set is called with ifInState S1 and a rename of an unrelated mailbox."
+    then: "The call returns stateMismatch. After the client refreshes with Mailbox/changes and retries with the new state, the rename succeeds."
+    sources:
+      - "wildduck:brief state and changes"
+    notes: "Consequence of one state string for Email, Thread and Mailbox. Clients using ifInState on a busy account will retry often; worth revisiting if it hurts."
+
+  - id: MBX-219
+    title: "Mailbox/set with a foreign accountId answers accountNotFound"
+    method: Mailbox/set
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Two users A and B."
+    when: "User A calls Mailbox/set with accountId of B and a create."
+    then: "The response is an error invocation of type accountNotFound and B gets no new mailbox."
+    sources:
+      - "james:MailboxSetMethodContract#mailboxSetShouldFailWhenWrongAccountId"
+      - "fastmail:t/Mailbox/foreign-account.t"
+
+  - id: MBX-220
+    title: "More operations than maxObjectsInSet answers requestTooLarge"
+    method: Mailbox/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxObjectsInSet N."
+    when: "Mailbox/set is called with create, update and destroy entries adding up to N plus 1."
+    then: "The response is an error invocation of type requestTooLarge and nothing is applied."
+    sources:
+      - "rfc:8620 5.3"
+
+  - id: MBX-221
+    title: "Changes made by Mailbox/set show up in Mailbox/changes with updatedProperties null"
+    method: Mailbox/set
+    spec: "RFC 8621 2.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "Mailboxes 'R' and 'D'; state S1."
+    when: "One Mailbox/set creates 'N', renames 'R', sets isSubscribed false on the INBOX and destroys 'D'; then Mailbox/changes sinceState S1 is called."
+    then: "created holds the id of 'N', updated holds the ids of 'R' and the INBOX, destroyed holds the id of 'D', and updatedProperties is null."
+    sources:
+      - "james:MailboxChangesMethodContract#mailboxChangesShouldReturnAllTypeOfChanges"
+      - "stalwart:mail/mailbox.rs"
+      - "fastmail:t/Mailbox/changes/with-changes.t"
+
+  - id: MBX-222
+    title: "An IMAP session sees JMAP mailbox changes without reconnecting"
+    method: Mailbox/set
+    spec: "RFC 8621 2.5"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap, imap]
+    given: "An IMAP session that is logged in before the JMAP calls and has the INBOX selected."
+    when: "Over JMAP a mailbox 'New' is created, 'Other' is renamed to 'Other2', 'Gone' is destroyed and 'Quiet' is unsubscribed. The same IMAP session then runs NOOP, LIST and LSUB."
+    then: "NOOP succeeds. LIST shows 'New', 'Other2' and 'Quiet' and neither 'Other' nor 'Gone'. LSUB shows 'New' and 'Other2' but not 'Quiet'. SELECT of 'Other2' succeeds and SELECT of 'Gone' fails."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_set_name_interop"
+      - "wildduck:brief emails"
+
+  - id: MBX-223
+    title: "Mailbox/changes pages past the journal scan limit without losing mailbox changes"
+    method: Mailbox/changes
+    spec: "RFC 8620 5.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [imap, jmap]
+    given: "A JMAP service whose journal scan limit ([jmap.changes] scanLimit) is 5, and a state S1 of the user."
+    when: "Six messages are appended to the INBOX over IMAP, then a mailbox 'Late' is created over JMAP. Mailbox/changes is called with sinceState S1, and again with each newState while hasMoreChanges is true."
+    then: "The first page stops at the scan limit: hasMoreChanges is true and newState is not the current state. The pages together list the id of 'Late' in created, and the last page has hasMoreChanges false."
+    sources:
+      - "rfc:8620 5.2"
+      - "wildduck:security audit R-1"
