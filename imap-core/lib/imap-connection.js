@@ -658,6 +658,7 @@ class IMAPConnection extends EventEmitter {
     _startSession() {
         this.session = {
             id: this.id,
+            secure: this.secure,
 
             selected: this.selected,
 

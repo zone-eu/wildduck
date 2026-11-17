@@ -95,6 +95,7 @@ function upgrade(connection) {
         }
 
         connection.secure = true;
+        connection.session.secure = true;
         connection._socket = secureSocket;
         connection._upgrading = false;
 
