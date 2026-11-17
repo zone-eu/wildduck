@@ -135,7 +135,8 @@ describe('Roles API', function () {
                 'read:any': ['*'],
                 'update:any': ['*'],
                 'delete:any': ['*']
-            }
+            },
+            messages: { 'read:any': ['id', 'subject'] }
         };
         const manager = await createRole(`role-manager-${new ObjectId()}`, managerPermissions);
         const managerToken = await createToken(manager.id);
@@ -156,6 +157,42 @@ describe('Roles API', function () {
         const recreated = await request('POST', '/roles', rootToken.accessToken, { name: created.name, permissions: {} });
         expect(recreated.statusCode).to.equal(409);
         expect(recreated.json().code).to.equal('RoleExists');
+    });
+
+    it('prevents role writers from escalating their own role or creating broader grants', async () => {
+        const permissions = {
+            roles: { 'create:any': ['*'], 'read:any': ['*'], 'update:any': ['*'] },
+            messages: { 'read:own': ['id', 'subject'] },
+            custom: { export: true }
+        };
+        const delegate = await createRole(`delegated-${new ObjectId()}`, permissions);
+        const token = await createToken(delegate.id);
+        for (const extra of [
+            { users: { 'update:any': ['*'] } },
+            { messages: { 'read:any': ['id'] } },
+            { messages: { 'read:own': ['*'] } },
+            { rolegrants: { 'update:any': ['*'] } },
+            { custom: { export: true, billing: true } }
+        ]) {
+            const expanded = { ...permissions, ...extra };
+            let response = await request('PUT', `/roles/${delegate.id}`, token.accessToken, { permissions: expanded });
+            expect(response.statusCode).to.equal(403, response.body);
+            expect(response.json().code).to.equal('MissingPrivileges');
+            const name = `denied-${new ObjectId()}`;
+            response = await request('POST', '/roles', token.accessToken, { name, permissions: expanded });
+            if (response.statusCode === 200) {
+                roleNames.push(name);
+            }
+            expect(response.statusCode).to.equal(403, response.body);
+            expect(response.json().code).to.equal('MissingPrivileges');
+        }
+        expect((await request('GET', `/roles/${delegate.id}`)).json().permissions).to.deep.equal(permissions);
+
+        const subset = { messages: { 'read:own': ['subject'] }, custom: { export: true } };
+        const created = await createRole(`subset-${new ObjectId()}`, subset, token.accessToken);
+        expect(created.permissions).to.deep.equal(subset);
+        const response = await request('PUT', `/roles/${created.id}`, token.accessToken, { permissions: {} });
+        expect(response.statusCode).to.equal(200, response.body);
     });
 
     it('paginates roles and rejects immutable and server-managed fields', async () => {

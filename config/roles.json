@@ -7,6 +7,15 @@
             "delete:any": ["*"]
         },
 
+        "userpermissions": {
+            "create:any": ["*"],
+            "update:any": ["*"]
+        },
+
+        "rolegrants": {
+            "update:any": ["*"]
+        },
+
         "addresslisting": {
             "read:any": ["*"]
         },

@@ -474,12 +474,12 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "maxLength": 128,
-                                        "description": "Role name; null restores the user role.",
+                                        "description": "Role name; null restores the user role. Writing requires the matching userpermissions grant and delegation authority for the role.",
                                         "nullable": true
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Resource CRUD restrictions and custom capability booleans. False denies; true inherits. Replaces the previous map; null or {} clears it.",
+                                        "description": "Resource CRUD restrictions and custom capability booleans. False denies; true inherits. Replaces the previous map; null or {} clears it. Writing requires the matching userpermissions grant and delegation authority for the role.",
                                         "properties": {
                                             "custom": {
                                                 "type": "object",
@@ -1250,12 +1250,12 @@
                                         "type": "string",
                                         "minLength": 1,
                                         "maxLength": 128,
-                                        "description": "Role name; null restores the user role.",
+                                        "description": "Role name; null restores the user role. Writing requires the matching userpermissions grant and delegation authority for the role.",
                                         "nullable": true
                                     },
                                     "permissions": {
                                         "type": "object",
-                                        "description": "Resource CRUD restrictions and custom capability booleans. False denies; true inherits. Replaces the previous map; null or {} clears it.",
+                                        "description": "Resource CRUD restrictions and custom capability booleans. False denies; true inherits. Replaces the previous map; null or {} clears it. Writing requires the matching userpermissions grant and delegation authority for the role.",
                                         "properties": {
                                             "custom": {
                                                 "type": "object",
@@ -18565,7 +18565,7 @@
                 "tags": [
                     "Roles"
                 ],
-                "description": "Creates a persistent custom role.",
+                "description": "Creates a persistent custom role. Grants must be a subset of the caller's effective permissions unless the caller has rolegrants:update:any.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -18821,7 +18821,7 @@
                 "tags": [
                     "Roles"
                 ],
-                "description": "Updates a custom role description and replaces its permissions.",
+                "description": "Updates a custom role description and replaces its permissions. Replacement grants must fit within the caller's effective permissions unless the caller has rolegrants:update:any.",
                 "requestBody": {
                     "required": true,
                     "content": {

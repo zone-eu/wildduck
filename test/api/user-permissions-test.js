@@ -22,6 +22,7 @@ describe('API user role and permission policies', function () {
     let otherToken;
     const tokenHashes = [];
     const users = [];
+    const roleNames = [];
     let mcpTokenId;
 
     const request = (method, url, token = rootToken.accessToken, payload) => {
@@ -81,6 +82,9 @@ describe('API user role and permission policies', function () {
         }
         for (const hash of tokenHashes) {
             await deleteRoleToken(hash);
+        }
+        if (roleNames.length) {
+            await db.users.collection('roles').deleteMany({ _id: { $in: roleNames } });
         }
         if (app) {
             await app.close();
@@ -244,29 +248,80 @@ describe('API user role and permission policies', function () {
         }
     });
 
-    it('allows policy writes through normal user create and update grants', async () => {
-        const managerToken = await makeToken('manager');
-        const policy = { role: 'api:read', permissions: { labels: { create: false } } };
-        const created = await request('POST', '/users', managerToken.accessToken, {
-            username: `policy-created-${crypto.randomBytes(6).toString('hex')}`,
+    it('rejects policy writes through broad user grants before changing credentials or creating users', async () => {
+        for (const role of ['manager', 'webmail']) {
+            const token = await makeToken(role);
+            for (const update of [
+                { role: 'root', password: 'Escalation-password-123', allowUnsafe: true },
+                { role: 'api:read' },
+                { role: null },
+                { permissions: null },
+                { permissions: {} }
+            ]) {
+                const response = await request('PUT', `/users/${user}`, token.accessToken, update);
+                expect(response.statusCode).to.equal(403, response.body);
+                expect(response.json().code).to.equal('MissingPrivileges');
+            }
+            const created = await request('POST', '/users', token.accessToken, {
+                username: `policy-created-${crypto.randomBytes(6).toString('hex')}`,
+                password: false,
+                role: 'root'
+            });
+            if (created.statusCode === 200) {
+                users.push(created.json().id);
+            }
+            expect(created.statusCode).to.equal(403, created.body);
+            expect(created.json().code).to.equal('MissingPrivileges');
+            const authentication = await request('POST', '/authenticate', token.accessToken, { username, password: 'Escalation-password-123' });
+            expect(authentication.statusCode).to.equal(403, authentication.body);
+            expect(authentication.json()).not.to.have.property('token');
+        }
+        const details = (await request('GET', `/users/${user}`)).json();
+        expect(details).not.to.have.any.keys('role', 'permissions');
+        const ordinaryUpdate = await request('PUT', `/users/${user}`, (await makeToken('manager')).accessToken, { name: 'Managed account' });
+        expect(ordinaryUpdate.statusCode).to.equal(200, ordinaryUpdate.body);
+    });
+
+    it('allows explicitly delegated policy writes within the caller grant ceiling', async () => {
+        const makeRole = async permissions => {
+            const name = `policy-delegate-${crypto.randomBytes(6).toString('hex')}`;
+            const created = await request('POST', '/roles', rootToken.accessToken, { name, permissions });
+            expect(created.statusCode).to.equal(200, created.body);
+            roleNames.push(name);
+            return name;
+        };
+        const delegate = await makeRole({
+            users: { 'create:any': ['*'], 'read:any': ['*'], 'update:any': ['*'] },
+            userpermissions: { 'create:any': ['*'], 'update:any': ['*'] },
+            labels: { 'read:any': ['id'] }
+        });
+        const assigned = await makeRole({ users: { 'read:own': ['name'] }, labels: { 'read:own': ['id'] } });
+        const token = await makeToken(delegate);
+        const policy = { role: assigned, permissions: { labels: { read: false } } };
+        let response = await request('PUT', `/users/${user}`, token.accessToken, policy);
+        expect(response.statusCode).to.equal(200, response.body);
+        expect((await request('GET', `/users/${user}`)).json()).to.deep.include(policy);
+        response = await request('PUT', `/users/${user}`, token.accessToken, { permissions: null });
+        expect(response.statusCode).to.equal(200, response.body);
+        expect((await request('GET', `/users/${user}`)).json().role).to.equal(assigned);
+
+        const created = await request('POST', '/users', token.accessToken, {
+            username: `policy-delegated-${crypto.randomBytes(6).toString('hex')}`,
             password: false,
             ...policy
         });
-        expect(created.statusCode).to.equal(200);
-        const id = created.json().id;
-        users.push(id);
-        expect((await request('GET', `/users/${id}`)).json()).to.deep.include(policy);
+        expect(created.statusCode).to.equal(200, created.body);
+        users.push(created.json().id);
 
-        for (const update of [policy, { role: null, permissions: null }]) {
-            const response = await request('PUT', `/users/${user}`, managerToken.accessToken, update);
-            expect(response.statusCode).to.equal(200);
-            const details = (await request('GET', `/users/${user}`)).json();
-            if (update.role === null) {
-                expect(details).not.to.have.any.keys('role', 'permissions');
-            } else {
-                expect(details).to.deep.include(update);
-            }
+        for (const update of [{ role: 'root' }, { role: null }]) {
+            response = await request('PUT', `/users/${user}`, token.accessToken, update);
+            expect(response.statusCode).to.equal(403, response.body);
+            expect(response.json().code).to.equal('MissingPrivileges');
         }
+        await setPolicy({ role: 'root', permissions: { labels: { read: false } } });
+        response = await request('PUT', `/users/${user}`, token.accessToken, { permissions: null });
+        expect(response.statusCode).to.equal(403, response.body);
+        expect(response.json().code).to.equal('MissingPrivileges');
     });
 
     it('preserves user write denial and attribute filtering for policy fields', async () => {

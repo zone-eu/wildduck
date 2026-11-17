@@ -69,9 +69,11 @@ module.exports = function (grunt) {
         'test/mcp-tools-test.js',
         'test/metrics-config-test.js',
         'test/prometheus-test.js',
+        'test/role-delegation-test.js',
         'test/roles-test.js',
         'test/tools-test.js',
-        'test/user-handler-auth-test.js'
+        'test/user-handler-auth-test.js',
+        'test/user-handler-load-test.js'
     ];
 
     // Project configuration.

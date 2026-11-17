@@ -19,6 +19,8 @@ Role administration uses the `roles` resource grants, with `createAny`, `readAny
 - `PUT /roles/:role` with optional `description` and/or `permissions` to replace those fields.
 - `DELETE /roles/:role` to delete a custom role.
 
+Creating a role or replacing its permissions requires every grant to fit within the caller's effective permissions, including scopes, attribute allowlists, exclusions, and custom capabilities. `roles:update:any` alone cannot add privileges to the caller's own role. The explicit `rolegrants:update:any` grant allows unrestricted delegation; it is bundled only with `root`.
+
 In API paths, `:role` is the name. In responses, `id` and `name` are the same identity. User policy `role` values are names as well. The `bin/access-tokens provision <user> <role>` CLI accepts a role name and stores it directly. For example:
 
 ```sh
@@ -35,7 +37,9 @@ Ordinary user login tokens use the user's current assigned role, defaulting to `
 
 ## Per-user restrictions
 
-Optional `role` and `permissions` fields can be supplied through `POST /users` and `PUT /users/:user`. The `role` is a role name; `role: null` restores the default `user` role. Omitting either field leaves it unchanged. Writes use normal user-resource grants and field filtering; there is no separate root-only write rule. Policy visibility follows normal user read grants and response attribute allowlists: `readAny('users')` may see stored policy for any user, while `readOwn('users')` may see it only for the authenticated user's account.
+Optional `role` and `permissions` fields can be supplied through `POST /users` and `PUT /users/:user`. The `role` is a role name; `role: null` restores the default `user` role. Omitting either field leaves it unchanged. Writes require the ordinary `users` create/update grant and pass through its field allowlist. Each policy field that survives that filter also requires `userpermissions:create:any` for creation, or `userpermissions:update:own` / `userpermissions:update:any` according to the target account on update; the policy fields themselves are filtered through the matching `userpermissions` attribute allowlist. Policy reads are unchanged: `readAny('users')` may see stored policy for any user, while `readOwn('users')` may see it only for the authenticated user's account, subject to response attribute allowlists.
+
+Delegation is checked against the caller's effective grants. When a role or restriction policy is written, the assigned role's grants (or the existing role, including the default or deleted-role fallback, for permissions-only or null writes) must fit within the caller's effective grants. This applies to own/any scopes, attributes, globs and exclusions, resource restrictions, and custom boolean capabilities. Clearing restrictions therefore cannot give an account permissions beyond the caller's ceiling. Explicit `rolegrants:update:any` is unrestricted delegation authority: it allows managing grants for arbitrary resources and defining custom capability names. Only the bundled `root` role has this authority. There are no hardcoded role-name bypasses; the configured role grants determine authority.
 
 For example, this update disables label creation and deletion and filter creation:
 
@@ -53,6 +57,8 @@ Restrictions accept resource names and boolean `create`, `read`, `update`, and `
 User detail and list responses can include `effectivePermissions` for the authenticated user's own account. Authorized authentication and preauthentication responses can also include it when the caller may read that account's policy. Its shape is `{ "resources": { "resource": { "create:own": true, "create:any": false, "read:own": true, "read:any": false, "update:own": false, "update:any": false, "delete:own": false, "delete:any": false } }, "custom": { "capability": true } }`. Resource entries and custom capability names enumerate only those defined by the resolved role; omitted entries are denied. User responses resolve the admitted request's role and restrictions, including an explicit service token's role; authentication responses resolve the account's assigned role with the usual default and deleted-role fallback. The booleans use the same AccessControl decisions as route checks, including `any` grants implying `own`. Stored `role` and `permissions` fields keep their existing form. Resource booleans do not describe field access: the underlying resource attribute allowlists still apply. The effective result has no attribute allowlist of its own, but the enclosing response still follows the caller's normal read grant and response field allowlist.
 
 A missing or `null` user role assignment means the default `user` role. Role assignments are validated against active records when written.
+
+The user-handler and role-access modules can be loaded by library consumers when `config.api` or `config.api.roles` is absent; role enforcement remains driven by the available configured and persisted definitions.
 
 ## Token guidance
 
