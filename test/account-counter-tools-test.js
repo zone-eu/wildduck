@@ -50,7 +50,7 @@ const createRedis = ({ changeVersionOnFirstStore = false } = {}) => {
 };
 
 describe('Account counter tools', () => {
-    it('retries a label count when its account version changes during initialization', async () => {
+    it('returns a snapshot uncached when its account version changes during initialization', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const label = new ObjectId();
@@ -92,8 +92,73 @@ describe('Account counter tools', () => {
         };
 
         expect(await tools.getLabelCounter(db, user, 'project')).to.equal(1);
+        expect(counts).to.equal(1);
+        expect(redis.stores).to.equal(1);
+        expect(redis.values.size).to.equal(0);
+        expect(await tools.getLabelCounter(db, user, 'project')).to.equal(1);
         expect(counts).to.equal(2);
-        expect(redis.stores).to.equal(2);
+        expect(redis.values.size).to.equal(1);
+    });
+
+    it('shares concurrent counts, clears failed work and separates scopes and versions', async () => {
+        const user = new ObjectId();
+        const mailbox = new ObjectId();
+        const redis = createRedis();
+        let version = '0';
+        const originalGet = redis.get;
+        redis.get = key => (key.endsWith(':version') ? Promise.resolve(version) : originalGet(key));
+        let counts = 0;
+        let fail = true;
+        const db = {
+            redis,
+            database: {
+                collection(name) {
+                    if (name === 'mailboxes') {
+                        return { find: () => ({ toArray: async () => [{ _id: mailbox }] }) };
+                    }
+                    return {
+                        async countDocuments() {
+                            counts++;
+                            if (fail) {
+                                throw new Error('count failed');
+                            }
+                            return 7;
+                        }
+                    };
+                }
+            }
+        };
+        const read = (searchable = true) => tools.getFlagCounter(db, user, 'unread', undefined, searchable);
+        const failed = await Promise.allSettled(Array.from({ length: 8 }, () => read()));
+        expect(failed.every(result => result.status === 'rejected')).to.equal(true);
+        expect(counts).to.equal(1);
+        fail = false;
+        expect(await Promise.all(Array.from({ length: 8 }, () => read()))).to.deep.equal(Array(8).fill(7));
+        expect(counts).to.equal(2);
+        expect(await read(false)).to.equal(7);
+        expect(counts).to.equal(3);
+        version = '1';
+        expect(await read()).to.equal(7);
+        expect(counts).to.equal(4);
+    });
+
+    it('retains the 24-hour cache lifetime and atomic version check', async () => {
+        const user = new ObjectId();
+        const redis = createRedis();
+        const store = redis.setversionedvalue;
+        redis.setversionedvalue = async (versionKey, cacheKey, version, value, ttl) => {
+            expect(ttl).to.equal(24 * 3600);
+            expect(version).to.equal('0');
+            return store(versionKey, cacheKey, version, value);
+        };
+        const db = {
+            redis,
+            database: {
+                collection: () => ({ find: () => ({ toArray: async () => [] }) })
+            }
+        };
+        expect(await tools.getFlagCounter(db, user, 'unread', undefined, true)).to.equal(0);
+        expect(redis.stores).to.equal(1);
     });
 
     it('lists persistent empty labels without touching messages or Redis', async () => {

@@ -6,6 +6,38 @@ const { ObjectId } = require('mongodb');
 const ImapNotifier = require('../lib/imap-notifier');
 
 describe('ImapNotifier account counters', () => {
+    it('invalidates committed message changes even when journaling fails', async () => {
+        const user = new ObjectId();
+        const mailbox = { _id: new ObjectId(), user, modifyIndex: 1 };
+        const order = [];
+        const testNotifier = Object.create(ImapNotifier.prototype);
+        testNotifier.logger = { error() {} };
+        testNotifier.updateAccountCounters = async entries => {
+            expect(entries[0].user).to.equal(user);
+            order.push('invalidate');
+        };
+        testNotifier.prepareAccountCounterInvalidations = async () => {};
+        testNotifier.database = {
+            collection(name) {
+                expect(name).to.equal('journal');
+                return {
+                    async insertMany() {
+                        order.push('journal');
+                        throw new Error('journal failed');
+                    }
+                };
+            }
+        };
+        let error;
+        try {
+            await testNotifier.addEntriesAsync(mailbox, { command: 'FETCH', flags: [], modseq: 1 });
+        } catch (err) {
+            error = err;
+        }
+        expect(error.message).to.equal('journal failed');
+        expect(order).to.deep.equal(['invalidate', 'journal']);
+    });
+
     it('loads tracked labels without scanning Redis when a mailbox is deleted', async () => {
         const user = new ObjectId();
         const entry = {

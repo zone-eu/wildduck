@@ -1,0 +1,207 @@
+name: Release hotfix
+
+on:
+    push:
+        tags:
+            - 'v*-hotfix*'
+
+permissions:
+    contents: read
+
+concurrency:
+    group: hotfix-${{ github.ref }}
+    cancel-in-progress: false
+
+env:
+    REGISTRY: ghcr.io
+    PACKAGE_NAME: ${{ github.event.repository.name }}
+
+jobs:
+    prepare:
+        name: Validate hotfix version
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+            image: ${{ steps.version.outputs.image }}
+        steps:
+            - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+              with:
+                  node-version: 24
+            - name: Validate tag and package versions
+              id: version
+              run: |
+                  node <<'NODE'
+                  const fs = require('fs');
+                  const tag = process.env.GITHUB_REF_NAME;
+                  if (!/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-hotfix(?:\.(0|[1-9][0-9]*))?$/.test(tag)) {
+                      throw new Error('Expected vX.Y.Z-hotfix or vX.Y.Z-hotfix.N');
+                  }
+                  const version = tag.slice(1);
+                  const pkg = require('./package.json');
+                  const lock = require('./package-lock.json');
+                  if (pkg.version !== version || lock.version !== version || lock.packages[''].version !== version) {
+                      throw new Error('Tag must match package.json and package-lock.json versions. Run npm version with --no-git-tag-version first.');
+                  }
+                  const image = `ghcr.io/${process.env.GITHUB_REPOSITORY.toLowerCase()}`;
+                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nimage=${image}\n`);
+                  NODE
+
+    publish_docker:
+        timeout-minutes: 30
+        name: Create and publish a Docker image
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+            attestations: write
+            id-token: write
+        needs: prepare
+        steps:
+            - run: echo "Building version ${{ needs.prepare.outputs.version }}"
+
+            - name: Checkout repository
+              uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v6
+
+            - name: Set up QEMU
+              uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+              with:
+                  platforms: 'arm64'
+
+            - name: Set up Docker Buildx
+              id: buildx
+              uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+              with:
+                  platforms: linux/arm64,linux/amd64
+
+            - name: Log in to the Container registry
+              uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.repository_owner }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract metadata (tags, labels) for Docker
+              id: meta
+              uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+              with:
+                  images: ${{ needs.prepare.outputs.image }}
+                  flavor: |
+                      latest=false
+                  tags: |
+                      type=raw,value=${{ needs.prepare.outputs.version }}
+
+            - name: Build and push Docker image
+              id: push
+              uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+              with:
+                  context: .
+                  push: true
+                  platforms: ${{ steps.buildx.outputs.platforms }}
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+
+            - name: Generate artifact attestation
+              uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+              with:
+                  subject-name: ${{ needs.prepare.outputs.image }}
+                  subject-digest: ${{ steps.push.outputs.digest }}
+                  push-to-registry: true
+
+    publish_artifacts:
+        timeout-minutes: 30
+        name: Package and upload release artifacts
+        runs-on: ubuntu-latest
+        needs: [prepare, publish_docker]
+        permissions:
+            contents: write
+            attestations: write
+            id-token: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+            - name: Setup Node
+              uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
+              with:
+                  node-version: 24
+
+            - name: Install dependencies
+              run: npm ci --omit=dev
+
+            - name: Move files to temporary directory
+              run: |
+                  mkdir -p ${{ runner.temp }}/release_build
+                  cp -R . ${{ runner.temp }}/release_build/
+
+            - name: Set archive names
+              id: names
+              run: |
+                  echo "zip=${{env.PACKAGE_NAME}}-${{ needs.prepare.outputs.version }}.zip" >> $GITHUB_OUTPUT
+                  echo "tar=${{env.PACKAGE_NAME}}-${{ needs.prepare.outputs.version }}.tar.gz" >> $GITHUB_OUTPUT
+                  echo "zip_checksum=${{env.PACKAGE_NAME}}-${{ needs.prepare.outputs.version }}.zip.sha256" >> $GITHUB_OUTPUT
+                  echo "tar_checksum=${{env.PACKAGE_NAME}}-${{ needs.prepare.outputs.version }}.tar.gz.sha256" >> $GITHUB_OUTPUT
+
+            - name: Create zip archive
+              run: |
+                  ROOT_DIR=$(pwd)
+                  cd ${{ runner.temp }}/release_build
+                  zip -r $ROOT_DIR/${{ steps.names.outputs.zip }} . -x "*.git" "*.git/*"
+                  cd $ROOT_DIR
+
+            - name: Create tar.gz archive
+              run: |
+                  tar --exclude='.git' --exclude='.git/*' \
+                    -czf ${{ steps.names.outputs.tar }} \
+                    -C ${{ runner.temp }}/release_build/ .
+
+            - name: Generate SHA-256 checksums
+              run: |
+                  sha256sum ${{ steps.names.outputs.zip }} > ${{ steps.names.outputs.zip_checksum }}
+                  sha256sum ${{ steps.names.outputs.tar }} > ${{ steps.names.outputs.tar_checksum }}
+                  cat ${{ steps.names.outputs.zip_checksum }}
+                  cat ${{ steps.names.outputs.tar_checksum }}
+
+            - name: Attest zip archive
+              uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+              with:
+                  subject-path: ${{ steps.names.outputs.zip }}
+
+            - name: Attest tar.gz archive
+              uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+              with:
+                  subject-path: ${{ steps.names.outputs.tar }}
+
+            - name: Attest zip checksum
+              uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+              with:
+                  subject-path: ${{ steps.names.outputs.zip_checksum }}
+
+            - name: Attest tar.gz checksum
+              uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+              with:
+                  subject-path: ${{ steps.names.outputs.tar_checksum }}
+
+            - name: Upload artifacts to release
+              uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+              with:
+                  files: |
+                      ${{ steps.names.outputs.zip }}
+                      ${{ steps.names.outputs.tar }}
+                      ${{ steps.names.outputs.zip_checksum }}
+                      ${{ steps.names.outputs.tar_checksum }}
+                  tag_name: ${{ github.ref_name }}
+                  name: WildDuck ${{ needs.prepare.outputs.version }}
+                  prerelease: true
+                  make_latest: 'false'
+                  fail_on_unmatched_files: true
+                  body: |
+                      Hotfix release built from `${{ github.sha }}`.
+
+                      Docker: `${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version }}` (amd64 and arm64).
+                      Archives include production dependencies. SHA-256 checksums and build attestations are attached.
+                      This release does not publish to npm.
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

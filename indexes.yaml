@@ -419,6 +419,16 @@ indexes:
 
     - collection: messages
       index:
+          # covers seen/unread counters; uid includes the shard key for shard filtering
+          name: mailbox_unseen_searchable_uid
+          key:
+              mailbox: 1
+              unseen: 1
+              searchable: 1
+              uid: 1
+
+    - collection: messages
+      index:
           name: user_unseen_flag
           key:
               user: 1
