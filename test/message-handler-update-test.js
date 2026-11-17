@@ -183,7 +183,8 @@ describe('MessageHandler message updates', function () {
                                         uid: 42,
                                         thread,
                                         flags: atomicFlags,
-                                        labels: atomicLabels
+                                        labels: atomicLabels,
+                                        unseen: messageOverrides?.atomicUnseen ?? messageOverrides?.unseen ?? !atomicFlags.includes('\\Seen')
                                     }
                                 };
                             }
@@ -435,6 +436,42 @@ describe('MessageHandler message updates', function () {
 
         expect(setup.notified).to.have.lengthOf(1);
         expect(setup.notified[0].flags).to.deep.equal(['\\Seen', `$wdlabel$${setup.getLabelRecord('Active')._id}`]);
+        expect(setup.notified[0].labels).to.deep.equal(['Active']);
+    });
+
+    it('notifies an unseen change when API seen=true repairs stale unseen state', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const setup = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$set.unseen).to.be.false;
+                expect(update.$addToSet.flags.$each).to.deep.equal(['\\Seen']);
+            },
+            { flags: ['\\Seen'], atomicFlags: ['\\Seen'], unseen: true, atomicUnseen: true, labelNames: ['Active'] }
+        );
+
+        await updateAsync(setup.handler, setup.user, setup.mailbox, { seen: true });
+
+        expect(setup.notified).to.have.lengthOf(1);
+        expect(setup.notified[0].unseenChange).to.be.true;
+        expect(setup.notified[0].labels).to.deep.equal(['Active']);
+    });
+
+    it('notifies an unseen change when API seen=false repairs stale seen flag state', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const setup = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$set.unseen).to.be.true;
+                expect(update.$pull.flags).to.deep.equal({ $in: ['\\Seen'] });
+            },
+            { flags: [], atomicFlags: [], unseen: false, atomicUnseen: false, labelNames: ['Active'] }
+        );
+
+        await updateAsync(setup.handler, setup.user, setup.mailbox, { seen: false });
+
+        expect(setup.notified).to.have.lengthOf(1);
+        expect(setup.notified[0].unseenChange).to.be.true;
         expect(setup.notified[0].labels).to.deep.equal(['Active']);
     });
 

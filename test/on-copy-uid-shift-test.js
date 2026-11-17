@@ -401,6 +401,33 @@ describe('on-copy UID arrays', function () {
         expect(calls.notifications[0].labels).to.deep.equal(['Projects/copied']);
     });
 
+    it('normalizes copied unseen state from flags for storage and EXISTS notifications', async function () {
+        let insertedDoc;
+        let sourceMessage = {
+            _id: new ObjectId(),
+            mailbox: sourceMailboxId,
+            uid: 10,
+            size: 100,
+            unseen: true,
+            flags: ['\\Seen'],
+            mimeTree: { header: [], attachmentMap: {} }
+        };
+        let { server, messageHandler, calls } = setupCopyEnv({
+            sourceMessages: [sourceMessage],
+            insertOneImpl: doc => {
+                insertedDoc = doc;
+                return Promise.resolve({ acknowledged: true, insertedId: new ObjectId() });
+            }
+        });
+
+        const { status } = await runCopy(server, messageHandler, [10]);
+
+        expect(status).to.be.true;
+        expect(insertedDoc.unseen).to.equal(false);
+        expect(insertedDoc).to.not.equal(sourceMessage);
+        expect(calls.notifications[0]).to.include({ command: 'EXISTS', unseen: false });
+    });
+
     it('releases newly encrypted attachments when the encrypted-copy insert is not acknowledged', async function () {
         let { server, messageHandler, calls } = setupCopyEnv({
             sourceMessages: [
