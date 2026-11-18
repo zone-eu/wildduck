@@ -2,7 +2,8 @@
 
 'use strict';
 
-const MIMEParser = require('../lib/indexer/parse-mime-tree').MIMEParser;
+const parseMimeTree = require('../lib/indexer/parse-mime-tree');
+const MIMEParser = parseMimeTree.MIMEParser;
 const Indexer = require('../lib/indexer/indexer');
 const libmime = require('libmime');
 const indexer = new Indexer();
@@ -159,7 +160,7 @@ function expectedFromDeclaredCharset(value, scenario) {
 }
 
 describe('#parseValueParams', function () {
-    it('should return continuation value as mime-word', function () {
+    it('should escape underscores in continuation mime-words', function () {
         let parser = new MIMEParser();
         const parsed = parser.parseValueParams(
             'text/plain;\n' +
@@ -174,10 +175,11 @@ describe('#parseValueParams', function () {
             subtype: 'plain',
             params: {
                 'x-apple-part-url': '99AFDE83-8953-43B4-BE59-F59D6160AFAB',
-                name: '=?UTF-8?Q?emailengine_uuendamise_kasud_ja_muud_asjad_ja_veelgi_pikem_pealkiri.txt?='
+                name: '=?UTF-8?Q?emailengine=5Fuuendamise=5Fkasud=5Fja=5Fmuud=5Fasjad=5Fja=5Fveelgi=5Fpikem=5Fpealkiri.txt?='
             },
             hasParams: true
         });
+        expect(libmime.decodeWords(parsed.params.name)).to.equal('emailengine_uuendamise_kasud_ja_muud_asjad_ja_veelgi_pikem_pealkiri.txt');
     });
 
     it('should return continuation value as mime-word', function () {
@@ -208,6 +210,96 @@ describe('#parseValueParams', function () {
             },
             hasParams: true
         });
+    });
+
+    it('should preserve literal underscores in extended parameters and continuations', function () {
+        const parser = new MIMEParser();
+        const cases = [
+            ["attachment; filename*=utf-8''Rechnung_M%C3%A4rz.pdf", 'Rechnung_März.pdf'],
+            ["attachment; filename*=utf-8''Rechnung%5FM%C3%A4rz.pdf", 'Rechnung_März.pdf'],
+            ["attachment; filename*0*=utf-8''Rechnung_; filename*1*=M%C3%A4rz.pdf", 'Rechnung_März.pdf'],
+            ['attachment; filename*0="annual_report_100%_"; filename*1="complete.pdf"', 'annual_report_100%_complete.pdf']
+        ];
+
+        for (const [header, expected] of cases) {
+            const parsed = parser.parseValueParams(header);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        }
+    });
+
+    it('should decode mixed continuations in segment order', function () {
+        const parser = new MIMEParser();
+        const cases = [
+            ['attachment; filename*0=report; filename*1*=%20final.pdf', 'report final.pdf'],
+            ["attachment; filename*2=%20_final.pdf; filename*0*=utf-8''caf%C3; filename*1*=%A9", 'café%20_final.pdf']
+        ];
+
+        for (const [header, expected] of cases) {
+            const parsed = parser.parseValueParams(header);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        }
+    });
+
+    const continuationCases = [
+        [
+            'uses numeric order for double-digit indices',
+            'filename*10*=%2Epdf; filename*2*=c; filename*0=a; filename*9=j; filename*1=b; filename*3=d; filename*4=e; filename*5=f; filename*6=g; filename*7=h; filename*8=i',
+            'abcdefghij.pdf'
+        ],
+        [
+            'keeps the declared charset when starred and unstarred segments alternate',
+            "FILENAME*3*=%20%a3.pdf; filename*1=%e9_; filename*0*=iso-8859-1'fr'caf%e9; filename*2*=d%e9j%e0",
+            'café%e9_déjà £.pdf'
+        ],
+        [
+            'decodes a four-byte UTF-8 character split across three segments',
+            "filename*0*=utf-8''photo_%f0; filename*1*=%9F%93; filename*2*=%b7; filename*3=.jpg",
+            'photo_📷.jpg'
+        ],
+        ['uses the initial charset even when its segment has no payload', "filename*0*=UTF-8''; filename*1=photo_; filename*2*=%c3%a9.jpg", 'photo_é.jpg'],
+        ['handles empty unstarred and starred segments', 'filename*0=""; filename*1*=%c3%a9; filename*2*=; filename*3=.txt', 'é.txt'],
+        ['decodes escapes exactly once', "filename*0*=utf-8''%2520%253D%255F; filename*1=%3F_; filename*2*=%3d%3f.pdf", '%20%3D%5F%3F_=?.pdf'],
+        ['keeps malformed escapes in starred segments', "filename*0*=utf-8''bad%zz_%2G_%A; filename*1=Z; filename*2*=%20tail%.pdf", 'bad%zz_%2G_%AZ tail%.pdf'],
+        ['does not complete percent escapes across segment boundaries', 'filename*0=first%; filename*1*=20_; filename*2*=%2; filename*3=0.pdf', 'first%20_%20.pdf'],
+        [
+            'keeps quoted punctuation and ignores comments outside segments',
+            'filename*0="a;%20\\"_" (first); filename*1*=%20%3B (second); filename*2="?=41.pdf"',
+            'a;%20"_ ;?=41.pdf'
+        ]
+    ];
+
+    for (const [description, parameters, expected] of continuationCases) {
+        it(description, function () {
+            const parsed = new MIMEParser().parseValueParams(`attachment; ${parameters}`);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        });
+    }
+
+    it('should preserve parameter text that is sensitive to encoded-word decoding', function () {
+        const parser = new MIMEParser();
+        const cases = [
+            ['attachment; filename*0="report%20_"; filename*1="final.pdf"', 'report%20_final.pdf'],
+            ['attachment; filename*0="report=41_"; filename*1="final.pdf"', 'report=41_final.pdf'],
+            ['attachment; filename*0="report?_"; filename*1="final.pdf"', 'report?_final.pdf'],
+            ["attachment; filename*=utf-8''report_%3D41%3F.pdf", 'report_=41?.pdf']
+        ];
+
+        for (const [header, expected] of cases) {
+            const parsed = parser.parseValueParams(header);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        }
+    });
+
+    it('should parse and byte-preserve a libmime generated filename header', async function () {
+        const header = libmime.buildHeaderValue({ value: 'attachment', params: { filename: 'Rechnung_März.pdf' } });
+        const source = Buffer.from(`Content-Type: application/pdf\r\nContent-Disposition: ${header}\r\n\r\nbody\r\n`);
+        const tree = parseMimeTree(source);
+
+        expect(libmime.decodeWords(tree.parsedHeader['content-disposition'].params.filename)).to.equal('Rechnung_März.pdf');
+        const rebuilt = await new Promise((resolve, reject) => {
+            indexer.bodyQuery(tree, '', (err, data) => (err ? reject(err) : resolve(data)));
+        });
+        expect(rebuilt).to.deep.equal(source);
     });
 
     it('should parse a file with no empty line between text and boundary', function (done) {

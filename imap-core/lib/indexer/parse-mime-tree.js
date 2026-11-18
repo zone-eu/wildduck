@@ -493,7 +493,6 @@ class MIMEParser {
 
         // RFC 2231 continuations and encoded values, by parameter name
         let continuations = {};
-        let charsetRequired = new Set();
 
         splitStructuredValue(headerValue || '', ';').forEach((part, i) => {
             let key, value;
@@ -529,13 +528,8 @@ class MIMEParser {
                 let name = match[1];
                 if (!continuations[name]) {
                     continuations[name] = [];
-
-                    // a trailing asterisk marks an RFC 2231 encoded value, which must carry a charset
-                    if (key.endsWith('*')) {
-                        charsetRequired.add(name);
-                    }
                 }
-                continuations[name][Number(match[2]) || 0] = value;
+                continuations[name][Number(match[2]) || 0] = { value, encoded: key.endsWith('*') };
             } else {
                 data.params[key] = value;
             }
@@ -544,24 +538,23 @@ class MIMEParser {
 
         // convert extended mime word into a regular one
         Object.keys(continuations).forEach(key => {
-            let charset = '';
+            let charset = 'utf-8';
             let value = '';
 
-            if (!charsetRequired.has(key)) {
-                charset = 'utf-8';
-                value = continuations[key].join('').replace(/%/g, '=');
-            } else {
-                continuations[key].forEach((val, i) => {
-                    if (!i) {
-                        let parts = val.split("'"); // eslint-disable-line quotes
-                        charset = parts.shift();
-                        parts.shift(); // lang argument, ignored
-                        val = parts.join("'"); // eslint-disable-line quotes
-                    }
-                    value += val.replace(/%/g, '=');
-                });
-            }
+            continuations[key].forEach(({ value: segment, encoded }, i) => {
+                if (!i && encoded) {
+                    let parts = segment.split("'"); // eslint-disable-line quotes
+                    charset = parts.shift();
+                    parts.shift(); // lang argument, ignored
+                    segment = parts.join("'"); // eslint-disable-line quotes
+                }
+                // Escape literal equals signs before converting starred segments to Q encoding.
+                segment = segment.replace(/[=]/g, '=3D');
+                value += encoded ? segment.replace(/%([\da-f]{2})/gi, '=$1') : segment;
+            });
 
+            // Q encoding treats underscores as spaces and question marks as word delimiters.
+            value = value.replace(/_/g, '=5F').replace(/\?/g, '=3F');
             data.params[key] = '=?' + (charset || 'ISO-8859-1').toUpperCase() + '?Q?' + value + '?=';
         });
 
