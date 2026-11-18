@@ -98,6 +98,18 @@ describe('getMaildata', function () {
         expect(tree.childNodes[0].attachmentId).to.be.undefined;
     });
 
+    it('uses mixed filename continuations ahead of the plain filename and content type name', function () {
+        const { data } = maildata([
+            'Content-Type: application/pdf; name=type.pdf',
+            'Content-Disposition: attachment; filename=fallback.pdf;',
+            '\tfilename*2=%20_final.pdf; filename*0=report_; filename*1*=%c3%a9',
+            '',
+            'PDF',
+            ''
+        ]);
+        expect(data.attachments.map(attachment => attachment.filename)).to.deep.equal(['report_é%20_final.pdf']);
+    });
+
     it('gives an attachment without a name a random one with the right extension', function () {
         let { data } = maildata(['Content-Type: multipart/mixed; boundary=b', '', '--b', 'Content-Type: application/pdf', '', 'PDF', '--b--', '']);
         expect(data.attachments[0].filename).to.match(/^[0-9a-f]{8}\.pdf$/);

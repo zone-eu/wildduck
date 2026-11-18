@@ -227,6 +227,54 @@ describe('#parseValueParams', function () {
         }
     });
 
+    it('should decode mixed continuations in segment order', function () {
+        const parser = new MIMEParser();
+        const cases = [
+            ['attachment; filename*0=report; filename*1*=%20final.pdf', 'report final.pdf'],
+            ["attachment; filename*2=%20_final.pdf; filename*0*=utf-8''caf%C3; filename*1*=%A9", 'café%20_final.pdf']
+        ];
+
+        for (const [header, expected] of cases) {
+            const parsed = parser.parseValueParams(header);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        }
+    });
+
+    const continuationCases = [
+        [
+            'uses numeric order for double-digit indices',
+            'filename*10*=%2Epdf; filename*2*=c; filename*0=a; filename*9=j; filename*1=b; filename*3=d; filename*4=e; filename*5=f; filename*6=g; filename*7=h; filename*8=i',
+            'abcdefghij.pdf'
+        ],
+        [
+            'keeps the declared charset when starred and unstarred segments alternate',
+            "FILENAME*3*=%20%a3.pdf; filename*1=%e9_; filename*0*=iso-8859-1'fr'caf%e9; filename*2*=d%e9j%e0",
+            'café%e9_déjà £.pdf'
+        ],
+        [
+            'decodes a four-byte UTF-8 character split across three segments',
+            "filename*0*=utf-8''photo_%f0; filename*1*=%9F%93; filename*2*=%b7; filename*3=.jpg",
+            'photo_📷.jpg'
+        ],
+        ['uses the initial charset even when its segment has no payload', "filename*0*=UTF-8''; filename*1=photo_; filename*2*=%c3%a9.jpg", 'photo_é.jpg'],
+        ['handles empty unstarred and starred segments', 'filename*0=""; filename*1*=%c3%a9; filename*2*=; filename*3=.txt', 'é.txt'],
+        ['decodes escapes exactly once', "filename*0*=utf-8''%2520%253D%255F; filename*1=%3F_; filename*2*=%3d%3f.pdf", '%20%3D%5F%3F_=?.pdf'],
+        ['keeps malformed escapes in starred segments', "filename*0*=utf-8''bad%zz_%2G_%A; filename*1=Z; filename*2*=%20tail%.pdf", 'bad%zz_%2G_%AZ tail%.pdf'],
+        ['does not complete percent escapes across segment boundaries', 'filename*0=first%; filename*1*=20_; filename*2*=%2; filename*3=0.pdf', 'first%20_%20.pdf'],
+        [
+            'keeps quoted punctuation and ignores comments outside segments',
+            'filename*0="a;%20\\"_" (first); filename*1*=%20%3B (second); filename*2="?=41.pdf"',
+            'a;%20"_ ;?=41.pdf'
+        ]
+    ];
+
+    for (const [description, parameters, expected] of continuationCases) {
+        it(description, function () {
+            const parsed = new MIMEParser().parseValueParams(`attachment; ${parameters}`);
+            expect(libmime.decodeWords(parsed.params.filename)).to.equal(expected);
+        });
+    }
+
     it('should preserve parameter text that is sensitive to encoded-word decoding', function () {
         const parser = new MIMEParser();
         const cases = [
