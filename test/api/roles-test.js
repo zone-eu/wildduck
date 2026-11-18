@@ -207,12 +207,7 @@ describe('Roles API', function () {
         const previous = (await request('GET', `/roles?limit=1&previous=${previousCursor}`)).json();
         expect(previous.results[0].id).to.equal(first.results[0].id);
         const created = await createRole(`immutable-${new ObjectId()}`, {});
-        const invalidUpdates = [
-            { name: 'renamed' },
-            { isSystem: true },
-            { id: new ObjectId().toHexString() },
-            { created: new Date().toISOString() }
-        ];
+        const invalidUpdates = [{ name: 'renamed' }, { isSystem: true }, { id: new ObjectId().toHexString() }, { created: new Date().toISOString() }];
         for (const payload of invalidUpdates) {
             const response = await request('PUT', `/roles/${created.id}`, rootToken.accessToken, payload);
             expect(response.statusCode).to.equal(400);
@@ -230,11 +225,7 @@ describe('Roles API', function () {
         expect(denied.statusCode).to.equal(403);
         expect(denied.json().code).to.equal('MissingPrivileges');
 
-        for (const permissions of [
-            { roles: { 'read:team': ['*'] } },
-            { roles: { 'publish:any': ['*'] } },
-            { roles: { 'read:any': [''] } }
-        ]) {
+        for (const permissions of [{ roles: { 'read:team': ['*'] } }, { roles: { 'publish:any': ['*'] } }, { roles: { 'read:any': [''] } }]) {
             const response = await request('POST', '/roles', rootToken.accessToken, { name: `invalid-${new ObjectId()}`, permissions });
             expect(response.statusCode).to.equal(400);
             expect(response.json().code).to.equal('InputValidationError');

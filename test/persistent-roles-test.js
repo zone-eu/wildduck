@@ -57,8 +57,14 @@ describe('persistent roles', function () {
     after(async function () {
         if (roles) {
             await roles.drop().catch(() => false);
-            await usersDb.collection('users').drop().catch(() => false);
-            await db.database.collection(`${collectionName}_tasks`).drop().catch(() => false);
+            await usersDb
+                .collection('users')
+                .drop()
+                .catch(() => false);
+            await db.database
+                .collection(`${collectionName}_tasks`)
+                .drop()
+                .catch(() => false);
         }
     });
 

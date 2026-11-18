@@ -36,6 +36,7 @@ indexes:
       type: users
       index:
           name: user_role
+          sparse: true
           key:
               role: 1
 
