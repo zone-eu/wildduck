@@ -13273,6 +13273,13 @@
                                         "minLength": 1,
                                         "description": "Private key encrypted signature to verify with public key on the server. Hex string"
                                     },
+                                    "userHandle": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 512,
+                                        "minLength": 1,
+                                        "description": "User handle as hex string, when the authenticator returned one; must name this user"
+                                    },
                                     "rpId": {
                                         "type": "string",
                                         "minLength": 1,
