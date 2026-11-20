@@ -19978,7 +19978,7 @@
                 "tags": [
                     "Webmail"
                 ],
-                "description": "Stores the new MCP token and token hashes of a refresh and revokes the previous MCP token.",
+                "description": "Stores the new MCP token and token hashes of a refresh and revokes the previous MCP token. Only while the grant still holds the refresh token being used, so a refresh token works once.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -19986,6 +19986,11 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "previousRefreshHash": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$",
+                                        "description": "SHA-256 of the refresh token being used, hex"
+                                    },
                                     "mcpToken": {
                                         "type": "string",
                                         "pattern": "^[0-9a-f]{24}$",
@@ -20014,6 +20019,7 @@
                                     }
                                 },
                                 "required": [
+                                    "previousRefreshHash",
                                     "mcpToken",
                                     "refreshHash",
                                     "accessHash"

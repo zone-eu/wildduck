@@ -92,8 +92,15 @@ describe('Webmail OAuth clients and grants', function () {
         const second = await mcpToken(user);
         const rotated = await server
             .put(`/users/${user.id}/webmail/oauth/grants/${grant}`)
-            .send({ mcpToken: second.id, refreshHash: hash('refresh-2'), accessHash: hash(second.token) })
+            .send({ previousRefreshHash: hash('refresh-1'), mcpToken: second.id, refreshHash: hash('refresh-2'), accessHash: hash(second.token) })
             .expect(200);
+        // the same refresh token again finds nothing
+        const third = await mcpToken(user);
+        await server
+            .put(`/users/${user.id}/webmail/oauth/grants/${grant}`)
+            .send({ previousRefreshHash: hash('refresh-1'), mcpToken: third.id, refreshHash: hash('refresh-3'), accessHash: hash(third.token) })
+            .expect(404);
+        await server.delete(`/users/${user.id}/mcp-tokens/${third.id}`).expect(200);
         expect(rotated.body.mcpToken).to.equal(second.id);
         let tokens = (await server.get(`/users/${user.id}/mcp-tokens`).expect(200)).body.results.map(entry => entry.id);
         expect(tokens).to.deep.equal([second.id]);
