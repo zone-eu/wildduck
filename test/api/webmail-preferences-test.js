@@ -67,7 +67,15 @@ describe('Webmail preferences', function () {
     });
 
     it('refuses unknown keys and wrong types without changing anything', async () => {
-        for (const preferences of [{ evil: 1 }, { theme: 'neon' }, { threading: 'yes' }, { undoSendSeconds: 31 }, { fontFamily: '<script>' }, []]) {
+        for (const preferences of [
+            { evil: 1 },
+            { theme: 'neon' },
+            { threading: 'yes' },
+            { undoSendSeconds: 301 },
+            { smimeKeyRetention: 'yes' },
+            { fontFamily: '<script>' },
+            []
+        ]) {
             const response = await server.put(`/users/${user.id}/webmail/preferences`).send({ preferences }).expect(400);
             expect(response.body.code).to.equal('InputValidationError');
         }
