@@ -71,6 +71,29 @@ describe('API passkeys', function () {
         expect(options.extensions.credProps).to.be.true;
     });
 
+    it('keeps the session that adds the first key, and ends the others', async () => {
+        const fresh = await createUser('keepsession');
+        const auth = token => supertest(`http://127.0.0.1:${config.api.port}`).get('/users/me').set('X-Access-Token', token);
+        const login = async () =>
+            (await server.post('/authenticate').send({ username: fresh.username, password: 'passkeysecretvalue', token: true }).expect(200)).body.token;
+        const adding = await login();
+        const other = await login();
+        const key = new SoftwareWebAuthnAuthenticator(RP_ID, { userVerification: true });
+        const challenge = await supertest(`http://127.0.0.1:${config.api.port}`)
+            .post(`/users/${fresh.id}/2fa/webauthn/registration-challenge`)
+            .set('X-Access-Token', adding)
+            .send({ origin: ORIGIN, rpId: RP_ID })
+            .expect(200);
+        await supertest(`http://127.0.0.1:${config.api.port}`)
+            .post(`/users/${fresh.id}/2fa/webauthn/registration-attestation`)
+            .set('X-Access-Token', adding)
+            .send(Object.assign(key.createRegistrationResponse(challenge.body.registrationOptions.challenge, ORIGIN), { rpId: RP_ID }))
+            .expect(200);
+        await auth(adding).expect(200);
+        await auth(other).expect(403);
+        await server.delete(`/users/${fresh.id}`).expect(200);
+    });
+
     it('lists what is known about the credential', async () => {
         const response = await server.get(`/users/${user.id}/2fa/webauthn/credentials`).expect(200);
         const [credential] = response.body.credentials;
