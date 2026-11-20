@@ -14322,7 +14322,6 @@
                                                         "description": "Datestring of the Event time"
                                                     },
                                                     "protocol": {
-                                                        "type": "string",
                                                         "description": "Protocol that the authentication was made from"
                                                     },
                                                     "requiredScope": {
@@ -14486,7 +14485,6 @@
                                             "description": "Datestring of the Event time"
                                         },
                                         "protocol": {
-                                            "type": "string",
                                             "description": "Protocol that the authentication was made from"
                                         },
                                         "requiredScope": {
@@ -19536,6 +19534,7 @@
                 "tags": [
                     "Webmail"
                 ],
+                "description": "Returns a registered client: its name and allowed redirect URIs.",
                 "parameters": [
                     {
                         "schema": {

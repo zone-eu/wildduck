@@ -872,10 +872,12 @@ describe('Pending 2FA Nonce Handling', function () {
             twoFactorNonce
         });
 
+        // an older credential without stored transports is offered on the external ones
         expect(authenticationOptions.allowCredentials).to.deep.equal([
             {
                 rawId: rawId.toString('hex'),
-                type: 'public-key'
+                type: 'public-key',
+                transports: ['usb', 'nfc', 'ble']
             }
         ]);
         expect(storedChallengeData.twoFactorNonce).to.equal(twoFactorNonce);
