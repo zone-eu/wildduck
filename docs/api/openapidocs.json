@@ -19165,6 +19165,264 @@
                     }
                 }
             }
+        },
+        "/users/{user}/webmail/avatars/{key}": {
+            "get": {
+                "operationId": "getWebmailAvatar",
+                "summary": "Get an avatar",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Returns the stored picture as an image, or 404 when there is none (the client then shows initials).",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(self|group:[A-Za-z0-9_-]{1,64})$"
+                        },
+                        "in": "path",
+                        "name": "key",
+                        "required": true,
+                        "description": "\"self\" or \"group:<id>\""
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The image (PNG, JPEG, WebP or GIF)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "operationId": "setWebmailAvatar",
+                "summary": "Set an avatar",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Stores a picture of at most 256 kB. The bytes must match the content type.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "contentType": {
+                                        "type": "string",
+                                        "enum": [
+                                            "image/png",
+                                            "image/jpeg",
+                                            "image/webp",
+                                            "image/gif"
+                                        ],
+                                        "description": "Type of the image"
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "maxLength": 400000,
+                                        "description": "The image, base64 encoded"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "contentType",
+                                    "content"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(self|group:[A-Za-z0-9_-]{1,64})$"
+                        },
+                        "in": "path",
+                        "name": "key",
+                        "required": true,
+                        "description": "\"self\" or \"group:<id>\""
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "SetWebmailAvatarResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "contentType": {
+                                            "type": "string",
+                                            "description": "Type of the image"
+                                        },
+                                        "size": {
+                                            "type": "number",
+                                            "description": "Size in bytes"
+                                        },
+                                        "updated": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "Time of the change"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "contentType",
+                                        "size",
+                                        "updated"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "deleteWebmailAvatar",
+                "summary": "Remove an avatar",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Removes the picture; the client shows initials again.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(self|group:[A-Za-z0-9_-]{1,64})$"
+                        },
+                        "in": "path",
+                        "name": "key",
+                        "required": true,
+                        "description": "\"self\" or \"group:<id>\""
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteWebmailAvatarResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "deleted": {
+                                            "type": "boolean",
+                                            "description": "Whether the entry existed"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "deleted"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "servers": [
