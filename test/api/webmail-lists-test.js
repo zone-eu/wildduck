@@ -45,6 +45,26 @@ describe('Webmail remote content senders', function () {
         expect(response.body.results.map(entry => entry.address)).to.deep.equal(['alice@example.net', 'news@example.org']);
     });
 
+    it('stores addresses the way WildDuck does, so an IDN domain matches in either spelling', async () => {
+        const response = await server.post(`/users/${user.id}/webmail/senders`).send({ address: 'Uudised@xn--bcher-kva.example' }).expect(200);
+        expect(response.body.address).to.equal('uudised@bücher.example');
+        const removed = await server.delete(`/users/${user.id}/webmail/senders/${encodeURIComponent('uudised@Bücher.example')}`).expect(200);
+        expect(removed.body.deleted).to.be.true;
+    });
+
+    it('lists at most 1000 senders, and adding a listed one still works at the limit', async () => {
+        const full = await createUser('wmsendersfull');
+        await connect();
+        const userId = new ObjectId(full.id);
+        await db.database
+            .collection('webmail.senders')
+            .insertMany(Array.from({ length: 1000 }, (_, i) => ({ user: userId, address: `sender${i}@example.org`, created: new Date() })));
+        const refused = await server.post(`/users/${full.id}/webmail/senders`).send({ address: 'one-more@example.org' }).expect(400);
+        expect(refused.body.code).to.equal('TooMany');
+        await server.post(`/users/${full.id}/webmail/senders`).send({ address: 'sender7@example.org' }).expect(200);
+        expect(await db.database.collection('webmail.senders').countDocuments({ user: userId })).to.equal(1000);
+    });
+
     it('refuses values that are not addresses', async () => {
         for (const address of ['not an address', '<x@y.z>', 'a@b']) {
             const response = await server.post(`/users/${user.id}/webmail/senders`).send({ address }).expect(400);
