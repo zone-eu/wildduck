@@ -9,10 +9,17 @@ const cbor = require('cbor-x');
 const cborEncoder = new cbor.Encoder();
 
 class SoftwareWebAuthnAuthenticator {
-    constructor(rpId) {
+    /**
+     * @param {String} rpId
+     * @param {Object} [options] userVerification (PIN or biometrics), synced (a passkey kept in a
+     *   synced store: backup flags set and a signature counter that stays 0)
+     */
+    constructor(rpId, options = {}) {
         this.rpId = rpId;
         this.credentialId = crypto.randomBytes(32);
         this.counter = 0;
+        this.userVerification = !!options.userVerification;
+        this.synced = !!options.synced;
 
         const keyPair = crypto.generateKeyPairSync('ec', {
             namedCurve: 'prime256v1'
@@ -30,7 +37,7 @@ class SoftwareWebAuthnAuthenticator {
 
         const authData = Buffer.concat([
             this.getRpIdHash(),
-            Buffer.from([0x41]), // UP + AT
+            Buffer.from([0x41 + this.flags()]), // UP + AT, and UV, BE, BS as configured
             counter,
             Buffer.alloc(16),
             credentialIdLength,
@@ -52,14 +59,16 @@ class SoftwareWebAuthnAuthenticator {
         };
     }
 
-    createAssertionResponse(challenge, origin) {
+    createAssertionResponse(challenge, origin, userHandle) {
         const clientDataJSON = this.getClientDataJSON('webauthn.get', challenge, origin);
         const counter = Buffer.alloc(4);
-        counter.writeUInt32BE(++this.counter);
+        if (!this.synced) {
+            counter.writeUInt32BE(++this.counter);
+        }
 
         const authenticatorData = Buffer.concat([
             this.getRpIdHash(),
-            Buffer.from([0x01]), // UP
+            Buffer.from([0x01 + this.flags()]), // UP, and UV, BE, BS as configured
             counter
         ]);
 
@@ -69,13 +78,21 @@ class SoftwareWebAuthnAuthenticator {
             this.privateKey
         );
 
-        return {
-            challenge,
-            rawId: this.credentialId.toString('hex'),
-            clientDataJSON: clientDataJSON.toString('hex'),
-            authenticatorData: authenticatorData.toString('hex'),
-            signature: signature.toString('hex')
-        };
+        return Object.assign(
+            {
+                challenge,
+                rawId: this.credentialId.toString('hex'),
+                clientDataJSON: clientDataJSON.toString('hex'),
+                authenticatorData: authenticatorData.toString('hex'),
+                signature: signature.toString('hex')
+            },
+            userHandle ? { userHandle: Buffer.from(userHandle).toString('hex') } : {}
+        );
+    }
+
+    flags() {
+        // the flag bits do not overlap, so adding them sets each one
+        return (this.userVerification ? 0x04 : 0) + (this.synced ? 0x08 + 0x10 : 0);
     }
 
     getClientDataJSON(type, challenge, origin) {

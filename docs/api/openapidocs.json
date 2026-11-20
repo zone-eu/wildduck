@@ -12533,6 +12533,47 @@
                                                         "type": "string",
                                                         "description": "Descriptive name for the authenticator"
                                                     },
+                                                    "transports": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "Transports the browser reported"
+                                                    },
+                                                    "discoverable": {
+                                                        "type": "boolean",
+                                                        "description": "Whether the credential is a passkey (null when unknown)",
+                                                        "nullable": true
+                                                    },
+                                                    "userVerified": {
+                                                        "type": "boolean",
+                                                        "description": "Whether registration verified the user (PIN or biometrics)"
+                                                    },
+                                                    "backupEligible": {
+                                                        "type": "boolean",
+                                                        "description": "Whether the credential can be synced"
+                                                    },
+                                                    "backedUp": {
+                                                        "type": "boolean",
+                                                        "description": "Whether the credential is synced"
+                                                    },
+                                                    "aaguid": {
+                                                        "type": "string",
+                                                        "description": "Authenticator model ID (hex)",
+                                                        "nullable": true
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Registration time",
+                                                        "nullable": true
+                                                    },
+                                                    "lastUsed": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "Last successful use",
+                                                        "nullable": true
+                                                    },
                                                     "authenticatorAttachment": {
                                                         "type": "string",
                                                         "description": "Indicates whether authenticators is a part of the OS (\"platform\"), or roaming authenticators (\"cross-platform\")",
@@ -12633,6 +12674,97 @@
                         }
                     }
                 }
+            },
+            "put": {
+                "operationId": "renameWebAuthN",
+                "summary": "Rename a WebAuthn credential",
+                "tags": [
+                    "TwoFactorAuth"
+                ],
+                "description": "Changes the name shown for a passkey or security key.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "maxLength": 1024,
+                                        "description": "New name, empty to clear it"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "description"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "credential",
+                        "required": true,
+                        "description": "Credential ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "RenameWebAuthNResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "updated": {
+                                            "type": "boolean",
+                                            "description": "Whether the credential was found"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "updated"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         "/users/{user}/2fa/webauthn/registration-challenge": {
@@ -12667,8 +12799,7 @@
                                             "platform",
                                             "cross-platform"
                                         ],
-                                        "default": "cross-platform",
-                                        "description": "Indicates whether authenticators should be part of the OS (\"platform\"), or can be roaming authenticators (\"cross-platform\")",
+                                        "description": "Limits registration and second step to authenticators that are part of the OS (\"platform\") or roaming ones (\"cross-platform\"). Leave out to allow any kind, which also lets passkeys be created.",
                                         "example": "cross-platform"
                                     },
                                     "rpId": {
@@ -12689,7 +12820,6 @@
                                     }
                                 },
                                 "required": [
-                                    "description",
                                     "origin"
                                 ]
                             }
@@ -12861,6 +12991,19 @@
                                         "minLength": 1,
                                         "description": "Attestation object represented as a hex string"
                                     },
+                                    "transports": {
+                                        "type": "array",
+                                        "maxItems": 8,
+                                        "items": {
+                                            "type": "string",
+                                            "maxLength": 32
+                                        },
+                                        "description": "Transports from AuthenticatorAttestationResponse.getTransports()"
+                                    },
+                                    "discoverable": {
+                                        "type": "boolean",
+                                        "description": "credProps.rk from the client extension results: whether the credential is a passkey"
+                                    },
                                     "rpId": {
                                         "type": "string",
                                         "minLength": 1,
@@ -12956,8 +13099,7 @@
                                             "platform",
                                             "cross-platform"
                                         ],
-                                        "default": "cross-platform",
-                                        "description": "Indicates whether authenticators should be part of the OS (\"platform\"), or can be roaming authenticators (\"cross-platform\")",
+                                        "description": "Limits registration and second step to authenticators that are part of the OS (\"platform\") or roaming ones (\"cross-platform\"). Leave out to allow any kind, which also lets passkeys be created.",
                                         "example": "cross-platform"
                                     },
                                     "rpId": {
@@ -13219,6 +13361,268 @@
                                     },
                                     "required": [
                                         "success"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/passkey/challenge": {
+            "post": {
+                "operationId": "passkeyChallenge",
+                "summary": "Start passkey sign-in",
+                "tags": [
+                    "Authentication"
+                ],
+                "description": "Returns a challenge for signing in with any passkey of this site. No user name is needed; the passkey identifies the user.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "origin": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Origin of the page"
+                                    },
+                                    "rpId": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Relying party ID (domain)"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "origin"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "PasskeyChallengeResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "authenticationOptions": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "description": "Options for navigator.credentials.get(), challenge as hex",
+                                            "properties": {
+                                                "challenge": {
+                                                    "type": "string",
+                                                    "description": "Challenge as hex string"
+                                                },
+                                                "rpId": {
+                                                    "type": "string",
+                                                    "description": "Relying party ID"
+                                                },
+                                                "userVerification": {
+                                                    "type": "string",
+                                                    "description": "Always required"
+                                                },
+                                                "timeout": {
+                                                    "type": "number",
+                                                    "description": "Milliseconds"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "authenticationOptions"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/authenticate/passkey": {
+            "post": {
+                "operationId": "passkeyAuthenticate",
+                "summary": "Sign in with a passkey",
+                "tags": [
+                    "Authentication"
+                ],
+                "description": "Verifies a passkey assertion and signs in the user the passkey belongs to. User verification (PIN or biometrics) is required and counts as the second factor.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "challenge": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 2048,
+                                        "minLength": 1,
+                                        "description": "Challenge from /authenticate/passkey/challenge"
+                                    },
+                                    "rawId": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 2048,
+                                        "minLength": 1,
+                                        "description": "Credential ID as hex string"
+                                    },
+                                    "clientDataJSON": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 1048576,
+                                        "minLength": 1,
+                                        "description": "Client data JSON as hex string"
+                                    },
+                                    "authenticatorData": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 1048576,
+                                        "minLength": 1,
+                                        "description": "Authenticator data as hex string"
+                                    },
+                                    "signature": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 1048576,
+                                        "minLength": 1,
+                                        "description": "Signature as hex string"
+                                    },
+                                    "userHandle": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-fA-F]+$",
+                                        "maxLength": 512,
+                                        "minLength": 1,
+                                        "description": "User handle as hex string, when the authenticator returned one"
+                                    },
+                                    "rpId": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Relying party ID (domain)"
+                                    },
+                                    "scope": {
+                                        "type": "string",
+                                        "enum": [
+                                            "master",
+                                            "mcp"
+                                        ],
+                                        "default": "master",
+                                        "description": "Scope of the token"
+                                    },
+                                    "token": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "If true then the response includes a token for the scope"
+                                    },
+                                    "appId": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Application ID, for the log"
+                                    },
+                                    "protocol": {
+                                        "type": "string",
+                                        "maxLength": 64,
+                                        "description": "Protocol for the log, for example \"Webmail\""
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "challenge",
+                                    "rawId",
+                                    "clientDataJSON",
+                                    "authenticatorData",
+                                    "signature"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "PasskeyAuthenticateResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "User ID"
+                                        },
+                                        "username": {
+                                            "type": "string",
+                                            "description": "Username"
+                                        },
+                                        "address": {
+                                            "type": "string",
+                                            "description": "Main address"
+                                        },
+                                        "scope": {
+                                            "type": "string",
+                                            "description": "Scope of the sign-in"
+                                        },
+                                        "require2fa": {
+                                            "type": "boolean",
+                                            "description": "Always false: a verified passkey is the second factor"
+                                        },
+                                        "require2faEnabled": {
+                                            "type": "boolean",
+                                            "description": "Whether 2FA is required for the account"
+                                        },
+                                        "requirePasswordChange": {
+                                            "type": "boolean",
+                                            "description": "Always false for passkey sign-in"
+                                        },
+                                        "credential": {
+                                            "type": "string",
+                                            "description": "ID of the credential used"
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "description": "Token for the scope, when asked for"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "username",
+                                        "scope"
                                     ]
                                 }
                             }

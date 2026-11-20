@@ -153,7 +153,9 @@ describe('API WebAuthn', function () {
         expect(response.body.authenticationOptions.allowCredentials).to.deep.equal([
             {
                 rawId: authenticator.credentialId.toString('hex'),
-                type: 'public-key'
+                type: 'public-key',
+                // what the browser reported at registration, or a guess for older credentials
+                transports: ['usb', 'nfc', 'ble']
             }
         ]);
 

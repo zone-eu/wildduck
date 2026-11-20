@@ -39,6 +39,15 @@ indexes:
           key:
               unameview: 1
 
+    # passkey sign-in finds the user from the credential
+    - collection: users
+      type: users # index applies to users database
+      index:
+          name: webauthn_credential
+          key:
+              webauthn.credentials.rawId: 1
+          sparse: true
+
     - collection: users
       type: users # index applies to users database
       index:

@@ -60,6 +60,7 @@ const aspsRoutes = require('./lib/api/asps');
 const totpRoutes = require('./lib/api/2fa/totp');
 const custom2faRoutes = require('./lib/api/2fa/custom');
 const webauthnRoutes = require('./lib/api/2fa/webauthn');
+const passkeyRoutes = require('./lib/api/passkeys');
 const updatesRoutes = require('./lib/api/updates');
 const authRoutes = require('./lib/api/auth');
 const autoreplyRoutes = require('./lib/api/autoreply');
@@ -783,6 +784,7 @@ function createApp(options = {}) {
         totpRoutes(db, app, userHandler, mcpTokenHandler);
         custom2faRoutes(db, app, userHandler);
         webauthnRoutes(db, app, userHandler, mcpTokenHandler);
+        passkeyRoutes(db, app, userHandler, mcpTokenHandler);
         updatesRoutes(db, app, notifier);
         authRoutes(db, app, userHandler, mcpTokenHandler);
         autoreplyRoutes(db, app, autoreplyHandler);
