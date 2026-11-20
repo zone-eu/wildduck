@@ -423,6 +423,28 @@ describe('API Users', function () {
         });
     });
 
+    it('should PUT /users/{user} expect success / the temporary password counts as the current one', async () => {
+        const created = await server
+            .post('/users')
+            .send({ username: `tempchange${RUN}`, password: 'original-secret-1', address: `tempchange${RUN}@example.com` })
+            .expect(200);
+        const reset = await server.post(`/users/${created.body.id}/password/reset`).send({}).expect(200);
+
+        await server.put(`/users/${created.body.id}`).send({ existingPassword: 'not-the-one', password: 'next-secret-2' }).expect(403);
+        await server.put(`/users/${created.body.id}`).send({ existingPassword: reset.body.password, password: 'next-secret-2' }).expect(200);
+
+        const authResponse = await server
+            .post('/authenticate')
+            .send({ username: `tempchange${RUN}`, password: 'next-secret-2' })
+            .expect(200);
+        expect(authResponse.body.requirePasswordChange).to.not.be.ok;
+        // the temporary password is spent
+        await server
+            .post('/authenticate')
+            .send({ username: `tempchange${RUN}`, password: reset.body.password })
+            .expect(403);
+    });
+
     it('should POST /users/{user}/password/reset expect success / using a future date', async () => {
         const response = await server
             .post(`/users/${user}/password/reset`)
