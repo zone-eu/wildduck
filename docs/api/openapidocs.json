@@ -19430,6 +19430,767 @@
                     }
                 }
             }
+        },
+        "/webmail/oauth/clients": {
+            "post": {
+                "operationId": "createWebmailOauthClient",
+                "summary": "Register an OAuth client",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Registers a public OAuth client (RFC 7591, as relayed by the webmail). Redirect URIs must be https, or http on localhost. A client that never gets a grant is removed after a week.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 128,
+                                        "description": "Client name shown to users"
+                                    },
+                                    "redirectUris": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "maxItems": 10,
+                                        "items": {
+                                            "type": "string",
+                                            "maxLength": 512
+                                        },
+                                        "description": "Redirect URIs"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "name",
+                                    "redirectUris"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "CreateWebmailOauthClientResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Client ID"
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Name the client registered with"
+                                        },
+                                        "redirectUris": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Allowed redirect URIs"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the client registered"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name",
+                                        "redirectUris",
+                                        "created"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/webmail/oauth/clients/{client}": {
+            "get": {
+                "operationId": "getWebmailOauthClient",
+                "summary": "Get an OAuth client",
+                "tags": [
+                    "Webmail"
+                ],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$"
+                        },
+                        "in": "path",
+                        "name": "client",
+                        "required": true,
+                        "description": "Client ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetWebmailOauthClientResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Client ID"
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Name the client registered with"
+                                        },
+                                        "redirectUris": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Allowed redirect URIs"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the client registered"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "name",
+                                        "redirectUris",
+                                        "created"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "deleteWebmailOauthClient",
+                "summary": "Remove an OAuth client",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Grants already made stay until revoked.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$"
+                        },
+                        "in": "path",
+                        "name": "client",
+                        "required": true,
+                        "description": "Client ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteWebmailOauthClientResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "deleted": {
+                                            "type": "boolean",
+                                            "description": "Whether the entry existed"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "deleted"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/webmail/oauth/grants": {
+            "get": {
+                "operationId": "getWebmailOauthGrants",
+                "summary": "List OAuth grants",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "The user's connected OAuth clients. With a token hash, only the grant holding that token.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "in": "query",
+                        "name": "refreshHash",
+                        "required": false,
+                        "description": "SHA-256 of a refresh token, hex"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "in": "query",
+                        "name": "accessHash",
+                        "required": false,
+                        "description": "SHA-256 of an access token, hex"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetWebmailOauthGrantsResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "title": "WebmailOauthGrant",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "description": "Grant ID"
+                                                    },
+                                                    "client": {
+                                                        "type": "string",
+                                                        "description": "Client ID"
+                                                    },
+                                                    "clientName": {
+                                                        "type": "string",
+                                                        "description": "Name of the client when the grant was made"
+                                                    },
+                                                    "scope": {
+                                                        "type": "string",
+                                                        "description": "Granted scope"
+                                                    },
+                                                    "mcpToken": {
+                                                        "type": "string",
+                                                        "description": "ID of the MCP token the grant issued"
+                                                    },
+                                                    "created": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "When the user approved the client"
+                                                    },
+                                                    "updated": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "When the tokens were last issued"
+                                                    },
+                                                    "expires": {
+                                                        "type": "string",
+                                                        "format": "date-time",
+                                                        "description": "When the grant ends"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "client",
+                                                    "clientName",
+                                                    "scope",
+                                                    "mcpToken",
+                                                    "created",
+                                                    "updated",
+                                                    "expires"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "results"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "createWebmailOauthGrant",
+                "summary": "Store an OAuth grant",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Records a client the user approved, with the MCP token it issued and hashes of its tokens.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "client": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{24}$",
+                                        "description": "Client ID"
+                                    },
+                                    "scope": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256,
+                                        "description": "Granted scope"
+                                    },
+                                    "expires": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "description": "When the grant ends"
+                                    },
+                                    "mcpToken": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{24}$",
+                                        "description": "ID of the MCP token issued for the grant"
+                                    },
+                                    "refreshHash": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$",
+                                        "description": "SHA-256 of the refresh token, hex"
+                                    },
+                                    "accessHash": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$",
+                                        "description": "SHA-256 of the access token, hex"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "client",
+                                    "scope",
+                                    "expires",
+                                    "mcpToken",
+                                    "refreshHash",
+                                    "accessHash"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "CreateWebmailOauthGrantResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Grant ID"
+                                        },
+                                        "client": {
+                                            "type": "string",
+                                            "description": "Client ID"
+                                        },
+                                        "clientName": {
+                                            "type": "string",
+                                            "description": "Name of the client when the grant was made"
+                                        },
+                                        "scope": {
+                                            "type": "string",
+                                            "description": "Granted scope"
+                                        },
+                                        "mcpToken": {
+                                            "type": "string",
+                                            "description": "ID of the MCP token the grant issued"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the user approved the client"
+                                        },
+                                        "updated": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the tokens were last issued"
+                                        },
+                                        "expires": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the grant ends"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "client",
+                                        "clientName",
+                                        "scope",
+                                        "mcpToken",
+                                        "created",
+                                        "updated",
+                                        "expires"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user}/webmail/oauth/grants/{grant}": {
+            "put": {
+                "operationId": "rotateWebmailOauthGrant",
+                "summary": "Rotate the tokens of an OAuth grant",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Stores the new MCP token and token hashes of a refresh and revokes the previous MCP token.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "mcpToken": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{24}$",
+                                        "description": "ID of the MCP token issued for the grant"
+                                    },
+                                    "refreshHash": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$",
+                                        "description": "SHA-256 of the refresh token, hex"
+                                    },
+                                    "accessHash": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$",
+                                        "description": "SHA-256 of the access token, hex"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "mcpToken",
+                                    "refreshHash",
+                                    "accessHash"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$"
+                        },
+                        "in": "path",
+                        "name": "grant",
+                        "required": true,
+                        "description": "Grant ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "RotateWebmailOauthGrantResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Grant ID"
+                                        },
+                                        "client": {
+                                            "type": "string",
+                                            "description": "Client ID"
+                                        },
+                                        "clientName": {
+                                            "type": "string",
+                                            "description": "Name of the client when the grant was made"
+                                        },
+                                        "scope": {
+                                            "type": "string",
+                                            "description": "Granted scope"
+                                        },
+                                        "mcpToken": {
+                                            "type": "string",
+                                            "description": "ID of the MCP token the grant issued"
+                                        },
+                                        "created": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the user approved the client"
+                                        },
+                                        "updated": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the tokens were last issued"
+                                        },
+                                        "expires": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "description": "When the grant ends"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "id",
+                                        "client",
+                                        "clientName",
+                                        "scope",
+                                        "mcpToken",
+                                        "created",
+                                        "updated",
+                                        "expires"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "deleteWebmailOauthGrant",
+                "summary": "Disconnect an OAuth client",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Removes the grant and revokes the MCP token it issued.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$"
+                        },
+                        "in": "path",
+                        "name": "grant",
+                        "required": true,
+                        "description": "Grant ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "DeleteWebmailOauthGrantResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "deleted": {
+                                            "type": "boolean",
+                                            "description": "Whether the entry existed"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "deleted"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "servers": [

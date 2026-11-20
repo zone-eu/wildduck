@@ -1291,6 +1291,35 @@ indexes:
               user: 1
               used: -1
 
+    - collection: webmail.oauthclients
+      index:
+          # a client that never got a grant is removed (the field is unset once one does)
+          name: expires
+          expireAfterSeconds: 0
+          key:
+              expires: 1
+
+    - collection: webmail.oauthgrants
+      index:
+          name: user_created
+          key:
+              user: 1
+              created: 1
+
+    - collection: webmail.oauthgrants
+      index:
+          name: user_refresh
+          key:
+              user: 1
+              refreshHash: 1
+
+    - collection: webmail.oauthgrants
+      index:
+          name: user_access
+          key:
+              user: 1
+              accessHash: 1
+
 deleteindexes:
     # replaced by alert_due_user
     - collection: calendars.events

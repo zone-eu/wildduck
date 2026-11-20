@@ -1,5 +1,11 @@
 {
     "root": {
+        "webmailoauth": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
         "webmaildata": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -335,6 +341,12 @@
     },
 
     "webmail": {
+        "webmailoauth": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
         "webmaildata": {
             "create:any": ["*"],
             "read:any": ["*"],
