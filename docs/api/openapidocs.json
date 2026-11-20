@@ -17989,6 +17989,243 @@
                     }
                 }
             }
+        },
+        "/users/{user}/webmail/preferences": {
+            "get": {
+                "operationId": "getWebmailPreferences",
+                "summary": "Get webmail preferences",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Returns the preferences a webmail client stored for the user. Keys that were never set are left out.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "GetWebmailPreferencesResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "preferences": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed"
+                                        },
+                                        "version": {
+                                            "type": "number",
+                                            "description": "Schema version of the preferences"
+                                        },
+                                        "updated": {
+                                            "description": "Time of the last change, or null"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "preferences",
+                                        "version"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "operationId": "updateWebmailPreferences",
+                "summary": "Update webmail preferences",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Merges the given keys into the stored preferences. A key set to null is removed, so the client default applies. Unknown keys and values of the wrong type are refused.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "preferences": {
+                                        "type": "object",
+                                        "additionalProperties": true,
+                                        "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed"
+                                    },
+                                    "sess": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 255,
+                                        "description": "Session identifier for the logs"
+                                    },
+                                    "ip": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "IP address for the logs "
+                                    }
+                                },
+                                "required": [
+                                    "preferences"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "UpdateWebmailPreferencesResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "preferences": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed"
+                                        },
+                                        "version": {
+                                            "type": "number",
+                                            "description": "Schema version of the preferences"
+                                        },
+                                        "updated": {
+                                            "description": "Time of the last change, or null"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "preferences",
+                                        "version"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "resetWebmailPreferences",
+                "summary": "Reset webmail preferences",
+                "tags": [
+                    "Webmail"
+                ],
+                "description": "Removes every stored preference of the user.",
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                        },
+                        "in": "query",
+                        "name": "sess",
+                        "required": false,
+                        "description": "Session identifier for the logs"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "ip",
+                        "required": false,
+                        "description": "IP address for the logs "
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{24}$",
+                            "minLength": 24,
+                            "maxLength": 24
+                        },
+                        "in": "path",
+                        "name": "user",
+                        "required": true,
+                        "description": "Example: `507f1f77bcf86cd799439011`\nID of the User"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "ResetWebmailPreferencesResponse",
+                                    "properties": {
+                                        "success": {
+                                            "$ref": "#/components/schemas/successRes"
+                                        },
+                                        "deleted": {
+                                            "type": "boolean",
+                                            "description": "Whether stored preferences existed"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "deleted"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "servers": [
@@ -18053,6 +18290,10 @@
         {
             "name": "MCPAccessTokens",
             "description": "Read-only personal access tokens for the MCP (Model Context Protocol) server."
+        },
+        {
+            "name": "Webmail",
+            "description": "Data a webmail client keeps for a user that is neither mail nor JMAP data, such as preferences."
         },
         {
             "name": "PushSubscriptions",

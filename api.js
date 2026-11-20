@@ -73,6 +73,7 @@ const settingsRoutes = require('./lib/api/settings');
 const healthRoutes = require('./lib/api/health');
 const pushsubscriptionsRoutes = require('./lib/api/pushsubscriptions');
 const mcpTokensRoutes = require('./lib/api/mcp-tokens');
+const webmailRoutes = require('./lib/api/webmail');
 const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
@@ -795,6 +796,7 @@ function createApp(options = {}) {
         settingsRoutes(db, app, settingsHandler);
         healthRoutes(db, app, loggelf);
         mcpTokensRoutes(app, mcpTokenHandler);
+        webmailRoutes(db, app);
     });
 
     if (process.env.NODE_ENV === 'test') {

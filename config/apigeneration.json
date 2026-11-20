@@ -66,6 +66,10 @@
             "description": "Read-only personal access tokens for the MCP (Model Context Protocol) server."
         },
         {
+            "name": "Webmail",
+            "description": "Data a webmail client keeps for a user that is neither mail nor JMAP data, such as preferences."
+        },
+        {
             "name": "PushSubscriptions",
             "description": "Apple push notification registrations made by IMAP clients through XAPPLEPUSHSERVICE."
         },

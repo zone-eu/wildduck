@@ -1,5 +1,11 @@
 {
     "root": {
+        "webmaildata": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
         "addresslisting": {
             "read:any": ["*"]
         },
@@ -141,6 +147,9 @@
     },
 
     "api:read": {
+        "webmaildata": {
+            "read:any": ["*"]
+        },
         "addresslisting": {
             "read:any": ["*"]
         },
@@ -326,6 +335,12 @@
     },
 
     "webmail": {
+        "webmaildata": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
         "addresses": {
             "create:any": ["*"],
             "read:any": ["*"],
@@ -420,6 +435,12 @@
     },
 
     "user": {
+        "webmaildata": {
+            "create:own": ["*"],
+            "read:own": ["*"],
+            "update:own": ["*"],
+            "delete:own": ["*"]
+        },
         "addresslisting": {
             "read:own": ["*", "!internalData"]
         },
