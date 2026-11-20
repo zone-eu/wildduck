@@ -7,9 +7,11 @@
 const supertest = require('supertest');
 const chai = require('chai');
 const config = require('@zone-eu/wild-config');
-const { MongoClient, ObjectId } = require('mongodb');
+const { ObjectId } = require('mongodb');
 const { validateChanges } = require('../../lib/webmail/preferences');
-const { deleteWebmailData } = require('../../lib/webmail/account-data');
+const { deleteAccountData } = require('../../lib/jmap/account-data');
+const db = require('../../lib/db');
+const { connect, uniqueName } = require('./_helpers');
 
 const expect = chai.expect;
 chai.config.includeStack = true;
@@ -17,8 +19,7 @@ chai.config.includeStack = true;
 const server = supertest.agent(`http://127.0.0.1:${config.api.port}`);
 
 async function createUser(prefix) {
-    const unique = `${Date.now()}${Math.round(Math.random() * 10000)}`;
-    const username = `${prefix}${unique}`;
+    const username = uniqueName(prefix);
     const response = await server
         .post('/users')
         .send({ username, password: 'secretvalue', address: `${username}@example.com` })
@@ -98,13 +99,9 @@ describe('Webmail preferences', function () {
             .send({ preferences: { accent: 'purple' } })
             .expect(200);
 
-        const client = await MongoClient.connect(config.dbs.mongo);
-        try {
-            const result = await deleteWebmailData({ database: client.db(config.dbs.dbname) }, new ObjectId(other.id));
-            expect(result['webmail.preferences'].deleted).to.equal(1);
-        } finally {
-            await client.close();
-        }
+        await connect();
+        const result = await deleteAccountData(db, new ObjectId(other.id));
+        expect(result['webmail.preferences'].deleted).to.equal(1);
 
         const response = await server.get(`/users/${user.id}/webmail/preferences`).expect(200);
         expect(response.body.preferences).to.deep.equal({ accent: 'purple' });
