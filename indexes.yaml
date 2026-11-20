@@ -1249,6 +1249,31 @@ indexes:
           key:
               address: 1
 
+    - collection: webmail.senders
+      index:
+          # one entry per sender and user, listed by address
+          name: user_address
+          unique: true
+          key:
+              user: 1
+              address: 1
+
+    - collection: webmail.searches
+      index:
+          # one entry per search text and user, newest first
+          name: user_query
+          unique: true
+          key:
+              user: 1
+              query: 1
+
+    - collection: webmail.searches
+      index:
+          name: user_used
+          key:
+              user: 1
+              used: -1
+
 deleteindexes:
     # replaced by alert_due_user
     - collection: calendars.events
