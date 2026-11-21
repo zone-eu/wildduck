@@ -18457,7 +18457,7 @@
                                         "preferences": {
                                             "type": "object",
                                             "additionalProperties": true,
-                                            "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed, smimeKeyRetention"
+                                            "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, unreadFoldersOnly, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed, smimeKeyRetention"
                                         },
                                         "version": {
                                             "type": "number",
@@ -18495,7 +18495,7 @@
                                     "preferences": {
                                         "type": "object",
                                         "additionalProperties": true,
-                                        "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed, smimeKeyRetention"
+                                        "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, unreadFoldersOnly, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed, smimeKeyRetention"
                                     },
                                     "sess": {
                                         "type": "string",
@@ -18545,7 +18545,7 @@
                                         "preferences": {
                                             "type": "object",
                                             "additionalProperties": true,
-                                            "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed, smimeKeyRetention"
+                                            "description": "Stored preferences. Only these keys exist: theme, accent, density, readingPane, listSort, threading, showSizeColumn, showContactsPanel, contactOrder, folderPaneWidth, listPaneSize, collapsedFolders, alphabeticalFolders, unreadFoldersOnly, markReadDelay, openNextAfterAction, remoteContent, enterKey, toolbarPosition, fontFamily, fontSize, undoSendSeconds, language, timeZone, keyboardShortcuts, notifications, passkeyOfferDismissed, smimeKeyRetention"
                                         },
                                         "version": {
                                             "type": "number",

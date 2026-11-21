@@ -51,9 +51,15 @@ describe('Webmail preferences', function () {
             .expect(200);
         const response = await server
             .put(`/users/${user.id}/webmail/preferences`)
-            .send({ preferences: { language: 'et', undoSendSeconds: 10 } })
+            .send({ preferences: { language: 'et', undoSendSeconds: 10, unreadFoldersOnly: true } })
             .expect(200);
-        expect(response.body.preferences).to.deep.equal({ theme: 'dark', density: 'compact', language: 'et', undoSendSeconds: 10 });
+        expect(response.body.preferences).to.deep.equal({
+            theme: 'dark',
+            density: 'compact',
+            language: 'et',
+            undoSendSeconds: 10,
+            unreadFoldersOnly: true
+        });
         expect(response.body.updated).to.be.a('string');
     });
 
@@ -73,6 +79,7 @@ describe('Webmail preferences', function () {
             { threading: 'yes' },
             { undoSendSeconds: 301 },
             { smimeKeyRetention: 'yes' },
+            { unreadFoldersOnly: 'yes' },
             { fontFamily: '<script>' },
             []
         ]) {
@@ -80,7 +87,7 @@ describe('Webmail preferences', function () {
             expect(response.body.code).to.equal('InputValidationError');
         }
         const response = await server.get(`/users/${user.id}/webmail/preferences`).expect(200);
-        expect(response.body.preferences).to.deep.equal({ theme: 'dark', language: 'et', undoSendSeconds: 10 });
+        expect(response.body.preferences).to.deep.equal({ theme: 'dark', language: 'et', undoSendSeconds: 10, unreadFoldersOnly: true });
     });
 
     it('requires the preferences object', async () => {
