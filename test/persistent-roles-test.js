@@ -147,6 +147,7 @@ describe('persistent roles', function () {
             users: usersDb,
             database,
             definitions: {
+                ...definitions,
                 [additionalName]: {
                     newResource: { 'read:any': ['*'] }
                 }
@@ -161,6 +162,51 @@ describe('persistent roles', function () {
         await expectCode(extended.update(role._id, { description: 'no', permissions: {} }), 'SystemRoleProtected');
         await expectCode(extended.delete(role._id), 'SystemRoleProtected');
         await expectCode(handler.update('root', { description: 'blocked' }), 'SystemRoleProtected');
+    });
+
+    it('tombstones removed system roles, rejects their tokens, and queues assignment cleanup', async function () {
+        const removed = uniqueName('removed');
+        const removedWithClearedFlag = uniqueName('removed-cleared-flag');
+        const extended = new RoleHandler({
+            users: usersDb,
+            database,
+            definitions: { ...definitions, [removed]: {}, [removedWithClearedFlag]: {} }
+        });
+        await extended.initialize();
+        const original = await extended.get(removed);
+        await roleAccess.forUser(removed, {}, usersDb);
+        await roles.updateOne({ _id: removedWithClearedFlag }, { $set: { isSystem: false } });
+
+        const custom = await handler.create({ name: uniqueName('kept'), permissions: {} });
+        const user = new ObjectId();
+        await usersDb.collection('users').insertOne({ _id: user, role: removed });
+        await assert.rejects(roleDelete.run({}, { role: removed, systemRoleRestoreId: '' }, {}, usersDb), /not committed/);
+
+        await handler.initialize();
+
+        const tombstone = await roles.findOne({ _id: removed });
+        expect(tombstone).to.include({ _id: removed, name: removed, isSystem: true, deleted: true });
+        expect(tombstone.created).to.deep.equal(original.created);
+        await expectCode(roleAccess.forUser(removed, {}, usersDb), 'UnknownRole');
+        await expectCode(roleAccess.forUser(removedWithClearedFlag, {}, usersDb), 'UnknownRole');
+        await expectCode(handler.create({ name: removed, permissions: {} }), 'RoleExists');
+        expect(await handler.get(custom.name)).to.deep.equal(custom);
+        expect(await handler.get('root')).to.include({ isSystem: true, deleted: false });
+
+        const fallback = await roleAccess.forUser('user', { role: removed }, usersDb);
+        expect(String(fallback)).to.equal('user');
+        const task = await database.collection('tasks').findOne({ task: 'role-delete', 'data.role': removed });
+        expect(task.data).to.deep.equal({ role: removed, systemRoleRestoreId: '' });
+        expect((await roleDelete.run(task, task.data, {}, usersDb)).updated).to.equal(1);
+        expect(await usersDb.collection('users').findOne({ _id: user })).not.to.have.property('role');
+
+        await handler.initialize();
+        expect(await roles.findOne({ _id: removed })).to.deep.equal(tombstone);
+
+        await extended.initialize();
+        await usersDb.collection('users').updateOne({ _id: user }, { $set: { role: removed } });
+        expect((await roleDelete.run(task, task.data, {}, usersDb)).updated).to.equal(0);
+        expect((await usersDb.collection('users').findOne({ _id: user })).role).to.equal(removed);
     });
 
     it('uses only the stored system flag for protection and restores source rows on initialization', async function () {
@@ -206,6 +252,7 @@ describe('persistent roles', function () {
             users: usersDb,
             database,
             definitions: {
+                ...definitions,
                 onlyThis: {
                     anotherNewResource: { 'read:any': ['*'] }
                 }
