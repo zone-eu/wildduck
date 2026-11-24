@@ -5076,7 +5076,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for a system flag. Supported flags: seen, answered, flagged, deleted, draft and unread. By default, excludes Junk, Trash and non-searchable messages. The unseen count for seen is always zero.",
+                "description": "Returns total and unseen counters for a system flag. With searchable=true (the default), all flags exclude Junk and Trash. Answered, flagged, deleted and draft also require searchable=true on each message. The unseen count for seen is always zero.",
                 "parameters": [
                     {
                         "schema": {
@@ -5086,7 +5086,7 @@
                         "in": "query",
                         "name": "searchable",
                         "required": false,
-                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                        "description": "If true, exclude Junk and Trash. For answered, flagged, deleted and draft, also require searchable=true on each message."
                     },
                     {
                         "schema": {
