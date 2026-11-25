@@ -89,4 +89,24 @@ describe('BODYSTRUCTURE', function () {
             '("APPLICATION" "OCTET-STREAM" ("NAME" "résumé.pdf") NIL NIL "7BIT" 4 NIL ("ATTACHMENT" ("FILENAME" "résumé.pdf")) NIL NIL)'
         );
     });
+
+    it('decodes percent escapes only in starred RFC 2231 continuation segments', function () {
+        let source = 'Content-Type: application/pdf\r\nContent-Disposition: attachment; filename*0=report%20; filename*1*=%20final.pdf\r\n\r\nhi\r\n';
+        expect(bodystructure(source)).to.equal('("APPLICATION" "PDF" NIL NIL NIL "7BIT" 4 NIL ("ATTACHMENT" ("FILENAME" "report%20 final.pdf")) NIL NIL)');
+    });
+
+    it('decodes folded and out-of-order name and filename continuations independently', function () {
+        const source = [
+            'Content-Type: application/pdf; name*1*=%20type.pdf;',
+            '\tname*0=report%20',
+            'Content-Disposition: attachment; filename*2=_%20.pdf;',
+            "\tfilename*0*=ISO-8859-1'fr'caf; filename*1*=%e9",
+            '',
+            'hi',
+            ''
+        ].join('\r\n');
+        expect(bodystructure(source)).to.equal(
+            '("APPLICATION" "PDF" ("NAME" "report%20 type.pdf") NIL NIL "7BIT" 4 NIL ("ATTACHMENT" ("FILENAME" "café_%20.pdf")) NIL NIL)'
+        );
+    });
 });
