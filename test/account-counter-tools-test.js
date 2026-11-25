@@ -421,7 +421,12 @@ describe('Account counter tools', () => {
         const mailboxes = [inbox, archive, junk, trash, other];
         const redis = createRedis();
         let mailboxFinds = 0;
-        for (const [mailbox, total, unseen] of [[inbox, 5, 3], [archive, 8, 1], [junk, 3, 2], [trash, 6, 4]]) {
+        for (const [mailbox, total, unseen] of [
+            [inbox, 5, 3],
+            [archive, 8, 1],
+            [junk, 3, 2],
+            [trash, 6, 4]
+        ]) {
             redis.values.set(`total:${mailbox._id}`, String(total));
             redis.values.set(`unseen:${mailbox._id}`, String(unseen));
         }
@@ -435,7 +440,9 @@ describe('Account counter tools', () => {
                             mailboxFinds++;
                             expect(query.user).to.equal(user);
                             const excluded = query.specialUse?.$nin || [];
-                            return { toArray: async () => mailboxes.filter(mailbox => mailbox.user.equals(query.user) && !excluded.includes(mailbox.specialUse)) };
+                            return {
+                                toArray: async () => mailboxes.filter(mailbox => mailbox.user.equals(query.user) && !excluded.includes(mailbox.specialUse))
+                            };
                         }
                     };
                 }
