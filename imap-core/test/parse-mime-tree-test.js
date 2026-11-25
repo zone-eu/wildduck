@@ -260,7 +260,11 @@ describe('#parseValueParams', function () {
         ['handles empty unstarred and starred segments', 'filename*0=""; filename*1*=%c3%a9; filename*2*=; filename*3=.txt', 'é.txt'],
         ['decodes escapes exactly once', "filename*0*=utf-8''%2520%253D%255F; filename*1=%3F_; filename*2*=%3d%3f.pdf", '%20%3D%5F%3F_=?.pdf'],
         ['keeps malformed escapes in starred segments', "filename*0*=utf-8''bad%zz_%2G_%A; filename*1=Z; filename*2*=%20tail%.pdf", 'bad%zz_%2G_%AZ tail%.pdf'],
-        ['does not complete percent escapes across segment boundaries', 'filename*0=first%; filename*1*=20_; filename*2*=%2; filename*3=0.pdf', 'first%20_%20.pdf'],
+        [
+            'does not complete percent escapes across segment boundaries',
+            'filename*0=first%; filename*1*=20_; filename*2*=%2; filename*3=0.pdf',
+            'first%20_%20.pdf'
+        ],
         [
             'keeps quoted punctuation and ignores comments outside segments',
             'filename*0="a;%20\\"_" (first); filename*1*=%20%3B (second); filename*2="?=41.pdf"',

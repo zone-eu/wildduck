@@ -548,7 +548,7 @@ class MIMEParser {
                     parts.shift(); // lang argument, ignored
                     segment = parts.join("'"); // eslint-disable-line quotes
                 }
-                // Escape literal equals signs before converting starred segments to Q encoding.
+                // Escape literal equals signs before percent escapes in starred segments become Q escapes.
                 segment = segment.replace(/[=]/g, '=3D');
                 value += encoded ? segment.replace(/%([\da-f]{2})/gi, '=$1') : segment;
             });
