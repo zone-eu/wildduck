@@ -4468,7 +4468,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Lists persistent labels, including empty labels, with optional message counters. Requested counters are over searchable mailboxes (Junk, Trash and non-searchable messages excluded) by default; searchable=false counts all mailboxes.",
+                "description": "Lists persistent labels, including empty labels, with optional message counters. With searchable=true (the default), the counters exclude messages in Junk and Trash. With searchable=false, they include all mailboxes.",
                 "parameters": [
                     {
                         "schema": {
@@ -4488,7 +4488,7 @@
                         "in": "query",
                         "name": "searchable",
                         "required": false,
-                        "description": "When counters are requested, whether to exclude Junk, Trash and non-searchable messages"
+                        "description": "When counters are requested, whether to exclude messages in Junk and Trash"
                     },
                     {
                         "schema": {
@@ -4973,7 +4973,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for a custom label. By default, excludes Junk, Trash and non-searchable messages.",
+                "description": "Returns total and unseen counters for a custom label. With searchable=true (the default), excludes messages in Junk and Trash.",
                 "parameters": [
                     {
                         "schema": {
@@ -4983,7 +4983,7 @@
                         "in": "query",
                         "name": "searchable",
                         "required": false,
-                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                        "description": "If true, exclude messages in Junk and Trash"
                     },
                     {
                         "schema": {
@@ -5076,7 +5076,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for a system flag. With searchable=true (the default), all flags exclude Junk and Trash. Answered, flagged, deleted and draft also require searchable=true on each message. The unseen count for seen is always zero.",
+                "description": "Returns total and unseen counters for a system flag. With searchable=true (the default), all flags exclude messages in the Junk and Trash mailboxes. The unseen count for seen is always zero.",
                 "parameters": [
                     {
                         "schema": {
@@ -5086,7 +5086,7 @@
                         "in": "query",
                         "name": "searchable",
                         "required": false,
-                        "description": "If true, exclude Junk and Trash. For answered, flagged, deleted and draft, also require searchable=true on each message."
+                        "description": "If true, exclude messages in the Junk and Trash mailboxes."
                     },
                     {
                         "schema": {
@@ -5185,7 +5185,7 @@
                 "tags": [
                     "Messages"
                 ],
-                "description": "Returns total and unseen counters for flagged messages. Alias for flag-counters/flagged; by default excludes Junk, Trash and non-searchable messages.",
+                "description": "Returns total and unseen counters for flagged messages. This is an alias for flag-counters/flagged. With searchable=true (the default), it excludes messages in the Junk and Trash mailboxes.",
                 "parameters": [
                     {
                         "schema": {
@@ -5195,7 +5195,7 @@
                         "in": "query",
                         "name": "searchable",
                         "required": false,
-                        "description": "If true, exclude Junk, Trash and non-searchable messages"
+                        "description": "If true, exclude messages in the Junk and Trash mailboxes"
                     },
                     {
                         "schema": {

@@ -13,6 +13,10 @@ const createRedis = ({ changeVersionOnFirstStore = false } = {}) => {
 
     return {
         values,
+        async set(key, value) {
+            expect(key.endsWith(':version')).to.equal(true);
+            version = value;
+        },
         get stores() {
             return stores;
         },
@@ -283,7 +287,7 @@ describe('Account counter tools', () => {
                     expect(name).to.equal('messages');
                     return {
                         async countDocuments(query, options) {
-                            expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, labels: label, searchable: true });
+                            expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, labels: label });
                             expect(options.maxTimeMS).to.equal(consts.DB_MAX_TIME_MESSAGES_SEARCH);
                             return 2;
                         }
@@ -340,9 +344,9 @@ describe('Account counter tools', () => {
         expect(await tools.getLabelCounter(db, user, 'project', undefined, true)).to.equal(1);
         expect(await tools.getLabelCounter(db, user, 'project', 'unseen', true)).to.equal(3);
         expect(queries).to.deep.equal([
-            { mailbox: { $in: [mailbox] }, labels: label, searchable: true },
             { mailbox: { $in: [mailbox] }, labels: label },
-            { mailbox: { $in: [mailbox] }, labels: label, unseen: true, searchable: true }
+            { mailbox: { $in: [mailbox] }, labels: label },
+            { mailbox: { $in: [mailbox] }, labels: label, unseen: true }
         ]);
         expect(mailboxFinds).to.equal(3);
     });
@@ -386,8 +390,7 @@ describe('Account counter tools', () => {
                             expect(pipeline[0]).to.deep.equal({
                                 $match: {
                                     mailbox: { $in: [mailbox] },
-                                    labels: { $in: labels.map(label => label._id) },
-                                    searchable: true
+                                    labels: { $in: labels.map(label => label._id) }
                                 }
                             });
                             expect(options.maxTimeMS).to.equal(consts.DB_MAX_TIME_MESSAGES_SEARCH);
@@ -408,7 +411,7 @@ describe('Account counter tools', () => {
         ]);
     });
 
-    it('sums mailbox counters for unread and seen, excluding Junk and Trash in the searchable scope', async () => {
+    it('caches mailbox sums for unread and seen by account version and mailbox scope', async () => {
         const user = new ObjectId();
         const inbox = { _id: new ObjectId(), user };
         const archive = { _id: new ObjectId(), user };
@@ -417,6 +420,7 @@ describe('Account counter tools', () => {
         const other = { _id: new ObjectId(), user: new ObjectId() };
         const mailboxes = [inbox, archive, junk, trash, other];
         const redis = createRedis();
+        let mailboxFinds = 0;
         for (const [mailbox, total, unseen] of [[inbox, 5, 3], [archive, 8, 1], [junk, 3, 2], [trash, 6, 4]]) {
             redis.values.set(`total:${mailbox._id}`, String(total));
             redis.values.set(`unseen:${mailbox._id}`, String(unseen));
@@ -428,6 +432,7 @@ describe('Account counter tools', () => {
                     expect(name).to.equal('mailboxes');
                     return {
                         find(query) {
+                            mailboxFinds++;
                             expect(query.user).to.equal(user);
                             const excluded = query.specialUse?.$nin || [];
                             return { toArray: async () => mailboxes.filter(mailbox => mailbox.user.equals(query.user) && !excluded.includes(mailbox.specialUse)) };
@@ -442,14 +447,22 @@ describe('Account counter tools', () => {
         expect(await tools.getFlagCounter(db, user, 'seen', undefined, true)).to.equal(9);
         expect(await tools.getFlagCounter(db, user, 'seen')).to.equal(12);
         redis.values.set(`unseen:${inbox._id}`, '2');
+        expect(await tools.getFlagCounter(db, user, 'unread', 'unseen', true)).to.equal(4);
+        expect(await tools.getFlagCounter(db, user, 'seen', undefined, true)).to.equal(9);
+        expect(mailboxFinds).to.equal(4);
+        expect(redis.stores).to.equal(4);
+
+        await tools.bumpAccountCounterVersion(redis, user);
         expect(await tools.getFlagCounter(db, user, 'unread', undefined, true)).to.equal(3);
-        expect(redis.stores).to.equal(0);
+        expect(await tools.getFlagCounter(db, user, 'seen', undefined, true)).to.equal(10);
+        expect(mailboxFinds).to.equal(6);
     });
 
-    it('separates flagged cache keys by searchable scope', async () => {
+    it('scopes flagged queries to mailboxes and ignores old cached flag values', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const redis = createRedis();
+        redis.values.set(`account-counters:{${user}}:0:flag:flagged:searchable:total`, '99');
         const queries = [];
         let mailboxFinds = 0;
         const db = {
@@ -478,10 +491,7 @@ describe('Account counter tools', () => {
 
         expect(await tools.getFlagCounter(db, user, 'flagged', undefined, true)).to.equal(1);
         expect(await tools.getFlagCounter(db, user, 'flagged', undefined, false)).to.equal(2);
-        expect(queries).to.deep.equal([
-            { mailbox: { $in: [mailbox] }, flagged: true, searchable: true },
-            { mailbox: { $in: [mailbox] }, flagged: true }
-        ]);
+        expect(queries).to.deep.equal(Array(2).fill({ mailbox: { $in: [mailbox] }, flagged: true }));
     });
 
     it('keeps getFlaggedCounter as a wrapper and rejects unsupported flags', async () => {
@@ -511,7 +521,7 @@ describe('Account counter tools', () => {
         };
 
         expect(await tools.getFlaggedCounter(db, user, undefined, true)).to.equal(3);
-        expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, flagged: true, searchable: true });
+        expect(query).to.deep.equal({ mailbox: { $in: [mailbox] }, flagged: true });
         let error;
         try {
             await tools.getFlagCounter(db, user, 'Flagged');
