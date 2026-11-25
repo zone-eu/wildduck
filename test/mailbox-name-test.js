@@ -26,7 +26,8 @@ describe('Mailbox name sanitization', () => {
         handler.settingsHandler = { get: async () => 100 };
         handler.notifier = {
             addEntriesAsync: async (mailbox, entry) => journals.push(entry),
-            fire: () => false
+            fire: () => false,
+            fireForMailbox: () => false
         };
         return { handler, entries, journals };
     }

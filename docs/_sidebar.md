@@ -22,6 +22,7 @@
     -   [E-Mail Protocol support](in-depth/protocol-support.md)
     -   [Connection Management](in-depth/connection-management.md)
     -   [CONDSTORE Extension](in-depth/condstore-extension.md)
+    -   [Shared Mailboxes](in-depth/shared-mailboxes.md)
     -   [ACME certificates](in-depth/acme-certificates.md)
     -   [Security implementation](in-depth/security.md)
     -   [Administrating WildDuck via command line](in-depth/command-line.md)

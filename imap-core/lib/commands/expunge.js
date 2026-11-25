@@ -18,6 +18,15 @@ module.exports = {
             return callback(null, imapTools.READ_ONLY_RESPONSE);
         }
 
+        // expunging from a shared mailbox needs the "e" right
+        if (!imapTools.checkAclRights(this.selected, imapTools.ACL_RIGHTS.EXPUNGE)) {
+            return callback(null, {
+                response: 'NO',
+                code: 'NOPERM',
+                message: 'Permission denied'
+            });
+        }
+
         if (this.session.commandCounters[command.command.toUpperCase().trim()] > 1000) {
             this.session.selected = this.selected = false;
             this.state = 'Logout';

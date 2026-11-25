@@ -84,7 +84,8 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
         handler.settingsHandler = { get: () => Promise.resolve(100) };
         handler.notifier = {
             addEntriesAsync: async () => {},
-            fire: () => {}
+            fire: () => {},
+            fireForMailbox: () => {}
         };
         handler.indexer = { getMaildata: () => ({ attachments: [], magic: 'new-magic' }) };
         handler.attachmentStorage = {
@@ -270,7 +271,8 @@ describe('moveAsync - encrypted-MOVE quota adjustment', function () {
 
         handler.notifier = {
             addEntriesAsync: async () => {},
-            fire: () => {}
+            fire: () => {},
+            fireForMailbox: () => {}
         };
 
         handler.indexer = {
@@ -422,7 +424,8 @@ describe('moveAsync label counter notifications', function () {
                 const target = mailbox._id.equals(sourceMailbox) ? sourceEntries : targetEntries;
                 target.push(...entries);
             },
-            fire() {}
+            fire() {},
+            fireForMailbox() {}
         };
 
         await handler.moveAsync({
