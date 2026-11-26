@@ -74,7 +74,7 @@ describe('API label counters', function () {
             { name: 'inbox-plain', mailbox: inbox, labels: [], unseen: true, flags: [], searchable: true },
             { name: 'junk-a', mailbox: junkMailbox, labels: [labelAId], unseen: true, flags: [], searchable: true },
             { name: 'trash-a', mailbox: trashMailbox, labels: [labelAId], unseen: true, flags: [] },
-            { name: 'archive-b', mailbox: archiveMailbox, labels: [labelBId], unseen: true, flags: [], searchable: true }
+            { name: 'archive-b', mailbox: archiveMailbox, labels: [labelBId], unseen: true, flags: [], searchable: false }
         ].map((record, index) => {
             const message = {
                 _id: new ObjectId(),

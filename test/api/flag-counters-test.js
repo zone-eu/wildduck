@@ -102,10 +102,10 @@ describe('API flag counters', function () {
         const searchableExpectations = {
             seen: { total: 1, unseen: 0 },
             answered: { total: 1, unseen: 1 },
-            flagged: { total: 1, unseen: 1 },
+            flagged: { total: 2, unseen: 2 },
             deleted: { total: 1, unseen: 1 },
             draft: { total: 1, unseen: 1 },
-            unread: { total: 4, unseen: 4 }
+            unread: { total: 5, unseen: 5 }
         };
         for (const [flag, { total, unseen }] of Object.entries(searchableExpectations)) {
             const response = await request('GET', `/users/${user}/flag-counters/${flag}`);
@@ -120,19 +120,25 @@ describe('API flag counters', function () {
         const allUnread = await request('GET', `/users/${user}/flag-counters/unread?searchable=false`);
         expect(allUnread.statusCode).to.equal(200);
         expect(allUnread.json()).to.deep.equal({ success: true, flag: 'unread', total: 7, unseen: 7 });
+
+        const mailboxResponse = await request('GET', `/users/${user}/mailboxes?counters=true`);
+        expect(mailboxResponse.statusCode).to.equal(200);
+        const searchableMailboxes = mailboxResponse.json().results.filter(entry => !['\\Junk', '\\Trash'].includes(entry.specialUse));
+        expect(searchableMailboxes.reduce((sum, entry) => sum + entry.unseen, 0)).to.equal(searchableExpectations.unread.total);
+        expect(searchableMailboxes.reduce((sum, entry) => sum + entry.total - entry.unseen, 0)).to.equal(searchableExpectations.seen.total);
     });
 
     it('preserves the legacy flagged counter response shape', async () => {
         const response = await request('GET', `/users/${user}/flagged-counter`);
         expect(response.statusCode).to.equal(200);
-        expect(response.json()).to.deep.equal({ success: true, total: 1, unseen: 1 });
+        expect(response.json()).to.deep.equal({ success: true, total: 2, unseen: 2 });
 
         const all = await request('GET', `/users/${user}/flagged-counter?searchable=false`);
         expect(all.statusCode).to.equal(200);
         expect(all.json()).to.deep.equal({ success: true, total: 4, unseen: 4 });
     });
 
-    it('reloads cached flagged and unread counters after FETCH flag changes', async () => {
+    it('reloads cached flagged, seen and unread counters after FETCH flag changes', async () => {
         const read = async flag => {
             const response = await request('GET', `/users/${user}/flag-counters/${flag}`);
             expect(response.statusCode).to.equal(200);
@@ -140,24 +146,28 @@ describe('API flag counters', function () {
         };
         const notifyFetch = async () => {
             const notifier = Object.create(ImapNotifier.prototype);
+            notifier.database = db.database;
             notifier.redis = db.redis;
-            await notifier.updateAccountCounters([{ command: 'FETCH', user: new ObjectId(user), flags: [] }]);
+            await notifier.addEntriesAsync({ _id: mailbox, user: new ObjectId(user), modifyIndex: 1 }, { command: 'FETCH', flags: [], unseenChange: true });
         };
 
-        expect(await read('flagged')).to.include({ total: 1, unseen: 1 });
-        expect(await read('unread')).to.include({ total: 4, unseen: 4 });
+        expect(await read('flagged')).to.include({ total: 2, unseen: 2 });
+        expect(await read('seen')).to.include({ total: 1, unseen: 0 });
+        expect(await read('unread')).to.include({ total: 5, unseen: 5 });
 
         await db.database.collection('messages').updateOne({ _id: insertedMessageIds[2] }, { $set: { flagged: false, flags: [] } });
         await db.database.collection('messages').updateOne({ _id: insertedMessageIds[1] }, { $set: { unseen: false, flags: ['\\Seen'] } });
         await notifyFetch();
-        expect(await read('flagged')).to.include({ total: 0, unseen: 0 });
-        expect(await read('unread')).to.include({ total: 3, unseen: 3 });
+        expect(await read('flagged')).to.include({ total: 1, unseen: 1 });
+        expect(await read('seen')).to.include({ total: 2, unseen: 0 });
+        expect(await read('unread')).to.include({ total: 4, unseen: 4 });
 
         await db.database.collection('messages').updateOne({ _id: insertedMessageIds[2] }, { $set: { flagged: true, flags: ['\\Flagged'] } });
         await db.database.collection('messages').updateOne({ _id: insertedMessageIds[1] }, { $set: { unseen: true, flags: ['\\Answered'] } });
         await notifyFetch();
-        expect(await read('flagged')).to.include({ total: 1, unseen: 1 });
-        expect(await read('unread')).to.include({ total: 4, unseen: 4 });
+        expect(await read('flagged')).to.include({ total: 2, unseen: 2 });
+        expect(await read('seen')).to.include({ total: 1, unseen: 0 });
+        expect(await read('unread')).to.include({ total: 5, unseen: 5 });
     });
 
     it('validates the flag and reports missing users', async () => {

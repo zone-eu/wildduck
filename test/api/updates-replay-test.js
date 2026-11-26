@@ -472,7 +472,7 @@ describe('API Updates stream label counters', function () {
             const activeEvent = events.find(event => event.payload.label === activeLabel);
             const deletingEvent = events.find(event => event.payload.label === deletingLabel);
             expect(activeEvent).to.exist;
-            expect(activeEvent.payload).to.include({ labelId: activeId.toString(), total: 1, unseen: 1 });
+            expect(activeEvent.payload).to.include({ labelId: activeId.toString(), total: 2, unseen: 2 });
             expect(deletingEvent).to.exist;
             expect(deletingEvent.payload).to.include({ total: 0, unseen: 0 });
             expect(deletingEvent.payload).to.not.have.property('labelId');
