@@ -260,7 +260,7 @@ describe('Account counter tools', () => {
         expect(aggregates).to.equal(1);
     });
 
-    it('counts label messages in the searchable mailbox scope', async () => {
+    it('counts label messages in the searchable mailbox scope and ignores old cached label values', async () => {
         const user = new ObjectId();
         const mailbox = new ObjectId();
         const label = new ObjectId();
@@ -296,6 +296,7 @@ describe('Account counter tools', () => {
             }
         };
 
+        db.redis.values.set(`account-counters:{${user}}:0:label:${label}:searchable:total`, '99');
         expect(await tools.getLabelCounter(db, user, 'project', undefined, true)).to.equal(2);
     });
 
