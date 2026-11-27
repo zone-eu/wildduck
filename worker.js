@@ -14,6 +14,7 @@ const webhooks = require('./webhooks');
 const indexer = require('./indexer');
 const plugins = require('./lib/plugins');
 const db = require('./lib/db');
+const roles = require('./lib/roles');
 const errors = require('./lib/errors');
 const util = require('util');
 
@@ -75,6 +76,7 @@ async function startServices(services) {
 async function main() {
     try {
         await db.connect();
+        await roles.initialize();
     } catch (err) {
         return fail('Failed to setup database connection', err);
     }

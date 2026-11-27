@@ -1,5 +1,21 @@
 {
     "root": {
+        "roles": {
+            "create:any": ["*"],
+            "read:any": ["*"],
+            "update:any": ["*"],
+            "delete:any": ["*"]
+        },
+
+        "userpermissions": {
+            "create:any": ["*"],
+            "update:any": ["*"]
+        },
+
+        "rolegrants": {
+            "update:any": ["*"]
+        },
+
         "addresslisting": {
             "read:any": ["*"]
         },
