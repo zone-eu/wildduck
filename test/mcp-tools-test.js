@@ -36,6 +36,12 @@ function createReader(overrides = {}) {
         async getMessage() {
             return { id: 1, mailbox: MAILBOX_ID, thread: 'th', from: null, to: [], cc: [], bcc: [], subject: 's', attachments: [], text: 'body text' };
         },
+        async listFilters() {
+            return { success: true, limits: { allowed: 10, used: 1 }, results: [{ id: 'f1', query: [['from', 'alice']], action: [['seen', 'true']], originalQuery: { from: 'alice' }, originalAction: { seen: true }, disabled: false }] };
+        },
+        async getAutoreply() {
+            return { success: true, status: false, name: '', subject: '', text: '', html: '', created: '2026-01-01T00:00:00.000Z' };
+        },
         ...overrides
     };
 }
@@ -55,7 +61,6 @@ describe('MCP tools', () => {
     it('derives annotations per action rather than sharing one read-only constant', () => {
         expect(annotationsFor(ACTION.READ)).to.deep.equal({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
         expect(annotationsFor(ACTION.DESTRUCTIVE)).to.include({ readOnlyHint: false, destructiveHint: true });
-        // sending is the only action that reaches anyone outside the mailbox
         expect(annotationsFor(ACTION.SEND)).to.include({ openWorldHint: true, idempotentHint: false });
         expect(annotationsFor(ACTION.WRITE)).to.include({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
     });
@@ -63,11 +68,67 @@ describe('MCP tools', () => {
     it('registers every read tool for the read level and marks them all read-only', () => {
         let { tools, registered } = register(createReader());
 
-        expect(registered).to.have.members(TOOL_NAMES.slice());
+        expect(registered).to.have.members(TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:read')));
         for (let [, tool] of tools) {
             expect(tool.config.annotations.readOnlyHint).to.equal(true);
             expect(tool.config.annotations.destructiveHint).to.equal(false);
         }
+    });
+
+    it('lists filters and reads autoreply settings without accepting arguments', async () => {
+        let { tools } = register(createReader({ role: 'mcp:write_partial' }));
+        let filters = tools.get('list_filters');
+        let autoreply = tools.get('get_autoreply');
+        expect(filters.config.annotations.readOnlyHint).to.equal(true);
+        expect(filters.config.inputSchema.safeParse({}).success).to.equal(true);
+        expect(filters.config.inputSchema.safeParse({ user: 'other' }).success).to.equal(false);
+        expect((await filters.handler({})).structuredContent).to.deep.equal({
+            limits: { allowed: 10, used: 1 },
+            filters: [{ id: 'f1', query: [['from', 'alice']], action: [['seen', 'true']], originalQuery: { from: 'alice' }, originalAction: { seen: true }, disabled: false }]
+        });
+        expect(autoreply.config.inputSchema.safeParse({}).success).to.equal(true);
+        expect(autoreply.config.inputSchema.safeParse({ account: 'other' }).success).to.equal(false);
+        expect((await autoreply.handler({})).structuredContent).to.include({ status: false, text: '', html: '' });
+    });
+
+    it('exposes typed create and update tools only to the partial write level', async () => {
+        let readTools = register(createReader());
+        expect(readTools.registered).to.not.include.members(['create_filter', 'create_mailbox', 'set_autoreply']);
+
+        let calls = [];
+        let { tools, registered } = register(createReader({
+            role: 'mcp:write_partial',
+            async createFilter(value) { calls.push(['filter', value]); return { success: true, id: 'f1' }; },
+            async createMailbox(value) { calls.push(['mailbox', value]); return { success: true, id: 'm1' }; },
+            async setAutoreply(value) { calls.push(['autoreply', value]); return { success: true, id: 'a1' }; }
+        }));
+        expect(registered).to.have.members(TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:write_partial')));
+        let filter = tools.get('create_filter');
+        expect(filter.config.annotations).to.include({ readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: false });
+        let filterSchema = filter.config.inputSchema;
+        expect(filterSchema.safeParse({ query: {}, action: {}, metaData: {} }).success).to.equal(false);
+        expect(filterSchema.safeParse({ query: {}, action: {} }).success).to.equal(true);
+        for (const targets of [[], ['a@example.com'], null]) {
+            expect(filterSchema.safeParse({ query: {}, action: { targets } }).success).to.equal(false);
+        }
+        let filterArgs = { name: 'n', query: { from: 'example' }, action: { seen: true } };
+        expect(filterSchema.safeParse(filterArgs).success).to.equal(true);
+        expect(filterSchema.safeParse({ ...filterArgs, user: 'other' }).success).to.equal(false);
+        expect((await filter.handler(filterSchema.parse(filterArgs))).structuredContent).to.deep.equal({ success: true, id: 'f1' });
+
+        let mailbox = tools.get('create_mailbox');
+        expect(mailbox.config.annotations.idempotentHint).to.equal(false);
+        let mailboxArgs = mailbox.config.inputSchema.parse({ path: 'Projects' });
+        await mailbox.handler(mailboxArgs);
+        let autoreply = tools.get('set_autoreply');
+        expect(autoreply.config.annotations).to.include({ destructiveHint: true, idempotentHint: true, openWorldHint: true });
+        expect(autoreply.config.inputSchema.safeParse({ status: true, extra: 1 }).success).to.equal(false);
+        await autoreply.handler(autoreply.config.inputSchema.parse({ status: true }));
+        expect(calls).to.deep.equal([
+            ['filter', { name: 'n', query: { from: 'example' }, action: { seen: true }, disabled: false }],
+            ['mailbox', { path: 'Projects', hidden: false, retention: undefined, encryptMessages: false }],
+            ['autoreply', { status: true }]
+        ]);
     });
 
     it('shows a level only the tools it can actually call', () => {
@@ -76,8 +137,9 @@ describe('MCP tools', () => {
         let { registered } = register(createReader({ role: 'mcp:nonexistent' }));
         expect(registered).to.deep.equal([]);
 
-        for (let name of TOOL_NAMES) {
-            expect(TOOL_LEVELS[name], `${name} declares no levels`).to.include('mcp:read');
+        for (let name of TOOL_NAMES.filter(name => TOOL_LEVELS[name].includes('mcp:read'))) {
+            expect(TOOL_LEVELS[name], `${name} omits the read role`).to.include('mcp:read');
+            expect(TOOL_LEVELS[name], `${name} omits the partial write role`).to.include('mcp:write_partial');
         }
     });
 
@@ -173,6 +235,18 @@ describe('MCP tools', () => {
         expect(queries.pop()).to.include({ unseen: undefined, seen: undefined });
     });
 
+    it('accepts ISO dates with offsets and rejects timezone-less date inputs', () => {
+        let { tools } = register(createReader({ role: 'mcp:write_partial' }));
+        let searchSchema = tools.get('search_messages').config.inputSchema;
+        expect(searchSchema.safeParse({ after: '2026-11-09T09:00:00Z' }).success).to.equal(true);
+        expect(searchSchema.safeParse({ before: '2026-11-09T09:00:00+02:00' }).success).to.equal(true);
+        expect(searchSchema.safeParse({ after: '2026-11-09T09:00:00' }).success).to.equal(false);
+        let autoreplySchema = tools.get('set_autoreply').config.inputSchema;
+        expect(autoreplySchema.safeParse({ start: '2026-11-09T09:00:00Z' }).success).to.equal(true);
+        expect(autoreplySchema.safeParse({ end: '2026-11-09T09:00:00+02:00' }).success).to.equal(true);
+        expect(autoreplySchema.safeParse({ start: 'not-a-date' }).success).to.equal(false);
+    });
+
     it('accepts and forwards a label filter without changing its whitespace', async () => {
         let queries = [];
         let { tools } = register(
@@ -223,8 +297,23 @@ describe('MCP tools', () => {
         let result = await tools.get('get_account').handler({});
 
         expect(result.isError).to.equal(true);
-        expect(result.content[0].text).to.equal('InternalError: Unable to read mail data');
+        expect(result.content[0].text).to.equal('InternalError: Unable to complete mail operation');
         expect(result.content[0].text).to.not.include('password');
+    });
+
+    it('returns expected creation errors with a bounded message', async () => {
+        let err = new Error('x'.repeat(1000));
+        err.code = 'ALREADYEXISTS';
+        let { tools } = register(createReader({
+            role: 'mcp:write_partial',
+            async createMailbox() { throw err; }
+        }));
+
+        let tool = tools.get('create_mailbox');
+        let result = await tool.handler(tool.config.inputSchema.parse({ path: 'Projects' }));
+        expect(result.isError).to.equal(true);
+        expect(result.content[0].text).to.have.length(512);
+        expect(result.content[0].text).to.include('ALREADYEXISTS:');
     });
 
     it('windows a body and says when there is more to read', () => {
