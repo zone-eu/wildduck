@@ -47,4 +47,23 @@ describe('Label allocation limits in MongoDB', function () {
         await ensureLabels(database, user, ['test-0']);
         expect(await collection.countDocuments({ user })).to.equal(MAX_LABELS);
     });
+
+    it('enforces a lower per-user cap with retained high slots and concurrent writers', async () => {
+        const collection = database.collection('labels');
+        await collection.deleteMany({ user });
+        await collection.insertOne({ user, slot: MAX_LABELS - 1, name: 'retained' });
+        const options = { userData: { maxLabels: 2 } };
+        const results = await Promise.allSettled([
+            ensureLabels(database, user, ['first'], options),
+            ensureLabels(database, user, ['second'], options),
+            ensureLabels(database, user, ['third'], options)
+        ]);
+        expect(results.filter(result => result.status === 'fulfilled')).to.have.length(1);
+        for (const result of results.filter(result => result.status === 'rejected')) {
+            expect(result.reason.code).to.equal('LabelLimitExceeded');
+        }
+        expect(await collection.countDocuments({ user })).to.equal(2);
+        await ensureLabels(database, user, ['retained'], { userData: { maxLabels: 1 } });
+        expect(await collection.countDocuments({ user })).to.equal(2);
+    });
 });

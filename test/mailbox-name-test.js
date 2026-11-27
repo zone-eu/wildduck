@@ -44,6 +44,27 @@ describe('Mailbox name sanitization', () => {
         assert.strictEqual(entries.length, 0);
     });
 
+    it('enforces per-user mailbox limits including existing standard folders', async () => {
+        const { handler, entries } = createHandler();
+        handler.users.collection = () => ({ findOne: async () => ({ retention: 0, maxMailboxes: 6 }) });
+        const collection = handler.database.collection();
+        handler.database.collection = () => ({ ...collection, countDocuments: async () => 7 });
+        await assert.rejects(handler.createAsync('user', 'Extra', {}), { code: 'CANNOT', responseCode: 400 });
+        assert.strictEqual(entries.length, 0);
+        handler.database.collection = () => ({ ...collection, countDocuments: async () => 6 });
+        await handler.createAsync('user', 'Last', {});
+        assert.strictEqual(entries.length, 1);
+    });
+
+    it('inherits the deployment mailbox limit and preserves the existing greater-than comparison', async () => {
+        const { handler, entries } = createHandler();
+        handler.users.collection = () => ({ findOne: async () => ({ retention: 0, maxMailboxes: 0 }) });
+        const collection = handler.database.collection();
+        handler.database.collection = () => ({ ...collection, countDocuments: async () => 101 });
+        await assert.rejects(handler.createAsync('user', 'Extra', {}), { code: 'CANNOT' });
+        assert.strictEqual(entries.length, 0);
+    });
+
     it('rejects empty names and empty hierarchy components after sanitization', async () => {
         const { handler, entries } = createHandler();
         for (const path of ['\r\n\t\u0085\u2028\u2029', 'Parent/\r/Child']) {

@@ -80,10 +80,12 @@ function createFixture(options = {}) {
     let tokens = new TokenCollection();
     let address = { addrview: 'alice@example.com', user: user._id };
     let usersCollection = {
-        async findOne(query) {
-            if (query._id && matchesId(query._id, user._id)) return user;
-            if (query.unameview === user.unameview) return user;
-            return null;
+        async findOne(query, options) {
+            if (!(query._id && matchesId(query._id, user._id)) && query.unameview !== user.unameview) return null;
+            if (options && options.projection) {
+                return Object.fromEntries(Object.entries(user).filter(([key]) => key === '_id' || options.projection[key]));
+            }
+            return user;
         }
     };
     let addressesCollection = {
@@ -185,7 +187,7 @@ describe('MCP token handler', () => {
         let first = await fixture.handler.authenticate(created.token);
         let second = await fixture.handler.authenticate(created.token);
 
-        expect(first.user).to.equal(fixture.user);
+        expect(first.user).to.deep.include({ _id: fixture.user._id, username: fixture.user.username, address: fixture.user.address });
         expect(second.tokenId.toString()).to.equal(created.id);
         expect(fixture.tokens.entries[0].used).to.be.instanceOf(Date);
 
@@ -233,9 +235,10 @@ describe('MCP token handler', () => {
 
     it('resolves users by ID, username, or address for CLI use', async () => {
         let fixture = createFixture();
-        expect(await fixture.handler.resolveUser(fixture.user._id.toString())).to.equal(fixture.user);
-        expect(await fixture.handler.resolveUser('alice')).to.equal(fixture.user);
-        expect(await fixture.handler.resolveUser('alice@example.com')).to.equal(fixture.user);
+        const expected = { _id: fixture.user._id, username: fixture.user.username, address: fixture.user.address };
+        expect(await fixture.handler.resolveUser(fixture.user._id.toString())).to.deep.include(expected);
+        expect(await fixture.handler.resolveUser('alice')).to.deep.include(expected);
+        expect(await fixture.handler.resolveUser('alice@example.com')).to.deep.include(expected);
         await expectCode(fixture.handler.resolveUser('missing'), 'UserNotFound');
     });
 
@@ -400,6 +403,19 @@ describe('MCP token handler', () => {
         await fixture.handler.revoke(fixture.user._id, fixture.tokens.entries[0]._id);
         await fixture.handler.create(fixture.user._id, { description: 'Replacement' });
         expect(fixture.tokens.entries).to.have.length(consts.MAX_MCP_TOKEN_COUNT);
+    });
+
+    it('uses a per-user token limit and inherits the deployment limit when reset to zero', async () => {
+        let fixture = createFixture({ user: { maxMcpTokens: 1 } });
+        let created = await fixture.handler.create(fixture.user._id, { description: 'First' });
+        let err = await expectCode(fixture.handler.create(fixture.user._id, { description: 'Second' }), 'TooMany');
+        expect(err.details).to.deep.equal({ count: 1, allowed: 1 });
+
+        // Lowering a limit does not invalidate already issued credentials.
+        expect((await fixture.handler.authenticate(created.token)).user._id.toString()).to.equal(fixture.user._id.toString());
+        fixture.user.maxMcpTokens = 0;
+        await fixture.handler.create(fixture.user._id, { description: 'Inherited allowance' });
+        expect(fixture.tokens.entries).to.have.length(2);
     });
 
     it('records minting and revoking in the auth log', async () => {
