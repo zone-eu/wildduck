@@ -2,25 +2,26 @@
 
 WildDuck IMAP server supports the following IMAP standards:
 
--   The entire **IMAP4rev1** suite with some minor differences from the spec. See below for [IMAP Protocol Differences](#imap-protocol-differences) for a complete
-    list
--   **IDLE** ([RFC2177](https://tools.ietf.org/html/rfc2177)) – notfies about new and deleted messages and also about flag updates
--   **CONDSTORE** ([RFC4551](https://tools.ietf.org/html/rfc4551)) and **ENABLE** ([RFC5161](https://tools.ietf.org/html/rfc5161)) – supports most of the spec,
-    except metadata stuff which is ignored. See [CONDSTORE Extension](condstore-extension.md) for detailed implementation guide.
--   **STARTTLS** ([RFC2595](https://tools.ietf.org/html/rfc2595))
--   **NAMESPACE** ([RFC2342](https://tools.ietf.org/html/rfc2342)) – minimal support, just lists the single user namespace with hierarchy separator
--   **UNSELECT** ([RFC3691](https://tools.ietf.org/html/rfc3691))
--   **UIDPLUS** ([RFC4315](https://tools.ietf.org/html/rfc4315))
--   **SPECIAL-USE** ([RFC6154](https://tools.ietf.org/html/rfc6154))
--   **ID** ([RFC2971](https://tools.ietf.org/html/rfc2971))
--   **MOVE** ([RFC6851](https://tools.ietf.org/html/rfc6851))
--   **AUTHENTICATE PLAIN** ([RFC4959](https://tools.ietf.org/html/rfc4959)) and **SASL-IR**
--   **APPENDLIMIT** ([RFC7889](https://tools.ietf.org/html/rfc7889)) – maximum global allowed message size is advertised in CAPABILITY listing
--   **UTF8=ACCEPT** ([RFC6855](https://tools.ietf.org/html/rfc6855)) – this also means that WildDuck natively supports unicode email usernames. For example
-    [андрис@уайлддак.орг](mailto:андрис@уайлддак.орг) is a valid email address that is hosted by a test instance of WildDuck
--   **QUOTA** ([RFC2087](https://tools.ietf.org/html/rfc2087)) – Quota size is global for an account, using a single quota root. Be aware that quota size does not
-    mean actual byte storage in disk, it is calculated as the sum of the [RFC822](https://tools.ietf.org/html/rfc822) sources of stored messages.
--   **COMPRESS=DEFLATE** ([RFC4978](https://tools.ietf.org/html/rfc4978)) – Compress traffic between the client and the server
+- The entire **IMAP4rev1** suite with some minor differences from the spec. See below for [IMAP Protocol Differences](#imap-protocol-differences) for a complete
+  list
+- **IDLE** ([RFC2177](https://tools.ietf.org/html/rfc2177)) – notfies about new and deleted messages and also about flag updates
+- **CONDSTORE** ([RFC4551](https://tools.ietf.org/html/rfc4551)) and **ENABLE** ([RFC5161](https://tools.ietf.org/html/rfc5161)) – supports most of the spec,
+  except metadata stuff which is ignored. See [CONDSTORE Extension](condstore-extension.md) for detailed implementation guide.
+- **STARTTLS** ([RFC2595](https://tools.ietf.org/html/rfc2595))
+- **NAMESPACE** ([RFC2342](https://tools.ietf.org/html/rfc2342)) – minimal support, just lists the single user namespace with hierarchy separator
+- **UNSELECT** ([RFC3691](https://tools.ietf.org/html/rfc3691))
+- **UIDPLUS** ([RFC4315](https://tools.ietf.org/html/rfc4315))
+- **SPECIAL-USE** ([RFC6154](https://tools.ietf.org/html/rfc6154))
+- **ID** ([RFC2971](https://tools.ietf.org/html/rfc2971))
+- **MOVE** ([RFC6851](https://tools.ietf.org/html/rfc6851))
+- **AUTHENTICATE PLAIN** ([RFC4959](https://tools.ietf.org/html/rfc4959)) and **SASL-IR**
+- **APPENDLIMIT** ([RFC7889](https://tools.ietf.org/html/rfc7889)) – maximum global allowed message size is advertised in CAPABILITY listing
+- **UTF8=ACCEPT** ([RFC6855](https://tools.ietf.org/html/rfc6855)) – this also means that WildDuck natively supports unicode email usernames. For example
+  [андрис@уайлддак.орг](mailto:андрис@уайлддак.орг) is a valid email address that is hosted by a test instance of WildDuck
+- **QUOTA** ([RFC2087](https://tools.ietf.org/html/rfc2087)) – Quota size is global for an account, using a single quota root. Be aware that quota size does not
+  mean actual byte storage in disk, it is calculated as the sum of the [RFC822](https://tools.ietf.org/html/rfc822) sources of stored messages.
+- **COMPRESS=DEFLATE** ([RFC4978](https://tools.ietf.org/html/rfc4978)) – Compress traffic between the client and the server
+- **OBJECTID** ([RFC8474](https://tools.ietf.org/html/rfc8474)) - `EMAILID`, `THREADID` and `MAILBOXID` are the JMAP ids of the same objects, and `SEARCH EMAILID` and `SEARCH THREADID` are supported. An `EMAILID` stays the same when a message is moved; an IMAP COPY gets an id of its own
 
 For advanced connection management features including onConnect/onClose handlers, see [Connection Management](connection-management.md).
 
@@ -36,16 +37,32 @@ better parallelization through MongoDB sharding, so more users should not mean s
 speeds between clients (eg. notifications about new email and such) where WildDuck excels due to the write ahead log and the ability to push this log to
 clients.
 
+## JMAP Support
+
+WildDuck can serve JMAP over HTTP next to IMAP and POP3. The service is disabled by default; see [JMAP service](jmap.md) for configuration, deviations and operations.
+
+- **JMAP Core** ([RFC8620](https://www.rfc-editor.org/rfc/rfc8620)) - session discovery, API requests, upload and download, EventSource and Web Push
+  ([RFC8030](https://www.rfc-editor.org/rfc/rfc8030), [RFC8291](https://www.rfc-editor.org/rfc/rfc8291), [RFC8292](https://www.rfc-editor.org/rfc/rfc8292),
+  [RFC9749](https://www.rfc-editor.org/rfc/rfc9749))
+- **JMAP Mail** ([RFC8621](https://www.rfc-editor.org/rfc/rfc8621)) - mailboxes, threads, emails, search snippets, identities, email submission and vacation response
+- **JMAP Blob** ([RFC9404](https://www.rfc-editor.org/rfc/rfc9404))
+- **JMAP Quota** ([RFC9425](https://www.rfc-editor.org/rfc/rfc9425)) - the account storage quota
+- **JMAP Contacts** ([RFC9610](https://www.rfc-editor.org/rfc/rfc9610)) - address books and JSContact cards, plus the address register as a read only address book
+- **JMAP Calendars** ([draft-ietf-jmap-calendars-33](https://datatracker.ietf.org/doc/draft-ietf-jmap-calendars/)) - calendars, events, recurrence and alerts, without
+  scheduling
+
+An email is stored in exactly one mailbox (`maxMailboxesPerEmail` is 1), and every user has one personal account; sharing is not supported.
+
 ## POP3 Support
 
 In addition to the required POP3 commands ([RFC1939](https://tools.ietf.org/html/rfc1939)) WildDuck supports the following extensions:
 
--   **UIDL**
--   **USER**
--   **PASS**
--   **SASL PLAIN**
--   **PIPELINING**
--   **TOP**
+- **UIDL**
+- **USER**
+- **PASS**
+- **SASL PLAIN**
+- **PIPELINING**
+- **TOP**
 
 ### POP3 command behaviors
 

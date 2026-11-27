@@ -1,0 +1,633 @@
+area: wildduck
+title: "WildDuck backend prerequisites and operations"
+description: "Scenarios no other server's suite can supply: the phase 0 changes to the shared handlers (stable ids, change journal, state anchor, upload expiry, auth scope), service wiring, and invariants that must hold across IMAP, POP3, the REST API and JMAP. Phase 0 scenarios are testable before any JMAP code exists."
+scenarios:
+  # ---- stable Email ids (root)
+  - id: WDP-001
+    title: "A newly stored message gets a root equal to its first _id"
+    method: MessageHandler.add
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [lmtp]
+    given: "An empty mailbox."
+    when: "A message is delivered over LMTP, appended over IMAP and uploaded through the REST API (three messages)."
+    then: "Each stored document has a root field equal to its own _id, and the three roots are distinct."
+    sources:
+      - "wildduck:lib/message-handler.js _addAsync"
+  - id: WDP-002
+    title: "IMAP MOVE keeps the root while the _id changes"
+    method: MessageHandler.move
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap]
+    given: "A message in INBOX with a known _id and root."
+    when: "The message is moved to another mailbox with IMAP MOVE, then moved back."
+    then: "After each move the document has a new _id and uid, the same root, and exactly one document with that root exists for the user."
+    sources:
+      - "wildduck:lib/message-handler.js _moveAsync"
+      - "jmap-perl:t/imap-move.t"
+  - id: WDP-003
+    title: "REST API move and filter driven moves keep the root"
+    method: MessageHandler.move
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "Messages in INBOX."
+    when: "One message is moved with PUT /users/:user/mailboxes/:mailbox/messages (moveTo), another is moved by a bulk move of a uid range."
+    then: "Every moved message keeps its root; no two documents of the user share a root."
+    sources:
+      - "wildduck:lib/api/messages.js"
+  - id: WDP-004
+    title: "IMAP COPY assigns a fresh root to the copy"
+    method: on-copy
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap]
+    given: "A message in INBOX with a known root."
+    when: "The message is copied to another mailbox with IMAP COPY, and the copy is copied again."
+    then: "The original keeps its root; each copy has a root different from the original and from each other, equal to the copy's own new _id."
+    sources:
+      - "wildduck:lib/handlers/on-copy.js"
+    notes: "Changes what the ZMS-128 logs show for copies: a copy no longer shares the root of its original. The EXISTS journal entry of the copy carries sourceRoot, the root it was copied from."
+  - id: WDP-005
+    title: "Archive and restore keep the root"
+    method: MessageHandler.del
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A message with a known root."
+    when: "The message is deleted (archived), then restored through POST /users/:user/archived/messages/:message/restore."
+    then: "The archived document and the restored message carry the original root."
+    sources:
+      - "wildduck:lib/api/messages.js restore"
+  - id: WDP-006
+    title: "Lookup by root tolerates the transient duplicate during a move"
+    method: MessageHandler.move
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "Two documents of one user with the same root in different mailboxes (the state between the insert and the delete of a move), created directly in the database."
+    when: "The message is resolved by {user, root}."
+    then: "Exactly one message is returned, the one with the newest _id; no error and no duplicate in the result."
+    sources:
+      - "wildduck:plan 5.1 uniqueness is an invariant, not an index"
+  - id: WDP-007
+    title: "The root repair fills in missing roots"
+    method: Migration
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "Messages and archived messages of a user without a root field (legacy documents)."
+    when: "The root repair runs for the user (lib/message-roots.js repairUserRoots, run on first JMAP use or by the optional messages_root_repair migration)."
+    then: "Every message and archived document of the user has root equal to its _id; documents that already had a root are untouched; running the repair again changes nothing."
+    sources:
+      - "wildduck:run-migrations task"
+    notes: "Changed 2026-11-11: a per user repair instead of one migration over every message. Only users who use JMAP are touched, and the optional migration does the same for everyone ahead of time."
+  - id: WDP-008
+    title: "The root repair separates documents that share a root"
+    method: Migration
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "Three documents of one user sharing a root (an original and two legacy IMAP copies)."
+    when: "ensureUserRoots runs for the user, then runs again, and the repair itself is run once more."
+    then: "The oldest document keeps the root, the other two get their own _id as root. ensureUserRoots records that the user is done and does nothing the second time; the repair is idempotent, so an interrupted run can be repeated. Both report what they changed."
+    sources:
+      - "wildduck:run-migrations task"
+    notes: "A group is separated only if it still exists after a settle delay, because a move in progress also leaves two documents with one root for a moment."
+  - id: WDP-009
+    title: "A missing root is read as _id until the migration has run"
+    method: MessageHandler
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "A legacy message without a root field."
+    when: "The message is delivered as a duplicate through FilterHandler.storeMessage, and is resolved by the JMAP id built from its _id."
+    then: "storeMessage reports root equal to the _id, and the id lookup finds the message."
+    sources:
+      - "wildduck:lib/filter-handler.js:1202"
+    notes: "The storeMessage half is covered by test/filter-handler-overrides-test.js (stored message root). The scenario test covers the resolver: a legacy document is found by its _id, not with legacy false, and never for another user."
+  - id: WDP-010
+    title: "The by_root index exists on messages and archived"
+    method: Indexes
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [none]
+    given: "A freshly started server on an empty database."
+    when: "Index setup has finished."
+    then: "messages and archived each have a non unique index on {root: 1} named by_root, partial on documents that have a root, and the plan of a {user, root: {$in, $exists: true}} query uses it."
+    sources:
+      - "wildduck:indexes.yaml"
+    notes: "Changed 2026-11-11 from {user, root}: roots are globally unique ObjectIds, so root alone is as selective and the index is about half the size on a billion documents. The user condition stays in every query for isolation."
+  - id: WDP-011
+    title: "The root check reports shared roots of a user"
+    method: Audit
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "One user with two stable documents sharing a root, created directly in the database."
+    when: "findDuplicateRoots runs for each of the two users."
+    then: "For the first user it reports one group with the root and its documents oldest first; for the user whose roots are unique it reports nothing."
+    sources:
+      - "wildduck:plan 5.1 uniqueness cannot be enforced by a unique index on a sharded collection"
+  - id: WDP-012
+    title: "A move gives a message stored without root its current _id as root"
+    method: MessageHandler.move
+    spec: "Plan 5.1"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db, imap]
+    given: "A message whose document has no root field (stored before every message got one); its JMAP id is built from its _id."
+    when: "The message is moved to another mailbox with IMAP MOVE."
+    then: "The moved document has root equal to the _id the message had before the move, so the id under which it was known stays valid."
+    sources:
+      - "wildduck:lib/message-handler.js _moveAsync"
+    notes: "Added 2026-11-11 while implementing 0.3: without it a legacy message would change its JMAP id on its first move, before the root repair has run for the user."
+  - id: WDP-013
+    title: "Account wide listing by receivedAt uses the user_idate index"
+    method: Indexes
+    spec: "Plan 3.8"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [db]
+    given: "A user with many messages in several mailboxes."
+    when: "The messages of the user that are not deleted are listed newest first by idate, the query behind Email/query without a mailbox filter."
+    then: "The plan uses the user_idate index for the sort, without an in memory sort."
+    sources:
+      - "wildduck:indexes.yaml user_idate"
+    notes: "Added 2026-11-11 with work package 0.12."
+
+  # ---- change journal
+  - id: WDP-020
+    title: "Every message journal entry carries the root"
+    method: Journal
+    spec: "Plan 5.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap, api, lmtp]
+    given: "An empty account."
+    when: "A message is delivered, flagged over IMAP, moved, copied, updated through the REST API and deleted."
+    then: "Each EXISTS, FETCH and EXPUNGE journal entry written has a root field equal to the root of the message it describes, next to the existing message id."
+    sources:
+      - "wildduck:lib/imap-notifier.js addEntriesAsync"
+  - id: WDP-021
+    title: "A move writes an EXPUNGE and an EXISTS with the same root"
+    method: Journal
+    spec: "Plan 5.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap]
+    given: "A message in INBOX."
+    when: "The message is moved to another mailbox."
+    then: "The journal has an EXPUNGE for the source mailbox and an EXISTS for the target mailbox with equal root values, so a reader can fold them into one update."
+    sources:
+      - "wildduck:lib/message-handler.js updateMessage"
+  - id: WDP-022
+    title: "EXISTS entries record their origin"
+    method: Journal
+    spec: "Plan 4.9"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap, api, lmtp]
+    given: "An empty account."
+    when: "Messages enter mailboxes through delivery, IMAP APPEND, REST API upload, IMAP COPY, IMAP MOVE and archive restore."
+    then: "Each EXISTS entry has an origin value that distinguishes new mail (delivery) from append, upload, copy, move and restore."
+    sources:
+      - "wildduck:plan 4.9 EmailDelivery state"
+  - id: WDP-023
+    title: "Mailbox setting changes are journaled"
+    method: Journal
+    spec: "Plan 5.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api, imap]
+    given: "A mailbox."
+    when: "The mailbox is subscribed and unsubscribed over IMAP, and its retention, hidden flag and sortOrder are changed through MailboxHandler.updateAsync."
+    then: "Each change writes a journal entry for the mailbox naming what changed; a no-op update writes none."
+    sources:
+      - "wildduck:lib/mailbox-handler.js updateAsync"
+  - id: WDP-024
+    title: "Journal retention follows the configured setting"
+    method: Journal
+    spec: "Plan 5.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [none]
+    given: "A server configured with a journal retention different from the 3 hour default."
+    when: "Index setup runs on a database whose journal TTL index still has the old value."
+    then: "The TTL of the journal expiry index is changed to the configured value (collMod), and with no setting the default of 3 hours is kept."
+    sources:
+      - "wildduck:indexes.yaml journal_autoexpire"
+  - id: WDP-025
+    title: "The per user state anchor follows the newest journal entry and never moves back"
+    method: Journal
+    spec: "Plan 5.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap]
+    given: "A user with changes in several mailboxes."
+    when: "The anchors are read (lib/journal-state.js journalAnchors), then an entry with a smaller id is committed late, as by another server process, and they are read again."
+    then: "The journal anchor equals the newest journal id and is stored in jmap.state; the late entry with the smaller id does not move it back. The delivery anchor is the newest entry that added an Email, not a later flag change."
+    sources:
+      - "wildduck:plan 5.2 persisted anchor"
+    notes: "Changed 2026-11-11: anchors are maintained when a state is read, not on every journal write. That keeps every write path, including the Haraka and ZoneMTA plugins, free of an extra update."
+  - id: WDP-026
+    title: "The state anchor survives journal expiry"
+    method: Journal
+    spec: "Plan 5.2"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap, time]
+    given: "A user whose newest journal entry has expired and been removed."
+    when: "The anchor is read."
+    then: "The anchors still hold the ids of the last entries; they do not become empty and do not change. Once an anchor is older than the journal retention and nothing newer exists, a fresh anchor is minted: changes may have expired unseen, so a state change is the safe answer."
+    sources:
+      - "wildduck:plan 5.2 corrected 2026-11-11"
+  - id: WDP-027
+    title: "Existing SSE updates endpoint is unaffected by the journal changes"
+    method: Journal
+    spec: "Plan 3"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap]
+    given: "A client connected to GET /users/:user/updates."
+    when: "Messages are added, flagged, moved and deleted, and the client reconnects with Last-Event-ID."
+    then: "The events and the replay are the same as before the change, apart from the added root and origin fields."
+    sources:
+      - "wildduck:lib/api/updates.js"
+  - id: WDP-028
+    title: "IMAP notifications ignore journal entries they do not know"
+    method: Journal
+    spec: "Plan 10.3"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [imap]
+    given: "An IMAP client in IDLE on INBOX."
+    when: "Journal entries of the new kinds (mailbox setting changes, and later contact or calendar state changes on the notifier channel) are published."
+    then: "The IMAP session sends no untagged response for them and stays connected."
+    sources:
+      - "wildduck:lib/imap-notifier.js"
+
+  # ---- uploads
+  - id: WDP-040
+    title: "Storage files accept an expiry and are removed after it"
+    method: StorageHandler
+    spec: "Plan 4.10"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api, time]
+    given: "One storage file uploaded with an expiry and one uploaded without (as the REST API does today)."
+    when: "The expiry time passes and the cleanup task runs."
+    then: "The expiring file and its chunks are gone; the file without expiry is still there."
+    sources:
+      - "wildduck:lib/storage-handler.js"
+  - id: WDP-041
+    title: "Consuming an upload into a message clears its expiry semantics"
+    method: StorageHandler
+    spec: "Plan 4.10"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api, time]
+    given: "An expiring storage file attached to a draft through the message upload files parameter."
+    when: "The expiry time passes and the cleanup task runs."
+    then: "The draft's attachment is still readable over IMAP and the REST API, because the content lives in the attachment store."
+    sources:
+      - "wildduck:lib/api/messages.js upload"
+  - id: WDP-042
+    title: "Storage files can be read as a stream"
+    method: StorageHandler
+    spec: "Plan 5.3"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A 30 MB storage file."
+    when: "The file is read through the new streaming read path while memory use is observed."
+    then: "The bytes match the upload and the process does not buffer the whole file."
+    sources:
+      - "wildduck:lib/storage-handler.js get"
+  - id: WDP-043
+    title: "Temporary uploads have their own quota and evict the oldest first"
+    method: StorageHandler
+    spec: "RFC 8620 6.1"
+    level: should
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A user with temporary uploads near the upload quota and a permanent storage file."
+    when: "A temporary upload is added that does not fit, then one larger than the whole quota."
+    then: "The oldest temporary upload is deleted to make room and the new one is stored; permanent storage files are neither counted nor deleted. The upload larger than the quota is refused with OverQuota. Mail delivery still works and the mail storage quota (storageUsed) is unchanged by uploads."
+    sources:
+      - "rfc:8620 6.1"
+
+  # ---- auth
+    notes: "RFC 8620 6.1: when an upload would take the user over quota, the server MUST delete unreferenced blobs, oldest first, until there is room."
+  - id: WDP-050
+    title: "The jmap scope exists for application specific passwords"
+    method: Auth
+    spec: "Plan 5.7"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A user with three application specific passwords: scope jmap, scope imap, scope *."
+    when: "Each is authenticated with requested scope jmap through UserHandler.asyncAuthenticate."
+    then: "The jmap and * passwords succeed, the imap password fails; the authlog records the jmap scope."
+    sources:
+      - "wildduck:lib/user-handler.js"
+  - id: WDP-051
+    title: "disabledScopes can switch JMAP off for one user"
+    method: Auth
+    spec: "Plan 6"
+    level: wd
+    phase: 0
+    applies: yes
+    seed: [api]
+    given: "A user with jmap in disabledScopes."
+    when: "The user authenticates with requested scope jmap using the account password and an application specific password."
+    then: "Both attempts fail with the same error other disabled scopes give."
+    sources:
+      - "wildduck:lib/user-handler.js"
+    notes: "The only per user control, since enablement is server wide."
+
+  # ---- service wiring and operations
+  - id: WDS-001
+    title: "The JMAP service is off unless enabled"
+    method: Service
+    spec: "Plan 6"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A server started with the default configuration."
+    when: "The process list of services is inspected and the JMAP port is probed."
+    then: "No JMAP listener is open and the other services start as before."
+    sources:
+      - "wildduck:worker.js SERVICES"
+  - id: WDS-002
+    title: "The JMAP service starts in every worker when enabled"
+    method: Service
+    spec: "Plan 6"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A server with jmap enabled and two worker processes."
+    when: "Requests are sent repeatedly to the JMAP port."
+    then: "Both workers answer, the service is reported up in the metrics, and a state change made through one worker is visible through the other."
+    sources:
+      - "wildduck:mcp.js as the service template"
+  - id: WDS-003
+    title: "Session URLs follow the configured public base URL"
+    method: Session
+    spec: "RFC 8620 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A server behind a reverse proxy with a configured public base URL."
+    when: "The session resource is fetched through the proxy."
+    then: "apiUrl, uploadUrl, downloadUrl and eventSourceUrl use the public base URL, not the internal host and port."
+    sources:
+      - "fastmail:docs/writing-a-server-adapter.md"
+    notes: "The Fastmail suite notes that containerised servers often advertise unreachable URLs."
+  - id: WDS-004
+    title: "TLS and SNI work on the JMAP listener"
+    method: Service
+    spec: "RFC 8620 8.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A JMAP listener with TLS enabled and a certificate managed by CertHandler for a second hostname."
+    when: "Clients connect with each server name, and with TLS 1.1."
+    then: "Each name gets its certificate, and the TLS 1.1 handshake is refused."
+    sources:
+      - "rfc:8620 8.1"
+  - id: WDS-005
+    title: "JMAP requests are logged with user, method names and timing"
+    method: Service
+    spec: "Plan 7"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [jmap]
+    given: "An authenticated request with three method calls, one of which fails."
+    when: "The request completes."
+    then: "The access log has one entry with the user id, the session id, the method names and the error type, and no credentials, tokens or message content."
+    sources:
+      - "wildduck:lib/fastify/bootstrap.js access log"
+  - id: WDS-006
+    title: "A slow database query ends the method call, not the process"
+    method: Service
+    spec: "RFC 8620 3.6.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [db]
+    given: "A query that exceeds the database time limit."
+    when: "Email/query runs it inside a request with other method calls."
+    then: "That call returns serverUnavailable or serverFail, the other calls in the request are answered, and the worker keeps serving."
+    sources:
+      - "rfc:8620 3.6.2"
+  - id: WDS-007
+    title: "Deleting a user removes all JMAP owned data"
+    method: Service
+    spec: "Plan 10.3"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api, jmap]
+    given: "A user with uploads, identities with signatures, and later submissions, push subscriptions, contacts and calendars."
+    when: "The user is deleted through the REST API and the user-delete task finishes."
+    then: "No document of the JMAP owned collections refers to the user, and the user's tokens no longer authenticate."
+    sources:
+      - "wildduck:user-delete task"
+    notes: "Extend at every phase that adds a collection (3 submissions, 4 push subscriptions, 5 contacts, 6 calendars)."
+  - id: WDS-008
+    title: "A user restored from deletion gets a consistent JMAP view"
+    method: Service
+    spec: "Plan 5.2"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A deleted user inside the restore window."
+    when: "The user is restored and connects over JMAP."
+    then: "Email ids are the same as before deletion, and a sinceState from before the deletion answers cannotCalculateChanges or the correct changes, never a wrong empty list."
+    sources:
+      - "wildduck:lib/api/users.js restore"
+
+  # ---- cross protocol invariants not covered per method
+  - id: WDX-001
+    title: "POP3 deletion is seen as an Email moved to Trash"
+    method: Email/changes
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Three messages in INBOX and a known Email state."
+    when: "A POP3 session deletes one message (DELE, QUIT)."
+    then: "Email/changes lists that id as updated (POP3 moves deleted messages to Trash, see ECHG-037), the INBOX count drops by one and the Trash count rises by one, and the other two ids are unchanged."
+    sources:
+      - "wildduck:lib/pop3"
+    notes: "Changed 2026-11-11: pop3.js moves a deleted message to Trash and marks it seen, so the Email is updated, not destroyed."
+  - id: WDX-002
+    title: "Retention expiry is seen as destroyed Emails"
+    method: Email/changes
+    spec: "RFC 8621 4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [api, time]
+    given: "A mailbox with a retention time and messages older than it."
+    when: "The background cleanup removes the expired messages."
+    then: "Email/changes lists them as destroyed and Email/get answers notFound for them."
+    sources:
+      - "wildduck:tasks.js retention"
+    notes: "The expiry step of the garbage collector is run by the test for the one user, as in ECHG-056."
+  - id: WDX-003
+    title: "Messages in encrypted mailboxes are served as stored"
+    method: Email/get
+    spec: "Plan 6"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "A user with encryptMessages enabled and a public key, and a delivered message."
+    when: "Email/get asks for bodyStructure, textBody and body values."
+    then: "The structure is the multipart/encrypted wrapper, the same as IMAP BODYSTRUCTURE shows, and no plaintext is exposed."
+    sources:
+      - "wildduck:lib/message-handler.js encryption"
+  - id: WDX-004
+    title: "Label changes through the REST API appear as keyword changes"
+    method: Email/changes
+    spec: "Plan 4.4"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [api]
+    given: "A message and a label."
+    when: "The label is added to the message through the REST API, then the label itself is deleted."
+    then: "After the first step Email/changes lists the id as updated and keywords contain the label keyword; after the label is deleted the keyword is gone from every message and those ids are listed as updated."
+    sources:
+      - "wildduck:lib/label-handler.js"
+      - "tmail:LabelChangesMethodContract"
+  - id: WDX-005
+    title: "The same message is identical over IMAP and JMAP"
+    method: Email/get
+    spec: "RFC 8621 4.1"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Every message in the WildDuck MIME fixture directories appended to a mailbox."
+    when: "Each message is fetched over IMAP (RFC822.SIZE, INTERNALDATE, FLAGS, BODY[]) and over JMAP (size, receivedAt, keywords, download of blobId)."
+    then: "For each message size equals RFC822.SIZE, receivedAt equals INTERNALDATE, keywords match the flags, and the downloaded blob is byte identical to BODY[]."
+    sources:
+      - "wildduck:imap-core/test/fixtures"
+  - id: WDX-006
+    title: "IMAP OBJECTID reports the JMAP ids"
+    method: IMAP OBJECTID
+    spec: "RFC 8474, RFC 8621 1.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A message and its mailbox."
+    when: "An IMAP client fetches EMAILID and THREADID and asks STATUS for MAILBOXID."
+    then: "The values equal the JMAP Email id, Thread id and Mailbox id, and EMAILID is unchanged after an IMAP MOVE."
+    sources:
+      - "rfc:8621 1.6"
+    notes: "Optional item in the plan (phase 4)."
+  - id: WDX-007
+    title: "Storage quota is enforced the same way for every protocol"
+    method: Email/set
+    spec: "RFC 8620 5.3"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user whose storageUsed is past the quota (the quota set below storageUsed through the REST API)."
+    when: "A message is created with Email/set, imported with Email/import, and appended over IMAP."
+    then: "The JMAP calls fail with overQuota, IMAP APPEND fails with OVERQUOTA, and storageUsed is unchanged."
+    sources:
+      - "james:EmailSetMethodContract"
+      - "stalwart:system/quota.rs"
+    notes: "IMAP APPEND and the REST upload refuse a message once storageUsed is past the quota (storageUsed > quota), so a user exactly at the quota may still append one message over IMAP. JMAP refuses any message that would take storageUsed past the quota (ESET-223), so the case every protocol refuses is a user already past it."
+  - id: WDX-008
+    title: "Messages created over JMAP count towards quota and are released on destroy"
+    method: Email/set
+    spec: "Plan 5.4"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A known storageUsed value."
+    when: "An Email with an attachment is created through Email/set, then destroyed, and the archive period ends."
+    then: "storageUsed grows by the message size on create and returns to the original value once the archived copy is purged, exactly as for an IMAP APPEND."
+    sources:
+      - "wildduck:lib/message-handler.js quota accounting"
+  - id: WDX-009
+    title: "Webhooks and audit fire for JMAP writes as for the other protocols"
+    method: Email/set
+    spec: "Plan 7"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [jmap]
+    given: "A webhook subscribed to message events and an active audit on the user."
+    when: "A message is created, flagged, moved and destroyed over JMAP."
+    then: "The same webhook events and audit copies are produced as when the same actions are done over IMAP."
+    sources:
+      - "wildduck:lib/events.js"
+  - id: WDX-010
+    title: "Mailbox counters stay exact across protocols"
+    method: Mailbox/get
+    spec: "RFC 8621 2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, api, lmtp]
+    given: "A mailbox whose counters are cached in Redis."
+    when: "Messages are delivered, flagged seen and unseen, flagged deleted, expunged and moved through IMAP, the REST API and JMAP in mixed order, then the Redis cache is flushed."
+    then: "totalEmails, unreadEmails, totalThreads and unreadThreads are the same before and after the flush and equal the counts computed from the messages."
+    sources:
+      - "jmap-perl:t/mailbox-counts.t"
+      - "wildduck:lib/tools.js getMailboxCounter"

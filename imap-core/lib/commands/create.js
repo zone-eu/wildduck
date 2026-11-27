@@ -82,9 +82,15 @@ module.exports = {
             logdata._response = success;
             this._server.loggelf(logdata);
 
+            let code = typeof success === 'string' ? success.toUpperCase() : false;
+            if (success === true && mailbox && this._server.options.objectIds) {
+                // RFC 8474 4.1: the id of the new mailbox
+                code = 'MAILBOXID (' + this._server.options.objectIds.mailbox(mailbox) + ')';
+            }
+
             callback(null, {
                 response: success === true ? 'OK' : 'NO',
-                code: typeof success === 'string' ? success.toUpperCase() : false
+                code
             });
         });
     }

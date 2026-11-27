@@ -12,18 +12,18 @@ const log = require('npmlog');
 const UserHandler = require('./lib/user-handler');
 const MailboxHandler = require('./lib/mailbox-handler');
 const MessageHandler = require('./lib/message-handler');
+const Maildropper = require('./lib/maildropper');
 const StorageHandler = require('./lib/storage-handler');
 const AuditHandler = require('./lib/audit-handler');
+const AutoreplyHandler = require('./lib/autoreply-handler');
 const ImapNotifier = require('./lib/imap-notifier');
 const db = require('./lib/db');
 const certs = require('./lib/certs');
 const tools = require('./lib/tools');
 const consts = require('./lib/consts');
-const crypto = require('crypto');
 const Gelf = require('gelf');
 const os = require('os');
 const util = require('util');
-const ObjectId = require('mongodb').ObjectId;
 const tls = require('tls');
 const Lock = require('ioredfour');
 const Path = require('path');
@@ -76,6 +76,7 @@ const mcpTokensRoutes = require('./lib/api/mcp-tokens');
 const { SettingsHandler } = require('./lib/settings-handler');
 const McpTokenHandler = require('./lib/mcp-token-handler');
 const roles = require('./lib/roles');
+const { verifyAccessToken } = require('./lib/access-tokens');
 
 // The only routes an MCP credential may reach, by route name and method. Read routes map to
 // the resource whose field allowlist shapes the response. The sole non-read route revokes the
@@ -264,6 +265,7 @@ function createApp(options = {}) {
     let messageHandler;
     let storageHandler;
     let auditHandler;
+    let autoreplyHandler;
     let settingsHandler;
     let mcpTokenHandler;
     let notifier;
@@ -503,150 +505,46 @@ function createApp(options = {}) {
 
         if (config.api.accessControl.enabled || accessToken) {
             tokenRequired = true;
-            if (accessToken && accessToken.length === 40 && /^[a-fA-F0-9]{40}$/.test(accessToken)) {
-                let tokenData;
-                let tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+            let verified = await verifyAccessToken(accessToken, {
+                redis: db.redis,
+                users: db.users,
+                userHandler,
+                secret: config.api.accessControl.secret,
+                roles: config.api.roles,
+                tokenLifetime: config.api.accessControl.tokenLifetime
+            });
+            if (verified) {
+                request.role = verified.role;
+                request.user = verified.user;
 
-                try {
-                    let key = 'tn:token:' + tokenHash;
-                    tokenData = await db.redis.hgetall(key);
-                } catch (err) {
-                    err.responseCode = 500;
-                    err.code = 'InternalDatabaseError';
-                    throw err;
-                }
+                if (verified.session) {
+                    // make a reference to original method, otherwise might be overridden
+                    let setAuthToken = userHandler.setAuthToken.bind(userHandler);
+                    let { assuranceRecorded, mfaRequired, mfaVerified, passwordChangeRequired } = verified.session;
 
-                if (tokenData && tokenData.user && tokenData.role && config.api.roles[tokenData.role]) {
-                    let signData;
-                    if ('authVersion' in tokenData) {
-                        // cast value to number
-                        tokenData.authVersion = Number(tokenData.authVersion) || 0;
-                        signData = {
-                            token: accessToken,
-                            user: tokenData.user,
-                            authVersion: tokenData.authVersion,
-                            role: tokenData.role
-                        };
-                        if ('mfaRequired' in tokenData || 'mfaVerified' in tokenData || 'passwordChangeRequired' in tokenData) {
-                            signData.mfaRequired = tokenData.mfaRequired;
-                            signData.mfaVerified = tokenData.mfaVerified;
-                            signData.passwordChangeRequired = tokenData.passwordChangeRequired;
-                        }
-                    } else {
-                        signData = {
-                            token: accessToken,
-                            user: tokenData.user,
-                            role: tokenData.role
-                        };
-                    }
-
-                    let signature = crypto.createHmac('sha256', config.api.accessControl.secret).update(JSON.stringify(signData)).digest('hex');
-
-                    if (signature !== tokenData.s) {
-                        // rogue token or invalidated secret
-                        /*
-                            // do not delete just in case there is something wrong with the check
-                            try {
-                                await db.redis.del('tn:token:' + tokenHash);
-                            } catch (err) {
-                                // ignore
-                            }
-                            */
-                    } else if (tokenData.ttl && !isNaN(tokenData.ttl) && Number(tokenData.ttl) > 0) {
-                        let tokenTTL = Number(tokenData.ttl);
-                        let tokenLifetime = config.api.accessControl.tokenLifetime || consts.ACCESS_TOKEN_MAX_LIFETIME;
-
-                        // check if token is not too old
-                        if ((Date.now() - Number(tokenData.created)) / 1000 < tokenLifetime) {
-                            let assuranceRecorded = 'mfaRequired' in tokenData && 'mfaVerified' in tokenData && 'passwordChangeRequired' in tokenData;
-                            let mfaRequired = assuranceRecorded && tokenData.mfaRequired === 'true';
-                            let mfaVerified = assuranceRecorded && tokenData.mfaVerified === 'true';
-                            // set when a later 2FA completion verified this token through the side key
-                            let mfaProofVerified = false;
-                            if (mfaRequired && !mfaVerified) {
-                                try {
-                                    let proof = await db.redis.get('tn:token:mfa:' + tokenHash);
-                                    mfaProofVerified = proof === userHandler.getAuthTokenMfaProof(tokenHash, tokenData.user, tokenData.authVersion);
-                                } catch {
-                                    // treat as unverified
-                                }
-                                mfaVerified = mfaProofVerified;
-                            }
-
-                            // token is still usable, increase session length
-                            try {
-                                let refresh = db.redis.multi().expire('tn:token:' + tokenHash, tokenTTL);
-                                if (mfaProofVerified) {
-                                    refresh.expire('tn:token:mfa:' + tokenHash, tokenTTL);
-                                }
-                                await refresh.exec();
-                            } catch (err) {
-                                // ignore
-                            }
-                            request.role = tokenData.role;
-                            request.user = tokenData.user;
-
-                            // make a reference to original method, otherwise might be overridden
-                            let setAuthToken = userHandler.setAuthToken.bind(userHandler);
-
-                            request.accessToken = {
-                                hash: tokenHash,
-                                user: tokenData.user,
-                                authVersion: tokenData.authVersion,
-                                assuranceRecorded,
+                    request.accessToken = {
+                        hash: verified.hash,
+                        user: verified.user,
+                        authVersion: verified.authVersion,
+                        assuranceRecorded,
+                        mfaRequired,
+                        mfaVerified,
+                        passwordChangeRequired,
+                        // keeps the session valid after its own account changed the password or 2FA
+                        // setup (which bumps authVersion); a change of another account leaves it alone
+                        update: async changedUser =>
+                            String(changedUser) === verified.user &&
+                            setAuthToken(verified.user, accessToken, {
+                                role: verified.role,
                                 mfaRequired,
                                 mfaVerified,
-                                passwordChangeRequired: assuranceRecorded && tokenData.passwordChangeRequired === 'true',
-                                // keeps the session valid after its own account changed the password or 2FA
-                                // setup (which bumps authVersion); a change of another account leaves it alone
-                                update: async changedUser =>
-                                    String(changedUser) === tokenData.user &&
-                                    setAuthToken(tokenData.user, accessToken, {
-                                        role: tokenData.role,
-                                        mfaRequired,
-                                        mfaVerified,
-                                        passwordChangeRequired: false
-                                    })
-                            };
-                        } else {
-                            // expired token, clear it
-                            try {
-                                await db.redis.del('tn:token:' + tokenHash);
-                            } catch (err) {
-                                // ignore
-                            }
-                        }
-                    } else {
-                        request.role = tokenData.role;
-                        request.user = tokenData.user;
-                    }
-
-                    if (!request.role) {
-                        return fail();
-                    }
-
-                    if (/^[0-9a-f]{24}$/i.test(request.user)) {
-                        let tokenAuthVersion = Number(tokenData.authVersion) || 0;
-                        let userData = await db.users.collection('users').findOne(
-                            {
-                                _id: new ObjectId(request.user)
-                            },
-                            { projection: { authVersion: true, disabled: true, suspended: true } }
-                        );
-                        let userAuthVersion = Number(userData && userData.authVersion) || 0;
-                        if (!userData || tokenAuthVersion < userAuthVersion) {
-                            // unknown user or expired session
-                            return fail();
-                        }
-                        if (userData.disabled || userData.suspended) {
-                            // locked out account, existing tokens must not keep working
-                            return fail();
-                        }
-                    }
-
-                    // pass
-                    return;
+                                passwordChangeRequired: false
+                            })
+                    };
                 }
+
+                // pass
+                return;
             }
         }
 
@@ -806,6 +704,15 @@ function createApp(options = {}) {
         users: db.users,
         redis: db.redis,
         messageHandler,
+        // a deleted user's queued mail is taken out of the outbound queue
+        maildropper: new Maildropper({
+            db,
+            zone: config.sender.zone,
+            collection: config.sender.collection,
+            gfs: config.sender.gfs,
+            maxQueueTime: config.sender.maxQueueTime,
+            loopSecret: config.sender.loopSecret
+        }),
         loggelf: message => loggelf(message)
     });
 
@@ -842,6 +749,14 @@ function createApp(options = {}) {
         loggelf: message => loggelf(message)
     });
 
+    autoreplyHandler = new AutoreplyHandler({
+        database: db.database,
+        users: db.users,
+        redis: db.redis,
+        notifier,
+        loggelf: message => loggelf(message)
+    });
+
     // route modules read these off the fastify instance
     app.decorate('loggelf', (message, requiredKeys = []) => loggelf(message, requiredKeys));
     app.decorate(
@@ -869,7 +784,7 @@ function createApp(options = {}) {
         webauthnRoutes(db, app, userHandler, mcpTokenHandler);
         updatesRoutes(db, app, notifier);
         authRoutes(db, app, userHandler, mcpTokenHandler);
-        autoreplyRoutes(db, app);
+        autoreplyRoutes(db, app, autoreplyHandler);
         submitRoutes(db, app, messageHandler, userHandler, settingsHandler);
         auditRoutes(db, app, auditHandler);
         domainaliasRoutes(db, app);

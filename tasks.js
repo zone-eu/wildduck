@@ -33,7 +33,11 @@ const taskSearchApply = require('./lib/tasks/search-apply');
 const taskUserIndexing = require('./lib/tasks/user-indexing');
 const taskRunMigrations = require('./lib/tasks/run-migrations');
 const taskLabelDelete = require('./lib/tasks/label-delete');
+const taskCalendarAlerts = require('./lib/tasks/calendar-alerts');
 const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
+const { SettingsHandler } = require('./lib/settings-handler');
+const { ensureIndex } = require('./lib/index-ttl');
+const StorageHandler = require('./lib/storage-handler');
 
 let messageHandler;
 let mailboxHandler;
@@ -189,11 +193,14 @@ module.exports.start = callback => {
 
     const ensureIndexes = async () => {
         let indexes = setupIndexes.indexes;
+        const settingsHandler = new SettingsHandler({ db: db.database });
         for (let [pos, index] of indexes.entries()) {
             try {
-                let r = await db[index.type || 'database'].collection(index.collection).createIndexes([index.index]);
-                if (r && r.numIndexesAfter !== r.numIndexesBefore) {
+                let r = await ensureIndex(db[index.type || 'database'], index, settingsHandler);
+                if (r.created) {
                     log.verbose('Setup', 'Created index %s %s', pos + 1, JSON.stringify(index.collection + '.' + index.index.name));
+                } else if (r.ttlChanged) {
+                    log.info('Setup', 'Changed expiry of index %s per %s', JSON.stringify(index.collection + '.' + index.index.name), index.ttlSetting);
                 }
             } catch (err) {
                 if (err.codeName !== 'IndexOptionsConflict') {
@@ -279,6 +286,18 @@ async function clearExpiredMessages() {
         }
     } catch (err) {
         log.error('GC', 'Garbage collection failed error=%s', err.message);
+    }
+
+    try {
+        // temporary uploads expire whatever the message retention settings are
+        let deleted = await new StorageHandler({ database: db.database, gridfs: db.gridfs }).removeExpiredUploads({
+            deadline: startTime + consts.GC_INTERVAL * 0.9
+        });
+        if (deleted) {
+            log.verbose('GC', 'Removed %s expired uploads', deleted);
+        }
+    } catch (err) {
+        log.error('GC', 'Removing expired uploads failed error=%s', err.message);
     }
 
     try {
@@ -503,10 +522,12 @@ async function runTasks() {
             } catch (err) {
                 endMetric('error');
                 await taskHandler.release(task, false);
+                // a failed task goes back to the queue: pause before taking the next one
+                await timer(consts.TASK_IDLE_INTERVAL);
             }
+            // a queue with more tasks is worked through without a pause; an empty one idles above
         } catch (err) {
             log.error('Tasks', 'Failed to process task queue error=%s', err.message);
-        } finally {
             await timer(consts.TASK_IDLE_INTERVAL);
         }
     }
@@ -521,6 +542,8 @@ function processTask(task, data, callback) {
     }
 
     switch (task.type) {
+        case 'calendar-alerts':
+            return taskCalendarAlerts(task, data, {}, err => callback(err, !err));
         case 'label-delete':
             return taskLabelDelete(task, data, { messageHandler, loggelf }, err => callback(err, !err));
         case 'restore':

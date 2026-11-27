@@ -1020,7 +1020,8 @@ class IMAPConnection extends EventEmitter {
                             type: 'ATOM',
                             value: imapTools.formatInternalDate(data.values[i])
                         });
-                    } else if (Array.isArray(data.values[i])) {
+                    } else if (Array.isArray(data.values[i]) || data.values[i] === null) {
+                        // a list, or NIL
                         response.attributes[1].push(data.values[i]);
                     } else if (item.isLiteral) {
                         if (data.values[i] && data.values[i].type === 'stream') {

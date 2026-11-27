@@ -20,6 +20,7 @@ const { normalizeLoggelfMessage } = require('./lib/loggelf-message');
 const ApnClient = require('./lib/apn-client');
 const metrics = require('./lib/metrics');
 const onFetch = require('./lib/handlers/on-fetch');
+const { objectIds } = require('./lib/object-ids');
 const onAuth = require('./lib/handlers/on-auth');
 const onList = require('./lib/handlers/on-list');
 const onLsub = require('./lib/handlers/on-lsub');
@@ -98,6 +99,9 @@ let createInterface = (ifaceOptions, callback) => {
         settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,
+
+        // RFC 8474 OBJECTID: EMAILID, THREADID and MAILBOXID are the JMAP ids
+        objectIds,
 
         skipFetchLog: config.log.skipFetchLog,
 
@@ -183,7 +187,7 @@ let createInterface = (ifaceOptions, callback) => {
     server.onOpen = onOpen(server);
     server.onStatus = onStatus(server);
     server.onAppend = onAppend(server, messageHandler, userHandler.userCache);
-    server.onStore = onStore(server);
+    server.onStore = onStore(server, messageHandler);
     server.onExpunge = onExpunge(server, messageHandler);
     server.onCopy = onCopy(server, messageHandler);
     server.onMove = onMove(server, messageHandler);

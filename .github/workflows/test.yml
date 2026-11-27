@@ -32,6 +32,21 @@ jobs:
                 image: motoserver/moto:latest
                 ports:
                     - 5000:5000
+            # the JMAP full body search scenario (EQRY-065) indexes into it, at the default [elasticsearch] url
+            opensearch:
+                image: opensearchproject/opensearch:2.19.1
+                env:
+                    discovery.type: single-node
+                    DISABLE_SECURITY_PLUGIN: 'true'
+                    DISABLE_INSTALL_DEMO_CONFIG: 'true'
+                    OPENSEARCH_JAVA_OPTS: '-Xms512m -Xmx512m'
+                options: >-
+                    --health-cmd "curl -fs http://localhost:9200"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 12
+                ports:
+                    - 9200:9200
         steps:
             - uses: actions/checkout@v6
 
@@ -61,8 +76,30 @@ jobs:
             - run: npm install
             - name: Wait for Moto S3
               run: curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 "$S3_TEST_ENDPOINT"
+            - name: Validate the JMAP test catalogue
+              run: node test/jmap/tools/check-catalogue.js
             - name: Run tests
-              run: npm run runtest
+              # the full output also goes to a file: the job log view stops at very long lines (the fuzz tests
+              # log megabyte long URLs), which hides everything after them
+              run: |
+                  set -o pipefail
+                  npm run runtest 2>&1 | tee test-output.log
               env:
                   APPCONF_dbs_redis: redis://127.0.0.1:6379/1
                   APPCONF_dbs_mongodb: 'mongodb://127.0.0.1:27017/wildduck-test?authSource=admin'
+                  JMAP_RESULTS: 1
+                  JMAP_REQUIRE_OPENSEARCH: 1
+            - name: Summary of the test run
+              if: always()
+              run: grep -aE '^ *[0-9]+ (passing|failing|pending)|^Running "|Aborted|^ *[0-9]+\) ' test-output.log | sed 's/\x1b\[[0-9;]*m//g' | head -200 || true
+            - name: Keep the test output
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: test-output-${{ matrix.node }}
+                  path: |
+                      test-output.log
+                      test/jmap/.results/
+                  retention-days: 7
+            - name: Check JMAP catalogue coverage
+              run: node test/jmap/tools/check-coverage.js

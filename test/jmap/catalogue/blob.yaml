@@ -1,0 +1,1432 @@
+area: blob
+title: "Binary data: download, upload, Blob/copy and RFC 9404 blob methods"
+description: "RFC 8620 section 6 (download endpoint in phase 1, upload endpoint in phase 2, Blob/copy with no second account) and RFC 9404 in full (capability object, Blob/upload, Blob/get, Blob/lookup) in phase 4. Blob ids are opaque with a type prefix: raw message, decoded MIME part, uploaded file."
+scenarios:
+  # ---------------------------------------------------------------- Download (phase 1)
+  - id: BLOB-001
+    title: "Downloading an Email blobId returns the raw message octets"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message appended over IMAP whose exact bytes are known, and its Email blobId and size read through Email/get."
+    when: "GET the download URL with accountId, that blobId, name email.eml and type message/rfc822."
+    then: "HTTP 200; the body is byte for byte the appended message (the same bytes as IMAP BODY[]), and Content-Length equals the Email size property."
+    sources:
+      - "james:DownloadContract#downloadMessage"
+      - "cyrus:JMAPEmail/email_download"
+      - "cyrus:JMAPEmail/misc_upload_download822"
+      - "jmapio:binary/download-email-blob"
+      - "stalwart:mail/set.rs"
+      - "rfc:8620 6.2"
+    notes: "WildDuck rebuilds the message from the stored MIME tree (indexer.rebuild), so this doubles as a check that the rebuild is byte exact."
+
+  - id: BLOB-002
+    title: "Upload endpoint answers a defined error until uploads are implemented"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "A server at phase 1 feature level; the session already advertises uploadUrl because the property is mandatory."
+    when: "POST a small body to the expanded uploadUrl with valid credentials."
+    then: "HTTP 501 with a problem details body; nothing is stored. It does not answer 404, 500 or a success."
+    sources:
+      - "wildduck:brief phases"
+      - "rfc:8620 2"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the upload scenarios."
+
+  - id: BLOB-003
+    title: "Downloading an attachment part blob returns the decoded content"
+    method: Download
+    spec: "RFC 8620 6.2, RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message with a base64 encoded binary attachment whose decoded bytes are known."
+    when: "Read the attachment blobId and size from Email/get attachments, then GET the download URL for it."
+    then: "HTTP 200; the body is the decoded attachment (content transfer encoding removed), and its length equals the size of the body part."
+    sources:
+      - "james:DownloadContract#downloadPart"
+      - "james:DownloadContract#downloadMailboxAttachment"
+      - "cyrus:JMAPEmail/misc_download"
+      - "cyrus:JMAPCore/blob_download"
+      - "stalwart:mail/parse.rs"
+
+  - id: BLOB-004
+    title: "Downloading a text part returns the transfer decoded bytes in the original charset"
+    method: Download
+    spec: "RFC 8620 6.2, RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a quoted-printable text/plain part in ISO-8859-1 containing non ASCII characters."
+    when: "GET the download URL for the part blobId from textBody."
+    then: "The body is the quoted-printable decoded octets, still in ISO-8859-1 (no charset conversion and no line ending rewrite), in contrast to bodyValues which is converted to UTF-8."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "stalwart:mail/parse.rs"
+      - "cyrus:JMAPEmail/email_set_blobencoding"
+
+  - id: BLOB-005
+    title: "An embedded message/rfc822 part is downloadable as a message"
+    method: Download
+    spec: "RFC 8620 6.2, RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message that carries another message as a message/rfc822 attachment."
+    when: "GET the download URL for the attachment blobId with type message/rfc822."
+    then: "HTTP 200, Content-Type message/rfc822, a non zero Content-Length, and the body is the complete embedded message including its header."
+    sources:
+      - "cyrus:JMAPEmail/email_embedded_download"
+      - "james:EmailParseMethodContract"
+      - "stalwart:mail/parse.rs"
+
+  - id: BLOB-006
+    title: "The type variable sets the Content-Type of the download"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message blob and a text/plain part blob."
+    when: "Each is downloaded twice, with type application/octet-stream and with type text/plain."
+    then: "The Content-Type header of each response is the requested type (a charset parameter may be absent), whatever the stored part type is, and the body is identical in all four responses."
+    sources:
+      - "jmapio:binary/download-respects-type-param"
+      - "james:DownloadContract#userCanSpecifyContentTypeWhenDownloadingMessage"
+      - "james:DownloadContract#userCanSpecifyContentTypeWhenDownloadingPart"
+      - "fastmail:t/core/download.t"
+      - "stalwart:compliance/binary download-respects-type-param"
+    notes: "jmapio ruling (Q14): the response Content-Type must be what the type parameter says."
+
+  - id: BLOB-007
+    title: "A missing or empty type falls back to application/octet-stream"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A text/plain part blob."
+    when: "The blob is downloaded with the type query parameter omitted, and with it empty."
+    then: "HTTP 200 with Content-Type application/octet-stream in both cases. The Accept request header does not influence the result."
+    sources:
+      - "cyrus:JMAPCore/blob_download"
+      - "james:DownloadContract#emptyContentTypeShouldFallBackToTheBlobContentType"
+    notes: "A blob has no innate type (RFC 8620 6). Cyrus defaults to application/octet-stream and negotiates through Accept; James falls back to the stored part type. WildDuck picks the type neutral default."
+
+  - id: BLOB-008
+    title: "A type value that is not a media type is rejected"
+    method: Download
+    spec: "RFC 8620 6.2, 3.9"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message blob."
+    when: "The blob is downloaded with type set to a value containing percent encoded CR LF followed by a header line, and with type set to the single word garbage."
+    then: "HTTP 400 with a problem details body, or the value is replaced by application/octet-stream. In no case does the response gain an injected header or a split body."
+    sources:
+      - "cyrus:JMAPCore/blob_download"
+      - "wildduck:ionosphere apps/server/test/jmap-header-injection.test.ts"
+
+  - id: BLOB-009
+    title: "The name variable becomes the Content-Disposition file name"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message blob and a part blob."
+    when: "Each is downloaded with name myfile.txt."
+    then: "The response has a Content-Disposition header of type attachment whose file name is myfile.txt, as filename=myfile.txt in quotes or as the RFC 5987 filename* form."
+    sources:
+      - "james:DownloadContract#userCanSpecifyNameWhenDownloadingMessage"
+      - "james:DownloadContract#userCanSpecifyNameWhenDownloadingPart"
+      - "cyrus:JMAPCore/blob_download_name"
+      - "fastmail:t/core/download.t"
+
+  - id: BLOB-010
+    title: "Non ASCII and unsafe file names are encoded safely"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message blob."
+    when: "The blob is downloaded with a Cyrillic name (percent encoded UTF-8 in the URL), with a name containing a double quote and a semicolon, and with a name containing percent encoded CR LF."
+    then: "The Cyrillic name is returned in the filename* form with UTF-8 percent encoding. The quote and semicolon cannot terminate the parameter. The CR LF name is rejected with 400 or stripped; no header is injected."
+    sources:
+      - "cyrus:JMAPCore/blob_download_name"
+      - "wildduck:ionosphere apps/server/test/jmap-header-injection.test.ts"
+
+  - id: BLOB-011
+    title: "An empty name yields no file name parameter"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A part blob whose stored part has a file name."
+    when: "The blob is downloaded with the name variable expanded to an empty string."
+    then: "HTTP 200; Content-Disposition is attachment without a filename parameter. The stored part file name is never used implicitly."
+    sources:
+      - "james:DownloadContract#emptyNameShouldBeDiscarded"
+      - "james:DownloadContract#downloadPartShouldDiscardNameWhenNotSuppliedByTheClient"
+      - "james:DownloadContract#downloadMessageShouldDiscardNameWhenNotSuppliedByTheClient"
+    notes: "Depends on the final URL shape: with {name} as a path segment an empty name leaves an empty segment that the router must still match."
+
+  - id: BLOB-012
+    title: "Downloads are never rendered as active content by a browser"
+    method: Download
+    spec: "RFC 8620 6.2, 8"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message with a text/html attachment containing a script element."
+    when: "The part blob is downloaded with type text/html."
+    then: "Content-Type is text/html as requested, Content-Disposition is attachment, and the response carries X-Content-Type-Options nosniff and a Content-Security-Policy with the sandbox directive."
+    sources:
+      - "james:DownloadContract#downloadShouldNotLetTheBrowserRenderActiveContentInline"
+      - "james:DownloadContract#downloadShouldSandboxInlineContent"
+    notes: "Protects a webmail on the same site from stored XSS through attachments, since the client fully controls the response Content-Type."
+
+  - id: BLOB-013
+    title: "Successful downloads are cacheable as immutable, private content"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message blob."
+    when: "The blob is downloaded successfully, and an unknown blob is requested."
+    then: "The 200 response has Cache-Control with private, immutable and a max-age of at least one day. The 404 response has no such header."
+    sources:
+      - "rfc:8620 6.2"
+      - "wildduck:jmap-report 4.10"
+
+  - id: BLOB-014
+    title: "An unknown blob id answers 404"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "A well formed blob id of each type prefix that refers to nothing."
+    when: "GET the download URL for each."
+    then: "HTTP 404 with a problem details body (status 404) each time."
+    sources:
+      - "jmapio:binary/download-nonexistent-blob"
+      - "james:DownloadContract#downloadWithNotFoundId"
+      - "james:DownloadContract#downloadPartWhenMessageNotFound"
+      - "stalwart:compliance/binary download-nonexistent-blob"
+
+  - id: BLOB-015
+    title: "A malformed blob id answers 404, never a server error"
+    method: Download
+    spec: "RFC 8620 6.2, 3.9"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A valid message blob id B."
+    when: "GET the download URL with these blob ids: a random word, B with an unknown type prefix, B with a truncated hex part, B with five extra part path segments, a 300 character string, and a value with percent encoded slashes and dots."
+    then: "HTTP 404 with a problem details body each time; no 5xx and no path traversal."
+    sources:
+      - "james:DownloadContract#downloadWithInvalidId"
+      - "james:DownloadContract#downloadInvalidPart"
+      - "james:DownloadContract#downloadPartWhenTooMuchUnderscore"
+      - "james:DownloadContract#downloadShouldFailWhenEmailPartInvalid"
+
+  - id: BLOB-016
+    title: "A part path that does not name a leaf part answers 404"
+    method: Download
+    spec: "RFC 8620 6.2, RFC 8621 4.1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A multipart/mixed message with two leaf parts."
+    when: "A part blob id is built for a part number that does not exist, and for the multipart container itself."
+    then: "HTTP 404 for both. Multipart parts have a null blobId in Email/get, so no valid id exists for them."
+    sources:
+      - "james:DownloadContract#downloadNotExistingPart"
+      - "james:DownloadContract#downloadPartWhenMultipart"
+
+  - id: BLOB-017
+    title: "Another user's blob is not downloadable through one's own account"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "Users A and B; a message in B's Inbox with known message and part blob ids."
+    when: "A requests those blob ids under A's own accountId."
+    then: "HTTP 404, identical to the answer for an unknown blob id."
+    sources:
+      - "james:DownloadContract#downloadingOtherPeopleMessageShouldFail"
+      - "james:DownloadContract#downloadingOtherPeopleMessagePartShouldFail"
+      - "wildduck:jmap-report 4.10"
+    notes: "Blob ids embed the Email id, so resolution must check that the message belongs to the account in the URL."
+
+  - id: BLOB-018
+    title: "A foreign or unknown accountId in the download URL answers 404"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap, api]
+    given: "Users A and B; a message blob of B."
+    when: "A requests the blob with B's accountId in the URL, and with a random accountId."
+    then: "HTTP 404 with a problem details body in both cases, the same as for a missing blob."
+    sources:
+      - "james:DownloadContract#downloadingInOtherAccountsShouldFail"
+      - "james:DownloadContract#downloadMessageShouldFailWhenNotDelegatedAccount"
+      - "cyrus:JMAPEmail/misc_download_shared"
+    notes: "Adapted: James answers 403 and, like Cyrus, allows the download when the mailbox is shared or the account delegated. WildDuck has no sharing and answers 404 so account existence is not revealed."
+
+  - id: BLOB-019
+    title: "Blobs of messages flagged Deleted over IMAP are not downloadable"
+    method: Download
+    spec: "RFC 8621 4.1.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "A message whose blob id was read over JMAP, then flagged with the IMAP Deleted flag (not expunged)."
+    when: "The message blob and one of its part blobs are requested; then the flag is cleared and they are requested again."
+    then: "HTTP 404 while the flag is set, HTTP 200 with the original bytes after it is cleared."
+    sources:
+      - "wildduck:brief emails"
+      - "rfc:8621 4.1.1"
+
+  - id: BLOB-020
+    title: "A blob id stays valid when the message moves between mailboxes"
+    method: Download
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A message in the Inbox with known Email blobId and attachment blobId."
+    when: "The message is moved to another mailbox with IMAP MOVE, then both blob ids are downloaded and Email/get is repeated."
+    then: "Both downloads return the same bytes as before, and Email/get reports unchanged blob ids."
+    sources:
+      - "wildduck:brief ids"
+      - "rfc:8620 6"
+    notes: "Follows from the stable, root based Email id. An IMAP COPY creates a new Email with new blob ids."
+
+  - id: BLOB-021
+    title: "Blobs of a destroyed message answer 404"
+    method: Download
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "A message with known blob ids."
+    when: "The message is expunged over IMAP (which archives it), the blobs are requested, then the message is restored through the REST API and the new Email's blobs are requested."
+    then: "HTTP 404 after the expunge. After the restore, the blob ids reported by Email/get for the restored Email download the original bytes."
+    sources:
+      - "wildduck:brief emails"
+
+  - id: BLOB-022
+    title: "Parts of an encrypted at rest message download as stored"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api, lmtp]
+    given: "A user with encryptMessages enabled and a delivered message that was PGP encrypted on storage."
+    when: "The message blob and the blob ids listed by Email/get are downloaded."
+    then: "The message blob is the stored multipart/encrypted message; part blobs are the stored (encrypted) parts. The server does not decrypt."
+    sources:
+      - "wildduck:brief emails"
+
+  - id: BLOB-023
+    title: "The download endpoint only answers GET"
+    method: Download
+    spec: "RFC 8620 6.2"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "A valid message blob id."
+    when: "POST, PUT and DELETE to its download URL."
+    then: "HTTP 405 with an Allow header listing GET; the message is unchanged."
+    sources:
+      - "rfc:8620 6.2"
+
+  # ---------------------------------------------------------------- Upload (phase 2)
+  - id: BLOB-024
+    title: "Uploading a file returns accountId, blobId, type and size"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "POST 24 octets of text to the expanded uploadUrl with Content-Type text/plain."
+    then: "HTTP 200 with Content-Type application/json and a single JSON object: accountId equals the account id, blobId is a string, type starts with text/plain, size is the number 24."
+    sources:
+      - "rfc:8620 6.1"
+      - "james:UploadContract#shouldUploadFileAndAllowToDownloadIt"
+      - "cyrus:JMAPEmail/misc_upload"
+      - "fastmail:t/core/upload.t"
+      - "jmapio:binary/upload-basic"
+      - "stalwart:compliance/binary upload-basic"
+    notes: "The RFC only says a successful request. James and Cyrus answer 201, Stalwart 200; WildDuck answers 200 because go-jmap (aerc) accepts nothing else, see BLOB-086."
+
+  - id: BLOB-025
+    title: "An uploaded blobId is a valid, upload typed JMAP Id"
+    method: Upload
+    spec: "RFC 8620 1.2, 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A file is uploaded."
+    then: "blobId is 1 to 255 octets, uses only A-Z, a-z, 0-9, hyphen and underscore, and starts with the letter that marks uploaded files in the WildDuck blob id scheme."
+    sources:
+      - "jmapio:binary/upload-returns-valid-blob-id"
+      - "stalwart:compliance/binary upload-returns-valid-blob-id"
+      - "wildduck:jmap-report 4.10"
+
+  - id: BLOB-026
+    title: "Uploaded binary content downloads byte for byte"
+    method: Upload
+    spec: "RFC 8620 6.1, 6.2"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A 100 KB buffer containing every byte value, including NUL and 0xFF, and bare CR and LF bytes."
+    when: "The buffer is uploaded as application/octet-stream and the returned blobId is downloaded."
+    then: "size equals 102400 and the downloaded body equals the buffer exactly; no line ending or charset conversion happened."
+    sources:
+      - "jmapio:binary/upload-binary-content"
+      - "jmapio:binary/upload-large-data"
+      - "jmapio:binary/download-uploaded-blob"
+      - "cyrus:JMAPEmail/misc_upload_bin"
+      - "james:UploadContract#shouldUploadFileAndAllowToDownloadIt"
+
+  - id: BLOB-027
+    title: "type reflects the Content-Type header and is never sniffed"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "An HTML document is uploaded with Content-Type text/html; the same bytes with Content-Type text/plain; a PNG file with Content-Type 'text/plain;charset=latin1'."
+    then: "type is text/html, text/plain and text/plain (parameters may be kept or dropped) respectively. The content never changes the reported type."
+    sources:
+      - "jmapio:binary/upload-preserves-content-type"
+      - "cyrus:JMAPCore/blob_upload_type"
+      - "stalwart:compliance/binary upload-preserves-content-type"
+    notes: "jmapio ruling (Q13): normalising is allowed, sniffing is not. Cyrus drops parameters."
+
+  - id: BLOB-028
+    title: "An upload without Content-Type is application/octet-stream"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A file is uploaded with no Content-Type header, and with an empty one."
+    then: "HTTP 200 and type is application/octet-stream."
+    sources:
+      - "cyrus:JMAPCore/blob_upload_type"
+
+  - id: BLOB-029
+    title: "A zero length upload is accepted"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "An empty body is uploaded with Content-Type text/plain, then downloaded."
+    then: "HTTP 200 with size 0 and a blobId; the download answers 200 with an empty body."
+    sources:
+      - "cyrus:JMAPEmail/misc_upload_zero"
+      - "rfc:9404 4"
+
+  - id: BLOB-030
+    title: "The request body is stored as is, whatever its media type"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A multipart/form-data body and an application/json body are posted to the upload URL."
+    then: "Each is stored unparsed: size equals the body length, type is the sent media type, and the download returns the body including the multipart boundaries."
+    sources:
+      - "rfc:8620 6.1"
+    notes: "The Fastify JSON and form body parsers must be bypassed on this route."
+
+  - id: BLOB-031
+    title: "An upload over maxSizeUpload is rejected with a limit error"
+    method: Upload
+    spec: "RFC 8620 2, 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxSizeUpload N."
+    when: "A body of exactly N octets is uploaded, then one of N + 1 octets, then one of N + 1 octets sent chunked without Content-Length."
+    then: "The first succeeds with size N. The other two answer HTTP 413 with a problem details body of type urn:ietf:params:jmap:error:limit and limit equal to maxSizeUpload; nothing is stored and the upload quota usage is unchanged."
+    sources:
+      - "cyrus:JMAPCore/blob_upload_too_large"
+      - "james:UploadContract#shouldRejectWhenUploadFileTooBig"
+      - "stalwart:system/security.rs"
+    notes: "Cyrus answers 413 with the limit problem type; James answers 400 with about:blank. A partially received file must be removed from GridFS."
+
+  - id: BLOB-032
+    title: "Upload to a foreign or unknown accountId answers 404"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 2
+    applies: adapted
+    seed: [api]
+    given: "Users A and B; authenticated as A."
+    when: "A posts a file to the upload URL expanded with B's account id, and with a random account id."
+    then: "HTTP 404 with a problem details body; nothing is stored for A or B."
+    sources:
+      - "james:UploadContract#bobShouldNotBeAllowedToUploadInAliceAccount"
+      - "james:UploadContract#bobShouldBeNotAllowedToUploadInAliceAccountWhenNotDelegated"
+      - "cyrus:JMAPEmail/misc_upload_multiaccount"
+    notes: "Adapted: James answers 403 and allows delegated uploads. WildDuck mirrors accountNotFound and the download endpoint."
+
+  - id: BLOB-033
+    title: "An uploaded blob is only accessible to its uploader"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "User B uploaded a file and got blobId X."
+    when: "User A requests X through the download endpoint under A's accountId, and references X in an Email/set create attachment."
+    then: "The download answers 404 and the Email/set create fails with a blobNotFound SetError (or invalidProperties naming the blob); B can still download X."
+    sources:
+      - "james:UploadContract#aliceShouldNotAccessOrDownloadFileUploadedByBob"
+      - "rfc:8620 6.1"
+
+  - id: BLOB-034
+    title: "An uploaded message can be imported and both blobs stay downloadable"
+    method: Upload
+    spec: "RFC 8620 6, RFC 8621 4.8"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An RFC 5322 message uploaded with type message/rfc822, giving blobId U."
+    when: "Email/import with blobId U into the Inbox, then download U and the new Email's blobId."
+    then: "Both downloads return the uploaded bytes. The Email's blobId is a message typed blob id and may differ from U."
+    sources:
+      - "fastmail:t/Email/import/download-after-import.t"
+      - "cyrus:JMAPEmail/misc_upload_download822"
+      - "stalwart:mail/get.rs"
+
+  - id: BLOB-035
+    title: "Uploading the same content twice gives two usable blobs"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: may
+    phase: 2
+    applies: adapted
+    seed: [none]
+    given: "An authenticated user."
+    when: "The same bytes are uploaded twice with the same Content-Type."
+    then: "Both uploads succeed with the same size; the two blob ids are different, both download correctly, and each has its own expiry."
+    sources:
+      - "cyrus:JMAPEmail/misc_upload_sametype"
+      - "rfc:8620 6.1"
+    notes: "Adapted: Cyrus returns the same content addressed blobId, which the RFC allows (MAY). WildDuck upload ids are storage file ids, not content hashes."
+
+  - id: BLOB-036
+    title: "Uploads do not appear as mail and do not change mail state"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "Known Email and Mailbox states and Inbox counters; an IMAP session with the Inbox selected."
+    when: "A file is uploaded."
+    then: "Email and Mailbox state strings and mailbox counters are unchanged, Email/query finds nothing new, IMAP shows no new message, and no StateChange event is pushed."
+    sources:
+      - "cyrus:JMAPEmail/email_query_seen_ignore_jmapupload_folder"
+      - "cyrus:JMAPEmail/email_query_no_guidsearch_ignore_jmapuploads"
+
+  - id: BLOB-037
+    title: "An unreferenced upload survives for at least one hour"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [time]
+    given: "A file uploaded at time T and never referenced, with the upload lifetime configured to its minimum; the upload quota is not under pressure."
+    when: "The clock advances to T + 59 minutes, the cleanup task runs, and the blob is downloaded."
+    then: "HTTP 200 with the uploaded bytes."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:jmap-report 4.10"
+    notes: "The configuration must refuse a lifetime below one hour."
+
+  - id: BLOB-038
+    title: "An unreferenced upload is removed after the configured lifetime"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [time]
+    given: "A file uploaded at time T with the default lifetime of one day."
+    when: "The clock advances past T + 1 day and the cleanup task runs."
+    then: "The download answers 404, the storage file and its chunks are gone, and the upload quota usage dropped by the file size."
+    sources:
+      - "rfc:8620 6"
+      - "stalwart:system/quota.rs"
+      - "wildduck:jmap-report 4.10"
+    notes: "Phase 0: the expires field and the GC task are backend prerequisites on the Storage API."
+
+  - id: BLOB-039
+    title: "Content consumed into an Email outlives the upload"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [time]
+    given: "A file uploaded and used as an attachment in an Email/set create."
+    when: "The upload lifetime passes and the cleanup task runs; then the attachment blobId reported by Email/get is downloaded."
+    then: "The attachment downloads with the uploaded bytes and the Email is intact."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:jmap-report 4.10"
+    notes: "Open question from the plan: whether the original upload blob id also stays valid after it was consumed (expiry cleared) or only the Email's own part blob id. This scenario asserts only the part blob."
+
+  - id: BLOB-040
+    title: "A blob is not deleted during the method call that removes its last reference"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An Email E1 with an attachment whose part blobId is P."
+    when: "One Email/set call destroys E1 and creates a new Email that references P as an attachment."
+    then: "The create succeeds and the new Email's attachment downloads with the original bytes, whatever order the server processes destroy and create in."
+    sources:
+      - "rfc:8620 6"
+
+  - id: BLOB-041
+    title: "Uploads count against a separate upload quota, not the mail quota"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [api]
+    given: "A user whose storageUsed equals the mail quota (the account is full)."
+    when: "A 1 MB file is uploaded."
+    then: "The upload succeeds, and storageUsed reported by the REST API is unchanged."
+    sources:
+      - "rfc:8620 6"
+      - "james:BlobCopyContract#copyBlobShouldSucceedWhenUploadQuotaExceeded"
+      - "stalwart:system/quota.rs"
+
+  - id: BLOB-042
+    title: "An upload over the upload quota evicts the oldest unreferenced blobs"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An upload quota of Q octets and three unreferenced uploads U1, U2, U3 (oldest first) that together use almost all of Q."
+    when: "A fourth file is uploaded that needs the space of U1 and U2."
+    then: "The upload succeeds. U1 and U2 answer 404 afterwards, U3 and the new blob download correctly. Eviction happens even though U1 and U2 are younger than one hour."
+    sources:
+      - "rfc:8620 6"
+      - "stalwart:system/quota.rs"
+    notes: "Stalwart rejects the upload instead (limit error); the RFC text is a MUST for oldest first deletion. A file larger than the whole quota is still rejected."
+
+  - id: BLOB-043
+    title: "The upload quota covers at least one maximum size message worth of attachments"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: should
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The default configuration and the advertised maxSizeAttachmentsPerEmail M."
+    when: "Unreferenced uploads totalling M octets are made one after another."
+    then: "All are retained at the same time, none is evicted."
+    sources:
+      - "rfc:8620 6"
+
+  - id: BLOB-044
+    title: "More concurrent uploads than maxConcurrentUpload is a limit error"
+    method: Upload
+    spec: "RFC 8620 2, 3.6.1"
+    level: must
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "The session advertises maxConcurrentUpload N and one user holds N uploads open with slow bodies."
+    when: "The same user starts upload N + 1; another user starts an upload."
+    then: "Upload N + 1 answers HTTP 429 with problem type urn:ietf:params:jmap:error:limit and limit equal to maxConcurrentUpload. The other user's upload succeeds. After a held upload finishes, a new one is accepted."
+    sources:
+      - "stalwart:system/security.rs"
+      - "rfc:8620 2"
+
+  # ---------------------------------------------------------------- Blob/copy
+  - id: BLOB-045
+    title: "Blob/copy is available with the core capability alone"
+    method: Blob/copy
+    spec: "RFC 8620 6.3, RFC 9404 4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with using [core URN] calls Blob/copy with fromAccountId set to an unknown id, accountId set to the own account and blobIds []."
+    then: "The answer is error fromAccountNotFound, not unknownMethod."
+    sources:
+      - "rfc:9404 4"
+      - "rfc:8620 6.3"
+
+  - id: BLOB-046
+    title: "Blob/copy from an unknown or foreign account answers fromAccountNotFound"
+    method: Blob/copy
+    spec: "RFC 8620 6.3"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "Users A and B; authenticated as A; B owns a message blob X."
+    when: "Blob/copy with fromAccountId B, accountId A, blobIds [X]; and the same with a random fromAccountId."
+    then: "Both answer error with type fromAccountNotFound, with identical error objects; no blob is created in A."
+    sources:
+      - "james:BlobCopyContract#shouldReturnFromAccountNotFoundWhenFromAccountInvalid"
+      - "james:BlobCopyContract#shouldFailWhenAliceCopiesToBobWithoutDelegation"
+      - "fastmail:t/Blob/foreign-account.t"
+      - "jmapio:binary/blob-copy-cross-account"
+      - "cyrus:JMAPEmail/blob_copy"
+      - "stalwart:mail/acl.rs"
+    notes: "Adapted: the suites test a successful copy between two accounts the user can see (copied map, notFound SetError for a missing blob, mixed results). WildDuck has no second account, so only the error path exists. Fastmail expects accountNotFound for a foreign fromAccountId; RFC 8620 6.3 defines fromAccountNotFound for exactly this case."
+
+  - id: BLOB-047
+    title: "Blob/copy into an unknown or foreign account answers accountNotFound"
+    method: Blob/copy
+    spec: "RFC 8620 6.3, 3.6.2"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "Users A and B; authenticated as A; A owns a message blob X."
+    when: "Blob/copy with fromAccountId A, accountId B, blobIds [X]; and the same with a random accountId."
+    then: "Both answer error with type accountNotFound; nothing is copied."
+    sources:
+      - "james:BlobCopyContract#shouldFailWhenTargetAccountNotDelegated"
+      - "fastmail:t/Blob/foreign-account.t"
+      - "rfc:8620 3.6.2"
+
+  - id: BLOB-048
+    title: "Blob/copy within one account answers invalidArguments"
+    method: Blob/copy
+    spec: "RFC 8620 6.3"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/copy with fromAccountId and accountId both set to the own account id and any blobIds."
+    then: "error with type invalidArguments; no copy is made."
+    sources:
+      - "jmapio:binary/blob-copy-same-account-error"
+      - "stalwart:compliance/binary blob-copy-same-account-error"
+    notes: "The RFC only says the method copies between two different accounts; the jmapio suite records invalidArguments as a ruling (Q12). With one account per user this is the only Blob/copy call that names valid accounts."
+
+  # ---------------------------------------------------------------- RFC 9404 capability
+  - id: BLOB-049
+    title: "Before phase 4 the blob capability is unknown"
+    method: Request
+    spec: "RFC 8620 3.6.1, RFC 9404 3.1"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "A server at phase 1 to 3 feature level."
+    when: "A request with using [core URN, blob URN]; and a request with using [core URN, mail URN] that calls Blob/get, Blob/upload and Blob/lookup."
+    then: "The first answers HTTP 400 unknownCapability. In the second each call answers error unknownMethod. The session does not list urn:ietf:params:jmap:blob."
+    sources:
+      - "cyrus:JMAPBlob/blob_get"
+      - "rfc:8620 3.6.1"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See BLOB-050."
+
+  - id: BLOB-050
+    title: "Blob capability is advertised with an empty session object and a full account object"
+    method: Session
+    spec: "RFC 9404 3.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A server at phase 4 feature level."
+    when: "GET the session resource."
+    then: "capabilities['urn:ietf:params:jmap:blob'] is {}. The account capability object has maxSizeBlobSet (unsigned integer or null), maxDataSources (integer >= 64), supportedTypeNames equal to [Mailbox, Thread, Email] in any order (plus CalendarEvent from phase 6), and supportedDigestAlgorithms as an array of lower case names that includes sha and sha-256."
+    sources:
+      - "rfc:9404 3.1"
+      - "stalwart:principal/get.rs"
+      - "fastmail:t/Blob/lookup/basic.t"
+    notes: "Digest names come from the HTTP Digest Algorithm Values registry, lower cased: sha is SHA-1. From phase 6 CalendarEvent is a type that references blobs (CEV-066), so it is listed too; Blob/lookup accepts it when the calendars capability is in using."
+
+  - id: BLOB-051
+    title: "Blob methods need the blob capability in using"
+    method: Request
+    spec: "RFC 9404 4, RFC 8620 3.3"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A server at phase 4 feature level and an Email blobId."
+    when: "A request with using [core URN, mail URN] calls Blob/get, Blob/upload and Blob/lookup."
+    then: "Each call answers error unknownMethod. The same calls with the blob URN added succeed."
+    sources:
+      - "cyrus:JMAPBlob/blob_get"
+      - "cyrus:JMAPBlob/blob_lookup"
+
+  # ---------------------------------------------------------------- Blob/upload
+  - id: BLOB-052
+    title: "Blob/upload creates a blob from a data:asText source"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/upload with create {t: {data: [{'data:asText': 'Hello, world!'}], type: text/plain}}, and a second creation whose text contains two byte and four byte UTF-8 characters."
+    then: "The response name is Blob/upload with accountId and created. created.t has id (a valid upload typed blob id), type text/plain and size 13; the second creation's size is the UTF-8 octet count, not the character count. notCreated is null or absent."
+    sources:
+      - "rfc:9404 4.1"
+      - "fastmail:t/Blob/upload/basic.t"
+      - "cyrus:JMAPBlob/blob_upload_basic"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-053
+    title: "Blob/upload creates a blob from a data:asBase64 source"
+    method: Blob/upload
+    spec: "RFC 9404 4.1, 4.1.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A 95 octet PNG image encoded as base64."
+    when: "Blob/upload with one source data:asBase64 and type image/png, then the blob is fetched through the download endpoint."
+    then: "created has size 95 and type image/png, and the download returns the decoded PNG bytes."
+    sources:
+      - "rfc:9404 4.1.1"
+      - "stalwart:core/blob.rs"
+      - "fastmail:t/Blob/upload/basic.t"
+      - "cyrus:JMAPBlob/blob_upload_basic"
+
+  - id: BLOB-054
+    title: "Blob/upload without a type reports application/octet-stream"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: wd
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/upload with a text source and no type, and with type null."
+    then: "created.type is application/octet-stream in both cases; no content analysis is done."
+    sources:
+      - "rfc:9404 4.1.2"
+      - "cyrus:JMAPBlob/blob_upload_complex"
+    notes: "The RFC allows a calculated value, an octet stream type or null. WildDuck matches the upload endpoint default (BLOB-028)."
+
+  - id: BLOB-055
+    title: "Blob/upload with zero sources creates an empty blob"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/upload with create {e: {data: []}}."
+    then: "created.e has an id and size 0; Blob/get on it returns an empty data:asText string."
+    sources:
+      - "rfc:9404 4.1"
+      - "fastmail:t/Blob/upload/basic.t"
+      - "cyrus:JMAPBlob/blob_upload_invalid_sources"
+
+  - id: BLOB-056
+    title: "Blob/upload concatenates text, base64 and blob range sources in order"
+    method: Blob/upload
+    spec: "RFC 9404 4.1, 4.1.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "One request: Blob/upload creating b4 from the 45 character pangram of the RFC example; Blob/upload creating cat from [text 'How', blobId '#b4' offset 3 length 7, text 'was t', blobId '#b4' offset 1 length 1, base64 'YXQ/']; Blob/get with ids ['#cat'] and properties [data:asText, size]."
+    then: "b4 has size 45, cat has size 19, and Blob/get returns data:asText 'How quick was that?' with size 19."
+    sources:
+      - "rfc:9404 4.1.2"
+      - "fastmail:t/Blob/upload/basic.t"
+      - "cyrus:JMAPBlob/blob_upload_complex"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-057
+    title: "A blobId source defaults to the whole blob and accepts message and part blobs"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A message with a known raw size R and an attachment part of decoded size P."
+    when: "Blob/upload with three creations: a blobId source of the Email blobId without offset and length; one of the part blobId with offset null and length null; one of the part blobId with offset 2 and no length."
+    then: "The created sizes are R, P and P - 2, and the content of each equals the corresponding source range."
+    sources:
+      - "rfc:9404 4.1"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-058
+    title: "Every Blob/upload creation is added to createdIds"
+    method: Blob/upload
+    spec: "RFC 9404 4.1, RFC 8620 3.4"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "A request with createdIds {} and Blob/upload creating t and b."
+    then: "Response createdIds maps t and b to the ids in created."
+    sources:
+      - "fastmail:t/Blob/upload/basic.t"
+      - "rfc:9404 4.1"
+
+  - id: BLOB-059
+    title: "A Blob/upload creation id is usable by later methods without createdIds in the request"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user; the request has no createdIds property."
+    when: "Blob/upload creating msg from the text of an RFC 5322 message, followed by Email/import with blobId '#msg' into the Inbox."
+    then: "Email/import creates the Email; the response has no createdIds property."
+    sources:
+      - "stalwart:core/blob.rs"
+      - "rfc:9404 4.1"
+
+  - id: BLOB-060
+    title: "An invalid blob reference in a data source rejects that creation"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api]
+    given: "Another user's upload blob id X."
+    when: "Blob/upload with four creations whose blobId source is: an unknown blob id, X, an unresolvable creation reference '#nosuch', and a valid one."
+    then: "The first three are in notCreated with a SetError of type invalidProperties (the same object for unknown and foreign blobs); the fourth is in created. The server does not substitute an empty source."
+    sources:
+      - "rfc:9404 4.1"
+      - "stalwart:core/blob.rs"
+      - "cyrus:JMAPBlob/blob_upload_invalid_sources"
+    notes: "The RFC only requires a notCreated response and forbids guessing. invalidProperties is what Cyrus returns for invalid sources. Stalwart answers a method level invalidResultReference for an unknown creation reference; WildDuck keeps it per creation."
+
+  - id: BLOB-061
+    title: "A blob range that cannot be fully satisfied rejects the creation"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A 5 octet blob S created earlier."
+    when: "Blob/upload with blobId sources of S using: offset 3 length 10; offset 6; offset 5 length 0; offset 0 length 5."
+    then: "The first two are in notCreated (the range begins or extends past the end). The last two are created with sizes 0 and 5."
+    sources:
+      - "rfc:9404 4.1"
+      - "fastmail:t/Blob/upload/basic.t"
+    notes: "Unlike Blob/get, which truncates and sets isTruncated, an upload source must be satisfiable in full."
+
+  - id: BLOB-062
+    title: "Invalid base64 rejects the creation"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/upload with data:asBase64 values 'not*base64!' and 'aGVsbG8=YQ==' (padding in the middle), plus the valid value 'aGVsbG8='."
+    then: "The two invalid values are in notCreated with type invalidProperties; the valid one is created with size 5."
+    sources:
+      - "rfc:9404 4.1"
+      - "cyrus:JMAPBlob/blob_upload_invalid_sources"
+      - "fastmail:t/Blob/upload/basic.t"
+    notes: "Open decision: Cyrus also rejects unpadded base64 and accepts line wrapped base64. Node's Buffer decoder silently skips invalid characters, so validation must be explicit. Invalid UTF-8 in data:asText cannot arrive, the request is rejected as notJSON first (CORE-093)."
+
+  - id: BLOB-063
+    title: "A data source must have exactly one kind of source"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An existing blob S."
+    when: "Blob/upload with sources that have: both data:asText and data:asBase64; data:asText plus blobId; no source property at all; an unknown property data:asHex; offset without blobId."
+    then: "Each creation is in notCreated with type invalidProperties."
+    sources:
+      - "rfc:9404 4.1"
+      - "cyrus:JMAPBlob/blob_upload_invalid_sources"
+
+  - id: BLOB-064
+    title: "A blob larger than maxSizeBlobSet is rejected, also when built by concatenation"
+    method: Blob/upload
+    spec: "RFC 9404 3.1, 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The account advertises maxSizeBlobSet N."
+    when: "One request: Blob/upload seed of 600 octets; Blob/upload level1 made of 100 references to '#seed'; Blob/upload level2 made of enough references to '#level1' to exceed N. A separate creation uses a single literal larger than N."
+    then: "seed and level1 are created with the summed sizes; level2 and the oversized literal are in notCreated with type tooLarge. The size is checked against the running total before data is copied."
+    sources:
+      - "cyrus:JMAPBlob/blob_upload_catenate_size_limit"
+      - "rfc:9404 3.1"
+
+  - id: BLOB-065
+    title: "At least 64 data sources per creation are accepted and the advertised maximum is enforced"
+    method: Blob/upload
+    spec: "RFC 9404 3.1, 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "The account advertises maxDataSources M (at least 64)."
+    when: "Blob/upload with a creation of M one octet text sources, and one with M + 1 sources."
+    then: "The first is created with size M. The second is in notCreated with type invalidProperties (or tooLarge) and nothing is stored for it."
+    sources:
+      - "rfc:9404 3.1"
+      - "rfc:9404 4.1"
+
+  - id: BLOB-066
+    title: "Blob/upload reports successes and failures side by side"
+    method: Blob/upload
+    spec: "RFC 9404 4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/upload with one valid and one invalid creation; and a Blob/upload call that also passes update or destroy arguments."
+    then: "The first call returns the valid creation under created and the invalid one under notCreated. The second call answers error invalidArguments, because blobs cannot be updated or destroyed."
+    sources:
+      - "rfc:9404 4.1"
+      - "cyrus:JMAPBlob/blob_upload_invalid_sources"
+
+  - id: BLOB-067
+    title: "Blobs made by Blob/upload behave like endpoint uploads"
+    method: Blob/upload
+    spec: "RFC 9404 4.1, 5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [time]
+    given: "A blob created by Blob/upload with type image/png from data that is plain text."
+    when: "It is downloaded, the upload quota usage is read, and the upload lifetime passes."
+    then: "The creation was accepted although the data is not a PNG. The blob downloads through the download endpoint, counts against the upload quota, survives at least one hour and expires like an endpoint upload."
+    sources:
+      - "rfc:9404 4.1"
+      - "rfc:9404 5"
+
+  # ---------------------------------------------------------------- Blob/get
+  - id: BLOB-068
+    title: "Blob/get defaults to data and size"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An uploaded UTF-8 text blob of known content."
+    when: "Blob/get with ids [blobId] and no properties."
+    then: "list has one object with id, data:asText equal to the text and size equal to the octet length; isTruncated and isEncodingProblem are false or absent; notFound is []."
+    sources:
+      - "fastmail:t/Blob/get/basic.t"
+      - "rfc:9404 4.2"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-069
+    title: "Blob/get returns text and base64 forms of message and part blobs"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A plain ASCII message appended over IMAP and its Email blobId and text part blobId."
+    when: "Blob/get with both ids and properties [data:asText, data:asBase64, size]."
+    then: "For each blob data:asText is the exact content, data:asBase64 is its base64 encoding without line breaks, and size is the octet count."
+    sources:
+      - "cyrus:JMAPBlob/blob_get"
+      - "rfc:9404 4.2.1"
+
+  - id: BLOB-070
+    title: "offset and length select a range while size stays the whole blob"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A blob containing the 45 character pangram."
+    when: "Blob/get with offset 4, length 5 and properties [data:asText, data:asBase64, size]; and with offset 40 and length null."
+    then: "First call: data:asText is 'quick', data:asBase64 is the encoding of 'quick', size is 45, isTruncated is not true. Second call: the last 5 octets are returned and isTruncated is not true."
+    sources:
+      - "fastmail:t/Blob/get/basic.t"
+      - "rfc:9404 4.2"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-071
+    title: "A range past the end of the blob is truncated and flagged"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A 45 octet text blob."
+    when: "Blob/get with offset 40 length 100; with offset 1000 and no length; with offset 45 length 0."
+    then: "First: the last 5 octets and isTruncated true. Second: data:asText is an empty string and isTruncated true. Third: an empty string and isTruncated not true."
+    sources:
+      - "fastmail:t/Blob/get/basic.t"
+      - "rfc:9404 4.2.2"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-072
+    title: "Octets that are not UTF-8 set isEncodingProblem"
+    method: Blob/get
+    spec: "RFC 9404 4.2, 5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An uploaded blob containing the bytes 0x81 0x81 inside ASCII text."
+    when: "Blob/get with default properties; with properties [data:asText]; with properties [data:asBase64]."
+    then: "Default: isEncodingProblem true, data:asBase64 holds the octets, data:asText is null or absent. data:asText only: isEncodingProblem true and data:asText null, no base64. data:asBase64 only: the base64 value and isEncodingProblem not true."
+    sources:
+      - "rfc:9404 4.2.2"
+      - "cyrus:JMAPBlob/blob_get"
+      - "fastmail:t/Blob/get/basic.t"
+      - "stalwart:core/blob.rs"
+
+  - id: BLOB-073
+    title: "A range that splits a multi octet character is an encoding problem"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A UTF-8 text blob whose fourth and fifth octets form one two octet character."
+    when: "Blob/get with offset 0, length 4 and properties [data:asText]; and with offset 0, length 5."
+    then: "Length 4: isEncodingProblem true and data:asText null. Length 5: the text is returned and isEncodingProblem is not true."
+    sources:
+      - "fastmail:t/Blob/get/basic.t"
+      - "rfc:9404 4.2"
+
+  - id: BLOB-074
+    title: "digest properties return the base64 digest of the selected range"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A blob of known content."
+    when: "Blob/get with properties [digest:sha, digest:sha-256] for the whole blob; again with offset 4 and length 5; again with a range past the end."
+    then: "Each digest is the base64 (not hex) encoding of the SHA-1 or SHA-256 digest of exactly the octets that a data property would return for that range. Only id and the digest properties are returned."
+    sources:
+      - "rfc:9404 4.2.1"
+      - "fastmail:t/Blob/get/basic.t"
+      - "stalwart:core/blob.rs"
+      - "cyrus:JMAPEmail/email_parse_digest"
+
+  - id: BLOB-075
+    title: "An unsupported digest or unknown property is invalidArguments"
+    method: Blob/get
+    spec: "RFC 9404 4.2, RFC 8620 5.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A blob, and supportedDigestAlgorithms from the session."
+    when: "Blob/get with properties [digest:nosuch]; [digest:SHA-256] (upper case); [data:asHex]."
+    then: "Each call answers error invalidArguments."
+    sources:
+      - "rfc:8620 5.1"
+      - "rfc:9404 3.1"
+
+  - id: BLOB-076
+    title: "Requesting only size does not read blob content"
+    method: Blob/get
+    spec: "RFC 9404 4.2"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A 20 MB message and its Email blobId."
+    when: "Blob/get with properties [size]."
+    then: "The object has only id and size, equal to the Email size, and the call returns without streaming the message (bounded response time and no content in the response)."
+    sources:
+      - "rfc:9404 4.2"
+
+  - id: BLOB-077
+    title: "Unknown and foreign blob ids go to notFound"
+    method: Blob/get
+    spec: "RFC 9404 4.2, RFC 8620 5.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api]
+    given: "An own blob A, another user's blob X, and a malformed id."
+    when: "Blob/get with ids [A, X, not-a-blob]."
+    then: "list contains only A; notFound contains X and not-a-blob."
+    sources:
+      - "fastmail:t/Blob/get/basic.t"
+      - "rfc:8620 5.1"
+
+  - id: BLOB-078
+    title: "Blob/get with ids null is rejected"
+    method: Blob/get
+    spec: "RFC 9404 4.2, RFC 8620 5.1"
+    level: wd
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/get with ids null, and with ids omitted."
+    then: "error invalidArguments: listing all blobs of an account is not supported."
+    sources:
+      - "rfc:8620 5.1"
+    notes: "RFC 8620 5.1 returns all records for ids null only if that is supported for the data type. Blob/get also returns no state property requirement in RFC 9404; a constant or absent state is acceptable."
+
+  # ---------------------------------------------------------------- Blob/lookup
+  - id: BLOB-079
+    title: "Blob/lookup finds the Email, Thread and Mailbox that reference a message blob"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "One message in the Inbox with known Email id, threadId, mailbox id and blobId."
+    when: "Blob/lookup with typeNames [Mailbox, Thread, Email] and ids [blobId]."
+    then: "list has one BlobInfo with that id and matchedIds {Mailbox: [mailbox id], Thread: [threadId], Email: [email id]}."
+    sources:
+      - "cyrus:JMAPBlob/blob_lookup"
+      - "cyrus:JMAPEmail/blob_get"
+      - "fastmail:t/Blob/lookup/basic.t"
+      - "stalwart:core/blob.rs"
+      - "rfc:9404 4.3.1"
+
+  - id: BLOB-080
+    title: "Blob/lookup resolves a part blob to its Email"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A message with an attachment; the attachment blobId."
+    when: "Blob/lookup with typeNames [Email, Mailbox] and ids [attachment blobId]."
+    then: "matchedIds has exactly the keys Email and Mailbox, with the Email id and its mailbox id; there is no Thread key."
+    sources:
+      - "rfc:9404 4.3"
+      - "wildduck:jmap-report 4.10"
+
+  - id: BLOB-081
+    title: "Unknown, foreign and unreferenced blobs give empty match lists"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3, 5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [api, imap]
+    given: "A random blob id, another user's Email blobId, and an own unreferenced upload."
+    when: "Blob/lookup with typeNames [Mailbox, Thread, Email] and those three ids."
+    then: "For each id the result is the same shape: a BlobInfo whose matchedIds maps every requested type to []. The foreign blob is indistinguishable from the random one."
+    sources:
+      - "rfc:9404 4.3"
+      - "rfc:9404 5"
+      - "fastmail:t/Blob/lookup/basic.t"
+      - "cyrus:JMAPBlob/blob_lookup"
+      - "stalwart:core/blob.rs"
+    notes: "Open question: the RFC text says the server MUST still return an empty array for each type, while the RFC example and Cyrus put the unknown id in a notFound list and omit it from list. The Fastmail suite accepts either. This scenario follows the normative text; returning notFound in addition would satisfy both readings."
+
+  - id: BLOB-082
+    title: "An unknown or unusable type name answers unknownDataType"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3, 6.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "An Email blobId."
+    when: "Blob/lookup with typeNames [Email, NoSuchType]; with typeNames [Email] in a request whose using lacks the mail URN; with typeNames [SearchSnippet]."
+    then: "Each call answers error with type unknownDataType."
+    sources:
+      - "cyrus:JMAPBlob/blob_lookup"
+      - "fastmail:t/Blob/lookup/basic.t"
+      - "rfc:9404 6.2"
+    notes: "SearchSnippet is registered with Can reference blobs false; the RFC allows only blob referencing types, and unknownDataType is the closest defined error."
+
+  - id: BLOB-083
+    title: "Blob/lookup with no ids returns an empty list"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "Blob/lookup with typeNames [Mailbox, Thread, Email] and ids []."
+    then: "A Blob/lookup response with list []."
+    sources:
+      - "cyrus:JMAPBlob/blob_lookup"
+
+  - id: BLOB-084
+    title: "Blob/lookup follows moves and hides messages flagged Deleted"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3, 5"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "A message in the Inbox and its blobId."
+    when: "Blob/lookup is called; the message is moved to Archive over IMAP and looked up again; the IMAP Deleted flag is set and it is looked up a third time."
+    then: "First: Mailbox lists the Inbox id. Second: Mailbox lists the Archive id, same Email and Thread ids. Third: all lists are empty."
+    sources:
+      - "wildduck:brief emails"
+      - "rfc:9404 5"
+
+  - id: BLOB-085
+    title: "Copies of a message have their own blob ids"
+    method: Blob/lookup
+    spec: "RFC 9404 4.3"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "A message copied to a second mailbox with IMAP COPY, giving two Emails with different ids and blob ids."
+    when: "Blob/lookup with typeNames [Email, Mailbox] for each blobId."
+    then: "Each lookup returns exactly one Email id and one Mailbox id, those of its own copy."
+    sources:
+      - "cyrus:JMAPEmail/blob_get"
+      - "wildduck:brief ids"
+    notes: "Adapted: Cyrus blob ids are content hashes, so one blob maps to several Emails and Mailboxes. WildDuck blob ids name the Email, so the reverse lookup is always one to one."
+
+  - id: BLOB-086
+    title: "A successful upload answers 200 OK"
+    method: Upload
+    spec: "RFC 8620 6.1"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "An authenticated user."
+    when: "An RFC 5322 message is uploaded the way go-jmap does it (Content-Type application/json), and the blob is imported into the Drafts mailbox with Email/import."
+    then: "The upload answers exactly 200 with the JSON upload object; Email/import creates the Email from the blob."
+    sources:
+      - "wildduck:F.5 aerc interop run"
+    notes: "RFC 8620 names no status code for a successful upload. aerc 0.22 (go-jmap 0.5.3) treats every status but 200 as an error, so with 201 it could not send or postpone a message. jmapio, the Fastmail suite, jmap-jam, meli and Bulwark accept any 2xx."
+
+  - id: BLOB-087
+    title: "A failed expiry round leaves no chunks behind for good"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [db]
+    given: "Two expired uploads, and a storage handler whose first deletion of storage.chunks fails."
+    when: "The expiry of temporary uploads runs, fails, and runs again."
+    then: "After the second run both uploads are gone, files documents and chunks alike; no chunk of them is left without its files document."
+    sources:
+      - "wildduck:security audit NV-11"
+    notes: "Nothing sweeps storage.chunks, so the chunks are deleted before the files documents: a files document left behind is found again by the next round."
+
+  - id: BLOB-088
+    title: "The number of temporary uploads of a user is limited"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [db]
+    given: "A JMAP instance with maxUploads 3 and a user with no uploads."
+    when: "Three empty files are uploaded, then Blob/upload creates a blob without data sources. Afterwards every upload of the user is pinned in the database and one more file is uploaded."
+    then: "The user keeps three temporary uploads: the oldest empty upload answers 404, the second one still downloads. With only pinned uploads left the last upload answers HTTP 413 with limit uploadQuota and nothing is stored."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:security audit NV-28"
+    notes: "The byte quota alone let empty uploads pile up for a whole upload lifetime. The count comes from the aggregate that sums the bytes, so it costs no extra query."
+
+  - id: BLOB-089
+    title: "Parallel uploads do not go over the upload quota together"
+    method: Upload
+    spec: "RFC 8620 6"
+    level: wd
+    phase: 2
+    applies: yes
+    seed: [none]
+    given: "A JMAP instance with an upload quota of 10,000 octets and maxConcurrentUpload 4."
+    when: "One user starts four uploads of 4,000 octets with a Content-Length each, holds their bodies until all four passed the quota check, then finishes them."
+    then: "All four answer 200. Afterwards the user's temporary uploads together are no larger than the quota: the uploads that came too late evicted the older ones."
+    sources:
+      - "rfc:8620 6"
+      - "wildduck:security audit NV-13"
+    notes: "The quota is checked before an upload is stored, when the parallel ones do not exist yet. It is checked again once the file is stored, also when the size was declared up front; the same applies to Blob/upload and the data: URIs of calendar events."

@@ -1,0 +1,3027 @@
+area: email-query
+title: "Email/query and Email/queryChanges"
+description: "RFC 8620 5.5 and 5.6 as applied to Email, and RFC 8621 4.4 and 4.5: filters, operators, text matching, sorting, paging, totals, thread collapsing, queryState and query changes, including results after changes made over IMAP and the REST API."
+scenarios:
+  # ---------------------------------------------------------------- basics
+  - id: EQRY-001
+    title: "Return the standard response shape for a query without arguments other than accountId"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Account with 3 emails in Inbox."
+    when: "Email/query with only accountId."
+    then: "Response is Email/query with accountId echoed, queryState a non empty string, canCalculateChanges a boolean, position 0 and ids an array of 3 distinct Email ids matching M plus 24 hex. No total property is present. No other properties are present except limit when the server applied its own maximum."
+    sources:
+      - "cyrus:JMAPEmail/email_query_response_arguments"
+      - "jmapio:email/query-response-structure"
+      - "fastmail:t/Email/query/no-existing-entities.t"
+      - "rfc:8620 5.5"
+  - id: EQRY-002
+    title: "Return an empty id list for an account with no mail"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Freshly created account with no messages in any mailbox."
+    when: "Email/query with filter null, and again with filter {text: 'foo'} and calculateTotal true."
+    then: "Both calls succeed with ids [] and position 0; the second has total 0. No error is returned for searching an empty account."
+    sources:
+      - "fastmail:t/Email/query/no-existing-entities.t"
+      - "cyrus:JMAPEmail/email_query_empty"
+      - "cyrus:JMAPEmail/email_query_text_nomail"
+  - id: EQRY-003
+    title: "Null filter returns all mail in the account, including Trash and Junk"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One email in each of Inbox, Sent, Drafts, Trash, Junk and a user created mailbox (6 emails)."
+    when: "Email/query with filter null and calculateTotal true; repeat with the filter argument omitted and with filter {}."
+    then: "All three calls return the same 6 ids and total 6. Emails in Trash and Junk are included."
+    sources:
+      - "james:EmailQueryMethodContract#shouldListMailsInAllUserMailboxes"
+      - "jmapio:email/filter-empty-matches-all"
+      - "jmapio:email/filter-null-accepted"
+      - "rfc:8621 4.4.1"
+    notes: "The REST search API restricts mailbox-less searches to searchable mailboxes (no Junk, no Trash). JMAP must not inherit that restriction (plan 4.5)."
+  - id: EQRY-004
+    title: "Never return mail belonging to another user"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Users A and B each have one email in Inbox with the same subject."
+    when: "A calls Email/query with filter null, then with filter {inMailbox: <B's Inbox id>}."
+    then: "The first call returns only A's email id. The second is rejected with invalidArguments because the mailbox id does not exist in A's account."
+    sources:
+      - "james:EmailQueryMethodContract#shouldNotListMailsFromOtherUserMailboxes"
+      - "james:EmailQueryMethodContract#inMailboxFilterShouldReturnEmptyForSharedMailboxesWhenNoExtension"
+    notes: "No sharing in WildDuck, so a foreign mailbox id is simply unknown. James returns an empty list for unshared mailboxes; WildDuck treats it as an unknown id."
+  - id: EQRY-005
+    title: "Reject an unknown accountId with accountNotFound"
+    method: Email/query
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Authenticated user."
+    when: "Email/query and Email/queryChanges with accountId set to another user's id or a random id."
+    then: "Each call returns error type accountNotFound; HTTP status is 200."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldFailWhenWrongAccountId"
+      - "fastmail:t/Email/foreign-account.t"
+      - "fastmail:t/core/accountId-required.t"
+  - id: EQRY-006
+    title: "Use Email/query ids in a result reference to Email/get"
+    method: Email/query
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 3 emails."
+    when: "One request with Email/query (inMailbox Inbox, sort receivedAt descending) followed by Email/get with '#ids' referencing path /ids of the query."
+    then: "Email/get list contains exactly the queried emails; every id in the query result is fetchable and none is in notFound."
+    sources:
+      - "stalwart:mail/query.rs"
+      - "cyrus:JMAPEmail/email_query"
+      - "james:BackReferenceContract"
+  - id: EQRY-007
+    title: "Messages flagged Deleted over IMAP never appear in query results"
+    method: Email/query
+    spec: "RFC 8621 4.4"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Inbox with emails E1, E2, E3. Over IMAP, STORE +FLAGS (\\Deleted) on E2 without EXPUNGE."
+    when: "Email/query with filter null, with filter {inMailbox: Inbox} and calculateTotal true, and with collapseThreads true."
+    then: "E2 is absent from every result and totals are 2. After IMAP STORE -FLAGS (\\Deleted) on E2, the same queries return 3 ids including E2 with its original id."
+    sources:
+      - "james:EmailQueryMethodContract#messagesMarkedAsDeletedShouldNotBeExposedOverJMAP"
+      - "wildduck:brief Emails"
+  - id: EQRY-008
+    title: "Do not accept the IMAP Deleted or Recent flag as a keyword filter value"
+    method: Email/query
+    spec: "RFC 8621 4.1.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with one email."
+    when: "Email/query with filter {hasKeyword: '\\Deleted'}, then {hasKeyword: '\\Recent'}, then {notKeyword: '\\Deleted'}."
+    then: "Each call is rejected with invalidArguments because a backslash is not a valid keyword character."
+    sources:
+      - "james:EmailQueryMethodContract#hasKeywordShouldNotAcceptIMAPDeletedKeyword"
+      - "james:EmailQueryMethodContract#hasKeywordShouldNotAcceptIMAPRecentKeyword"
+    notes: "The filter values in when are the literal strings backslash Deleted and backslash Recent."
+
+  # ---------------------------------------------------------------- mailbox filters
+  - id: EQRY-009
+    title: "inMailbox returns only emails in that mailbox"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with E1 and E2, mailbox Work with E3, Trash with E4."
+    when: "Email/query with filter {inMailbox: <Work id>}, then with {inMailbox: <Inbox id>}."
+    then: "First call returns exactly [E3]; second returns exactly E1 and E2. Emails from other mailboxes never appear."
+    sources:
+      - "james:EmailQueryMethodContract#shouldListMailsInASpecificUserMailboxes"
+      - "james:EmailQueryMethodContract#inMailboxShouldResolveSimpleFilter"
+      - "cyrus:JMAPEmail/email_query"
+      - "jmapio:email/filter-in-mailbox"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-010
+    title: "inMailbox on an empty mailbox returns no ids"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 2 emails, an empty mailbox Empty."
+    when: "Email/query with filter {inMailbox: <Empty id>} and calculateTotal true."
+    then: "ids is [], total is 0, position is 0, no error."
+    sources:
+      - "rfc:8621 4.4.1"
+      - "cyrus:JMAPEmail/email_query_empty"
+  - id: EQRY-011
+    title: "inMailbox does not include emails of child mailboxes"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailbox Parent with E1 and child mailbox Parent/Child with E2."
+    when: "Email/query with {inMailbox: <Parent id>}, then {inMailbox: <Parent/Child id>}."
+    then: "First returns only E1, second only E2."
+    sources:
+      - "jmapio:email/filter-in-child-mailbox"
+  - id: EQRY-012
+    title: "Reject inMailbox with an unknown or malformed mailbox id"
+    method: Email/query
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Account with default mailboxes."
+    when: "Email/query with filter {inMailbox: 'foo'}, then a well formed but nonexistent mailbox id, then {inMailbox: null}, then {inMailbox: 42}."
+    then: "Each call returns error invalidArguments; the arguments list, when present, names filter/inMailbox."
+    sources:
+      - "james:EmailQueryMethodContract#shouldReturnIllegalArgumentErrorForAnUnknownSpecificUserMailboxes"
+      - "cyrus:JMAPEmail/email_query_unknown_mailbox"
+      - "cyrus:JMAPEmail/email_query_inmailbox_null"
+  - id: EQRY-013
+    title: "Hidden mailboxes cannot be used in inMailbox and their mail is not returned"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [db]
+    given: "Account with a hidden mailbox (hidden: true) holding one email, and Inbox with one email."
+    when: "Email/query with filter null, then with {inMailbox: <hidden mailbox id>}."
+    then: "The null filter returns only the Inbox email. The inMailbox call is rejected with invalidArguments, as for an unknown mailbox."
+    sources:
+      - "wildduck:brief Mailboxes"
+    notes: "Open question: confirm that mail in hidden mailboxes is excluded from account wide queries, consistent with Email/get."
+  - id: EQRY-014
+    title: "inMailboxOtherThan excludes emails in the listed mailboxes"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 in Inbox, E2 in Work, E3 in Trash, E4 in Junk."
+    when: "Email/query with {inMailboxOtherThan: [Trash]}, then {inMailboxOtherThan: [Trash, Junk]}."
+    then: "First returns E1, E2, E4; second returns E1, E2. Because an Email is in exactly one mailbox, the condition is equivalent to 'the email's mailbox is not in the list'."
+    sources:
+      - "james:EmailQueryMethodContract#shouldListMailsNotInASpecificUserMailboxes"
+      - "cyrus:JMAPEmail/email_query_inmailboxotherthan"
+      - "jmapio:email/filter-in-mailbox-other-than"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-015
+    title: "inMailboxOtherThan with an empty list matches every email"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 in Inbox, E2 in Trash."
+    when: "Email/query with {inMailboxOtherThan: []}."
+    then: "Returns E1 and E2."
+    sources:
+      - "james:EmailQueryMethodContract#shouldListMailsNotInZeroMailboxes"
+  - id: EQRY-016
+    title: "Reject inMailboxOtherThan with an unknown mailbox id or a non array value"
+    method: Email/query
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Account with default mailboxes."
+    when: "Email/query with {inMailboxOtherThan: ['foo']}, then {inMailboxOtherThan: <Inbox id as a plain string>}."
+    then: "Both calls return invalidArguments."
+    sources:
+      - "cyrus:JMAPEmail/email_query_unknown_mailbox"
+      - "rfc:8620 3.6.2"
+  - id: EQRY-017
+    title: "Combine inMailbox and inMailboxOtherThan in one condition"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 in Inbox, E2 in Work."
+    when: "Email/query with {inMailbox: Inbox, inMailboxOtherThan: [Work]}, then {inMailbox: Inbox, inMailboxOtherThan: [Inbox]}."
+    then: "First returns [E1]. Second returns [] because with one mailbox per email nothing can be in Inbox and outside Inbox at once."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsInAFirstMailboxAndNotSomeOtherMailboxShouldReturnMailsInFirstMailbox"
+      - "james:EmailQueryMethodContract#listMailsInAFirstMailboxAndNotInTheSameMailboxShouldReturnEmptyResult"
+      - "cyrus:JMAPEmail/email_query_notinmailboxid_attached"
+  - id: EQRY-018
+    title: "Mailbox filters work inside OR, AND and NOT operators"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 in Inbox, E2 in Work, E3 in Archive."
+    when: "Email/query with OR of {inMailbox: Inbox} and {inMailbox: Work}; then AND of the same two; then NOT of {inMailbox: Inbox}; then AND of {inMailboxOtherThan: [Inbox]} and {inMailboxOtherThan: [Work]}."
+    then: "OR returns E1 and E2. AND returns [] (single mailbox per email). NOT returns E2 and E3. The last returns [E3]."
+    sources:
+      - "james:EmailQueryMethodContract#inMailboxDisjunctionShouldBeSupported"
+      - "james:EmailQueryMethodContract#inMailboxDisjunctionShouldBeSupportedInAnd"
+      - "cyrus:JMAPEmail/email_query_mailbox_andor"
+      - "cyrus:JMAPEmail/email_query_inmailboxid_conjunction"
+    notes: "James rejects several nested mailbox filter shapes with unsupportedFilter; WildDuck must support them all since they are plain MongoDB clauses."
+  - id: EQRY-019
+    title: "inMailbox reflects a move made over IMAP or the REST API and the id is unchanged"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: adapted
+    seed: [imap, api]
+    given: "E1 and E2 in mailbox A; queries on A and B recorded. E1 is moved to B with IMAP MOVE, then E2 is moved to B with the REST API move endpoint."
+    when: "Email/query with {inMailbox: A} and {inMailbox: B} after each move."
+    then: "After the first move A returns [E2] and B returns [E1]; after the second A returns [] and B returns both. The ids are the same strings as before the moves, and queryState of both queries differs from the recorded value."
+    sources:
+      - "cyrus:JMAPEmail/email_query_moved"
+      - "wildduck:brief Ids"
+  - id: EQRY-020
+    title: "An IMAP COPY shows up as a second email with a new id"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 in Inbox. IMAP COPY of E1 to Work."
+    when: "Email/query with filter null and calculateTotal true, then {inMailbox: Work}."
+    then: "Total is 2 with two different ids. The Work query returns one id that differs from E1's id."
+    sources:
+      - "wildduck:brief Ids"
+      - "cyrus:JMAPEmail/email_query_keyword_multimbox"
+    notes: "Cyrus treats the copy as the same Email in two mailboxes; WildDuck has maxMailboxesPerEmail 1."
+
+  # ---------------------------------------------------------------- date and size filters
+  - id: EQRY-021
+    title: "before matches emails received strictly before the given time"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Emails appended over IMAP with internal dates 2024-01-01T10:00:00Z (E1), 2024-01-02T10:00:00Z (E2), 2024-01-03T10:00:00Z (E3)."
+    when: "Email/query with {before: '2024-01-02T10:00:00Z'}, then {before: '2024-01-02T10:00:01Z'}."
+    then: "First returns only E1 (the boundary value itself is excluded). Second returns E1 and E2."
+    sources:
+      - "james:EmailQueryMethodContract#shouldListMailsReceivedBeforeADate"
+      - "james:EmailQueryMethodContract#shouldListMailsReceivedBeforeADateExclusively"
+      - "jmapio:email/filter-before"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-022
+    title: "after matches emails received at or after the given time"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Same three emails as the before scenario (E1, E2, E3 one day apart)."
+    when: "Email/query with {after: '2024-01-02T10:00:00Z'}, then {after: '2024-01-02T10:00:01Z'}."
+    then: "First returns E2 and E3 (the boundary value is included). Second returns only E3."
+    sources:
+      - "james:EmailQueryMethodContract#shouldListMailsReceivedAfterADate"
+      - "james:EmailQueryMethodContract#listMailsReceivedAfterADateShouldBeInclusive"
+      - "jmapio:email/filter-after"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-023
+    title: "before and after together select a half open date range"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1, E2, E3 received one day apart as above."
+    when: "Email/query with {after: <E2 time>, before: <E3 time>}; then {after: <E3 time>, before: <E1 time>}."
+    then: "First returns only E2. Second (an empty range) returns [] without error."
+    sources:
+      - "jmapio:email/filter-before-and-after"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-024
+    title: "Date filters use receivedAt, not the Date header"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 appended with internal date 2024-03-01 but Date header 2020-01-01; E2 with internal date 2020-01-01 and Date header 2024-03-01."
+    when: "Email/query with {after: '2023-01-01T00:00:00Z'}."
+    then: "Returns only E1."
+    sources:
+      - "rfc:8621 4.4.1"
+      - "cyrus:JMAPEmail/email_query_inmailbox_before"
+  - id: EQRY-025
+    title: "Date filters combine with inMailbox and are applied before limit"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 5 emails one day apart (E1 oldest to E5 newest) and Work with one email dated between E3 and E4."
+    when: "Email/query with {inMailbox: Inbox, after: <E3 time>}, sort receivedAt descending, limit 2; then {inMailbox: Inbox, before: <E3 time>}, limit 1, same sort."
+    then: "First returns [E5, E4]; second returns [E2]. The Work email never appears."
+    sources:
+      - "james:EmailQueryMethodContract#inMailboxDateFiltersShouldApplyBeforeLimit"
+      - "james:EmailQueryMethodContract#inMailboxAfterSortedByReceivedAtShouldYieldExpectedResultWithOffsetAndLimit"
+      - "james:EmailQueryMethodContract#shouldListMailsReceivedBeforeInAMailbox"
+      - "cyrus:JMAPEmail/email_query_inmailbox_before"
+  - id: EQRY-026
+    title: "Reject before and after values that are not UTCDate strings"
+    method: Email/query
+    spec: "RFC 8620 1.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with {before: 'yesterday'}, {after: 1700000000}, {before: '2024-01-02T10:00:00+02:00'} and {after: '2024-01-02'}."
+    then: "Each call returns invalidArguments. Only the form with the Z suffix is a UTCDate."
+    sources:
+      - "rfc:8620 1.4"
+      - "rfc:8621 4.4.1"
+  - id: EQRY-027
+    title: "minSize is inclusive"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails whose Email/get size values are S1 < S2 < S3 (the sizes equal RFC822.SIZE over IMAP)."
+    when: "Email/query with {minSize: S2}, then {minSize: S2 + 1}."
+    then: "First returns the S2 and S3 emails; second returns only the S3 email."
+    sources:
+      - "james:EmailQueryMethodContract#minSizeShouldBeInclusive"
+      - "jmapio:email/filter-min-size"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-028
+    title: "maxSize is exclusive"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails with sizes S1 < S2 < S3."
+    when: "Email/query with {maxSize: S2}, then {maxSize: S2 + 1}, then {minSize: S2, maxSize: S3}."
+    then: "First returns only the S1 email; second returns the S1 and S2 emails; third returns only the S2 email."
+    sources:
+      - "james:EmailQueryMethodContract#maxSizeShouldBeExclusive"
+      - "jmapio:email/filter-max-size"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-029
+    title: "Reject negative or non integer minSize and maxSize"
+    method: Email/query
+    spec: "RFC 8620 1.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with {minSize: -1}, {maxSize: -1}, {minSize: 1.5} and {maxSize: '100'}."
+    then: "Each call returns invalidArguments. {minSize: 0} and {maxSize: 0} are valid: the first matches everything, the second matches nothing."
+    sources:
+      - "james:EmailQueryMethodContract#minSizeShouldRejectNegative"
+      - "james:EmailQueryMethodContract#maxSizeShouldRejectNegative"
+
+  # ---------------------------------------------------------------- keyword filters
+  - id: EQRY-030
+    title: "hasKeyword matches system keywords set as IMAP flags"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Five emails, each with exactly one of the IMAP flags \\Seen, \\Flagged, \\Draft, \\Answered, $Forwarded, plus one email with no flags."
+    when: "Email/query with {hasKeyword: '$seen'}, then '$flagged', '$draft', '$answered', '$forwarded' in turn."
+    then: "Each query returns exactly the one email carrying the corresponding flag."
+    sources:
+      - "cyrus:JMAPEmail/email_query_keywords"
+      - "cyrus:JMAPEmail/email_query_keyword_seen"
+      - "jmapio:email/filter-has-keyword"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-031
+    title: "notKeyword matches emails lacking the keyword"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with \\Seen, E2 with \\Seen and \\Flagged, E3 with no flags."
+    when: "Email/query with {notKeyword: '$seen'}, then {notKeyword: '$flagged'}, then {hasKeyword: '$seen', notKeyword: '$flagged'}."
+    then: "First returns [E3]; second returns E1 and E3; third returns [E1]."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsNotByCustomKeywordShouldReturnOnlyMailsWithoutThisCustomKeyword"
+      - "jmapio:email/filter-not-keyword"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-032
+    title: "hasKeyword and notKeyword work with custom keywords set over IMAP"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with IMAP keyword 'custom', E2 with keyword '$MDNSent', E3 without keywords."
+    when: "Email/query with {hasKeyword: 'custom'}, {hasKeyword: '$mdnsent'}, {notKeyword: 'custom'}."
+    then: "Returns [E1], [E2], and E2 plus E3 respectively."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsByCustomKeywordShouldReturnOnlyMailsWithThisCustomKeyword"
+      - "cyrus:JMAPEmail/email_query_userkeywords"
+      - "jmapio:email/filter-custom-keyword"
+  - id: EQRY-033
+    title: "Keyword filters compare case insensitively with IMAP stored flags"
+    method: Email/query
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 stored over IMAP with keyword 'Important' (capital I), E2 with \\Seen."
+    when: "Email/query with {hasKeyword: 'important'}, {hasKeyword: 'IMPORTANT'}, {hasKeyword: '$Seen'}, {notKeyword: 'ImPortant'}."
+    then: "The first two return [E1], the third [E2], the fourth [E2]."
+    sources:
+      - "rfc:8621 4.1.1"
+      - "wildduck:brief Emails"
+  - id: EQRY-034
+    title: "WildDuck labels are usable as keywords in hasKeyword and notKeyword"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "A label L created through the REST API and assigned to E1; E2 has no label."
+    when: "Email/query with {hasKeyword: '$wdlabel$<L id>'}, then {notKeyword: '$wdlabel$<L id>'}, then {hasKeyword: '$wdlabel$<24 hex of a nonexistent label>'}."
+    then: "Returns [E1], [E2] and [] respectively. The keyword in the filter is the same string Email/get shows in keywords."
+    sources:
+      - "wildduck:brief Emails"
+      - "tmail:LabelGetMethodContract"
+  - id: EQRY-035
+    title: "Reject syntactically invalid keyword filter values"
+    method: Email/query
+    spec: "RFC 8621 4.1.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with hasKeyword set to an empty string, a 256 character string, 'two words', a string containing one of ( ) { ] % * or a double quote, and a boolean; repeat for notKeyword."
+    then: "Each call returns invalidArguments."
+    sources:
+      - "james:EmailQueryMethodContract#hasKeywordShouldRejectEmpty"
+      - "james:EmailQueryMethodContract#hasKeywordShouldRejectTooLong"
+      - "james:EmailQueryMethodContract#hasKeywordShouldRejectInvalid"
+  - id: EQRY-036
+    title: "Keyword filters reflect flag changes made over IMAP and the REST API"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "E1 and E2 unflagged in Inbox; {hasKeyword: '$flagged'} returns [] with queryState Q1."
+    when: "IMAP STORE +FLAGS (\\Flagged) on E1, query; REST API message update sets flagged on E2, query; IMAP STORE -FLAGS (\\Flagged) on E1, query."
+    then: "Results are [E1], then E1 and E2, then [E2]. queryState differs from the previous value after each change."
+    sources:
+      - "cyrus:JMAPEmail/email_query_issue2905"
+      - "cyrus:JMAPEmail/email_query_keyword_seen"
+      - "wildduck:brief State and changes"
+  - id: EQRY-037
+    title: "Thread keyword filters answer unsupportedFilter in phase 1"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with {allInThreadHaveKeyword: '$seen'}, {someInThreadHaveKeyword: '$flagged'}, {noneInThreadHaveKeyword: '$seen'}, and one of them nested inside an AND operator next to {inMailbox: Inbox}."
+    then: "Each call returns error unsupportedFilter (not invalidArguments and not an empty result)."
+    sources:
+      - "wildduck:brief Query and search"
+      - "rfc:8620 5.5"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the thread keyword filter scenarios."
+  - id: EQRY-038
+    title: "someInThreadHaveKeyword matches every email of a thread in which any email has the keyword"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Thread T1 with A1 (flagged) and A2 (not flagged); thread T2 with B1 and B2, none flagged."
+    when: "Email/query with {someInThreadHaveKeyword: '$flagged'}."
+    then: "Returns A1 and A2, not B1 or B2."
+    sources:
+      - "cyrus:JMAPEmail/email_query_threadkeywords"
+      - "jmapio:email/filter-some-in-thread-have-keyword"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-039
+    title: "allInThreadHaveKeyword matches only threads where every email has the keyword"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "T1 with A1 and A2 both $seen; T2 with B1 $seen and B2 unseen; T3 a single unseen email C1."
+    when: "Email/query with {allInThreadHaveKeyword: '$seen'}; then NOT of that condition."
+    then: "First returns A1 and A2. The NOT form returns B1, B2 and C1."
+    sources:
+      - "cyrus:JMAPEmail/email_query_threadkeywords"
+      - "cyrus:JMAPEmail/email_query_draft_seen"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-040
+    title: "noneInThreadHaveKeyword matches only threads where no email has the keyword"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "T1 with A1 flagged and A2 not; T2 with B1 and B2 not flagged."
+    when: "Email/query with {noneInThreadHaveKeyword: '$flagged'}."
+    then: "Returns B1 and B2 only."
+    sources:
+      - "cyrus:JMAPEmail/email_query_threadkeywords"
+      - "jmapio:email/filter-none-in-thread-have-keyword"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-041
+    title: "Thread keyword filters consider thread members in other mailboxes but not Deleted ones"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "Thread with A1 in Inbox (unseen), A2 in Trash ($seen and $flagged), A3 in Inbox ($flagged) marked \\Deleted over IMAP."
+    when: "Email/query with {inMailbox: Inbox, someInThreadHaveKeyword: '$flagged'}; then IMAP STORE -FLAGS (\\Flagged) on A2 and query again; also {inMailbox: Inbox, allInThreadHaveKeyword: '$seen'}."
+    then: "First returns [A1] because A2 in Trash carries the keyword. After unflagging A2 the result is [] since the \\Deleted A3 does not count. The allInThread query returns [] while A1 is unseen."
+    sources:
+      - "cyrus:JMAPEmail/email_query_convflags_seen_in_trash"
+      - "cyrus:JMAPEmail/email_query_keyword_splitconv"
+      - "wildduck:brief Emails"
+  - id: EQRY-042
+    title: "Thread keyword filters work with labels and custom keywords"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [imap, api]
+    given: "Thread T1 where A1 has label L and A2 has custom keyword 'todo'; thread T2 with neither."
+    when: "Email/query with {someInThreadHaveKeyword: '$wdlabel$<L id>'}, then {noneInThreadHaveKeyword: 'todo'}."
+    then: "First returns A1 and A2; second returns only the T2 emails."
+    sources:
+      - "wildduck:brief Emails"
+      - "cyrus:JMAPEmail/email_query_threadkeywords"
+
+  # ---------------------------------------------------------------- hasAttachment
+  - id: EQRY-043
+    title: "hasAttachment true returns only emails with attachments"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 text/plain only; E2 multipart/mixed with a PDF attachment; E3 multipart/alternative with text and html."
+    when: "Email/query with {hasAttachment: true}."
+    then: "Returns [E2]. The result agrees with the hasAttachment property Email/get reports for each email."
+    sources:
+      - "james:EmailQueryMethodContract#hasAttachmentShouldKeepMessageWithAttachmentWhenTrue"
+      - "jmapio:email/filter-has-attachment-true"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-044
+    title: "hasAttachment false returns only emails without attachments"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Same three emails as the hasAttachment true scenario."
+    when: "Email/query with {hasAttachment: false}; then with {hasAttachment: 'true'} and {hasAttachment: null}."
+    then: "The false query returns E1 and E3. The string and null values are rejected with invalidArguments."
+    sources:
+      - "james:EmailQueryMethodContract#hasAttachmentShouldKeepMessageWithoutAttachmentWhenFalse"
+      - "jmapio:email/filter-has-attachment-false"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-045
+    title: "hasAttachment filter agrees with Email/get for inline images"
+    method: Email/query
+    spec: "RFC 8621 4.1.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 is multipart/related html with one inline image referenced by cid and no other part; E2 has the same plus a real attachment."
+    when: "Email/query with {hasAttachment: true} and {hasAttachment: false}; Email/get hasAttachment for both."
+    then: "For each email the filter result matches the hasAttachment value Email/get returns; E2 is in the true result. An email is never in both or neither result."
+    sources:
+      - "rfc:8621 4.1.4"
+      - "wildduck:brief Emails"
+    notes: "The stored ha flag drives the filter; Email/get must be derived the same way so the two never disagree."
+
+  # ---------------------------------------------------------------- header field filters
+  - id: EQRY-046
+    title: "from matches the address and the display name of the From header"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 From 'Alice Liddell <alice@wonder.example>', E2 From 'Bob Stone <bob@quarry.example>', both To carol@example.com."
+    when: "Email/query with {from: 'alice@wonder.example'}, {from: 'Liddell'}, {from: 'wonder.example'}, {from: 'alice'}, {from: 'carol'}."
+    then: "The first four return [E1]. The last returns [] because carol appears only in To."
+    sources:
+      - "james:EmailQueryMethodContract#fromShouldFilterResultsWhenAddress"
+      - "james:EmailQueryMethodContract#fromShouldFilterResultsWhenNotAnAddress"
+      - "cyrus:JMAPEmail/email_query_from"
+      - "jmapio:email/filter-from"
+      - "jmapio:email/filter-from-display-name"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-047
+    title: "to matches the address and display name of any To recipient"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 To 'Carol King <carol@example.com>, dave@example.org'; E2 To erin@example.net with Cc carol@example.com."
+    when: "Email/query with {to: 'carol@example.com'}, {to: 'King'}, {to: 'dave@example.org'}, {to: 'erin'}."
+    then: "The first three return [E1] (the second recipient of a list is matched too). The last returns [E2]. Carol in Cc of E2 does not make E2 match a to filter."
+    sources:
+      - "james:EmailQueryMethodContract#toShouldFilterResultsWhenAddress"
+      - "james:EmailQueryMethodContract#toShouldFilterResultsWhenNotAnAddress"
+      - "cyrus:JMAPEmail/email_query_toaddress"
+      - "cyrus:JMAPEmail/email_query_fix_multiple_recipients"
+      - "cyrus:JMAPEmail/email_query_multiple_to_cross_domain"
+      - "jmapio:email/filter-to"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-048
+    title: "cc matches the address and display name of Cc recipients only"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 Cc 'Frank Moon <frank@example.com>'; E2 To frank@example.com without Cc."
+    when: "Email/query with {cc: 'frank@example.com'}, then {cc: 'Moon'}."
+    then: "Both return [E1] only."
+    sources:
+      - "james:EmailQueryMethodContract#ccShouldFilterResultsWhenAddress"
+      - "james:EmailQueryMethodContract#ccShouldFilterResultsWhenNotAnAddress"
+      - "jmapio:email/filter-cc"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-049
+    title: "bcc matches the Bcc header of stored messages"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 appended to Drafts with header Bcc 'Grace Hill <grace@example.com>'; E2 with To grace@example.com and no Bcc."
+    when: "Email/query with {bcc: 'grace@example.com'}, then {bcc: 'Hill'}."
+    then: "Both return [E1] only."
+    sources:
+      - "james:EmailQueryMethodContract#bccShouldFilterResultsWhenAddress"
+      - "james:EmailQueryMethodContract#bccShouldFilterResultsWhenNotAnAddress"
+      - "cyrus:JMAPEmail/email_query_bcc"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-050
+    title: "subject matches text in the Subject header, case insensitively"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 subject 'Quarterly Budget Review', E2 subject 'Lunch plans' with the word budget in its body."
+    when: "Email/query with {subject: 'budget'}, {subject: 'BUDGET'}, {subject: 'lunch'}."
+    then: "The first two return [E1] (body text does not match a subject filter); the third returns [E2]."
+    sources:
+      - "james:EmailQueryMethodContract#subjectShouldFilterEmails"
+      - "james:EmailQueryMethodContract#subjectShouldBeCaseInsensitive"
+      - "jmapio:email/filter-subject"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-051
+    title: "Header field filters match RFC 2047 encoded headers by their decoded text"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with raw headers 'Subject: =?UTF-8?B?...?=' decoding to 'Tere hommikust' and 'From: =?ISO-8859-1?Q?J=F5gi?= <jogi@example.ee>'; E2 with plain ASCII subject 'Hello'."
+    when: "Email/query with {subject: 'hommikust'}, {from: 'Jõgi'}, {text: 'hommikust'}, and {subject: '=?UTF-8?B?'}."
+    then: "The first three return [E1]. The raw encoded word marker matches nothing."
+    sources:
+      - "cyrus:JMAPEmail/email_query_header_encoded_word"
+      - "rfc:8621 4.4.1"
+  - id: EQRY-052
+    title: "String filters ignore case and diacritics"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 subject 'Côte d'Azur itinerary' from 'Jörg Müller <jorg@example.de>'."
+    when: "Email/query with {subject: 'cote'}, {subject: 'CÔTE'}, {from: 'muller'}, {text: 'côte'}, {text: 'COTE'}."
+    then: "Every query returns [E1]."
+    sources:
+      - "stalwart:mail/search_snippet.rs"
+      - "cyrus:JMAPEmail/email_query_unicodefdfx"
+      - "rfc:8621 4.4.1"
+    notes: "Case insensitivity is a SHOULD in the RFC. Diacritic folding is a WildDuck choice that follows the MongoDB text index behaviour; the regex backed header filters must fold the same way so text and subject agree."
+  - id: EQRY-053
+    title: "Multiple whitespace separated tokens in a header field filter must all be present"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 subject 'red green blue', E2 subject 'red blue', E3 subject 'green'."
+    when: "Email/query with {subject: 'blue red'}, then {subject: 'red green'}, then {subject: 'red yellow'}."
+    then: "First returns E1 and E2 (token order does not matter); second returns [E1]; third returns []."
+    sources:
+      - "rfc:8621 4.4.1"
+      - "legacy-proxy:test/unit/search.spec.ts"
+  - id: EQRY-054
+    title: "A quoted phrase in a header field filter requires the exact word sequence"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 subject 'cats and dogs', E2 subject 'dogs and cats', E3 subject 'cats or dogs and birds'."
+    when: "Email/query with subject set to the phrase cats and dogs in double quotes, then the same phrase in single quotes, then the unquoted tokens cats dogs."
+    then: "Both quoted forms return [E1] only. The unquoted form returns E1, E2 and E3."
+    sources:
+      - "stalwart:mail/query.rs"
+      - "cyrus:JMAPEmail/email_query_cjk_phrase"
+      - "rfc:8621 4.4.1"
+  - id: EQRY-055
+    title: "Backslash escapes quotes and backslashes inside a phrase"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject: say \"hi\" now. E2 with subject: say hi now."
+    when: "Email/query with a subject filter that is a double quoted phrase containing say, then an escaped double quote, hi, an escaped double quote, i.e. the JSON string \"\\\"say \\\\\\\"hi\\\\\\\"\\\"\"."
+    then: "The call succeeds (no invalidArguments, no server error) and E1 is in the result. An unbalanced single quote such as subject: don't is treated as a plain token, not as an error."
+    sources:
+      - "rfc:8621 4.4.1"
+    notes: "Whether E2 also matches depends on whether punctuation is indexed; the test asserts only E1 and the absence of errors."
+  - id: EQRY-056
+    title: "A token starting with a dash or containing search operator characters is matched literally"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 subject 'something - otherthing', E2 subject 'something', E3 subject 'otherthing'."
+    when: "Email/query with {text: 'something -otherthing'}, {subject: 'something - otherthing'}, {text: 'some*'} and {subject: 'a.c(d'}."
+    then: "No call fails. The first does not exclude E1 (a leading dash is not a negation operator in JMAP): it returns E1 only or E1 and E3 never E2 alone. The second returns E1. Regex and MongoDB text operators in user input are escaped, never interpreted."
+    sources:
+      - "cyrus:JMAPEmail/email_query_dash"
+      - "legacy-proxy:test/unit/search.spec.ts"
+    notes: "MongoDB $text treats a leading dash as negation and double quotes as phrases; the JMAP layer must translate, not pass through. Also a regex injection guard for the header filters."
+  - id: EQRY-057
+    title: "Address filters match full addresses with dots, plus tags and quoted local parts"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 To foo.bar@xxx.example.com, E2 To foo.baz+tag@yyy.example.com, E3 To 'Tu X <tux@example.com>', E4 To a group 'Team: m1@example.com, m2@example.com;'."
+    when: "Email/query with {to: 'foo.bar@xxx.example.com'}, {to: 'foo.baz+tag@yyy.example.com'}, {to: 'yyy.example.com'}, {to: 'm2@example.com'}, {to: 'Tu X'}."
+    then: "Returns [E1], [E2], [E2], [E4], [E3] respectively. The plus sign and dots are literal."
+    sources:
+      - "cyrus:JMAPEmail/email_query_emailaddress"
+      - "cyrus:JMAPEmail/email_query_toaddress"
+    notes: "Cyrus wildcard syntax (asterisk in address parts) is not adopted."
+  - id: EQRY-058
+    title: "header with one element matches emails that have the header field, name compared case insensitively"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with header 'X-Project: apollo', E2 with 'List-Id: <dev.example.com>', E3 with neither."
+    when: "Email/query with {header: ['X-Project']}, {header: ['x-project']}, {header: ['LIST-ID']}, {header: ['X-Missing']}."
+    then: "Returns [E1], [E1], [E2], [] respectively."
+    sources:
+      - "james:EmailQueryMethodContract#headerShouldAllowToMatchMailWithSpecificHeaderSet"
+      - "james:EmailQueryMethodContract#headerExistsShouldBeCaseInsentive"
+      - "cyrus:JMAPEmail/email_query_header"
+      - "jmapio:email/filter-header-name-only"
+      - "fastmail:t/Email/query/filtering.t"
+  - id: EQRY-059
+    title: "header with two elements matches text within the header value, case insensitively"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with 'X-Project: Apollo Mission', E2 with 'X-Project: Gemini', E3 with two X-Project header lines 'one' and 'two'."
+    when: "Email/query with {header: ['X-Project', 'apollo']}, {header: ['x-project', 'GEMINI']}, {header: ['X-Project', 'two']}, {header: ['X-Project', 'saturn']}."
+    then: "Returns [E1], [E2], [E3] (any instance of a repeated header can match), [] respectively."
+    sources:
+      - "james:EmailQueryMethodContract#headerShouldAllowToMatchMailWithSpecificValueHeaderSet"
+      - "james:EmailQueryMethodContract#headerContainsShouldBeCaseInsentive"
+      - "cyrus:JMAPEmail/email_query_header"
+      - "jmapio:email/filter-header-name-value"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-060
+    title: "header filter works for headers WildDuck does not index and for well known ones"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, lmtp]
+    given: "E1 with 'Message-ID: <foo@example.com>' and 'In-Reply-To: <bar@example.com>'; E2 delivered over LMTP so it has Delivered-To and Received headers; E3 with a custom 'X-Arbitrary-Thing: zebra' header."
+    when: "Email/query with {header: ['Message-ID', 'foo@example.com']}, {header: ['In-Reply-To', 'bar@example.com']}, {header: ['Delivered-To']}, {header: ['X-Arbitrary-Thing', 'zebra']}, each also without inMailbox."
+    then: "Returns [E1], [E1], [E2], [E3]. The account wide form works as well as the inMailbox form."
+    sources:
+      - "cyrus:JMAPEmail/email_query_messageid"
+      - "cyrus:JMAPEmail/email_query_references_inreplyto"
+      - "cyrus:JMAPEmail/email_query_deliveredto"
+      - "cyrus:JMAPEmail/email_query_listid"
+      - "stalwart:mail/query.rs"
+    notes: "Indexed headers come from the headers array, others from mimeTree.parsedHeader (plan 4.5). Account wide header search is unindexed and subject to the query time limit."
+  - id: EQRY-061
+    title: "header value matching decodes encoded words and ignores surrounding white space"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with header 'X-Note:   säge   ' sent as raw UTF-8, E2 with the same value as an RFC 2047 encoded word."
+    when: "Email/query with {header: ['X-Note', 'säge']}."
+    then: "Returns E1 and E2."
+    sources:
+      - "cyrus:JMAPEmail/email_query_header"
+      - "cyrus:JMAPEmail/email_query_header_encoded_word"
+  - id: EQRY-062
+    title: "Reject a header filter that does not have one or two string elements"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with {header: []}, {header: ['X-A', 'b', 'c']}, {header: 'X-A'}, {header: [1]}, {header: ['']} and {header: ['Bad Name:']}."
+    then: "Each call returns invalidArguments."
+    sources:
+      - "james:EmailQueryMethodContract#headerShouldRejectWhenMoreThanTwoItems"
+      - "rfc:8621 4.4.1"
+    notes: "Cyrus accepts a third element (equals, startsWith and so on) as an extension; WildDuck does not."
+
+  # ---------------------------------------------------------------- text and body
+  - id: EQRY-063
+    title: "text matches the From, To, Cc, Bcc and Subject headers"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Five emails with a neutral body, each containing the unique word zanzibar in exactly one place: E1 From display name, E2 To address local part, E3 Cc display name, E4 Bcc address, E5 Subject. E6 does not contain it."
+    when: "Email/query with {text: 'zanzibar'}."
+    then: "Returns E1 to E5 and not E6."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportTextFilterForHeaders"
+      - "cyrus:JMAPEmail/email_query"
+      - "jmapio:email/filter-text-search-headers"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-064
+    title: "text matches the plain text body within the indexed first 1 KB"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 text/plain whose body starts with the unique word kumquat; E2 text/plain with 4 KB of filler followed by the unique word persimmon."
+    when: "Email/query with {text: 'kumquat'}, then {text: 'persimmon'}, then {body: 'persimmon'}."
+    then: "The first returns [E1]. In phase 1 the other two return [] (not an error): only the first 1 KB of plain text is indexed."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportTextFilterForTextBody"
+      - "jmapio:email/filter-text-search-body"
+      - "cyrus:JMAPEmail/searchsnippet_search_maxsize"
+      - "wildduck:brief Query and search"
+    notes: "Body search is a SHOULD, so the partial index is conformant. Superseded in phase 4 by the full body scenario."
+  - id: EQRY-065
+    title: "text and body match the whole body once full text search is enabled"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap, time]
+    given: "E2 text/plain with 4 KB of filler followed by the unique word persimmon; E3 with 200 KB of text ending with the unique word lychee. The indexer has caught up."
+    when: "Email/query with {text: 'persimmon'}, {body: 'persimmon'}, {body: 'lychee'}."
+    then: "Returns [E2], [E2], [E3]."
+    sources:
+      - "cyrus:JMAPEmail/searchsnippet_search_maxsize"
+      - "cyrus:JMAPEmail/email_query_long"
+      - "wildduck:brief Phases"
+    notes: "Needs the OpenSearch query path. Open question: users without the indexing feature flag keep the phase 1 behaviour; the test must enable the flag."
+  - id: EQRY-066
+    title: "body matches body text only, not headers"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'mango' and body 'nothing here'; E2 with subject 'weekly' and body 'ripe mango season'."
+    when: "Email/query with {body: 'mango'}, then {subject: 'mango'}, then {text: 'mango'}."
+    then: "body returns [E2]; subject returns [E1]; text returns E1 and E2."
+    sources:
+      - "jmapio:email/filter-body"
+      - "fastmail:t/Email/query/filtering.t"
+      - "stalwart:mail/query.rs"
+      - "cyrus:JMAPEmail/email_query"
+    notes: "The MongoDB text index mixes headers and body text; the body filter needs its own match on the stored text field, otherwise E1 would leak in."
+  - id: EQRY-067
+    title: "text matches visible text of an html only email and ignores markup"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 is text/html only: a head with title and a style block containing the word stylesheetword, a script containing scriptword, and a body with a div of class markupclass containing the visible word papaya and an image with alt text guavaalt."
+    when: "Email/query with {text: 'papaya'}, {body: 'papaya'}, {text: 'div'}, {text: 'markupclass'}, {text: 'stylesheetword'}, {text: 'scriptword'}."
+    then: "The first two return [E1]. The other four return []: tag names, attribute values, CSS and script are not searchable."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportTextFilterForHtmlBody"
+      - "james:EmailQueryMethodContract#emailQueryFilterByTextShouldIgnoreMarkupsInHtmlBody"
+      - "cyrus:JMAPEmail/email_query_angleuri"
+      - "rfc:8621 4.4.1"
+    notes: "Matching alt and title attribute text (guavaalt) is a SHOULD; record the actual behaviour and treat a match as conformant."
+  - id: EQRY-068
+    title: "text matches body text in multipart messages"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 multipart/alternative with text/plain 'plainonly tangerine' and text/html containing 'htmlonly tangerine'; E2 multipart/mixed with a text/plain body 'nectarine' and a PDF attachment."
+    when: "Email/query with {text: 'tangerine'}, {text: 'plainonly'}, {text: 'nectarine'}."
+    then: "Returns [E1], [E1], [E2]."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportTextFilterForMultipartMessage"
+      - "stalwart:mail/search_snippet.rs"
+  - id: EQRY-069
+    title: "A plain text URL in angle brackets remains searchable"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 multipart/alternative whose text/plain part contains 'see <https://needle.example.com/page>' and whose html part has the same link as an anchor href with different link text."
+    when: "Email/query with {body: 'needle.example.com'}."
+    then: "Returns [E1]: angle bracket URLs in plain text are content, not markup to strip."
+    sources:
+      - "cyrus:JMAPEmail/email_query_angleuri"
+  - id: EQRY-070
+    title: "text and body do not match binary attachment content"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: may
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 with body 'see attached' and a base64 encoded application/octet-stream attachment whose decoded bytes contain the ASCII word durian; E2 with a text/plain attachment (Content-Disposition attachment) containing durian."
+    when: "Email/query with {text: 'durian'} and {body: 'durian'}."
+    then: "E1 is never returned. The base64 text of the attachment is not searchable either. E2 may or may not be returned; the catalogue fixes WildDuck's answer as not returned in phase 1."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryFilterByTextShouldIgnoreAttachmentContent"
+      - "james:EmailQueryMethodContract#bodyFilterShouldMatchTextPlainOnAttachmentsContent"
+    notes: "James searches text attachments under body; WildDuck indexes only the body text. Revisit in phase 4."
+  - id: EQRY-071
+    title: "Attachment file names are not matched by text in phase 1"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: may
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 with an attachment named 'rambutan-report.pdf' and no other occurrence of rambutan."
+    when: "Email/query with {text: 'rambutan'}."
+    then: "Succeeds and returns []. The server MAY extend text to other properties but WildDuck does not index file names."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryFilterByTextShouldIncludeAttachmentName"
+      - "james:EmailQueryMethodContract#bodyFilterShouldMatchTextPlainOnAttachmentsFileName"
+      - "cyrus:JMAPEmail/email_query_attachmentname"
+    notes: "Open question for the team: matching file names would be useful and is what James and Cyrus do. If adopted, flip the expectation to [E1]."
+  - id: EQRY-072
+    title: "Unquoted text is split into tokens that must all be present, in any field"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 subject 'invoice' with body 'for october'; E2 subject 'invoice' with body 'for november'; E3 subject 'october news'."
+    when: "Email/query with {text: 'invoice october'}, {text: 'october   invoice'}, {text: 'invoice december'}."
+    then: "The first two return [E1] (tokens may match in different fields, extra white space is ignored). The third returns []."
+    sources:
+      - "rfc:8621 4.4.1"
+      - "legacy-proxy:test/unit/search.spec.ts"
+      - "stalwart:mail/query.rs"
+    notes: "MongoDB $text ORs its terms by default; the JMAP layer must build an AND."
+  - id: EQRY-073
+    title: "A quoted phrase in text requires the exact sequence"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 body 'your country needs you'; E2 body 'the country is your home'."
+    when: "Email/query with text set to the phrase your country in double quotes, then in single quotes, then a phrase plus a token: the quoted phrase your country followed by the unquoted word home."
+    then: "Both phrase forms return [E1]. The phrase plus token form returns [] (E1 lacks home, E2 lacks the phrase)."
+    sources:
+      - "stalwart:mail/query.rs"
+      - "stalwart:mail/search_snippet.rs"
+      - "cyrus:JMAPEmail/email_query_cjk_phrase"
+  - id: EQRY-074
+    title: "Token matching is on whole words, with optional stemming, never on arbitrary substrings of body text"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: may
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 body 'the bus is late', E2 body 'two buses arrived', E3 body 'good business'."
+    when: "Email/query with {body: 'bus'}."
+    then: "E1 is returned and E3 is not. E2 may be returned (stemming); the test records which and pins it."
+    sources:
+      - "rfc:8621 4.4.1"
+      - "stalwart:mail/query.rs"
+      - "cyrus:JMAPEmail/email_query_language"
+    notes: "MongoDB text search stems with the index default language. Cyrus per language stemming tests (French contractions, Italian elisions) are not adopted."
+  - id: EQRY-075
+    title: "Non Latin and full width text is searchable"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with UTF-8 subject '孫子兵法 notes' and a body in Cyrillic containing 'привет мир'; E2 with ISO-2022-JP encoded Japanese subject."
+    when: "Email/query with {subject: '孫子兵法'}, {text: 'привет'}, {text: 'ПРИВЕТ'}, and the decoded Japanese subject as {subject: ...}."
+    then: "Returns [E1], [E1], [E1], [E2]. Charset decoding happens before matching."
+    sources:
+      - "cyrus:JMAPEmail/email_query_cjk_fullwidth"
+      - "cyrus:JMAPEmail/email_query_cjk_phrase"
+      - "stalwart:mail/search_snippet.rs"
+    notes: "MongoDB text search has no CJK word segmentation; the subject filter (regex) is the reliable path. A text filter with CJK input is an open risk to measure."
+  - id: EQRY-076
+    title: "Numbers with separators are searchable as written"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: may
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 body 'total 1,234.56 EUR'; E2 body 'total 999 EUR'."
+    when: "Email/query with {body: '1,234.56'}, then {body: ' 1,234.56 '}."
+    then: "Both return [E1] and do not fail."
+    sources:
+      - "cyrus:JMAPEmail/email_query_number"
+  - id: EQRY-077
+    title: "An empty or white space only search string is handled without a server error"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Inbox with 2 emails."
+    when: "Email/query with {text: ''}, {subject: '   '}, {from: ''}, then {text: 5}."
+    then: "The empty and blank strings contain no tokens and the condition matches every email (2 ids). The number is rejected with invalidArguments."
+    sources:
+      - "rfc:8621 4.4.1"
+    notes: "Open question: matching everything follows 'all tokens must be present' with zero tokens. The alternative is invalidArguments; pick one and keep SearchSnippet/get consistent."
+  - id: EQRY-078
+    title: "Text search sees newly delivered mail immediately"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Account where {text: 'pomelo'} returns [] with queryState Q1."
+    when: "A message with subject 'pomelo harvest' is delivered over LMTP, then Email/query {text: 'pomelo'} is called right after the delivery returns."
+    then: "The new email id is returned and queryState differs from Q1. No indexing delay is observable in phase 1 (MongoDB text index)."
+    sources:
+      - "legacy-proxy:test/unit/query-stale-view.spec.ts"
+      - "wildduck:brief State and changes"
+    notes: "With OpenSearch in phase 4 body matches may lag; header matches must stay immediate."
+  - id: EQRY-079
+    title: "Text search on encrypted at rest messages matches headers only"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [lmtp, api]
+    given: "User with encryptMessages enabled and a public key. A message with subject 'sealed envelope' and body word starfruit is delivered over LMTP and stored encrypted."
+    when: "Email/query with {subject: 'sealed'}, {text: 'sealed'}, {body: 'starfruit'}."
+    then: "The first two return the email. The body query returns [] and does not fail."
+    sources:
+      - "wildduck:brief Emails"
+
+  # ---------------------------------------------------------------- filter conditions and operators
+  - id: EQRY-080
+    title: "Multiple properties in one FilterCondition are combined with AND"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox: E1 flagged from alice, E2 unflagged from alice, E3 flagged from bob. Work: E4 flagged from alice."
+    when: "Email/query with {inMailbox: Inbox, hasKeyword: '$flagged', from: 'alice'}; then the equivalent AND operator with three single property conditions."
+    then: "Both return exactly [E1] and identical results."
+    sources:
+      - "james:EmailQueryMethodContract#queryShouldTakeAllFiltersIntoAccount"
+      - "jmapio:email/filter-multiple-conditions-on-one-filter"
+      - "stalwart:mail/query.rs"
+      - "rfc:8621 4.4.1"
+  - id: EQRY-081
+    title: "A FilterCondition with every phase 1 property set is evaluated correctly"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "One email E1 crafted to satisfy all of: in Inbox, received between T1 and T2, size between S1 and S2, flagged, not seen, with attachment, given from, to, cc, bcc, subject, body word and custom header; plus 6 near misses each failing exactly one condition."
+    when: "Email/query with one condition object carrying inMailbox, inMailboxOtherThan, before, after, minSize, maxSize, hasKeyword, notKeyword, hasAttachment, text, from, to, cc, bcc, subject, body and header."
+    then: "Returns exactly [E1]."
+    sources:
+      - "james:EmailQueryMethodContract#queryShouldTakeAllFiltersIntoAccount"
+      - "cyrus:JMAPEmail/email_query"
+  - id: EQRY-082
+    title: "AND operator requires all conditions"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 flagged and seen, E2 flagged only, E3 seen only."
+    when: "Email/query with {operator: 'AND', conditions: [{hasKeyword: '$flagged'}, {hasKeyword: '$seen'}]}."
+    then: "Returns [E1]."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportAndOperator"
+      - "jmapio:email/filter-operator-and"
+      - "legacy-proxy:test/unit/search.spec.ts"
+  - id: EQRY-083
+    title: "OR operator requires at least one condition"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 flagged and seen, E2 flagged only, E3 seen only, E4 neither."
+    when: "Email/query with {operator: 'OR', conditions: [{hasKeyword: '$flagged'}, {hasKeyword: '$seen'}]}; then an OR with the same condition twice."
+    then: "First returns E1, E2, E3 each exactly once. The duplicate OR returns the same as the single condition."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportOrOperator"
+      - "jmapio:email/filter-operator-or"
+      - "legacy-proxy:test/unit/search.spec.ts"
+  - id: EQRY-084
+    title: "NOT operator matches when none of its conditions match"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 flagged and seen, E2 flagged only, E3 seen only, E4 neither."
+    when: "Email/query with {operator: 'NOT', conditions: [{hasKeyword: '$flagged'}]}; then NOT with both {hasKeyword: '$flagged'} and {hasKeyword: '$seen'}."
+    then: "First returns E3 and E4. Second returns [E4] only: NOT with several conditions is NOR, not NAND."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldSupportNotOperator"
+      - "cyrus:JMAPEmail/email_query_not_match"
+      - "jmapio:email/filter-operator-not"
+      - "fastmail:t/Mailbox/query/filtering-with-filter-operators.t"
+  - id: EQRY-085
+    title: "Nested operators are evaluated with their structure preserved"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 from alice flagged, E2 from alice unflagged, E3 from bob flagged, E4 from bob unflagged with attachment, E5 from carol."
+    when: "Query A: AND[ OR[{from: 'alice'}, {from: 'bob'}], NOT[{hasKeyword: '$flagged'}] ]. Query B: OR[ AND[{from: 'alice'}, {hasKeyword: '$flagged'}], AND[{from: 'bob'}, {hasAttachment: true}] ]. Query C: NOT[ OR[{from: 'alice'}, AND[{from: 'bob'}, {hasKeyword: '$flagged'}]] ]."
+    then: "A returns E2 and E4. B returns E1 and E4. C returns E4 and E5."
+    sources:
+      - "james:EmailQueryMethodContract#nestedOperatorsShouldBeSupported"
+      - "james:EmailQueryMethodContract#priorityOfNestedOperatorsShouldBePreserved"
+      - "cyrus:JMAPEmail/email_query_not_match"
+      - "jmapio:email/filter-nested-operators"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-086
+    title: "text conditions work under OR and NOT and several text conditions can be combined"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 subject 'alpha', E2 subject 'beta', E3 subject 'alpha beta', E4 subject 'gamma'."
+    when: "Email/query with OR[{text: 'alpha'}, {text: 'beta'}]; NOT[{text: 'alpha'}]; AND[{text: 'alpha'}, NOT[{text: 'beta'}]]; OR[{text: 'gamma'}, {hasKeyword: '$flagged'}]."
+    then: "Returns E1, E2, E3; then E2 and E4; then [E1]; then [E4]. None answers unsupportedFilter."
+    sources:
+      - "cyrus:JMAPEmail/email_query_not_match"
+      - "james:SearchSnippetGetMethodContract#shouldSupportOrOperatorInFilter"
+      - "stalwart:mail/search_snippet.rs"
+    notes: "MongoDB allows one $text expression per query and not inside $nor; the IMAP SEARCH code already works around this (plan section 3). JMAP needs the same fallback."
+  - id: EQRY-087
+    title: "A FilterCondition with zero properties matches every email"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Account with 3 emails in different mailboxes."
+    when: "Email/query with filter {}; with AND[{}]; with OR[{}, {hasKeyword: 'nonexistent'}]; with NOT[{}]."
+    then: "The first three return all 3 ids. NOT[{}] returns []."
+    sources:
+      - "cyrus:JMAPEmail/email_query_empty_filter_conds"
+      - "rfc:8621 4.4.1"
+  - id: EQRY-088
+    title: "Operators with an empty conditions array follow the vacuous truth rules"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Account with 3 emails."
+    when: "Email/query with {operator: 'AND', conditions: []}, {operator: 'OR', conditions: []}, {operator: 'NOT', conditions: []}."
+    then: "AND returns all 3 (all of nothing holds), OR returns [] (nothing matches), NOT returns all 3 (none of nothing matches). No error."
+    sources:
+      - "cyrus:JMAPEmail/email_query_empty_filter_conds"
+      - "rfc:8620 5.5"
+    notes: "Open question. The RFC wording gives these results, but Cyrus returns nothing for AND with no conditions and all for NOT. Rejecting empty arrays with invalidArguments is the other defensible choice."
+  - id: EQRY-089
+    title: "Reject a filter condition with an unknown property"
+    method: Email/query
+    spec: "RFC 8620 3.6.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with {unknownProperty: 'x'}, {inmailbox: <Inbox id>} (wrong case), {hasKeyword: '$seen', bogus: 1}, and the same unknown property nested inside an OR."
+    then: "Each call returns invalidArguments, not unsupportedFilter and not a silently ignored property."
+    sources:
+      - "james:EmailQueryMethodContract#shouldReturnInvalidArgumentsWhenInvalidFilterCondition"
+      - "rfc:8620 3.6.2"
+    notes: "Vendor filter properties of other servers (Cyrus attachmentType, messageId, fromContactCardUid and so on) fall into this case."
+  - id: EQRY-090
+    title: "Reject malformed FilterOperator objects"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with {operator: 'XOR', conditions: []}, {operator: 'and', conditions: [{}]}, {operator: 'AND'} (no conditions), {operator: 'AND', conditions: {}}, {operator: 'AND', conditions: [{}], hasKeyword: '$seen'}, {operator: 'AND', conditions: ['x']}, and filter set to a string or an array."
+    then: "Each call returns invalidArguments."
+    sources:
+      - "james:EmailQueryMethodContract#emailQueryShouldRejectFilterOperatorWithExtraFields"
+      - "james:EmailQueryMethodContract#emailQueryShouldRejectOperatorWithoutCondition"
+      - "rfc:8620 5.5"
+  - id: EQRY-091
+    title: "A filter that is too deep or too large answers unsupportedFilter"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [none]
+    given: "Any account. The server has a configured limit on filter nesting depth and on the number of conditions."
+    when: "Email/query with a syntactically valid filter nested one level deeper than the limit, and another with more leaf conditions than the limit."
+    then: "Both return unsupportedFilter promptly; the server does not attempt the query. A filter exactly at the limits succeeds."
+    sources:
+      - "cyrus:JMAPEmail/email_query_dnfcomplexity"
+      - "rfc:8620 5.5"
+    notes: "Limits to be chosen (suggestion: depth 10, 100 conditions). They protect the MongoDB query planner."
+
+  # ---------------------------------------------------------------- sorting
+  - id: EQRY-092
+    title: "Sort by receivedAt ascending and descending"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1, E2, E3 appended in the order E2, E3, E1 with internal dates T1 < T2 < T3 respectively (so arrival order differs from date order)."
+    when: "Email/query with sort [{property: 'receivedAt', isAscending: true}], then [{property: 'receivedAt', isAscending: false}]."
+    then: "Ascending returns [E1, E2, E3]; descending returns [E3, E2, E1]. The order matches the receivedAt values from Email/get and IMAP INTERNALDATE."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedInAscendingOrder"
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedInDescendingOrder"
+      - "james:EmailQueryMethodContract#inMailboxSortedByReceivedAtShouldYieldExpectedResult"
+      - "jmapio:email/sort-received-at-desc"
+      - "jmapio:email/sort-received-at-asc"
+      - "fastmail:t/Email/query/sorting.t"
+  - id: EQRY-093
+    title: "isAscending defaults to true"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1, E2, E3 with receivedAt T1 < T2 < T3 and sentAt in the reverse order."
+    when: "Email/query with sort [{property: 'receivedAt'}], then [{property: 'sentAt'}]."
+    then: "First returns [E1, E2, E3]; second returns [E3, E2, E1]."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedInAscendingOrderByDefault"
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedByAscendingOrderWhenSortingBySentAtWithoutOrdering"
+  - id: EQRY-094
+    title: "Null or empty sort gives a stable server defined order"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "20 emails spread over 3 mailboxes."
+    when: "Email/query three times each with sort omitted, sort null and sort []."
+    then: "All nine calls return the same ids in the same order and the same queryState."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeIdempotent"
+      - "jmapio:email/sort-default-no-sort"
+      - "rfc:8620 5.5"
+  - id: EQRY-095
+    title: "The default order is newest received first"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1, E2, E3 with receivedAt T1 < T2 < T3."
+    when: "Email/query with no sort, with and without an inMailbox filter."
+    then: "Returns [E3, E2, E1], identical to sort [{property: 'receivedAt', isAscending: false}]."
+    sources:
+      - "wildduck:plan 4.5"
+      - "cyrus:JMAPEmail/email_query_sort_break_tie"
+    notes: "WildDuck decision so that clients that omit sort get a sensible list. Cyrus has the same default."
+  - id: EQRY-096
+    title: "Sort by sentAt uses the Date header"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1, E2, E3 with Date headers D2, D3, D1 (D1 < D2 < D3, different time zones in the header) and internal dates in a different order."
+    when: "Email/query sorted by sentAt ascending, then descending, then descending with filter {inMailbox: Inbox}."
+    then: "Ascending returns [E3, E1, E2]; both descending calls return [E2, E1, E3]. Zone offsets are honoured (comparison is on the instant)."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedByAscendingOrderOfSentAt"
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedByDescendingOrderOfSentAt"
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedByDescendingOrderOfSentAtAndInMailbox"
+      - "jmapio:email/sort-sent-at"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-097
+    title: "Sort by sentAt falls back to receivedAt for emails without a usable Date header"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 with no Date header and internal date T2; E2 with Date D1 < T2; E3 with an unparsable Date header and internal date T3 > T2."
+    when: "Email/query sorted by sentAt ascending."
+    then: "Returns [E2, E1, E3]: emails without a valid Date sort by their receivedAt. The call does not fail."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedByAscendingOrderOfInternalDateByDefaultWhenNoDateInHeader"
+    notes: "WildDuck stores hdate with the internal date as fallback. Email/get sentAt for such emails is covered in the Email/get file; note the two may then differ (null in get, fallback in sort)."
+  - id: EQRY-098
+    title: "Sort by size"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails with sizes S1 < S2 < S3 appended in the order S2, S3, S1."
+    when: "Email/query sorted by size ascending, then descending."
+    then: "Ascending returns the S1, S2, S3 emails in that order; descending the reverse. The order agrees with the size values from Email/get."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedWhenUsingSize"
+      - "jmapio:email/sort-size"
+      - "cyrus:JMAPEmail/email_query"
+  - id: EQRY-099
+    title: "Sort by hasKeyword puts emails without the keyword first when ascending"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 (T1) flagged, E2 (T2) unflagged, E3 (T3) flagged, E4 (T4) unflagged."
+    when: "Email/query with sort [{property: 'hasKeyword', keyword: '$flagged'}, {property: 'receivedAt'}]; then with isAscending false on the hasKeyword comparator."
+    then: "Ascending returns [E2, E4, E1, E3] (false before true). Descending on the keyword returns [E1, E3, E2, E4]."
+    sources:
+      - "fastmail:t/Email/query/sorting.t"
+      - "jmapio:email/sort-has-keyword"
+      - "cyrus:JMAPEmail/email_query_guidsearch_sort"
+      - "rfc:8620 5.5"
+  - id: EQRY-100
+    title: "Sort by hasKeyword works for $seen, custom keywords and labels"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "E1 seen, E2 unseen with custom keyword 'todo', E3 unseen with label L, all with increasing receivedAt."
+    when: "Email/query sorted descending by hasKeyword with keyword '$seen', then 'todo', then 'TODO', then '$wdlabel$<L id>', each followed by receivedAt ascending."
+    then: "The email with the keyword is first in each case: E1, E2, E2, E3; the other two follow in receivedAt order."
+    sources:
+      - "rfc:8621 4.4.2"
+      - "wildduck:brief Emails"
+  - id: EQRY-101
+    title: "Reject a keyword sort without a valid keyword property"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with sort [{property: 'receivedAt'}, {property: 'hasKeyword'}], then with keyword '', 'bad keyword' and true."
+    then: "Each call returns invalidArguments (the comparator is syntactically invalid, so not unsupportedSort)."
+    sources:
+      - "cyrus:JMAPEmail/email_query_sort_keyword_required"
+      - "rfc:8621 4.4.2"
+  - id: EQRY-102
+    title: "Reject malformed Comparator objects"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with sort [{isAscending: true}] (no property), sort ['receivedAt'], sort {property: 'receivedAt'} (not an array), sort [{property: 'receivedAt', isAscending: 'yes'}], sort [{property: 5}]."
+    then: "Each call returns invalidArguments."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldReturnErrorWhenPropertyFieldInComparatorIsOmitted"
+      - "cyrus:JMAPEmail/email_query_sort_keyword_required"
+  - id: EQRY-103
+    title: "An unknown sort property answers unsupportedSort"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with sort [{property: 'unknownProperty'}], [{property: 'id'}], [{property: 'ReceivedAt'}], and [{property: 'receivedAt'}, {property: 'preview'}]."
+    then: "Each call returns unsupportedSort. A valid first comparator does not rescue an unsupported second one."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldReturnErrorWhenPropertyFieldInComparatorIsInvalid"
+      - "cyrus:JMAPEmail/email_query_sort_emailstate"
+      - "cyrus:JMAPEmail/email_query_sort_category_unsupported"
+    notes: "Cyrus supports sort by id as an extension and several tests rely on it; WildDuck does not advertise it."
+  - id: EQRY-104
+    title: "Sorts on from, to, subject and thread keywords answer unsupportedSort in phase 1"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with sort [{property: 'from'}], [{property: 'to'}], [{property: 'subject'}], [{property: 'allInThreadHaveKeyword', keyword: '$seen'}], [{property: 'someInThreadHaveKeyword', keyword: '$flagged'}]."
+    then: "Each call returns unsupportedSort."
+    sources:
+      - "wildduck:brief Query and search"
+      - "rfc:8620 5.5"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See EQRY-105."
+  - id: EQRY-105
+    title: "emailQuerySortOptions lists exactly the sorts that work"
+    method: Session
+    spec: "RFC 8621 1.3.1"
+    level: must
+    phase: 4
+    applies: "yes"
+    seed: [imap]
+    given: "Session object fetched; account capability urn:ietf:params:jmap:mail read."
+    when: "For every value in emailQuerySortOptions, call Email/query with that property (adding keyword '$flagged' for keyword sorts). Then call it for each RFC 8621 4.4.2 property not in the list."
+    then: "The list is exactly receivedAt, sentAt, size, from, to, subject, hasKeyword, allInThreadHaveKeyword and someInThreadHaveKeyword. Every listed property succeeds; every unlisted one returns unsupportedSort."
+    sources:
+      - "rfc:8621 1.3.1"
+      - "wildduck:brief Query and search"
+      - "stalwart:principal/get.rs"
+  - id: EQRY-106
+    title: "emailQuerySortOptions grows to the full RFC list in phase 4"
+    method: Session
+    spec: "RFC 8621 1.3.1"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Session object fetched after phase 4."
+    when: "Read emailQuerySortOptions and call Email/query once per listed property."
+    then: "The list additionally contains from, to, subject, allInThreadHaveKeyword and someInThreadHaveKeyword, and each of the nine sorts succeeds."
+    sources:
+      - "rfc:8621 4.4.2"
+      - "wildduck:brief Phases"
+  - id: EQRY-107
+    title: "Later comparators break ties of earlier ones"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Four emails: A (size 2000, T1), B (size 1000, T2), C (size 2000, T3), D (size 1000, T4), sizes made exactly equal in pairs."
+    when: "Email/query with sort [{property: 'size'}, {property: 'receivedAt', isAscending: false}]; then [{property: 'size', isAscending: false}, {property: 'receivedAt'}]."
+    then: "First returns [D, B, C, A]; second returns [A, C, B, D]."
+    sources:
+      - "jmapio:email/sort-multi-property"
+      - "cyrus:JMAPEmail/email_query_sort_break_tie"
+      - "james:EmailQueryMethodContract#combiningSortPositionAndLimitShouldYieldExpectedResult"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-108
+    title: "Emails with identical sort keys keep a stable order across calls and pages"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "30 emails appended with the same internal date (same second) and the same size."
+    when: "Email/query sorted by receivedAt five times in full; then in pages of 7 using position; then the same descending."
+    then: "The full list is identical on every call. Concatenating the pages reproduces the full list with no duplicates and no gaps. The descending list is the exact reverse of the ascending list only for distinct keys; for equal keys the order is still deterministic between calls."
+    sources:
+      - "cyrus:JMAPEmail/email_query_sort_break_tie"
+      - "rfc:8620 5.5"
+    notes: "Implementation needs a unique final tie breaker (the message id) appended to every sort."
+  - id: EQRY-109
+    title: "collation is ignored for non string sort properties"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails with distinct receivedAt."
+    when: "Email/query with sort [{property: 'receivedAt', collation: 'i;ascii-casemap'}], then with collation 'i;nonexistent'."
+    then: "Both succeed with the same order as without collation."
+    sources:
+      - "rfc:8620 5.5"
+    notes: "Ambiguity: 5.5 says collation is ignored for non strings, and also that unsupportedSort covers an unrecognised collation. The catalogue takes 'ignored' for non string properties."
+  - id: EQRY-110
+    title: "Sort by subject uses the base subject"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Emails with subjects 'Re: banana', 'apple', 'Fwd: Re: cherry', '[list] Apple pie (fwd)', 'RE: apple'."
+    when: "Email/query sorted by subject ascending then receivedAt ascending."
+    then: "Order by base subject is: 'apple' and 'RE: apple' (tie, by receivedAt), '[list] Apple pie (fwd)' as 'apple pie', 'Re: banana', 'Fwd: Re: cherry'. Prefixes Re, Fwd, list tags and the trailing (fwd) do not affect the order and comparison is case insensitive."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedWhenUsingSubject"
+      - "jmapio:email/sort-subject"
+      - "cyrus:JMAPEmail/email_query"
+      - "stalwart:mail/query.rs"
+      - "rfc:8621 4.4.2"
+    notes: "Needs a derived base subject field (RFC 5256 2.1). Whether the leading list tag is stripped follows RFC 5256 subj-blob rules."
+  - id: EQRY-111
+    title: "Sort by from uses the first address's name, or its email when the name is empty"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "E1 From 'Zed <aaa@example.com>', E2 From 'bbb@example.com' (no name), E3 From 'Carl <zzz@example.com>, Aaron <a@example.com>', E4 with no From header."
+    when: "Email/query sorted by from ascending."
+    then: "Returns [E4, E2, E3, E1]: empty string first, then 'bbb@example.com', 'Carl', 'Zed'. Only the first address of E3 counts."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedWhenUsingFrom"
+      - "jmapio:email/sort-from"
+      - "cyrus:JMAPEmail/email_query"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-112
+    title: "Sort by to uses the first To address's name, or its email when the name is empty"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "E1 To 'Yvonne <a@example.com>', E2 To 'm@example.com', E3 with no To header (only Cc), E4 To 'bob <z@example.com>'."
+    when: "Email/query sorted by to ascending, then descending."
+    then: "Ascending returns [E3, E4, E2, E1] ('' then 'bob', 'm@example.com', 'Yvonne', compared case insensitively); descending is the reverse."
+    sources:
+      - "james:EmailQueryMethodContract#listMailsShouldBeSortedWhenUsingTo"
+      - "jmapio:email/sort-to"
+  - id: EQRY-113
+    title: "String sorts honour an advertised collation and reject an unknown one"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Emails with subjects 'apple', 'Banana', 'cherry', 'Äpfel'. The core capability collationAlgorithms lists the supported identifiers."
+    when: "Email/query sorted by subject with no collation; with each advertised collation; with collation 'i;octet' if not advertised; with collation 'i;nonexistent'."
+    then: "Without collation the order is unicode aware and case insensitive ('apple', 'Äpfel' adjacent, before 'Banana', before 'cherry'). Each advertised collation succeeds; 'i;ascii-casemap' when advertised orders apple, Banana, cherry case insensitively. A collation not in the list returns unsupportedSort."
+    sources:
+      - "rfc:8620 5.5"
+      - "rfc:8620 2"
+      - "stalwart:mail/query.rs"
+    notes: "collationAlgorithms may be an empty list in phase 1; then any collation on a string sort is unsupportedSort once string sorts exist."
+  - id: EQRY-114
+    title: "Sort by someInThreadHaveKeyword and allInThreadHaveKeyword"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Thread T1: A1 (T1, flagged), A2 (T3, unflagged). Thread T2: B1 (T2, unflagged). Thread T3: C1 (T4, flagged)."
+    when: "Email/query with sort [{property: 'someInThreadHaveKeyword', keyword: '$flagged', isAscending: false}, {property: 'receivedAt', isAscending: false}]; then the same with allInThreadHaveKeyword."
+    then: "someInThread: [C1, A2, A1, B1] (A2 counts as flagged through its thread). allInThread: [C1, A2, B1, A1] (only the single email thread of C1 is all flagged; the rest follow by date)."
+    sources:
+      - "cyrus:JMAPEmail/email_query_guidsearch_threadkeywords"
+      - "cyrus:JMAPEmail/email_querychanges_sortflagged"
+      - "stalwart:mail/query.rs"
+      - "rfc:8621 4.4.2"
+  - id: EQRY-115
+    title: "Thread keyword sorts without a keyword are invalid once supported"
+    method: Email/query
+    spec: "RFC 8621 4.4.2"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "Any account, phase 4 server."
+    when: "Email/query with sort [{property: 'someInThreadHaveKeyword'}] and [{property: 'allInThreadHaveKeyword', keyword: ''}]."
+    then: "Both return invalidArguments."
+    sources:
+      - "cyrus:JMAPEmail/email_query_sort_keyword_required"
+
+  # ---------------------------------------------------------------- paging: position and limit
+  - id: EQRY-116
+    title: "position 0 returns the list from the start and the response position is 0"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 10 emails E1..E10 by ascending receivedAt; all paging scenarios sort by receivedAt ascending."
+    when: "Email/query with position 0, and with position omitted."
+    then: "Both return [E1..E10] with position 0."
+    sources:
+      - "james:EmailQueryMethodContract#zeroPositionQueryShouldReturnItemsFromTheStart"
+      - "jmapio:email/paging-position-zero"
+  - id: EQRY-117
+    title: "A positive position skips that many results and is echoed in the response"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with position 3; then position 9."
+    then: "First returns [E4..E10] with position 3; second returns [E10] with position 9."
+    sources:
+      - "james:EmailQueryMethodContract#resultsShouldStartAtThePositionProvidedByTheClient"
+      - "cyrus:JMAPEmail/email_query_position"
+      - "cyrus:JMAPEmail/email_query_window"
+      - "jmapio:email/paging-positive-position"
+      - "jmapio:email/paging-response-position"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-118
+    title: "limit restricts the number of ids returned"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with limit 3; then limit 10; then limit 50."
+    then: "Returns [E1, E2, E3], then all 10, then all 10. No limit property is in the response because the server did not change the limit."
+    sources:
+      - "james:EmailQueryMethodContract#shouldLimitResultByTheLimitProvidedByTheClient"
+      - "jmapio:email/paging-limit"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+  - id: EQRY-119
+    title: "position and limit together page through the list without gaps or overlaps"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with (position 0, limit 4), (position 4, limit 4), (position 8, limit 4)."
+    then: "Returns [E1..E4], [E5..E8], [E9, E10] with response positions 0, 4, 8. All three share the same queryState."
+    sources:
+      - "james:EmailQueryMethodContract#shouldLimitResultByLimitAndPosition"
+      - "james:EmailQueryMethodContract#combiningSortPositionAndLimitShouldYieldExpectedResult"
+      - "james:EmailQueryMethodContract#inMailboxSortedByReceivedAtShouldYieldExpectedResultWithOffsetAndLimit"
+      - "cyrus:JMAPEmail/email_query_window"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-120
+    title: "A position at or beyond the end returns an empty list without error"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails."
+    when: "Email/query with position 10; position 11 with limit 5; position 1000000 with calculateTotal true."
+    then: "Each succeeds with ids []. The last has total 10. The response position is an unsigned integer not smaller than total."
+    sources:
+      - "james:EmailQueryMethodContract#resultsShouldBeEmptyWithoutErrorWhenThePositionProvidedByTheClientIsGreaterThanTheNumberOfResults"
+      - "james:EmailQueryMethodContract#shouldReturnEmptyWhenPositionIsOutOfBoundAndWithLimit"
+      - "cyrus:JMAPEmail/email_query_window"
+      - "jmapio:email/paging-position-beyond-total"
+    notes: "Open question: echo the requested position, or clamp it to total as Cyrus does for anchors. Suggested: echo for position requests, since total is not always computed."
+  - id: EQRY-121
+    title: "A negative position counts from the end of the list"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "9 emails E1..E9 sorted by receivedAt ascending."
+    when: "Email/query with position -3 and limit 2; then position -1; then position -9."
+    then: "First returns [E7, E8] with position 6. Second returns [E9] with position 8. Third returns all 9 with position 0."
+    sources:
+      - "cyrus:JMAPEmail/email_query_negative_position"
+      - "jmapio:email/paging-negative-position"
+      - "stalwart:mail/query.rs"
+    notes: "James rejects negative positions (shouldReturnAnIllegalArgumentExceptionIfThePositionIsNegative); that is a James deviation and not adopted."
+  - id: EQRY-122
+    title: "A negative position larger than the result count is clamped to 0"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "9 emails E1..E9; a filter matching only 2 of them."
+    when: "Email/query with position -20 and limit 3 without a filter; then position -5 with the filter."
+    then: "First returns [E1, E2, E3] with position 0. Second returns the 2 matching emails with position 0: the negative value is added to the filtered total."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPEmail/email_query_negative_position"
+  - id: EQRY-123
+    title: "limit 0 returns no ids but still reports position, queryState and total"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 5 emails."
+    when: "Email/query with limit 0 and calculateTotal true."
+    then: "Succeeds with ids [], position 0, total 5 and the same queryState as the unlimited query. The response does not carry a limit property."
+    sources:
+      - "cyrus:JMAPMailbox/mailbox_query_limit_zero"
+      - "rfc:8620 5.5"
+  - id: EQRY-124
+    title: "A negative limit is rejected"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with limit -1; then limit 'ten'; then limit 2.5."
+    then: "Each call returns invalidArguments."
+    sources:
+      - "james:EmailQueryMethodContract#shouldReturnAnIllegalArgumentExceptionIfTheLimitIsNegative"
+      - "fastmail:t/Mailbox/query/sorting-and-limiting.t"
+  - id: EQRY-125
+    title: "A limit above the server maximum is clamped and the applied limit is returned"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [db]
+    given: "Server maximum query limit MAX (configured). A mailbox with MAX + 10 emails."
+    when: "Email/query with limit MAX + 1; then limit MAX; then position MAX with limit MAX + 1."
+    then: "First returns exactly MAX ids and the response has limit MAX. Second returns MAX ids and no limit property. Third returns the remaining 10 ids."
+    sources:
+      - "james:EmailQueryMethodContract#theLimitshouldBeEnforcedByTheServerIfAGreaterLimitProvidedByTheClient"
+      - "rfc:8620 5.5"
+  - id: EQRY-126
+    title: "A null or omitted limit applies the server maximum and reports it"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [db]
+    given: "A mailbox with MAX + 10 emails; another with 3 emails."
+    when: "Email/query on the large mailbox with limit null and with limit omitted; then on the small mailbox with limit omitted."
+    then: "The large mailbox calls return MAX ids and limit MAX in the response. The small mailbox call returns 3 ids; the limit property is present with MAX because the server set a limit the client did not give."
+    sources:
+      - "james:EmailQueryMethodContract#theLimitshouldBeEnforcedByTheServerIfNoLimitProvidedByTheClient"
+      - "rfc:8620 5.5"
+    notes: "RFC: limit is returned 'if the server set a limit or used a different limit than that given'. Returning it whenever the client gave none is the simplest consistent rule."
+  - id: EQRY-127
+    title: "Reject position and anchorOffset values that are not integers"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with position 'first', position 1.5, anchorOffset 'x' with a valid anchor, calculateTotal 'yes', collapseThreads 1."
+    then: "Each call returns invalidArguments."
+    sources:
+      - "rfc:8620 3.6.2"
+      - "rfc:8620 5.5"
+  - id: EQRY-128
+    title: "Reject unknown top level arguments"
+    method: Email/query
+    spec: "RFC 8620 3.6.2"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "Email/query with an extra argument such as {bogusArgument: true} or a vendor argument like disableGuidSearch."
+    then: "Returns invalidArguments."
+    sources:
+      - "rfc:8620 3.6.2"
+    notes: "Check consistency with the dispatcher file: if the server wide decision is to ignore unknown arguments, flip this scenario."
+
+  # ---------------------------------------------------------------- paging: anchor
+  - id: EQRY-129
+    title: "anchor returns the window starting at the anchor email and position is its index"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with anchor E4 (anchorOffset omitted); then anchor E4 with anchorOffset 0 and limit 2."
+    then: "First returns [E4..E10] with position 3. Second returns [E4, E5] with position 3."
+    sources:
+      - "cyrus:JMAPEmail/email_query_window"
+      - "cyrus:JMAPEmail/email_query_long"
+      - "jmapio:email/paging-anchor"
+    notes: "James rejects anchor with invalidArguments (listMailsShouldReturnInvalidArgumentsWhenAnchorParameterIsPresent); not adopted."
+  - id: EQRY-130
+    title: "A positive anchorOffset starts after the anchor"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with anchor E2 and anchorOffset 1; then anchor E1, anchorOffset 1, limit 2."
+    then: "First returns [E3..E10] with position 2. Second returns [E2, E3] with position 1."
+    sources:
+      - "cyrus:JMAPEmail/email_query_window"
+      - "jmapio:email/paging-anchor-offset"
+  - id: EQRY-131
+    title: "A negative anchorOffset starts before the anchor"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with anchor E5, anchorOffset -2, limit 5."
+    then: "Returns [E3, E4, E5, E6, E7] with position 2: the anchor is inside the window at index 2 of the returned ids."
+    sources:
+      - "cyrus:JMAPEmail/email_query_window"
+      - "rfc:8620 5.5"
+  - id: EQRY-132
+    title: "A negative anchorOffset reaching before the start is clamped to 0"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with anchor E2, anchorOffset -5, limit 3."
+    then: "Returns [E1, E2, E3] with position 0."
+    sources:
+      - "rfc:8620 5.5"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-133
+    title: "An anchorOffset reaching past the end returns an empty list"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "3 emails E1, E2, E3 sorted by receivedAt ascending."
+    when: "Email/query with anchor E2, anchorOffset 10, limit 5, calculateTotal true."
+    then: "Succeeds with ids [], total 3 and position 3 (clamped to the total). It is not anchorNotFound."
+    sources:
+      - "cyrus:JMAPEmail/email_query_anchoroffset_oob"
+  - id: EQRY-134
+    title: "position is ignored when anchor is given"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with anchor E6, position 2 and limit 2; then anchor E6, position -1."
+    then: "Both start at E6: [E6, E7] with position 5, and [E6..E10] with position 5."
+    sources:
+      - "rfc:8620 5.5"
+  - id: EQRY-135
+    title: "anchorOffset is ignored when no anchor is given"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 sorted by receivedAt ascending."
+    when: "Email/query with anchorOffset 4 and no anchor; then anchor null, anchorOffset 4, position 1."
+    then: "First returns the list from E1 with position 0. Second returns from E2 with position 1."
+    sources:
+      - "rfc:8620 5.5"
+    notes: "James rejects anchorOffset (listMailsShouldReturnInvalidArgumentsWhenAnchorOffsetParameterIsPresent); not adopted."
+  - id: EQRY-136
+    title: "An anchor that is not in the results answers anchorNotFound"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 in Inbox (unflagged), E2 in Work, E3 in Inbox marked \\Deleted over IMAP."
+    when: "Email/query with (a) anchor a well formed id that does not exist; (b) filter {inMailbox: Inbox}, anchor E2; (c) filter {hasKeyword: '$flagged'}, anchor E1; (d) anchor E3; (e) anchor 'not-an-id'."
+    then: "Cases a to d return error anchorNotFound. Case e returns anchorNotFound or invalidArguments; WildDuck returns anchorNotFound."
+    sources:
+      - "jmapio:email/paging-anchor-not-found"
+      - "cyrus:JMAPMailbox/mailbox_query_anchor_not_found"
+      - "rfc:8620 5.5"
+  - id: EQRY-137
+    title: "An anchor hidden by collapseThreads answers anchorNotFound"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Thread T1 with A1 (T1) and A2 (T3); single email B1 (T2). Sort receivedAt descending, collapseThreads true gives [A2, B1]."
+    when: "Email/query with collapseThreads true and anchor A1; then anchor B1 with anchorOffset -1."
+    then: "First returns anchorNotFound because A1 was removed by collapsing. Second returns [A2, B1] with position 0."
+    sources:
+      - "rfc:8621 4.4.3"
+      - "cyrus:JMAPEmail/email_query_window"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-138
+    title: "anchor works with filters, descending sorts and non date sorts"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails E1..E10 by receivedAt; odd ones flagged; sizes not correlated with dates."
+    when: "Email/query with filter {hasKeyword: '$flagged'}, sort receivedAt descending, anchor E5, anchorOffset -1, limit 3; then sort by size with anchor E5 and limit 1; then sort [hasKeyword $flagged, receivedAt] with anchor E2."
+    then: "First returns [E7, E5, E3] with position 1. In the others the first returned id is the anchor and position equals the anchor's index in the full sorted list obtained without anchor."
+    sources:
+      - "cyrus:JMAPEmail/email_query_window"
+      - "stalwart:mail/query.rs"
+    notes: "The anchor index is a range count on the sort key plus the tie breaker; test with equal keys too (see the stable order scenario)."
+  - id: EQRY-139
+    title: "Anchor index is correct among emails with equal sort keys"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "12 emails with identical receivedAt and size; full list L obtained with sort receivedAt."
+    when: "For each index i, Email/query with the same sort, anchor L[i] and limit 1."
+    then: "Every response has position i and ids [L[i]]."
+    sources:
+      - "rfc:8620 5.5"
+      - "cyrus:JMAPEmail/email_query_sort_break_tie"
+
+  # ---------------------------------------------------------------- totals
+  - id: EQRY-140
+    title: "total is omitted unless calculateTotal is true"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 5 emails."
+    when: "Email/query with calculateTotal omitted, with calculateTotal false, and with calculateTotal true."
+    then: "The first two responses have no total property at all (not null). The third has total 5."
+    sources:
+      - "cyrus:JMAPEmail/email_query_response_arguments"
+      - "jmapio:email/paging-calculate-total"
+      - "rfc:8620 5.5"
+  - id: EQRY-141
+    title: "total counts all matches regardless of position and limit"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "10 emails, 4 of them flagged."
+    when: "Email/query with calculateTotal true and: limit 2; position 8; filter {hasKeyword: '$flagged'} with limit 1; anchor E3 with limit 1."
+    then: "Totals are 10, 10, 4 and 10."
+    sources:
+      - "cyrus:JMAPEmail/email_query_window"
+      - "jmapio:email/paging-calculate-total"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-142
+    title: "total for a single inMailbox filter equals the mailbox counters"
+    method: Email/query
+    spec: "RFC 8621 4.4"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Inbox with 7 emails forming 4 threads, one email marked \\Deleted (so 6 visible in 4 or fewer threads)."
+    when: "One request: Mailbox/get for Inbox, Email/query {inMailbox: Inbox} with calculateTotal true, and the same with collapseThreads true."
+    then: "The uncollapsed total equals Mailbox totalEmails; the collapsed total equals Mailbox totalThreads."
+    sources:
+      - "rfc:8621 4.4"
+      - "jmapio:email/collapse-threads-calculate-total"
+      - "wildduck:plan 4.5"
+
+  # ---------------------------------------------------------------- collapseThreads
+  - id: EQRY-143
+    title: "collapseThreads returns at most one email per thread"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Thread T1 with A1, A2, A3; thread T2 with B1, B2; single email C1; all in Inbox."
+    when: "Email/query with collapseThreads true, then false, then omitted; fetch threadId for the returned ids."
+    then: "Collapsed returns 3 ids with 3 distinct threadIds. false and omitted both return all 6 ids."
+    sources:
+      - "james:EmailQueryMethodContract#inMailboxSortedByReceivedAtShouldCollapseThreads"
+      - "cyrus:JMAPEmail/email_query_collapse"
+      - "jmapio:email/collapse-threads-basic"
+      - "jmapio:email/collapse-threads-one-per-thread"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-144
+    title: "The representative of a collapsed thread is its first email in the sort order"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "T1: A1 (T1), A2 (T4). T2: B1 (T2), B2 (T3). Sizes: A1 largest, B2 smallest."
+    when: "Email/query with collapseThreads true sorted by receivedAt descending; ascending; size descending."
+    then: "Descending date: [A2, B2]. Ascending date: [A1, B1]. Size descending: [A1, B1]. Each thread sits at the position of its first email in the uncollapsed list."
+    sources:
+      - "jmapio:email/collapse-threads-sort-determines-representative"
+      - "james:EmailQueryMethodContract#inMailboxSortedBySentAtShouldCollapseThreads"
+      - "cyrus:JMAPEmail/email_query_collapse"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-145
+    title: "Collapsing is applied after filtering"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "T1: A1 (T1, flagged), A2 (T3, unflagged). T2: B1 (T2, unflagged)."
+    when: "Email/query with collapseThreads true, sort receivedAt descending and filter {hasKeyword: '$flagged'}; then filter {after: <T2>}; then filter {text: <word only in A1>}."
+    then: "First returns [A1] (A2 is filtered out before collapsing, so A1 represents T1). Second returns [A2, B1]. Third returns [A1]."
+    sources:
+      - "jmapio:email/collapse-threads-with-filter"
+      - "james:EmailQueryMethodContract#inMailboxAfterSortedByReceivedAtShouldCollapseThreads"
+      - "james:EmailQueryMethodContract#inMailboxBeforeSortedByReceivedAtShouldCollapseThreads"
+      - "james:EmailQueryMethodContract#collapseThreadsShouldApplyOnSearchIndexPath"
+  - id: EQRY-146
+    title: "Collapsing spans mailboxes without a mailbox filter and stays inside inMailbox with one"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Thread T1 with A1 in Inbox (T1), A2 in Sent (T2), A3 in Inbox (T3). Single email B1 in Sent (T4)."
+    when: "Email/query collapseThreads true, sort receivedAt descending with: filter null; {inMailbox: Inbox}; {inMailbox: Sent}; {inMailboxOtherThan: [Inbox]}."
+    then: "Null filter: [B1, A3]. Inbox: [A3]. Sent: [B1, A2] (A2 represents T1 inside Sent). Other than Inbox: [B1, A2]."
+    sources:
+      - "cyrus:JMAPEmail/email_query_collapse"
+      - "cyrus:JMAPEmail/email_query_cached_collapsed_uncollapsed"
+      - "rfc:8621 4.4.3"
+  - id: EQRY-147
+    title: "total under collapseThreads counts threads"
+    method: Email/query
+    spec: "RFC 8621 4.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "6 emails in 3 threads (3, 2 and 1 emails); 2 emails of the first thread are flagged."
+    when: "Email/query with calculateTotal true and collapseThreads true; the same with limit 1; the same with filter {hasKeyword: '$flagged'}; then collapseThreads false."
+    then: "Totals are 3, 3, 1 and 6."
+    sources:
+      - "jmapio:email/collapse-threads-calculate-total"
+      - "cyrus:JMAPEmail/email_query_cache_collapsed_threads"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-148
+    title: "position, limit and anchor operate on the collapsed list"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "8 threads of 3 emails each (24 emails); collapsed list C of 8 ids obtained with sort receivedAt descending."
+    when: "Email/query with collapseThreads true and the same sort: position 2 limit 3; position -2; anchor C[5] anchorOffset -1 limit 2; position 8."
+    then: "Returns C[2..4] with position 2; C[6..7] with position 6; C[4..5] with position 4; [] respectively."
+    sources:
+      - "cyrus:JMAPEmail/email_query_window"
+      - "stalwart:mail/query.rs"
+  - id: EQRY-149
+    title: "Collapsing ignores thread members that are flagged Deleted"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "Thread T1 with A1 (T1) and A2 (T2); A2 is marked \\Deleted over IMAP."
+    when: "Email/query collapseThreads true, sort receivedAt descending, calculateTotal true."
+    then: "Returns [A1] with total 1: the invisible newer email does not represent or hide the thread."
+    sources:
+      - "wildduck:brief Emails"
+      - "cyrus:JMAPEmail/email_querychanges_thread"
+  - id: EQRY-150
+    title: "A reply delivered later joins the thread and replaces the representative"
+    method: Email/query
+    spec: "RFC 8621 4.4.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "A1 delivered to Inbox; collapsed query sorted receivedAt descending returns [A1] with queryState Q1."
+    when: "A reply A2 (References A1's Message-ID, subject 'Re: ' plus the same subject) is delivered over LMTP; query again."
+    then: "Returns [A2] only, total 1 when requested, and queryState differs from Q1."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_thread"
+      - "wildduck:brief Ids"
+
+  # ---------------------------------------------------------------- queryState and canCalculateChanges
+  - id: EQRY-151
+    title: "queryState is identical across calls when nothing changed"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Account with mail, no activity during the test."
+    when: "Call the same Email/query three times; then with different position and limit; also read the Email state from Email/get."
+    then: "queryState is the same string in all calls with the same filter, sort and collapseThreads, regardless of the window."
+    sources:
+      - "rfc:8620 5.5"
+      - "james:EmailQueryMethodContract#listMailsShouldBeIdempotent"
+  - id: EQRY-152
+    title: "queryState does not change when old journal entries expire"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap, time]
+    given: "Account with mail and a short journal retention configured; queryState Q1 recorded."
+    when: "Wait until all journal entries of the account have expired, with no changes to the account; call the same query."
+    then: "queryState equals Q1 and the ids are unchanged."
+    sources:
+      - "wildduck:brief State and changes"
+  - id: EQRY-153
+    title: "queryState changes when a matching email is delivered"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [lmtp]
+    given: "Query {inMailbox: Inbox} returns ids with queryState Q1."
+    when: "A new message is delivered to Inbox over LMTP; repeat the query."
+    then: "The new id is in the result and queryState is not Q1."
+    sources:
+      - "rfc:8620 5.5"
+      - "jmapio:email/query-changes-after-add"
+      - "legacy-proxy:test/unit/query-stale-view.spec.ts"
+  - id: EQRY-154
+    title: "queryState changes when an email leaves the results by expunge, delete or move"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, api]
+    given: "Inbox with E1..E4; query {inMailbox: Inbox} recorded with queryState Q1."
+    when: "In turn, querying after each step: IMAP STORE +FLAGS (\\Deleted) on E1; IMAP EXPUNGE; REST API delete of E2; IMAP MOVE of E3 to Trash."
+    then: "After the flag E1 is gone and the state changed. EXPUNGE leaves the ids the same (state may or may not change). After the API delete E2 is gone, after the move E3 is gone, each with a new queryState."
+    sources:
+      - "rfc:8620 5.5"
+      - "wildduck:brief State and changes"
+      - "cyrus:JMAPEmail/email_query_moved"
+  - id: EQRY-155
+    title: "queryState changes when a mutable sort or filter key changes the result order or membership"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1, E2 unflagged. Query A: filter {notKeyword: '$seen'}. Query B: sort [hasKeyword $flagged descending, receivedAt]. States QA and QB recorded."
+    when: "IMAP STORE +FLAGS (\\Seen) on E1, run A; IMAP STORE +FLAGS (\\Flagged) on E2, run B."
+    then: "A no longer contains E1 and its state is not QA. B now lists E2 first and its state is not QB."
+    sources:
+      - "cyrus:JMAPEmail/email_query_issue2905"
+      - "rfc:8620 5.5"
+  - id: EQRY-156
+    title: "A change that cannot affect the results may change queryState but never the ids"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: may
+    phase: 1
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Query {inMailbox: Work} sorted by receivedAt with state Q1 and ids L."
+    when: "A message is delivered to Inbox and a flag is changed on an email in Work; repeat the query."
+    then: "ids equal L exactly. queryState may differ from Q1 (WildDuck derives it from the account journal) and the test must not require equality."
+    sources:
+      - "rfc:8620 5.5"
+    notes: "Phase 1 uses the shared account state as queryState, so it changes on any journal entry. A finer state is optional."
+  - id: EQRY-157
+    title: "canCalculateChanges is false in phase 1"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [imap]
+    given: "Account with mail."
+    when: "Email/query with no filter; with {inMailbox: Inbox} sorted by receivedAt; with a text filter; with collapseThreads true."
+    then: "Every response has canCalculateChanges false (a boolean, present)."
+    sources:
+      - "wildduck:brief Query and search"
+      - "rfc:8620 5.5"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See EQRY-158."
+  - id: EQRY-158
+    title: "canCalculateChanges is true for every query"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Account with mail, phase 4 server."
+    when: "Email/query with {inMailbox: Inbox} sorted by receivedAt, with and without collapseThreads; with filter null; with {inMailbox: Inbox, hasKeyword: '$flagged'}; then with {text: 'foo'}."
+    then: "canCalculateChanges is true for all of them, and Email/queryChanges with each returned queryState succeeds while the cached result is still held."
+    sources:
+      - "rfc:8620 5.5"
+      - "wildduck:plan 4.5"
+
+  # ---------------------------------------------------------------- cross protocol and scale
+    notes: "Decided 2026-11-11: queryChanges is general, backed by cached query results; an expired cache entry answers cannotCalculateChanges."
+  - id: EQRY-159
+    title: "Messages appended over IMAP, stored through the REST API and delivered over LMTP are all queryable"
+    method: Email/query
+    spec: "RFC 8621 4.4"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap, api, lmtp]
+    given: "Empty Inbox."
+    when: "Append E1 with IMAP APPEND (with \\Flagged and an explicit internal date), upload E2 with the REST API message upload endpoint, deliver E3 over LMTP; then Email/query {inMailbox: Inbox} sorted by receivedAt, and {hasKeyword: '$flagged'}."
+    then: "The first query returns all three in internal date order; the second returns [E1]. receivedAt of E1 equals the APPEND date."
+    sources:
+      - "wildduck:brief State and changes"
+      - "cyrus:JMAPEmail/email_query"
+  - id: EQRY-160
+    title: "A message restored from the archive through the REST API reappears in queries"
+    method: Email/query
+    spec: "RFC 8621 4.4"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [api]
+    given: "E1 in Inbox deleted through the REST API (archived); query {inMailbox: Inbox} returns [] with state Q1."
+    when: "Restore the archived message through the REST API; query again."
+    then: "One email is returned with a new queryState. It is reported as a created Email (see the Email/changes file for whether the id is reused)."
+    sources:
+      - "wildduck:brief Emails"
+  - id: EQRY-161
+    title: "Renaming or deleting a mailbox over IMAP is reflected in inMailbox queries"
+    method: Email/query
+    spec: "RFC 8621 4.4.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Mailbox Projects with E1 and E2; its id PID."
+    when: "IMAP RENAME Projects to Archive/Projects, then Email/query {inMailbox: PID}; then IMAP DELETE of the mailbox and query again; then query with filter null."
+    then: "After the rename the query still returns E1 and E2 under the same mailbox id. After the delete, inMailbox PID is invalidArguments and the null filter no longer returns E1 or E2."
+    sources:
+      - "wildduck:brief Ids"
+      - "cyrus:JMAPEmail/email_query_unknown_mailbox"
+  - id: EQRY-162
+    title: "Page through a large mailbox with deep offsets"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [db]
+    given: "One mailbox with 100000 emails with distinct receivedAt, seeded directly in the database."
+    when: "Email/query {inMailbox} sorted by receivedAt descending: position 0 limit 50; position 99950 limit 50; position -50; anchor of the id at index 50000 with anchorOffset -25 and limit 50; calculateTotal true."
+    then: "Each call succeeds within the query time limit and returns the expected slice of the seeded order; total is 100000; positions are 0, 99950, 99950 and 49975."
+    sources:
+      - "cyrus:JMAPEmail/email_query_long"
+      - "stalwart:mail/query.rs"
+      - "wildduck:plan 4.5"
+  - id: EQRY-163
+    title: "Account wide queries on a large account use the account level indexes"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [db]
+    given: "Account with 100000 emails spread over 200 mailboxes including Trash and Junk."
+    when: "Email/query with filter null, sort receivedAt descending, limit 50; the same with collapseThreads true; the same with {inMailboxOtherThan: [Trash, Junk]}; each with and without calculateTotal."
+    then: "All calls succeed within the query time limit with correct first pages (compared against the seeded order)."
+    sources:
+      - "wildduck:plan 5.5"
+    notes: "Guards the new user plus idate index and the collapse path. Also run against a sharded test cluster if available."
+  - id: EQRY-164
+    title: "A query that exceeds the time limit fails with a method level error only"
+    method: Email/query
+    spec: "RFC 8620 3.6.2"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [db]
+    given: "Large account as above and the query time limit lowered in test configuration so that an unindexed account wide header search cannot finish."
+    when: "One request with Core/echo, then Email/query {header: ['X-Rare', 'value']} account wide, then Mailbox/get."
+    then: "HTTP status is 200. Core/echo and Mailbox/get answer normally. The Email/query call answers with an error (type serverUnavailable) within the limit plus a small margin; no partial id list is returned."
+    sources:
+      - "wildduck:plan 4.5"
+      - "rfc:8620 3.6.2"
+    notes: "Open question: serverUnavailable versus unsupportedFilter for a too expensive filter. unsupportedFilter tells clients to simplify the search and may fit better for text and header filters."
+
+  # ---------------------------------------------------------------- Email/queryChanges, phase 1
+  - id: EQRY-165
+    title: "Email/queryChanges answers cannotCalculateChanges in phase 1"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: wd
+    phase: 1
+    applies: "no"
+    seed: [imap]
+    given: "Email/query {inMailbox: Inbox} sorted by receivedAt returned queryState Q1 with canCalculateChanges false."
+    when: "Email/queryChanges with the same filter and sort and sinceQueryState Q1, both immediately and after a new delivery; also with collapseThreads true and with filter null."
+    then: "Every call returns error cannotCalculateChanges (not unknownMethod, not serverFail). HTTP status is 200 and other calls in the same request are unaffected."
+    sources:
+      - "wildduck:brief Query and search"
+      - "cyrus:JMAPEmail/email_query_issue2905"
+      - "james:MailboxQueryChangesContract"
+    notes: "Withdrawn 2026-11-11: describes an interim state before the feature existed. Phases 0 to 6 ship in one pull request, so this state is never released. See the queryChanges scenarios."
+  - id: EQRY-166
+    title: "Email/queryChanges validates its arguments before looking at the state"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: wd
+    phase: 4
+    applies: "yes"
+    seed: [none]
+    given: "Any account, phase 1 server."
+    when: "Email/queryChanges without sinceQueryState; with sinceQueryState 5; with maxChanges -1; with filter {bogus: 1}; with an unknown accountId."
+    then: "The first four return invalidArguments, the last accountNotFound. A well formed call with an unknown or expired sinceQueryState returns cannotCalculateChanges."
+    sources:
+      - "rfc:8620 5.6"
+      - "rfc:8620 3.6.2"
+      - "cyrus:JMAPEmail/email_query_sort_keyword_required"
+
+  # ---------------------------------------------------------------- Email/queryChanges, phase 4
+  - id: EQRY-167
+    title: "queryChanges with the current state returns no changes"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Email/query {inMailbox: Inbox} sorted by receivedAt descending returned Q1; nothing changed since."
+    when: "Email/queryChanges with the same filter and sort and sinceQueryState Q1."
+    then: "Response has accountId, oldQueryState Q1, newQueryState Q1, removed [] and added []. No total property."
+    sources:
+      - "jmapio:email/query-changes-no-changes"
+      - "fastmail:t/Email/queryChanges/simple.t"
+      - "jmap-perl:t/query-changes.t"
+      - "legacy-proxy:jmap-proxy-go querychanges_test TestComputeQueryChangesNoOpWhenStateUnchanged"
+  - id: EQRY-168
+    title: "queryChanges response carries exactly the RFC properties"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "A valid queryState Q1 and one new delivery since."
+    when: "Email/queryChanges without calculateTotal, then with calculateTotal true."
+    then: "Properties are accountId, oldQueryState, newQueryState, removed (array of ids), added (array of objects with exactly id and index); total only in the second call. added is ordered by ascending index."
+    sources:
+      - "cyrus:JMAPEmail/email_query_response_arguments"
+      - "jmapio:email/query-changes-response-structure"
+  - id: EQRY-169
+    title: "A newly delivered matching email is reported in added with its index"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Inbox with E1, E2; query {inMailbox: Inbox} sorted receivedAt descending gave [E2, E1] and Q1."
+    when: "E3 is delivered to Inbox over LMTP; Email/queryChanges since Q1 with the same filter and sort; then the same query sorted ascending from its own earlier state."
+    then: "Descending: removed [], added [{id: E3, index: 0}]. Ascending: added [{id: E3, index: 2}]. newQueryState equals the queryState a fresh Email/query returns."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_basic"
+      - "cyrus:JMAPEmail/email_querychanges_order"
+      - "jmapio:email/query-changes-after-add"
+      - "fastmail:t/Email/queryChanges/simple.t"
+      - "legacy-proxy:jmap-proxy-go querychanges_test TestComputeQueryChangesAddedAndRemoved"
+  - id: EQRY-170
+    title: "A new email that does not match the filter is not reported"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Query {inMailbox: Work} with state Q1."
+    when: "A message is delivered to Inbox; Email/queryChanges since Q1 for the Work query."
+    then: "removed [] and added []. newQueryState may differ from Q1; if it does, a second queryChanges from the new state is also empty."
+    sources:
+      - "fastmail:t/Email/queryChanges/simple.t"
+      - "cyrus:JMAPEmail/email_querychanges_basic_mb"
+      - "stalwart:mail/query_changes.rs"
+  - id: EQRY-171
+    title: "A destroyed matching email is reported in removed"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, jmap]
+    given: "Inbox with E1, E2, E3; query {inMailbox: Inbox} with state Q1."
+    when: "Email/set destroy E2; Email/queryChanges since Q1."
+    then: "removed contains E2, added is []. With calculateTotal true, total is 2."
+    sources:
+      - "jmapio:email/query-changes-after-remove"
+      - "fastmail:t/Email/queryChanges/simple.t"
+      - "cyrus:JMAPEmail/email_querychanges_basic"
+      - "stalwart:mail/query_changes.rs"
+  - id: EQRY-172
+    title: "Destroying an email outside the query results reports nothing"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap, jmap]
+    given: "Query {inMailbox: Work} with state Q1; E9 lives in Inbox."
+    when: "Email/set destroy E9; Email/queryChanges since Q1 for the Work query."
+    then: "added is []. removed is [] or, at most, contains E9 (the RFC allows extra removed ids that were never in the results); WildDuck returns []."
+    sources:
+      - "fastmail:t/Email/queryChanges/simple.t"
+      - "rfc:8620 5.6"
+  - id: EQRY-173
+    title: "Changes made over IMAP are reported: Deleted flag, expunge and undelete"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "Inbox with E1, E2, E3 sorted receivedAt ascending; state Q1."
+    when: "IMAP STORE +FLAGS (\\Deleted) on E2, queryChanges since Q1 giving Q2; IMAP STORE -FLAGS (\\Deleted) on E2, queryChanges since Q2 giving Q3; set \\Deleted again and EXPUNGE, queryChanges since Q3 and since Q1."
+    then: "Since Q1: removed [E2]. Since Q2: added [{id: E2, index: 1}]. Since Q3: removed [E2]. Since Q1 at the end: removed contains E2 and added does not."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_thread"
+      - "cyrus:JMAPEmail/email_querychanges_skipdeleted"
+      - "wildduck:brief Emails"
+  - id: EQRY-174
+    title: "A move out of the queried mailbox is removed and a move in is added"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [imap, api, jmap]
+    given: "Inbox with E1, E2; Work with E3. States QI (Inbox query) and QW (Work query), both sorted receivedAt ascending."
+    when: "Move E1 to Work with IMAP MOVE; queryChanges for both. Then move E3 to Inbox with Email/set mailboxIds, and E2 to Work with the REST API; queryChanges again from the original states."
+    then: "After the first move: Inbox removed [E1]; Work added E1 at its date ordered index. At the end from QI: removed E1 and E2, added E3. From QW: removed E3, added E1 and E2. Ids are unchanged by the moves."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_basic_mb"
+      - "cyrus:JMAPEmail/email_query_moved"
+      - "stalwart:mail/query_changes.rs"
+      - "wildduck:brief State and changes"
+  - id: EQRY-175
+    title: "An email moved away and back nets to no membership change"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "Inbox with E1, E2, E3 sorted receivedAt ascending; state Q1."
+    when: "IMAP MOVE all three to Work and back to Inbox, then STORE +FLAGS (\\Flagged) on E2; queryChanges since Q1 for {inMailbox: Inbox}."
+    then: "The final list equals the original. The response either reports nothing or reports ids in removed that are all re-added at their unchanged indexes; applying it to the old list yields the same list. No id is removed without being re-added and no intermediate copy ids leak."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_skipdeleted"
+      - "cyrus:JMAPEmail/email_querychanges_deletedcopy"
+    notes: "In Cyrus the copies have the same id; in WildDuck a move keeps the id by design, so the journal fold must net EXPUNGE plus EXISTS of the same root."
+  - id: EQRY-176
+    title: "An IMAP COPY into the queried mailbox is added as a new id"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "Work is empty with query state Q1; E1 in Inbox."
+    when: "IMAP COPY E1 to Work; queryChanges since Q1 for {inMailbox: Work}; and for {inMailbox: Inbox} from its own state."
+    then: "Work: added has one entry with a new id (not E1) at index 0. Inbox: no changes."
+    sources:
+      - "wildduck:brief Ids"
+      - "cyrus:JMAPEmail/email_querychanges_deletedcopy"
+  - id: EQRY-177
+    title: "With an immutable filter and sort, flag changes are not reported"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Query {inMailbox: Inbox} sorted by receivedAt with state Q1 (mailbox membership is treated as part of the results, date is immutable)."
+    when: "IMAP STORE +FLAGS (\\Seen \\Flagged) on E1 and a custom keyword on E2; queryChanges since Q1."
+    then: "removed [] and added []: keyword updates do not touch a query that neither filters nor sorts on keywords."
+    sources:
+      - "stalwart:mail/query_changes.rs"
+      - "rfc:8620 5.6"
+  - id: EQRY-178
+    title: "With a mutable filter, an email that stops matching is removed and one that starts matching is added"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "E1 flagged, E2 unflagged, E3 flagged; query {hasKeyword: '$flagged'} sorted receivedAt ascending gave [E1, E3] and Q1."
+    when: "IMAP STORE -FLAGS (\\Flagged) on E1 and +FLAGS (\\Flagged) on E2; queryChanges since Q1."
+    then: "removed contains E1. added contains {id: E2, index: 0}. If E3 is also listed in removed it is re-added with index 1. Applying removed then added to [E1, E3] gives [E2, E3]."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges"
+      - "cyrus:JMAPEmail/email_query_issue2905"
+      - "stalwart:mail/query_changes.rs"
+      - "rfc:8620 5.6"
+  - id: EQRY-179
+    title: "With a mutable sort, an email whose key changed is removed and re-added at its new index"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "E1, E2, E3 unflagged with ascending dates; query sorted [hasKeyword $flagged descending, receivedAt ascending] gave [E1, E2, E3] and Q1."
+    when: "IMAP STORE +FLAGS (\\Flagged) on E3; queryChanges since Q1 with the same sort."
+    then: "removed contains E3 and added contains {id: E3, index: 0}. Every id in the current results whose flagged value may have changed appears in both removed and added."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_sortflagged"
+      - "cyrus:JMAPEmail/email_querychanges_sortflagged_otherfolder"
+      - "cyrus:JMAPEmail/email_querychanges_implementation"
+      - "rfc:8620 5.6"
+  - id: EQRY-180
+    title: "Applying queryChanges to a cached list always reproduces the current query result"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp, api, jmap]
+    given: "A script of about 20 mixed changes (deliveries, IMAP flag changes, moves, COPY, \\Deleted, expunge, REST API deletes, Email/set updates). After each step the full Email/query result and queryState are recorded for five query variants: null filter; inMailbox; hasKeyword filter; sort with hasKeyword; inMailbox with collapseThreads."
+    when: "For every pair of earlier state Si and later state Sj and every variant, call Email/queryChanges since Si at the time of Sj, then apply: delete removed ids from the cached list, insert added items in ascending index order."
+    then: "The patched list equals the recorded result at Sj for every pair and variant, and newQueryState equals the recorded queryState."
+    sources:
+      - "stalwart:mail/query_changes.rs"
+      - "cyrus:JMAPEmail/email_querychanges_implementation"
+      - "jmap-perl:t/query-changes.t"
+  - id: EQRY-181
+    title: "upToId limits reported changes to the cached prefix when filter and sort are immutable"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Inbox with E1..E10 by ascending receivedAt; query {inMailbox: Inbox} sorted receivedAt descending; client cached the first 3 ids [E10, E9, E8] with state Q1."
+    when: "E11 is delivered and E2 is expunged; queryChanges since Q1 with upToId E8."
+    then: "added is [{id: E11, index: 0}]. removed omits E2 (its index is beyond E8), or includes it; WildDuck omits it. Applying the result to the cached prefix gives the correct first entries."
+    sources:
+      - "stalwart:mail/query_changes.rs"
+      - "cyrus:JMAPEmail/email_querychanges_implementation"
+      - "rfc:8620 5.6"
+  - id: EQRY-182
+    title: "upToId is ignored when the filter or sort is mutable, and when it is not in the results"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Query {hasKeyword: '$flagged'} sorted receivedAt descending over 6 flagged emails, state Q1."
+    when: "Unflag the oldest email; queryChanges since Q1 with upToId set to the second id. Then, for an immutable query, queryChanges with upToId set to an id that does not exist."
+    then: "The first response still reports the oldest email in removed (upToId ignored for a mutable filter). The second returns the full change set without error."
+    sources:
+      - "rfc:8620 5.6"
+      - "stalwart:mail/query_changes.rs"
+  - id: EQRY-183
+    title: "maxChanges smaller than the number of changes answers tooManyChanges"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Query state Q1; then 3 new emails are delivered to the queried mailbox."
+    when: "Email/queryChanges since Q1 with maxChanges 1; with maxChanges 2; with maxChanges 3; with maxChanges null; the first also with collapseThreads true."
+    then: "maxChanges 1 and 2 return error tooManyChanges. maxChanges 3 and null return the 3 added entries. The count compared is removed plus added."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_toomany"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_max_changes"
+      - "legacy-proxy:jmap-proxy-go querychanges_test TestComputeQueryChangesTooManyChanges"
+      - "rfc:8620 5.6"
+  - id: EQRY-184
+    title: "maxChanges 0 or negative is rejected"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A valid query state."
+    when: "Email/queryChanges with maxChanges -1, then maxChanges 0, then maxChanges 'x'."
+    then: "-1 and 'x' return invalidArguments. 0 returns invalidArguments as well (WildDuck treats maxChanges as a positive integer, consistent with /changes)."
+    sources:
+      - "rfc:8620 5.6"
+      - "rfc:8620 5.2"
+    notes: "5.6 types maxChanges as UnsignedInt without the 'greater than 0' sentence that 5.2 has. Open question: accept 0 as 'only succeed if nothing changed'."
+  - id: EQRY-185
+    title: "calculateTotal returns the current total of the query"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Inbox with 4 emails, state Q1."
+    when: "Deliver 2 emails and expunge 1; Email/queryChanges since Q1 with calculateTotal true, then false, then omitted; also with the unchanged state."
+    then: "With true, total is 5 (also when nothing changed). With false or omitted the total property is absent."
+    sources:
+      - "cyrus:JMAPEmail/email_query_response_arguments"
+      - "cyrus:JMAPMailbox/mailbox_querychanges_index_total"
+      - "rfc:8620 5.6"
+  - id: EQRY-186
+    title: "queryChanges with collapseThreads reports thread representatives"
+    method: Email/queryChanges
+    spec: "RFC 8621 4.5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "A1 and B1 in Inbox (two threads); query {inMailbox: Inbox}, collapseThreads true, sort receivedAt descending gave [B1, A1] and Q1."
+    when: "A reply A2 to A1 and a new single email C1 are delivered (A2 before C1); queryChanges since Q1 with collapseThreads true and calculateTotal true."
+    then: "removed contains A1. added is [{id: C1, index: 0}, {id: A2, index: 1}]. total is 3. Only one email per thread is ever added and it is the first of its thread in the sort order."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_basic_collapse"
+      - "cyrus:JMAPEmail/email_querychanges_basic_mb_collapse"
+      - "cyrus:JMAPEmail/email_querychanges_thread"
+      - "stalwart:mail/query_changes.rs"
+  - id: EQRY-187
+    title: "Under collapseThreads, removing the representative promotes the next email of the thread"
+    method: Email/queryChanges
+    spec: "RFC 8621 4.5"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Thread with A1 (T1), A2 (T2), A3 (T4) and single B1 (T3); collapsed query sorted receivedAt descending gave [A3, B1] and Q1."
+    when: "IMAP STORE +FLAGS (\\Deleted) on A3 then EXPUNGE; queryChanges since Q1 with collapseThreads true and calculateTotal true. Then expunge A1 (a non representative) and call again from the new state."
+    then: "First: removed contains A3, added contains {id: A2, index: 1}, total 2. Second: no entry is required; removed and added are empty or cancel out, total stays 2."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_thread"
+      - "cyrus:JMAPEmail/email_querychanges_sortflagged_topmessage"
+  - id: EQRY-188
+    title: "The collapseThreads value must match the one used for the query"
+    method: Email/queryChanges
+    spec: "RFC 8621 4.5"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "State Q1 from Email/query with collapseThreads true."
+    when: "Email/queryChanges since Q1 with collapseThreads false or omitted."
+    then: "Returns cannotCalculateChanges, because the state does not belong to the uncollapsed query."
+    sources:
+      - "rfc:8621 4.5"
+      - "wildduck:plan 4.5"
+    notes: "Only testable if queryState encodes a fingerprint of filter, sort and collapseThreads. If queryState stays the plain account state, the server cannot detect the mismatch and this scenario is dropped."
+  - id: EQRY-189
+    title: "A filter or sort different from the one that produced the state is not silently accepted"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [imap]
+    given: "State Q1 from Email/query {inMailbox: Inbox} sorted by receivedAt descending."
+    when: "Email/queryChanges since Q1 with filter {inMailbox: Work}; with the same filter but sort by size; with filter null."
+    then: "Each returns cannotCalculateChanges. The same filter expressed with different JSON key order is accepted."
+    sources:
+      - "rfc:8620 5.6"
+      - "legacy-proxy:jmap-proxy-go querychanges_test TestComputeQueryChangesUnknownStateReturnsCannotCalculate"
+    notes: "Same caveat as the collapseThreads mismatch scenario. The RFC only says the client passes the same filter and sort; detection is a WildDuck safety choice."
+  - id: EQRY-190
+    title: "An unknown, malformed or expired sinceQueryState answers cannotCalculateChanges"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, time]
+    given: "A query whose canCalculateChanges is true; journal retention configured short for the test."
+    when: "Email/queryChanges with sinceQueryState 'garbage'; with '0'; with a state string from another account; with a real state older than the journal retention."
+    then: "Each returns cannotCalculateChanges (never an empty change set and never a server error)."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_zerosince"
+      - "legacy-proxy:jmap-proxy-go querychanges_test TestComputeQueryChangesUnknownStateReturnsCannotCalculate"
+      - "wildduck:brief State and changes"
+  - id: EQRY-191
+    title: "queryChanges for a query with canCalculateChanges false answers cannotCalculateChanges"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Phase 4 server; an Email/query (for example a text search) that returned canCalculateChanges false and state Q1."
+    when: "Email/queryChanges with the same arguments since Q1."
+    then: "Returns cannotCalculateChanges."
+    sources:
+      - "cyrus:JMAPEmail/email_query_issue2905"
+      - "rfc:8620 5.5"
+  - id: EQRY-192
+    title: "queryChanges accepts a null filter and null sort"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "Email/query with filter null and sort null returned Q1; then one email is delivered to Junk and one to Inbox."
+    when: "Email/queryChanges since Q1 with filter null and sort null; then with both arguments omitted."
+    then: "Both succeed and report the two new ids in added with indexes consistent with a fresh query; the Junk email is included."
+    sources:
+      - "jmapio:email/query-changes-filter-null-accepted"
+      - "cyrus:JMAPEmail/email_querychanges_zerosince"
+    notes: "The Junk email is appended over IMAP (LMTP delivers to the Inbox unless a filter moves it)."
+  - id: EQRY-193
+    title: "queryChanges validates filter and sort like Email/query"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [none]
+    given: "A valid state Q1."
+    when: "Email/queryChanges since Q1 with filter {bogus: 1}; with sort [{property: 'hasKeyword'}]; with sort [{property: 'nonexistent'}]; without sinceQueryState."
+    then: "invalidArguments, invalidArguments, unsupportedSort, invalidArguments respectively."
+    sources:
+      - "cyrus:JMAPEmail/email_query_sort_keyword_required"
+      - "rfc:8620 5.6"
+  - id: EQRY-194
+    title: "queryChanges with thread keyword filters and sorts reports every email of an affected thread"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Thread T1 with A1, A2 unflagged and thread T2 with B1; query {inMailbox: Inbox} sorted [someInThreadHaveKeyword $flagged descending, receivedAt descending], uncollapsed, state Q1."
+    when: "IMAP STORE +FLAGS (\\Flagged) on A1; queryChanges since Q1. Also for filter {someInThreadHaveKeyword: '$flagged'} from its own state."
+    then: "Sort case: applying the response to the old list gives the new order, with the A1 and A2 thread ahead of B1; either A1 and A2 or B1 are reported in removed and re-added at their new indexes. Filter case: added contains both A1 and A2. An email expunged before Q1 never appears in removed."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_threadkeyword"
+      - "cyrus:JMAPEmail/email_querychanges_threadkeyword_expunged"
+      - "cyrus:JMAPEmail/email_querychanges_sortflagged_topmessage"
+    notes: "Corrected 2026-11-11: RFC 8620 5.6 asks for a change set that turns the old list into the new one, not for every email whose sort key changed; WildDuck reports the smallest such set (the ids outside the longest run that kept its order), which here may be B1 alone. The alternative of canCalculateChanges false is not taken: thread keyword queries are cached like any other."
+  - id: EQRY-195
+    title: "queryChanges with a string sort reports the index under that sort"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: should
+    phase: 4
+    applies: yes
+    seed: [imap]
+    given: "Emails with subjects 'b' and 'd'; query sorted by subject ascending, state Q1; the same sorted descending, state Q2."
+    when: "Append emails with subjects 'a', 'c' and 'e' over IMAP; queryChanges since Q1 and since Q2 with the matching sort."
+    then: "Ascending: added is a at 0, c at 2, e at 4. Descending: e at 0, c at 2, a at 4. removed is [] in both."
+    sources:
+      - "cyrus:JMAPEmail/email_querychanges_order"
+      - "cyrus:JMAPEmail/email_querychanges_implementation"
+  - id: EQRY-196
+    title: "Query and queryChanges in one request are consistent"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: must
+    phase: 4
+    applies: yes
+    seed: [imap, lmtp]
+    given: "State Q1 for {inMailbox: Inbox}; one email delivered since."
+    when: "One request with Email/queryChanges since Q1 followed by Email/query with the same arguments, then Email/get using a result reference to /added/*/id of the queryChanges call."
+    then: "newQueryState equals the queryState of the Email/query call; each added index equals the id's index in the Email/query ids; Email/get returns the added email."
+    sources:
+      - "rfc:8620 5.6"
+      - "rfc:8620 3.7"
+      - "jmap-perl:t/query-changes.t"
+  - id: EQRY-197
+    title: "A queryChanges window spanning many changes still succeeds within limits"
+    method: Email/queryChanges
+    spec: "RFC 8620 5.6"
+    level: wd
+    phase: 4
+    applies: adapted
+    seed: [db, imap]
+    given: "Mailbox with 50000 emails and state Q1; then 2000 deliveries and 2000 expunges are journalled."
+    when: "Email/queryChanges since Q1 with maxChanges null; then with maxChanges 500."
+    then: "The first returns, without a timeout or a server error, the changes for the part of the list the client was sent (the result window of Q1, here the first 1000 ids): applied to that list they give the beginning of the current result, and every new email in that range is in added. The second returns tooManyChanges."
+    sources:
+      - "wildduck:plan 4.5"
+      - "rfc:8620 5.6"
+    notes: "Corrected 2026-11-11: the query cache keeps the result ids as far as some call read them (plan 3.4), so queryChanges describes that part of the list, read again with room for new entries, instead of all 4000 changes of a 50000 entry mailbox."
+  - id: EQRY-198
+    title: "A Comparator with collation or isAscending null is read as one without them"
+    method: Email/query
+    spec: "RFC 8620 5.5"
+    level: wd
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Three emails with distinct receivedAt and subjects, and mailboxes Alpha and Beta."
+    when: "Email/query sorted by [{collation: null, isAscending: false, property: 'receivedAt'}], by [{property: 'receivedAt', isAscending: null, collation: null}] and by [{property: 'subject', collation: null}]; Mailbox/query sorted by [{property: 'name', collation: null, isAscending: null}]."
+    then: "Each succeeds with the order of the same sort without the null properties: receivedAt descending, receivedAt ascending, subject, name."
+    sources:
+      - "wildduck:F.5 meli interop run"
+      - "cyrus:imap/jmap_api.c comparator parsing"
+      - "rfc:8620 5.5"
+    notes: "collation and isAscending are optional and typed String and Boolean, so null is strictly invalid. meli 0.9 sends collation: null in every sort and could not list any mailbox while WildDuck answered invalidArguments. Cyrus and Stalwart read null as absent, as WildDuck already does for position and anchorOffset. Applies to every /query method with a sort."

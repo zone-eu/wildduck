@@ -1,0 +1,329 @@
+area: searchsnippet
+title: "SearchSnippet/get"
+description: "RFC 8621 section 5: search snippets with mark highlighting for the subject and a body preview, computed in process from the stored subject and body text of the requested emails."
+scenarios:
+  - id: SNIP-001
+    title: "Return one snippet per requested email with the standard response shape"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'Foosball competition' and body 'the foosball final is on friday'; E2 with subject 'Lunch' and body 'no match here'."
+    when: "SearchSnippet/get with filter {text: 'foosball'} and emailIds [E1, E2]."
+    then: "Response is SearchSnippet/get with exactly accountId, list and notFound. list has 2 objects (order not significant), each with exactly emailId, subject and preview and no id property. notFound is null. There is no state property."
+    sources:
+      - "cyrus:JMAPEmail/searchsnippet_get"
+      - "cyrus:JMAPEmail/email_query_response_arguments"
+      - "jmapio:search-snippet/snippet-response-structure"
+      - "fastmail:t/SearchSnippet/get/basic.t"
+      - "rfc:8621 5.1"
+  - id: SNIP-002
+    title: "Highlight matching words in the subject with mark tags, keeping the original case"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'The Foosball competition' and a body that does not contain the word."
+    when: "SearchSnippet/get with filter {text: 'foosball'} and emailIds [E1]; then with filter {subject: 'FOOSBALL'}."
+    then: "Both return subject 'The <mark>Foosball</mark> competition' (the stored spelling inside the tags) and preview null."
+    sources:
+      - "james:SearchSnippetGetMethodContract#subjectShouldBeInSearchSnippetWhenMatched"
+      - "cyrus:JMAPEmail/searchsnippet_get"
+      - "jmapio:search-snippet/snippet-subject-match"
+      - "jmapio:search-snippet/snippet-mark-tags"
+      - "fastmail:t/SearchSnippet/get/basic.t"
+      - "stalwart:mail/search_snippet.rs"
+  - id: SNIP-003
+    title: "Return the relevant body section as preview with the match highlighted"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'Weekly notes' and a 600 character plain text body containing the word kumquat once, near character 400."
+    when: "SearchSnippet/get with filter {text: 'kumquat'}, then {body: 'kumquat'}, emailIds [E1]."
+    then: "subject is null. preview is a string containing '<mark>kumquat</mark>' with some surrounding body text; text outside the tags is taken from the body. preview is not the Email preview property (which covers the start of the body)."
+    sources:
+      - "james:SearchSnippetGetMethodContract#previewShouldBeInSearchSnippetWhenMatched"
+      - "cyrus:JMAPEmail/searchsnippet_get"
+      - "jmapio:search-snippet/snippet-body-match"
+      - "fastmail:t/SearchSnippet/get/basic.t"
+      - "stalwart:mail/search_snippet.rs"
+  - id: SNIP-004
+    title: "Return null subject and preview for an email that does not match"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 matching 'foosball' in subject and body, E2 containing the word nowhere."
+    when: "SearchSnippet/get with filter {text: 'foosball'} and emailIds [E1, E2]."
+    then: "The entry for E2 is present with subject null and preview null. E2 is not in notFound. The entry for E1 has both properties set."
+    sources:
+      - "jmapio:search-snippet/snippet-null-when-no-match"
+      - "cyrus:JMAPEmail/searchsnippet_get"
+      - "rfc:8621 5.2"
+    notes: "James omits non matching emails from list (shouldReturnEmptyListWhenNotMatched). The RFC example returns an entry with nulls; WildDuck follows the RFC."
+  - id: SNIP-005
+    title: "Escape ampersand, less than and greater than in subject and preview"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'R&D <urgent> widget' and plain text body 'returns <1 widget & more > less'."
+    when: "SearchSnippet/get with filter {text: 'widget'} and emailIds [E1]."
+    then: "subject is 'R&amp;D &lt;urgent&gt; <mark>widget</mark>'. preview contains '&lt;1 <mark>widget</mark> &amp; more &gt; less'. The only unescaped angle brackets in either string belong to mark tags."
+    sources:
+      - "cyrus:SearchFuzzy/snippets_escapehtml"
+      - "stalwart:mail/search_snippet.rs"
+      - "rfc:8621 5"
+  - id: SNIP-006
+    title: "A literal mark tag in the message cannot be confused with highlighting"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject '<mark>fake</mark> real' and an html body containing a script element and the visible text 'real deal'."
+    when: "SearchSnippet/get with filter {text: 'real'} and emailIds [E1]."
+    then: "subject is '&lt;mark&gt;fake&lt;/mark&gt; <mark>real</mark>'. preview contains no script content and no unescaped markup other than mark tags. The output is safe to insert as HTML."
+    sources:
+      - "rfc:8621 5"
+      - "cyrus:SearchFuzzy/snippets_escapehtml"
+  - id: SNIP-007
+    title: "Unknown, malformed, foreign and Deleted email ids are listed in notFound"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "User A has E1 (matching) and E2 marked \\Deleted over IMAP. User B has E3."
+    when: "A calls SearchSnippet/get with filter {text: 'x'} and emailIds [E1, <well formed nonexistent id>, 'not-an-id', E3, E2]."
+    then: "list has one entry, for E1. notFound contains the other four ids exactly as given. No error is returned."
+    sources:
+      - "cyrus:JMAPEmail/searchsnippet_get"
+      - "james:SearchSnippetGetMethodContract#shouldReturnNotFoundWhenEmailIdDoesNotBelongToAccount"
+      - "james:SearchSnippetGetMethodContract#shouldFailWhenEmailIdCanNotParse"
+      - "jmapio:search-snippet/snippet-not-found"
+    notes: "James rejects an unparsable id; WildDuck reports it in notFound, the same rule as Email/get."
+  - id: SNIP-008
+    title: "Empty emailIds returns an empty list; missing or invalid arguments are rejected"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "SearchSnippet/get with (a) filter {text: 'x'} and emailIds []; (b) no emailIds; (c) emailIds null; (d) emailIds 'M...'; (e) no filter argument; (f) filter {bogus: 1}; (g) filter {operator: 'XOR', conditions: []}; (h) an unknown accountId."
+    then: "(a) list [] and notFound null. (b), (c), (d), (e), (f), (g) return invalidArguments. (h) returns accountNotFound."
+    sources:
+      - "james:SearchSnippetGetMethodContract#shouldReturnEmptyListWhenEmailIdsInRequestEmpty"
+      - "james:SearchSnippetGetMethodContract#shouldFailWhenWrongAccountId"
+      - "fastmail:t/SearchSnippet/foreign-account.t"
+      - "rfc:8621 5.1"
+    notes: "The filter argument has no default in 5.1, so omitting it is invalidArguments while an explicit null is valid (next scenario). Unlike Email/get, emailIds null does not mean all."
+  - id: SNIP-009
+    title: "A filter without text conditions yields null snippets"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 in Inbox, flagged, with any subject and body."
+    when: "SearchSnippet/get for [E1] with filter null; with filter {}; with {inMailbox: Inbox, hasKeyword: '$flagged'}; with {from: <E1 sender>}."
+    then: "Each returns one entry for E1 with subject null and preview null, and notFound null."
+    sources:
+      - "fastmail:t/SearchSnippet/get/basic.t"
+      - "rfc:8621 5"
+    notes: "Only text, subject and body conditions produce highlights: text marks both fields, subject only the subject, body only the preview. from, to, cc, bcc and header terms are not highlighted."
+  - id: SNIP-010
+    title: "Chain SearchSnippet/get to Email/query with a result reference"
+    method: SearchSnippet/get
+    spec: "RFC 8620 3.7"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "Five emails, three containing the word mango in subject or body."
+    when: "One request: Email/query with filter {text: 'mango'}, then SearchSnippet/get with the same filter and '#emailIds' referencing /ids of the query."
+    then: "list has exactly 3 entries whose emailIds equal the query ids; each has a mark tag in subject or preview; notFound is null."
+    sources:
+      - "james:SearchSnippetGetMethodContract#searchSnippetGetShouldSupportBackReference"
+      - "james:SearchSnippetGetMethodContract#shouldReturnMultiSearchSnippetInListWhenMultiMatched"
+      - "stalwart:mail/search_snippet.rs"
+      - "cyrus:JMAPEmail/email_query_snippets"
+      - "fastmail:t/SearchSnippet/get/basic.t"
+  - id: SNIP-011
+    title: "Highlight every term of a multi token filter and of OR and AND operators"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'red green blue' and body 'a red car and a blue bike'."
+    when: "SearchSnippet/get for [E1] with {text: 'red blue'}; with OR[{subject: 'green'}, {body: 'bike'}]; with AND[{text: 'red'}, {text: 'car'}]."
+    then: "First: subject '<mark>red</mark> green <mark>blue</mark>' and preview marking red and blue. Second: subject marks only green, preview marks only bike. Third: subject marks red; preview marks red and car."
+    sources:
+      - "james:SearchSnippetGetMethodContract#shouldSupportOrOperatorInFilter"
+      - "stalwart:mail/search_snippet.rs"
+      - "cyrus:SearchFuzzy/snippets_termcover"
+  - id: SNIP-012
+    title: "Terms under a NOT operator are not highlighted"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'alpha beta'."
+    when: "SearchSnippet/get for [E1] with AND[{text: 'alpha'}, NOT[{text: 'gamma'}]]; then with NOT[{text: 'beta'}]."
+    then: "First: subject '<mark>alpha</mark> beta'. Second: subject null and preview null (beta is an excluded term, not a match to show)."
+    sources:
+      - "rfc:8621 5"
+      - "cyrus:JMAPEmail/searchsnippet_get_regression"
+  - id: SNIP-013
+    title: "A quoted phrase is highlighted only where the whole phrase occurs"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'Help your country' and body 'country first, then your country needs you'. E2 with subject 'your own country'."
+    when: "SearchSnippet/get for [E1, E2] with text set to the phrase your country in double quotes."
+    then: "E1: subject 'Help <mark>your country</mark>' (one mark around the phrase or adjacent marks on each word), preview highlights the phrase occurrence and not the lone first 'country'. E2: subject null."
+    sources:
+      - "stalwart:mail/search_snippet.rs"
+      - "rfc:8621 4.4.1"
+  - id: SNIP-014
+    title: "Highlighting ignores case and diacritics and works for non Latin text"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: should
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 with subject 'Voyage sur la Côte' and E2 with subject '孫子兵法 <notes>' and a UTF-8 body containing 孫子兵法."
+    when: "SearchSnippet/get with {text: 'cote'} for [E1]; with {text: '孫子兵法'} for [E2]."
+    then: "E1 subject is 'Voyage sur la <mark>Côte</mark>'. E2 subject is '<mark>孫子兵法</mark> &lt;notes&gt;' and its preview marks the same characters. Whatever Email/query matches for a string, the snippet highlights consistently."
+    sources:
+      - "stalwart:mail/search_snippet.rs"
+      - "cyrus:SearchFuzzy/normalize_snippets"
+  - id: SNIP-015
+    title: "Preview for an html only email is plain text"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 is text/html only: head with a style block, body with '<p>Grüße aus <b>München</b> &amp; Umgebung</p>' and a link."
+    when: "SearchSnippet/get for [E1] with {text: 'münchen'}; then with {text: 'style'} where the word appears only as a tag name."
+    then: "First: preview contains 'aus <mark>München</mark> &amp; Umgebung' with no p, b, a or style markup; entities from the source are decoded then re-escaped once (no '&amp;amp;'). Second: preview null."
+    sources:
+      - "james:SearchSnippetGetMethodContract#shouldReturnMatchingResultWhenSearchSnippetInHTMLBody"
+      - "stalwart:mail/search_snippet.rs"
+      - "rfc:8621 5"
+  - id: SNIP-016
+    title: "Preview is at most 255 octets, keeps the match and never cuts inside a tag, entity or character"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [imap]
+    given: "E1 body: 40 repetitions of 'zpreview é&<> ☃'. E2 body: 40 repetitions of 'filler & <text>' followed by 'zendmatch.'. E3 body: 'zgrapheme' followed by many multi code point clusters (decomposed umlauts, ZWJ emoji)."
+    when: "SearchSnippet/get with {text: 'zpreview'} for E1, {text: 'zendmatch'} for E2, {text: 'zgrapheme'} for E3."
+    then: "Each preview is at most 255 bytes in UTF-8 including mark tags and entities, is valid UTF-8, contains the marked term (for E2 the window is placed around the late match), has balanced mark tags, and does not end in a partial entity or tag. E3 is not cut inside a surrogate pair or combining sequence."
+    sources:
+      - "cyrus:JMAPEmail/searchsnippet_preview_size"
+      - "cyrus:JMAPEmail/searchsnippet_preview_keeps_match"
+      - "cyrus:JMAPEmail/searchsnippet_preview_grapheme"
+      - "stalwart:mail/search_snippet.rs"
+  - id: SNIP-017
+    title: "Body matches are found within the same text Email/query searches"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap]
+    given: "E1 with subject 'persimmon list' and a plain text body of 4 KB filler followed by the word persimmon (beyond the 1 KB search index)."
+    when: "Email/query {text: 'persimmon'}, then SearchSnippet/get with the same filter for the returned id; also SearchSnippet/get with {body: 'persimmon'}."
+    then: "The query returns E1 through the subject. The snippet subject is highlighted. preview is either null or highlights the late body occurrence; WildDuck highlights it, since the stored text of the requested emails is read in process. Either way the call succeeds."
+    sources:
+      - "cyrus:JMAPEmail/searchsnippet_search_maxsize"
+      - "wildduck:plan 4.5"
+    notes: "Phase 4 (full body search) makes the preview non null a firm requirement for every id Email/query returned on a body match."
+  - id: SNIP-018
+    title: "Attachments, nested messages and encrypted bodies do not produce previews"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5"
+    level: wd
+    phase: 1
+    applies: adapted
+    seed: [imap, lmtp]
+    given: "E1 with body 'see attached' and a text/plain attachment containing durian. E2 stored encrypted at rest with subject 'sealed' and body word durian."
+    when: "SearchSnippet/get with {text: 'durian'} for [E1, E2]; then {text: 'sealed'} for [E2]."
+    then: "First: both entries have subject null and preview null, no error. Second: E2 subject is '<mark>sealed</mark>' and preview null."
+    sources:
+      - "cyrus:JMAPEmail/searchsnippet_get_attachment"
+      - "cyrus:JMAPEmail/searchsnippet_get_text_rtf"
+      - "stalwart:mail/search_snippet.rs"
+    notes: "Stalwart highlights matches in nested message parts and Cyrus in attachments (vendor extension). Not adopted; follows the phase 1 Email/query scope."
+  - id: SNIP-019
+    title: "A filter Email/query does not support answers unsupportedFilter"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5.1"
+    level: wd
+    phase: 1
+    applies: "yes"
+    seed: [imap]
+    given: "E1 in Inbox."
+    when: "SearchSnippet/get for [E1] with filter {someInThreadHaveKeyword: '$flagged', text: 'x'}; and with a filter nested deeper than the server's filter depth limit."
+    then: "The thread keyword part is accepted and the text term drives highlighting. The over deep filter returns error unsupportedFilter, the same answer Email/query gives for it."
+    sources:
+      - "rfc:8621 5.1"
+      - "wildduck:brief Query and search"
+  - id: SNIP-020
+    title: "More emailIds than the server maximum answers requestTooLarge"
+    method: SearchSnippet/get
+    spec: "RFC 8621 5.1"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Server limit N for ids per SearchSnippet/get call (maxObjectsInGet from the core capability unless a lower snippet limit is configured)."
+    when: "SearchSnippet/get with N + 1 syntactically valid email ids; then with exactly N ids."
+    then: "The first returns error requestTooLarge without partial results. The second succeeds (all ids in notFound when they do not exist)."
+    sources:
+      - "rfc:8621 5.1"
+      - "rfc:8620 5.1"
+  - id: SNIP-021
+    title: "Snippets are not available without the mail capability"
+    method: SearchSnippet/get
+    spec: "RFC 8620 3.3"
+    level: must
+    phase: 1
+    applies: yes
+    seed: [none]
+    given: "Any account."
+    when: "A request whose using lists only urn:ietf:params:jmap:core and calls SearchSnippet/get; then a call to SearchSnippet/set and SearchSnippet/changes with the mail capability."
+    then: "The first returns unknownMethod. SearchSnippet/set and SearchSnippet/changes return unknownMethod too: get is the only method of the type."
+    sources:
+      - "james:SearchSnippetGetMethodContract#shouldReturnUnknownMethodWhenMissingOneCapability"
+      - "james:SearchSnippetGetMethodContract#shouldReturnUnknownMethodWhenMissingAllCapabilities"
+      - "rfc:8621 5"
